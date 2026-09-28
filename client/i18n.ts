@@ -47,6 +47,10 @@ const ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/No page of this seal is here. Missing pages rest at: (.+)\./, (m) => `这里没有这道封印的书页。缺失的书页在：${m[1].split(', ').map(placeName).join('、')}`],
   [/You have not read every page/, () => '你还没读完这道封印的所有书页'],
   [/will not even speak to a wizard below year (\d)/, (m) => `这道封印不会理睬 ${m[1]} 年级以下的巫师`],
+  [/There is no way to walk to/, () => '那里走不过去（被墙、湖或树林挡住了）'],
+  [/The walls of Azkaban are thick/, () => '阿兹卡班的墙很厚，哪儿也去不了'],
+  [/That seal is already broken/, () => '这道封印已经破解了'],
+  [/You already hold every page of this seal/, () => '这道封印的书页你已经全部读过了'],
 ];
 export function tr(msg: string): string {
   if (lang !== 'zh') return msg;

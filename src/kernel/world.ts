@@ -1644,7 +1644,7 @@ export class World {
       reputation: Math.round(w.reputation), galleons: w.galleons, hp: Math.round(w.hp), maxHp: d.maxHp, mana: Math.round(w.mana), maxMana: d.maxMana,
       hotbar: w.hotbar.map((id) => {
         const s = w.spells.find((x) => x.id === id);
-        return s ? { id: s.id, name: s.name, cd: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)) } : null;
+        return s ? { id: s.id, name: s.name, cd: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)), kind: spellKind(s.effects) } : null;
       }),
       stunned: w.st.stunnedUntil ? Math.max(0, round(w.st.stunnedUntil - this.now)) : 0,
       jailed: w.st.jailedUntil ? Math.max(0, round(w.st.jailedUntil - this.now)) : 0,
@@ -1719,3 +1719,11 @@ export function wandText(w: Wizard) {
 const fraction = (f: number) => ({ 0.25: '¼', 0.5: '½', 0.75: '¾' } as Record<number, string>)[Math.round(f * 4) / 4] ?? '';
 const round = (n: number) => Math.round(n * 10) / 10;
 const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+/**
+ * What a hotbar spell is for, read off its effect primitives (Spell.effects), so the browser's smart casting can pick
+ * a target: harm aims at a foe, help at a friend or yourself, self needs no target. Harm wins when a spell does both.
+ */
+const HARM_EFFECTS = new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova']);
+const HELP_EFFECTS = new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend']);
+const spellKind = (effects: readonly string[]): 'harm' | 'help' | 'self' =>
+  effects.some((e) => HARM_EFFECTS.has(e)) ? 'harm' : effects.some((e) => HELP_EFFECTS.has(e)) ? 'help' : 'self';

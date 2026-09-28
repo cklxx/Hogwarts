@@ -192,7 +192,8 @@ type ClientMsg =
   | { t: 'hotbar'; slots: (string | null)[] }
   | { t: 'seals' }
   | { t: 'readpage'; tier: number }
-  | { t: 'breakseal'; tier: number; words: string[] };
+  | { t: 'breakseal'; tier: number; words: string[] }
+  | { t: 'goto'; x: number; z: number };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -231,6 +232,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
         handleClient(ws, wid, { t: 'seals' });
         break;
       }
+      case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(wid, { x: m.x, z: m.z }) : world.setGoal(wid, null) }); break;
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
     }
   } catch (e) {
