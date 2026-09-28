@@ -87,6 +87,8 @@ const ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^You cannot do that right now/, () => '你现在做不了这个'],
   [/^Unknown wizard/, () => '找不到这个巫师'],
   [/^Too many (?:requests|messages)/i, () => '操作太频繁了，歇一会儿再试'],
+  [/^Slow down: too many messages/, () => '操作太频繁了，歇一会儿再试'],
+  [/^The Sorting Hat needs a rest/, () => '分院帽要歇一歇：这里报名的人太多了。过几分钟再试。'],
 ];
 export function tr(msg: string): string {
   if (lang !== 'zh') return msg;

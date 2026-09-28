@@ -140,7 +140,16 @@ body.touch #touchbar { display: flex; flex-direction: column; gap: 8px; position
 body.touch #touchbar button { width: 46px; height: 46px; padding: 0; border-radius: 50%; font-size: 18px; background: rgba(12,12,24,.7); }
 @media (max-height: 500px) { body.touch #touchbar { gap: 5px; } body.touch #touchbar button { width: 38px; height: 38px; font-size: 15px; } }
 body.touch #crosshair, body.touch #help { display: none; }
-@media (max-height: 500px) { #presence, #minimap { display: none; } #chat { bottom: auto; top: 76px; width: min(220px, 30vw); } }
+@media (max-height: 500px) { #presence, #minimap { display: none; } #chat { bottom: auto; top: calc(var(--tl-bottom, 66px) + 8px); width: min(220px, 30vw); } #agentbox.ab-idle { display: none; }
+  /* the agent widget leaves the top-left stack and becomes one compact line beside the chat box, so neither the chat box
+     nor the widget runs into the tutorial card (top: 36%) or each other */
+  #agentbox:not([hidden]):not(.ab-idle) { position: fixed; top: calc(var(--tl-bottom, 66px) + 8px); left: calc(18px + min(220px, 30vw)); max-width: min(190px, 25vw);
+    display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 11.5px; }
+  #agentbox > div:first-child:not(.ab-row) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #agentbox > div:first-child code, #agentbox .ab-goal { display: none; }
+  #agentbox .ab-row { margin-top: 0; flex-wrap: nowrap; flex: none; gap: 4px; }
+  #agentbox button { padding: 1px 6px; font-size: 11px; }
+  #agentbox .ab-row button[data-act="owl"]:not(:has(.ab-n)) { display: none; } /* the touch bar has its own 🦉; keep this one only for an unread count */ }
 
 /* ------------------------------------------------------------------ Owl Post: the menu, the Owl panel, the agent widget, the trunk, the curse banner (docs/AGENT_LINK.md §C.6) */
 #menu h2 small { font-weight: normal; font-size: 13px; opacity: .7; }

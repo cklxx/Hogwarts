@@ -192,7 +192,7 @@ function apply(s: Snap) {
       wizards.set(w.h, m);
     }
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
-    const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '') + (w.s.includes('Q') ? '🤐' : '');
+    const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
     setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
@@ -487,7 +487,8 @@ function agentNow(): AgentView | null {
 function menuInfo(url?: string) {
   if (url) mcpUrl = url;
   else if (!mcpUrl) mcpUrl = account.mcpUrl || `${location.origin}/mcp`;
-  const bridge = `claude mcp add -s user hogwarts -- npx tsx src/mcp/stdio-bridge.ts ${mcpUrl}`;
+  // "$PWD" is expanded by the shell when the command is added, so the saved entry holds an absolute path and works from any directory
+  const bridge = `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
   const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
   $('#menu').innerHTML = `<h2>${L('猫头鹰邮递', 'Owl Post')} <small>${L('—— 按 Esc 关闭', '— Esc to close')}</small></h2>
     <section class="op-first">
@@ -496,7 +497,7 @@ function menuInfo(url?: string) {
       <div id="op-agent" class="hint"></div>
     </section>
     <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
-    <p>${L('<b>推荐：stdio 桥</b>（在霍格沃茨仓库目录里运行一次。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (run once in the Hogwarts checkout; after the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
+    <p>${L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
     <p>${L('<b>HTTP 直连 + 配置头</b>（命令里是字面的 <code>${HOGWARTS_TOKEN}</code>，要用单引号；再在 shell profile 里 <code>export HOGWARTS_TOKEN=你的密钥</code>）：', '<b>Direct HTTP with a header</b> (the command holds a literal <code>${HOGWARTS_TOKEN}</code> in single quotes; put <code>export HOGWARTS_TOKEN=&lt;your key&gt;</code> in your shell profile):')}</p>
     <div class="op-cmd"><pre id="op-header">${esc(header)}</pre><button class="ghost" data-copy="op-header">${L('复制', 'Copy')}</button></div>
@@ -552,7 +553,12 @@ function onToken(t: string) {
   if (!t) return;
   token = t;
   saveToken(t);
-  menuMsg = L('🔑 密钥已更换：旧密钥立即失效，这个浏览器已经换上了新密钥。已连接的 Agent 需要重新配对。', '🔑 Key changed: the old one stopped working at once and this browser now holds the new one. Connected agents need to pair again.');
+  keyShown = false;
+  rotateArmed = false;
+  // only a rotation this tab asked for cuts the agent off; an agent's own rotate_key keeps its session (docs/AGENT_LINK.md §A.3)
+  menuMsg = recent('menu')
+    ? L('🔑 密钥已更换：旧密钥立即失效，这个浏览器已经换上了新密钥。已连接的 Agent 需要重新配对。', '🔑 Key changed: the old one stopped working at once and this browser now holds the new one. Connected agents need to pair again.')
+    : L('🔑 密钥已更换：旧密钥立即失效，这个浏览器已经换上了新密钥。', '🔑 Key changed: the old one stopped working at once and this browser now holds the new one.');
   pairing = null;
   renderMenuLive();
   toast(menuMsg);
@@ -770,8 +776,16 @@ function renderAgentBox() {
   } else if (me) {
     html = `<div class="hint">🤖 ${L('Agent 未连接 · Esc → 生成配对码', 'No agent · Esc → pairing code')}</div>`;
   }
-  if (html !== lastAgentHtml) { el.innerHTML = html; lastAgentHtml = html; el.hidden = !html; }
+  if (html !== lastAgentHtml) {
+    el.innerHTML = html; lastAgentHtml = html; el.hidden = !html;
+    el.classList.toggle('ab-idle', !!html && !(a && (a.connected || a.paused)) && !owlUnread);
+  }
 }
+// short (landscape phone) screens put the chat box right under the top-left stack, which grows with the agent widget
+new ResizeObserver(() => {
+  const r = $('#topleft').getBoundingClientRect();
+  document.documentElement.style.setProperty('--tl-bottom', `${Math.round(r.bottom)}px`);
+}).observe($('#topleft'));
 $('#agentbox').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
   if (!b) return;
@@ -969,7 +983,9 @@ function toggleMenu() {
   const m = $('#menu');
   m.hidden = !m.hidden;
   $('#board').hidden = true;
-  if (!m.hidden) { ctl.notify('menu'); rotateArmed = false; if (!$('#op-pair')) menuInfo(); renderMenuLive(); }
+  keyShown = false; // the key is hidden again every time the Owl Post opens or closes
+  rotateArmed = false;
+  if (!m.hidden) { ctl.notify('menu'); if (!$('#op-pair')) menuInfo(); renderMenuLive(); }
 }
 const ctl = createControls({
   canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,

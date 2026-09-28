@@ -5,6 +5,7 @@ import { World, spellKind } from '../src/kernel/world';
 import * as K from '../src/kernel/world';
 import { AGENT_LIVE_S, agentView, clientLabel, curseText, routeChat, tokenFromUrl } from '../client/controls';
 import { tr } from '../client/i18n';
+import { SLOW_DOWN } from '../src/server/net';
 
 
 describe('spell kinds (smart casting in the browser)', () => {
@@ -129,7 +130,8 @@ describe('Owl Post in the browser', () => {
       'The Elder Wand cannot be destroyed. Harry tried to put it back instead.', 'You have not learned the Dark Arts yet. (Come back in year 2.)',
       'The forge will not post curses for a wizard who enrolled less than 10 minutes ago.', 'You cursed that wizard recently. The forge makes you wait 120s.',
       'This nastiness costs 30 Galleons (malice tax included); you have 4.', 'Forging this costs 12 Galleons; you have 3. Defeat creatures to earn more.',
-      'Too much enchantment: 12 points > your budget of 8 (year 2).', "Neville's trunk is full (20 items).",
+      'Too much enchantment: 12 points > your budget of 8 (year 2).', "Neville's trunk is full (20 items).", SLOW_DOWN,
+      'The Sorting Hat needs a rest: too many enrolments from here. Try again in a few minutes.',
     ];
     for (const m of msgs) {
       const zh = tr(m);
