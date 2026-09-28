@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WIND } from './grass';
 
 /**
  * GPU particles. Each pool is ONE THREE.Points draw call over a ring buffer: a particle is written
@@ -205,8 +206,8 @@ function randomUnit(v: THREE.Vector3) {
 export type Particles = ReturnType<typeof createFx>;
 
 /**
- * The game's particle effects. Counts are scaled down at 'low' quality (fewer, slightly bigger
- * particles) and the pools are smaller.
+ * The game's particle effects. At 'low' quality every effect emits 40% of its particles (trails are
+ * laid down more sparsely, chimney smoke puffs are fewer and bigger).
  */
 export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
   const glow = new Pool(scene, 14000, true);
@@ -286,7 +287,7 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
         api.sparks(b.x, b.y, b.z, color, 14);
       }
     },
-    /** Rising smoke from every chimney near the camera (and a few sparks at night). */
+    /** Rising smoke from every chimney within 300 m of the camera, drifting downwind. */
     tickSmoke(dt: number, camera: THREE.Camera) {
       cam.setFromMatrixPosition(camera.matrixWorld);
       const rate = 3.2 * density;
@@ -295,7 +296,7 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
         smokeAcc[i] += dt * rate;
         while (smokeAcc[i] >= 1) {
           smokeAcc[i] -= 1;
-          smoke.emit(c.x, c.y, c.z, { color: 0x9a948c, radius: 0.25, speed: 0.25, up: 1.3, size: 1.1 / Math.sqrt(density), sizeJitter: 0.25, life: 7, lifeJitter: 0.2, gravity: -0.05, drag: 0.25, grow: 4.5, wind: [0.7, 0.25] }, 1);
+          smoke.emit(c.x, c.y, c.z, { color: 0x9a948c, radius: 0.25, speed: 0.25, up: 1.3, size: 1.1 / Math.sqrt(density), sizeJitter: 0.25, life: 7, lifeJitter: 0.2, gravity: -0.05, drag: 0.25, grow: 4.5, wind: [WIND.x * 0.9, WIND.y * 0.9] }, 1);
         }
       });
     },

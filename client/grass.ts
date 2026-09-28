@@ -65,7 +65,8 @@ const ss = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min
 /** 0..1: how much grass grows here. */
 export function grassDensity(x: number, z: number, y: number) {
   const lake = ss(LAKE.r + 7, LAKE.r + 13, Math.hypot(x - LAKE.x, z - LAKE.z));
-  return ss(0.3, 0.75, flatness(x, z)) * lake * (1 - ss(10, 22, y));
+  // the mask is 0 on built ground and rises over ~18 m around it: let the lawn come close to the paths
+  return ss(0.03, 0.3, flatness(x, z)) * lake * (1 - ss(10, 22, y));
 }
 
 export function createGrass(scene: THREE.Scene) {
@@ -88,7 +89,8 @@ export function createGrass(scene: THREE.Scene) {
         vec3 objectNormal = normal;
         objectNormal.xz = gRot * objectNormal.xz;`)
       .replace('#include <begin_vertex>', `
-        float bh = aShape.x * (1.0 - smoothstep(uRadius * 0.7, uRadius, distance(aOffset.xz, uFocus.xz)));
+        // blades shrink into the ground toward the edge of the field, so it has no visible border
+        float bh = aShape.x * (1.0 - smoothstep(uRadius * 0.45, uRadius, distance(aOffset.xz, uFocus.xz)));
         vec3 transformed = vec3(position.x * aShape.y, position.y * bh, position.z * aShape.y);
         transformed.xz = gRot * transformed.xz;
         // wind: slow gusts rolling across the grounds plus a quick per-blade flutter
@@ -109,7 +111,7 @@ export function createGrass(scene: THREE.Scene) {
       .replace('#include <color_fragment>', `#include <color_fragment>
         float hue = fract(vHue);
         vec3 gRoot = vec3(0.035, 0.085, 0.018);
-        vec3 gTip = mix(vec3(0.12, 0.29, 0.045), vec3(0.3, 0.36, 0.09), hue * hue * hue);
+        vec3 gTip = mix(vec3(0.1, 0.25, 0.04), vec3(0.27, 0.32, 0.08), hue * hue * hue);
         diffuseColor.rgb = mix(gRoot, gTip, smoothstep(0.0, 1.0, vTip));
         if (vHue > 1.5) {
           // wildflowers: a coloured head on the tips of the clump
