@@ -261,6 +261,9 @@ describe('socket hygiene', () => {
     let inputs = 0;
     for (let i = 0; i < 100; i++) if (allowMessage(ws, { t: 'input', dx: 1, dz: 0 }, 5000)) inputs++;
     expect(inputs).toBe(LIMITS.input[1]);
+    // message kinds are looked up as own keys only (no prototype names), unknown kinds share 'other'
+    expect(() => allowMessage(ws, { t: 'constructor' }, 9000)).not.toThrow();
+    expect(() => allowMessage(ws, { t: '__proto__' }, 9000)).not.toThrow();
   });
   it('sends the private state only when it changed', () => {
     const { ws, sent } = fakeSocket();

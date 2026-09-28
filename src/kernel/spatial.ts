@@ -95,10 +95,11 @@ export class SpatialHash<T extends Located> {
    * itself is not finite (a NaN radius or centre makes every distance test pass, so callers must
    * fall back to a full scan to stay exact).
    */
-  near(x: number, z: number, r: number): T[] | null {
+  near(x: number, z: number, r: number): readonly T[] | null {
     if (!Number.isFinite(x) || !Number.isFinite(z) || !(r >= 0) || r === Infinity) return null;
     const x0 = this.col(x - r), x1 = this.col(x + r), z0 = this.col(z - r), z1 = this.col(z + r);
-    const found: Rec<T>[] = [];
+    const found = scratch as Rec<T>[];
+    found.length = 0;
     for (let cx = x0; cx <= x1; cx++) {
       const row = cx * DIM;
       for (let cz = z0; cz <= z1; cz++) {
@@ -107,9 +108,11 @@ export class SpatialHash<T extends Located> {
       }
     }
     for (const l of this.loose) found.push(l);
+    if (!found.length) return EMPTY;
     if (found.length > 1) found.sort(byOrd);
     const out: T[] = new Array(found.length);
     for (let i = 0; i < found.length; i++) out[i] = found[i].e;
+    found.length = 0;
     return out;
   }
 
@@ -128,6 +131,10 @@ export class SpatialHash<T extends Located> {
 }
 
 const byOrd = (a: { ord: number }, b: { ord: number }) => a.ord - b.ord;
+/** near() is not re-entrant (it calls nothing), so one scratch buffer serves every query. */
+const scratch: Rec<Located>[] = [];
+/** Shared result for empty queries; callers only read results. */
+const EMPTY: readonly never[] = Object.freeze([]);
 
 /**
  * A Map of entities that keeps a SpatialHash in step with its membership (set/delete/clear), so code

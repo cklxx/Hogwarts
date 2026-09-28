@@ -483,7 +483,7 @@ export class World {
     }
     let program: Node[];
     try {
-      program = analyze(spell.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals }).program;
+      program = this.compiled(spell.source, w);
     } catch (e) {
       return { ...fail((e as Error).message), spell: spell.name };
     }
@@ -500,6 +500,24 @@ export class World {
       this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle });
     }
     return report;
+  }
+
+  /**
+   * analyze() is a pure function of the source and the caster's limits, and the interpreter never
+   * mutates the tree, so a cast reuses the checked program instead of re-parsing it every time.
+   * Failures are not cached (they re-run and throw the same error).
+   */
+  private programs = new Map<string, Node[]>();
+  private compiled(source: string, w: Wizard): Node[] {
+    const max = maxNodes(w.year, this.rules), banned = this.rules.magic.bannedPrimitives;
+    const key = `${w.year}|${max}|${w.seals}|${banned.join(',')}|${source}`;
+    let p = this.programs.get(key);
+    if (!p) {
+      p = analyze(source, { year: w.year, maxNodes: max, banned, seals: w.seals }).program;
+      if (this.programs.size >= 4096) this.programs.clear();
+      this.programs.set(key, p);
+    }
+    return p;
   }
 
   /** Try out source without learning it or spending anything. */

@@ -145,6 +145,17 @@ HUD 四个角默认是暗的，要用魔法点亮（新原语 `reveal`）：**Te
 ## 形式化验证
 `formal/`：6 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
 
+## 性能与多核 (Performance & multi-core)
+
+内核的邻近查询走空间哈希（`src/kernel/spatial.ts`），区域判定走一次性栅格化的区域表（`zones.ts`），`derived()` 按巫师缓存并自校验；每个客户端只收到自己周围 ~140 m 内的实体（同一格子的客户端共享同一份已编码的快照），私有状态最多 5 Hz 且只在变化时发送，慢客户端跳帧，每个连接有消息限速。行为不变：确定性指纹（`scripts/bench.ts trace`）与优化前逐字节一致。数据与方法见 [`docs/PERF.md`](docs/PERF.md)。
+The kernel's proximity queries use a spatial hash, zones are rasterised once, `derived()` is cached; clients get area-of-interest snapshots (~140 m, shared per cell), `me` at ≤5 Hz only when changed, slow sockets skip frames, per-socket rate limits. Same behaviour: the determinism fingerprint is byte-identical to before.
+
+```bash
+npx tsx scripts/bench.ts kernel|net|trace     # 基准测试 / benchmarks (docs/PERF.md)
+REALMS=8 npm start                             # 8 个独立世界（分片），一个入口；GET /api/realms 列出各分片人数
+```
+`REALMS=N`：主进程只做入口（HTTP 代理 + 把 WebSocket 套接字直接交给对应分片进程），每个分片是一个完整的单线程世界，存档 `data/world.rK.json`（分片 0 沿用 `data/world.json`）；令牌前缀 `rK.` 决定路由。不设 `REALMS` 时与以前完全一样。其他开关：`AOI_RADIUS`（默认 140，0 = 全量快照）、`AOI_CELL`（默认 16 m）、`WS_SLOW_BYTES` / `WS_DEAD_BYTES`（跳帧/断开阈值）、`HOGWARTS_VERIFY_SPATIAL=1`（每次空间查询与全量扫描对照，调试用）。
+
 ## 已知限制与取舍
 
 - 身份即 token，本地游戏未做账号体系；世界存档 `data/world.json` 明文保存 token。

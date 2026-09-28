@@ -9,14 +9,25 @@ import type { WebSocket } from 'ws';
  *  - batching: queued events + snapshot + 'me' leave in one corked socket write per broadcast.
  */
 
-/** [refill per second, burst] — generous for real browsers (input ≤ 20 Hz, casts gated by a 0.25 s cooldown). */
+/**
+ * [refill per second, burst] per message type — generous for real browsers (input <= 20 Hz, casts gated
+ * by a 0.25 s cooldown), tight for the expensive ones (they run the Runes checker/interpreter or build
+ * the grimoire). A message type not listed here (e.g. one added to handleClient later) shares 'other';
+ * give a new high-rate type its own entry.
+ */
 export const LIMITS: Record<string, [number, number]> = {
   input: [40, 60],
   cast: [10, 15],
   chat: [1, 5],
   simulate: [4, 8],
   forge: [2, 5],
-  other: [8, 16],
+  unlearn: [2, 5],
+  book: [4, 8],
+  hotbar: [4, 8],
+  seals: [4, 8],
+  readpage: [2, 5],
+  breakseal: [2, 5],
+  other: [30, 60],
   all: [80, 120],
 };
 
@@ -66,7 +77,7 @@ function take(s: NetState, kind: string, now: number) {
 export function allowMessage(ws: WebSocket, m: unknown, now = Date.now()): boolean {
   const s = netState(ws);
   const t = m && typeof m === 'object' ? (m as { t?: unknown }).t : undefined;
-  const kind = typeof t === 'string' && t in LIMITS && t !== 'all' ? t : 'other';
+  const kind = typeof t === 'string' && Object.hasOwn(LIMITS, t) && t !== 'all' ? t : 'other';
   if (take(s, 'all', now) && take(s, kind, now)) return true;
   s.dropped++;
   if (kind !== 'input' && now - s.warnedAt > 1000) {

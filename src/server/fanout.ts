@@ -6,7 +6,7 @@ import type { World } from '../kernel/world.js';
  * The world snapshot is built once per broadcast. Every entity entry (wizard, creature, projectile, fx)
  * is serialised and UTF-8 encoded ONCE, filed under the grid cell (`cell` metres) of its position.
  * A client receives the entries of every cell whose square comes within `radius` metres of its own
- * cell's square: everything within `radius` of it (and nothing further than radius + cell·√2) —
+ * cell's square: everything within `radius` of it (and nothing further than radius + 2·cell·√2) —
  * always including itself, since its own entry sits in its own cell.
  *
  * Payloads are per client CELL, so every client standing in the same cell shares one Buffer. To make
