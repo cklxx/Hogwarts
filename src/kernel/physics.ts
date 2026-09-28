@@ -17,11 +17,24 @@ for (const o of OBSTACLES) {
     }
 }
 
-function nearby(p: Vec2): Obstacle[] {
-  const cx = Math.floor(p.x / CELL), cz = Math.floor(p.z / CELL);
+function gather(cx: number, cz: number): Obstacle[] {
   const out = new Set<Obstacle>();
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (const o of grid.get(key(cx + dx, cz + dz)) ?? []) out.add(o);
   return [...out];
+}
+
+// The 3x3 neighbourhood list of each cell never changes (obstacles are static), so it is built once per
+// cell on first use (same obstacles, same order as before) instead of allocating a Set and an array on
+// every collision test. Cells far outside the map are not cached.
+const NB_SPAN = 64;
+const neighbourhoods = new Map<number, Obstacle[]>();
+function nearby(p: Vec2): Obstacle[] {
+  const cx = Math.floor(p.x / CELL), cz = Math.floor(p.z / CELL);
+  if (!(Math.abs(cx) < NB_SPAN && Math.abs(cz) < NB_SPAN)) return gather(cx, cz);
+  const k = (cx + NB_SPAN) * 2 * NB_SPAN + (cz + NB_SPAN);
+  let list = neighbourhoods.get(k);
+  if (!list) { list = gather(cx, cz); neighbourhoods.set(k, list); }
+  return list;
 }
 
 /** Push a circle of radius r out of every static obstacle. Mutates p. */

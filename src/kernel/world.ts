@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { CREATURE_KINDS, HOUSES, ITEM_SLOTS, UI_CHARMS, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm } from '../shared/constants.js';
-import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, inZone, mulberry32, type ZoneId } from '../shared/map.js';
+import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, mulberry32, type ZoneId } from '../shared/map.js';
 import { canonFor, ollivander } from '../lore/wands.js';
 import { zhCreature, zhHouse, zhPlace, zhSpell } from '../shared/zh.js';
 import { CURRICULUM, isLeviosa, isLeviosar, unforgivable } from '../lore/spells.js';
@@ -14,6 +14,8 @@ import { type CastReport, execute } from './magic.js';
 import { dist, resolve, solidAt } from './physics.js';
 import { findPath } from './pathfind.js';
 import { thinkNpcs } from './npc.js';
+import { EntityMap } from './spatial.js';
+import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
 import {
   MAX_ITEMS, derived, gasLimit, stealAmount, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
 } from './progression.js';
@@ -51,8 +53,14 @@ export interface WorldOptions { seed?: number; rules?: Rulebook; secret?: string
 export class World {
   rules: Rulebook;
   now = 0;
-  wizards = new Map<string, Wizard>();
-  creatures = new Map<string, Creature>();
+  /** Maps that keep a spatial index of their members (see spatial.ts); used exactly like a Map. */
+  wizards = new EntityMap<Wizard>();
+  creatures = new EntityMap<Creature>();
+  /** Prefix for newly minted tokens (set by a realm worker so a front door can route by token). */
+  tokenPrefix = '';
+  /** Cross-check every spatial query against a full scan (tests / HOGWARTS_VERIFY_SPATIAL=1). Slow. */
+  static verifySpatial = process.env.HOGWARTS_VERIFY_SPATIAL === '1';
+  private inTick = false;
   projectiles = new Map<string, Projectile>();
   pending: Pending[] = [];
   events: WorldEvent[] = [];
@@ -101,9 +109,12 @@ export class World {
     return ((this.now / this.rules.world.dayLengthSeconds) * 24 + 8) % 24;
   }
   isNight() { const h = this.hour(); return this.rules.world.eternalNight || h < 6 || h >= 20; }
-  zoneIds(p: Vec2): ZoneId[] { return ZONES.filter((z) => inZone(z, p.x, p.z)).map((z) => z.id); }
-  inSafe(p: Vec2) { const zs = this.zoneIds(p); return this.rules.combat.safeZones.some((s) => zs.includes(s)); }
-  onGrounds(p: Vec2) { return inZone(ZONES.find((z) => z.id === 'grounds')!, p.x, p.z) && !this.zoneIds(p).includes('hogsmeade'); }
+  // Zones are rasterised once (zones.ts); answers are identical to testing every zone with inZone.
+  zoneIds(p: Vec2): ZoneId[] { return zoneIdsAt(p.x, p.z); }
+  private within(p: Vec2, id: ZoneId) { return zoneMask(p.x, p.z, ZONE_BIT[id]) !== 0; }
+  /** Safe zones are policy (rules.combat.safeZones), so the mask is derived from the live rulebook on every call. */
+  inSafe(p: Vec2) { const m = maskOf(this.rules.combat.safeZones); return m !== 0 && zoneMask(p.x, p.z, m) !== 0; }
+  onGrounds(p: Vec2) { return zoneMask(p.x, p.z, ZONE_BIT.grounds | ZONE_BIT.hogsmeade) === ZONE_BIT.grounds; }
   placeName(p: Vec2) {
     const order: ZoneId[] = ['azkaban', 'erised', 'great_hall', 'seventh_floor', 'tomb', 'willow', 'dungeons', 'greenhouses', 'courtyard', 'pitch', 'hogsmeade', 'forest', 'lake_shore', 'grounds'];
     const zs = this.zoneIds(p);
@@ -134,7 +145,46 @@ export class World {
     return null;
   }
 
+  // ------------------------------------------------------------------ spatial queries
+  // wizards/creatures are EntityMaps: a grid index kept in step with membership. Positions are re-filed
+  // wherever the kernel moves something (moved()), in bulk at the start of every tick, and before any
+  // query made from outside a tick (tests, MCP and WebSocket syscalls may have moved things directly).
+  private syncIndex() { this.wizards.grid.syncAll(); this.creatures.grid.syncAll(); }
+  private moved(e: Wizard | Creature) {
+    if ('house' in e) this.wizards.grid.update(e);
+    else this.creatures.grid.update(e);
+  }
+  /** Wizards that may be within r of p, in Map order: a superset — callers keep their exact distance test. */
+  nearWizards(p: Vec2, r: number): Iterable<Wizard> {
+    if (!this.inTick) this.syncIndex();
+    return this.wizards.grid.near(p.x, p.z, r) ?? this.wizards.values();
+  }
+  /** Creatures that may be within r of p, in Map order (superset, as nearWizards). */
+  nearCreatures(p: Vec2, r: number): Iterable<Creature> {
+    if (!this.inTick) this.syncIndex();
+    return this.creatures.grid.near(p.x, p.z, r) ?? this.creatures.values();
+  }
+
   around(p: Vec2, radius: number, filter: (e: EntityView) => boolean, exclude?: string, limit = 8): EntityView[] {
+    const r = Math.min(40, Math.max(0, radius));
+    const out: EntityView[] = [];
+    for (const w of this.nearWizards(p, r)) {
+      if (w.id === exclude || !this.isActive(w) || dist(w.pos, p) > r) continue;
+      const v = this.entity(w.id)!;
+      if (filter(v)) out.push(v);
+    }
+    for (const c of this.nearCreatures(p, r)) {
+      if (c.id === exclude || c.hp <= 0 || dist(c.pos, p) > r) continue;
+      const v = this.entity(c.id)!;
+      if (filter(v)) out.push(v);
+    }
+    const res = out.sort((a, b) => dist(a.pos, p) - dist(b.pos, p)).slice(0, limit);
+    if (World.verifySpatial) this.verifyAround(res, p, radius, filter, exclude, limit);
+    return res;
+  }
+
+  /** The original full-scan `around`, kept as the reference the spatial index is checked against. */
+  aroundByScan(p: Vec2, radius: number, filter: (e: EntityView) => boolean, exclude?: string, limit = 8): EntityView[] {
     const r = Math.min(40, Math.max(0, radius));
     const out: EntityView[] = [];
     for (const w of this.wizards.values()) {
@@ -150,20 +200,29 @@ export class World {
     return out.sort((a, b) => dist(a.pos, p) - dist(b.pos, p)).slice(0, limit);
   }
 
+  private verifyAround(got: EntityView[], p: Vec2, radius: number, filter: (e: EntityView) => boolean, exclude: string | undefined, limit: number) {
+    const want = this.aroundByScan(p, radius, filter, exclude, limit);
+    const a = got.map((e) => e.id).join(), b = want.map((e) => e.id).join();
+    if (a !== b) throw new Error(`spatial index diverged at (${p.x}, ${p.z}) r=${radius}: [${a}] != [${b}]`);
+    const bad = this.wizards.grid.check() ?? this.creatures.grid.check();
+    if (bad) throw new Error(`spatial index inconsistent: ${bad}`);
+  }
+
   /**
    * The single definition of hostility (modelled in formal/tla/Hostility.tla).
    *  - nobody harms themselves, the stunned, the offline, the invulnerable, or anyone in a safe zone
    *  - a summon harms exactly what its owner may harm, never its owner or the owner's other summons
    *  - wild hostile creatures fight wizards and summons; benign creatures fight no one
    *  - harming someone's summon counts as attacking them (same PvP/house rules)
+   * (Allocation-free: reads the maps directly instead of building an EntityView; same decisions.)
    */
   canHarm(srcId: string | null, dstId: string): boolean {
     if (srcId === dstId) return false;
-    const dst = this.entity(dstId);
-    if (!dst || dst.hp <= 0) return false;
     const dw = this.wizards.get(dstId);
-    if (dw && !this.isActive(dw)) return false;
     const dc = this.creatures.get(dstId);
+    const dst = dw ?? dc; // entity(): a wizard view takes precedence
+    if (!dst || dst.hp <= 0) return false;
+    if (dw && !this.isActive(dw)) return false;
     if (dc && CREATURES[dc.kind].invulnerable) return false;
     if (this.inSafe(dst.pos)) return false;
     if (!srcId) return true;
@@ -178,19 +237,19 @@ export class World {
     }
     const sw = this.wizards.get(srcId);
     if (sw && this.inSafe(sw.pos)) return false;
-    const pvp = (a: Wizard, b: Wizard) => this.rules.combat.pvp && (a.house !== b.house || this.rules.combat.friendlyFire);
     if (dc?.owner) {
       if (dc.owner === srcId) return false;
       const ow = this.wizards.get(dc.owner);
-      return sw && ow ? pvp(sw, ow) : true;
+      return sw && ow ? this.pvp(sw, ow) : true;
     }
-    if (sw && dw) return pvp(sw, dw);
+    if (sw && dw) return this.pvp(sw, dw);
     return true;
   }
+  private pvp(a: Wizard, b: Wizard) { return this.rules.combat.pvp && (a.house !== b.house || this.rules.combat.friendlyFire); }
 
   /** Stunned wizards within r (they are not "in play", so `around` never returns them). */
   fallen(p: Vec2, r: number, exclude?: string) {
-    return [...this.wizards.values()]
+    return [...this.nearWizards(p, Math.min(40, r))]
       .filter((w) => w.id !== exclude && w.st.stunnedUntil > 0 && !w.st.jailedUntil && this.online(w) && dist(w.pos, p) <= Math.min(40, r))
       .sort((a, b) => dist(a.pos, p) - dist(b.pos, p)).slice(0, 8);
   }
@@ -250,12 +309,12 @@ export class World {
   mend(src: Wizard, radius: number, amount: number) {
     const amt = amount * this.rules.combat.healingMultiplier * derived(src, this.rules).care;
     this.fx({ k: 'nova', x: src.pos.x, z: src.pos.z, r: radius, e: 'light' });
-    for (const w of this.wizards.values()) {
+    for (const w of this.nearWizards(src.pos, radius)) {
       if (!this.isActive(w) || dist(w.pos, src.pos) > radius || w.house !== src.house) continue;
       w.hp = Math.min(derived(w, this.rules).maxHp, w.hp + amt);
       this.fx({ k: 'heal', x: w.pos.x, z: w.pos.z, h: w.handle });
     }
-    for (const c of this.creatures.values()) if (c.owner === src.id && dist(c.pos, src.pos) <= radius) c.hp = Math.min(c.maxHp, c.hp + amt);
+    for (const c of this.nearCreatures(src.pos, radius)) if (c.owner === src.id && dist(c.pos, src.pos) <= radius) c.hp = Math.min(c.maxHp, c.hp + amt);
   }
 
   /** Rennervate: a stunned wizard gets up where they fell, at 30% health. */
@@ -314,7 +373,7 @@ export class World {
     }
     const id = `wz_${randomBytes(4).toString('hex')}`;
     const w: Wizard = {
-      id, handle: `p${++this.flags.handleSeq}`, token: randomBytes(18).toString('base64url'), name: clean, house,
+      id, handle: `p${++this.flags.handleSeq}`, token: this.tokenPrefix + randomBytes(18).toString('base64url'), name: clean, house,
       wand: canon?.wand ?? ollivander(() => this.rng()),
       year: 1, xp: 0, reputation: 0, termReputation: 0, galleons: 20, hp: 100, mana: 100,
       pos: { x: SPAWN.x + (this.rng() - 0.5) * 6, z: SPAWN.z + (this.rng() - 0.5) * 6 }, facing: 0,
@@ -424,7 +483,7 @@ export class World {
     }
     let program: Node[];
     try {
-      program = analyze(spell.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals }).program;
+      program = this.compiled(spell.source, w);
     } catch (e) {
       return { ...fail((e as Error).message), spell: spell.name };
     }
@@ -441,6 +500,24 @@ export class World {
       this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle });
     }
     return report;
+  }
+
+  /**
+   * analyze() is a pure function of the source and the caster's limits, and the interpreter never
+   * mutates the tree, so a cast reuses the checked program instead of re-parsing it every time.
+   * Failures are not cached (they re-run and throw the same error).
+   */
+  private programs = new Map<string, Node[]>();
+  private compiled(source: string, w: Wizard): Node[] {
+    const max = maxNodes(w.year, this.rules), banned = this.rules.magic.bannedPrimitives;
+    const key = `${w.year}|${max}|${w.seals}|${banned.join(',')}|${source}`;
+    let p = this.programs.get(key);
+    if (!p) {
+      p = analyze(source, { year: w.year, maxNodes: max, banned, seals: w.seals }).program;
+      if (this.programs.size >= 4096) this.programs.clear();
+      this.programs.set(key, p);
+    }
+    return p;
   }
 
   /** Try out source without learning it or spending anything. */
@@ -494,6 +571,7 @@ export class World {
       e.pos.z += (dz / len) * (force / steps);
       resolve(e.pos, 0.5);
     }
+    this.moved(e);
   }
 
   nova(w: Wizard, radius: number, power: number, element: Element, tags: string[]) {
@@ -625,6 +703,7 @@ export class World {
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
     w.pos = { ...to };
     resolve(w.pos, 0.5);
+    this.moved(w);
     w.goal = null;
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
   }
@@ -776,6 +855,7 @@ export class World {
     this.fx({ k: 'azkaban', x: w.pos.x, z: w.pos.z });
     w.st.jailedUntil = this.now + 45;
     w.pos = { x: AZKABAN.x + (this.rng() - 0.5) * 6, z: AZKABAN.z + (this.rng() - 0.5) * 6 };
+    this.moved(w);
     w.goal = null;
     const lost = Math.round(w.reputation * 0.25);
     w.reputation -= lost;
@@ -1017,6 +1097,14 @@ export class World {
 
   // ------------------------------------------------------------------ the tick
   tick(dt = TICK) {
+    // Positions may have been changed directly since the last tick (tests, tools): re-file everything once,
+    // then trust the incremental moved() calls until the tick ends.
+    this.syncIndex();
+    this.inTick = true;
+    try { this.step(dt); } finally { this.inTick = false; }
+  }
+
+  private step(dt: number) {
     this.now += dt;
     thinkNpcs(this);
     const rb = this.rules;
@@ -1036,6 +1124,7 @@ export class World {
       if (w.st.jailedUntil && this.now >= w.st.jailedUntil) {
         w.st.jailedUntil = 0;
         w.pos = { ...SPAWN };
+        this.moved(w);
         this.emit('azkaban', 'The Ministry releases you from Azkaban. Behave.', { to: w.id, zh: '魔法部把你从阿兹卡班放了出来。老实点。' });
       }
       if (w.st.stunnedUntil && this.now >= w.st.stunnedUntil) {
@@ -1044,6 +1133,7 @@ export class World {
         w.hp = d.maxHp;
         w.mana = d.maxMana;
         w.pos = { x: SPAWN.x + (this.rng() - 0.5) * 8, z: SPAWN.z + (this.rng() - 0.5) * 8 };
+        this.moved(w);
         this.runLaws('respawn', w);
       }
       if (!this.online(w)) continue;
@@ -1113,13 +1203,14 @@ export class World {
       w.pos.z += dx * speed * dt;
       resolve(w.pos, 0.5, bounded);
     }
+    this.moved(w);
   }
 
   private stepProjectiles(dt: number) {
     for (const p of this.projectiles.values()) {
       p.ttl -= dt;
       if (p.homing) {
-        const t = this.entity(p.homing);
+        const t = this.wizards.get(p.homing) ?? this.creatures.get(p.homing); // as entity(), without the view
         if (t && t.hp > 0) {
           const dx = t.pos.x - p.pos.x, dz = t.pos.z - p.pos.z, l = Math.hypot(dx, dz) || 1;
           const sp = Math.hypot(p.vel.x, p.vel.z);
@@ -1191,11 +1282,12 @@ export class World {
       if (def.faction === 'summon') { this.stepSummon(c, def, speed, rooted, dt); continue; }
       if (def.faction === 'benign') { this.stepBenign(c, def, speed, dt); continue; }
       if (c.kind === 'dementor') {
-        const guard = [...this.wizards.values()].find((w) => this.isActive(w) && w.st.patronusUntil > this.now && dist(w.pos, c.pos) < 10);
+        const guard = [...this.nearWizards(c.pos, 10)].find((w) => this.isActive(w) && w.st.patronusUntil > this.now && dist(w.pos, c.pos) < 10);
         if (guard) {
           const dx = c.pos.x - guard.pos.x, dz = c.pos.z - guard.pos.z, l = Math.hypot(dx, dz) || 1;
           c.pos.x += (dx / l) * def.speed * 1.5 * dt;
           c.pos.z += (dz / l) * def.speed * 1.5 * dt;
+          this.moved(c);
           c.target = null;
           this.damage(guard.id, c.id, 35 * dt, 'light', [], { patronus: true });
           continue;
@@ -1255,7 +1347,8 @@ export class World {
 
   /** Unicorns heal whoever stands near and shy away from them; the phoenix weeps over the badly hurt. */
   private stepBenign(c: Creature, def: CreatureDef, speed: number, dt: number) {
-    const near = [...this.wizards.values()].filter((w) => this.isActive(w) && dist(w.pos, c.pos) < Math.max(def.aggro, def.grace?.radius ?? 0));
+    const reach = Math.max(def.aggro, def.grace?.radius ?? 0);
+    const near = [...this.nearWizards(c.pos, reach)].filter((w) => this.isActive(w) && dist(w.pos, c.pos) < reach);
     if (def.grace) for (const w of near) if (dist(w.pos, c.pos) <= def.grace.radius) this.applyAura(w.id, 'grace', 1.5, def.grace.mag, c.id);
     if (c.kind === 'phoenix') {
       for (const w of near) {
@@ -1288,6 +1381,7 @@ export class World {
     if (!CREATURES[c.kind].flying) resolve(c.pos, CREATURES[c.kind].radius);
     // wild creatures never wander into safe zones
     if (!c.owner && this.inSafe(c.pos)) { c.pos.x -= (dx / l) * s; c.pos.z -= (dz / l) * s; }
+    this.moved(c);
   }
 
   private spawnCreatures() {
@@ -1310,8 +1404,8 @@ export class World {
         const q = { ...p };
         resolve(q, def.radius);
         if (!def.flying && dist(p, q) > 0.01) continue;
-        if (this.inSafe(p) || this.zoneIds(p).includes('great_hall') || (def.faction === 'hostile' && this.zoneIds(p).includes('courtyard'))) continue;
-        if (def.faction === 'hostile' && [...this.wizards.values()].some((w) => this.isActive(w) && dist(w.pos, p) < 8)) continue;
+        if (this.inSafe(p) || this.within(p, 'great_hall') || (def.faction === 'hostile' && this.within(p, 'courtyard'))) continue;
+        if (def.faction === 'hostile' && [...this.nearWizards(p, 8)].some((w) => this.isActive(w) && dist(w.pos, p) < 8)) continue;
         const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
         const c: Creature = {
           id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,
@@ -1328,7 +1422,7 @@ export class World {
     this.willowCd -= dt;
     if (this.willowCd > 0 || this.now < this.flags.willowCalmUntil) return;
     this.willowCd = 1.5;
-    for (const w of this.wizards.values()) {
+    for (const w of this.nearWizards(WILLOW, 7.5)) {
       if (!this.isActive(w) || dist(w.pos, WILLOW) > 7.5) continue;
       this.fx({ k: 'willow', x: WILLOW.x, z: WILLOW.z, h: w.handle });
       this.damage(null, w.id, 12, 'arcane');
@@ -1361,8 +1455,8 @@ export class World {
       this.achieve(w, 'elder_wand');
     }
     // Room of Requirement: pace the seventh-floor corridor three times.
-    const zs = this.zoneIds(w.pos);
-    if (zs.includes('seventh_floor')) {
+    const zs = zoneMask(w.pos.x, w.pos.z, ZONE_BIT.seventh_floor | ZONE_BIT.erised);
+    if (zs & ZONE_BIT.seventh_floor) {
       const side = Math.sign(w.pos.x + 32) || 1;
       if (w.eggs.rorSide && side !== w.eggs.rorSide) {
         w.eggs.rorCrossings = [...w.eggs.rorCrossings.filter((t) => this.now - t < 30), this.now];
@@ -1381,7 +1475,7 @@ export class World {
       w.eggs.rorSide = side;
     } else w.eggs.rorSide = 0;
     // Mirror of Erised
-    const inErised = zs.includes('erised');
+    const inErised = (zs & ZONE_BIT.erised) !== 0;
     if (inErised && !w.eggs.inErised) {
       const top = [...this.wizards.values()].sort((a, b) => b.reputation - a.reputation)[0];
       const vision = w.decreeCharges ? 'exactly as you are: Minister for Magic. Strange — a mirror that shows the truth.'
@@ -1428,13 +1522,13 @@ export class World {
   look(wid: string, radius = 40) {
     const w = this.need(wid);
     const r = Math.min(80, radius);
-    const wizards = [...this.wizards.values()].filter((x) => x !== w && this.online(x) && dist(x.pos, w.pos) <= r).map((x) => ({
+    const wizards = [...this.nearWizards(w.pos, r)].filter((x) => x !== w && this.online(x) && dist(x.pos, w.pos) <= r).map((x) => ({
       handle: x.handle, name: x.name, house: x.house, year: x.year, hp: Math.round(x.hp), dist: round(dist(x.pos, w.pos)), x: round(x.pos.x), z: round(x.pos.z),
       title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
       elderWand: this.flags.elderWandHolder === x.id || undefined,
     })).sort((a, b) => a.dist - b.dist);
-    const creatures = [...this.creatures.values()].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
+    const creatures = [...this.nearCreatures(w.pos, r)].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
       id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
       canHarm: this.canHarm(w.id, c.id), auras: live(c.auras, this.now).map((a) => a.k),
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
