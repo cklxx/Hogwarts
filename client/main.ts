@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { LANDMARKS, OBSTACLES } from '../src/shared/map';
 import { createDecor, type Look } from './decor';
+import { createFx } from './fx';
 import { L, applyStatic, creatureName, houseName, lang, placeName, setLang, spellName, tr } from './i18n';
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
@@ -132,7 +133,7 @@ function apply(s: Snap) {
     seenW.add(w.h);
     let m = wizards.get(w.h);
     if (!m) {
-      m = Object.assign(makeWizard(w.ho, w.h === myHandle), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() });
+      m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() });
       m.root.add(m.aura);
       m.root.position.set(w.x, 0, w.z);
       scene.add(m.root);
@@ -170,7 +171,11 @@ function apply(s: Snap) {
     m.label.draw(c.o ? `${creatureName(c.k, NAMES[c.k])} (${mine ? L('你的', 'yours') : L('召唤物', 'conjured')})` : creatureName(c.k, NAMES[c.k]), mine ? '#b8ffb8' : c.o ? '#ffd9a0' : benign ? '#ffffff' : '#ffdddd', c.hp / c.m);
     setAuraRing(m.aura, c.s + (mine ? 'g' : ''), clock);
   }
-  for (const [i, m] of creatures) if (!seenC.has(i)) { puff(m.root.position.x, m.root.position.z, 0x333333); scene.remove(m.root); creatures.delete(i); }
+  for (const [i, m] of creatures) if (!seenC.has(i)) {
+    puff(m.root.position.x, m.root.position.z, 0x333333);
+    particles.puff(m.root.position.x, m.root.position.y + 1, m.root.position.z, { count: 14, color: 0x2a282c, speed: 2, up: 0.8, size: 1, life: 1.4, drag: 2.5, grow: 2.5, radius: 0.6 });
+    scene.remove(m.root); creatures.delete(i);
+  }
 
   const seenP = new Set<string>();
   for (const p of s.p) {
@@ -179,7 +184,11 @@ function apply(s: Snap) {
     if (!b) { b = makeBolt(p.k, p.e); b.position.set(p.x, 1.3, p.z); b.userData.color = p.k === 'disarm' ? 0xff3b3b : p.k === 'root' ? 0x9fe8ff : ELEMENT_COLORS[p.e]; scene.add(b); bolts.set(p.i, b); }
     b.tx = p.x; b.tz = p.z;
   }
-  for (const [i, b] of bolts) if (!seenP.has(i)) { scene.remove(b); bolts.delete(i); }
+  for (const [i, b] of bolts) if (!seenP.has(i)) {
+    particles.burst(b.position.x, b.position.y, b.position.z, { count: 14, color: b.userData.color ?? 0xffffff, intensity: 4, whiten: 0.5, speed: 3.5, size: 0.18, life: 0.4, gravity: 4, drag: 2.5 });
+    particles.forget(b);
+    scene.remove(b); bolts.delete(i);
+  }
 
   for (const f of s.fx) spawnFx(f);
   elderGlint.visible = !!s.elder;
@@ -189,6 +198,8 @@ function apply(s: Snap) {
 const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "Devil's Snare", spider: 'Acromantula', troll: 'Mountain Troll', dementor: 'Dementor', inferius: 'Inferius', unicorn: 'Unicorn', phoenix: 'Fawkes', serpent: 'Serpent', birds: 'Birds' };
 
 // ------------------------------------------------------------------ effects
+const particles = createFx(scene, world.chimneys);
+const tmpTip = new THREE.Vector3();
 function addEffect(obj: THREE.Object3D, life: number, update: (k: number, o: THREE.Object3D) => void) {
   scene.add(obj);
   effects.push({ obj, t: 0, life, update });
@@ -204,10 +215,21 @@ function puff(x: number, z: number, color: number, size = 1.5) {
   m.position.set(x, 1.2 + heightAt(x, z), z);
   addEffect(m, 0.5, (k, o) => { o.scale.setScalar(1 + k * size * 2); ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - k); });
 }
+/** A pillar of light that fades out upward (alpha gradient), widening as it dies. */
+let columnFade: THREE.Texture | null = null;
 function column(x: number, z: number, color: number, life = 1.2) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 8, 16, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+  if (!columnFade) {
+    const c = document.createElement('canvas');
+    c.width = 4; c.height = 64;
+    const g = c.getContext('2d')!;
+    const gr = g.createLinearGradient(0, 0, 0, 64);
+    gr.addColorStop(0, 'rgb(0,0,0)'); gr.addColorStop(0.55, 'rgb(40,40,40)'); gr.addColorStop(0.9, 'rgb(200,200,200)'); gr.addColorStop(1, 'rgb(255,255,255)');
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
+    columnFade = new THREE.CanvasTexture(c);
+  }
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.05, 8, 20, 1, true), new THREE.MeshBasicMaterial({ color, alphaMap: columnFade, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
   m.position.set(x, 4 + heightAt(x, z), z);
-  addEffect(m, life, (k, o) => { ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - k); o.scale.x = o.scale.z = 1 + k; });
+  addEffect(m, life, (k, o) => { ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.28 * (1 - k) * Math.min(1, k * 8); o.scale.x = o.scale.z = 1 + k * 0.6; });
 }
 function floatText(x: number, z: number, text: string, color: string) {
   const c = document.createElement('canvas');
@@ -239,28 +261,47 @@ function lightning(pts: number[], color: number, sky = 0) {
 
 function spawnFx(f: Fx) {
   const col = f.e ? ELEMENT_COLORS[f.e] : 0xffffff;
+  const gy = heightAt(f.x, f.z);
+  const P = particles;
   switch (f.k) {
-    case 'hit': puff(f.x, f.z, col, 1); if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0')); break;
-    case 'nova': ring(f.x, f.z, col, 0.5, f.r ?? 5, 0.6); ring(f.x, f.z, 0xffffff, 0.2, (f.r ?? 5) * 0.7, 0.4, 1); break;
-    case 'heal': column(f.x, f.z, 0x6cff8a, 0.9); break;
-    case 'shield': ring(f.x, f.z, 0x9fd3ff, 1.5, 1.2, 0.5, 1); break;
-    case 'apparate': puff(f.x, f.z, 0x111111, 2); break;
-    case 'patronus': ring(f.x, f.z, 0xdfefff, 1, f.r ?? 10, 1.2, 0.5); break;
-    case 'fizzle': puff(f.x, f.z, 0x777777, 0.4); break;
-    case 'stun': ring(f.x, f.z, 0xff4040, 0.5, 3, 0.6, 0.3); break;
-    case 'levelup': column(f.x, f.z, 0xffd65c, 2); ring(f.x, f.z, 0xffd65c, 0.5, 6, 1.2); break;
-    case 'willow': ring(f.x, f.z, 0x6b4a2b, 2, 8, 0.4, 1.5); break;
+    case 'hit': P.sparks(f.x, gy + 1.2, f.z, col, 16 + Math.min(40, (f.n ?? 4) * 2)); if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0')); break;
+    case 'nova': ring(f.x, f.z, col, 0.5, f.r ?? 5, 0.6); ring(f.x, f.z, 0xffffff, 0.2, (f.r ?? 5) * 0.7, 0.4, 1); P.shockwave(f.x, gy, f.z, f.r ?? 5, col); break;
+    case 'heal': column(f.x, f.z, 0x6cff8a, 0.9); P.motes(f.x, gy, f.z, 0x6cff8a); break;
+    case 'shield': ring(f.x, f.z, 0x9fd3ff, 1.5, 1.2, 0.5, 1); P.burst(f.x, gy + 1.05, f.z, { count: 40, color: 0x9fd3ff, intensity: 3, whiten: 0.4, radius: 1.2, speed: 0.6, size: 0.14, life: 0.8, drag: 1.5 }); break;
+    case 'apparate':
+      puff(f.x, f.z, 0x111111, 2);
+      P.puff(f.x, gy + 1, f.z, { count: 22, color: 0x1c1a20, speed: 3.2, size: 1.3, life: 1.3, drag: 3, grow: 2.6, radius: 0.5 });
+      P.burst(f.x, gy + 1, f.z, { count: 24, color: 0xffffff, intensity: 3, speed: 7, size: 0.1, life: 0.3, drag: 4 });
+      break;
+    case 'patronus': ring(f.x, f.z, 0xdfefff, 1, f.r ?? 10, 1.2, 0.5); P.burst(f.x, gy + 1.3, f.z, { count: 110, color: 0xdfefff, intensity: 3, whiten: 0.6, speed: (f.r ?? 10) * 1.6, speedJitter: 0.3, size: 0.22, life: 1.2, drag: 2, gravity: -0.4 }); break;
+    case 'fizzle': puff(f.x, f.z, 0x777777, 0.4); P.puff(f.x, gy + 1.4, f.z, { count: 6, color: 0x77777a, speed: 0.6, up: 0.6, size: 0.5, life: 0.9, grow: 2.5, drag: 1 }); break;
+    case 'stun': ring(f.x, f.z, 0xff4040, 0.5, 3, 0.6, 0.3); P.burst(f.x, gy + 1.6, f.z, { count: 30, color: 0xff4a4a, intensity: 4, whiten: 0.3, speed: 3, up: 2.5, size: 0.18, life: 0.8, gravity: 5, drag: 1.5 }); break;
+    case 'levelup': column(f.x, f.z, 0xffd65c, 2); ring(f.x, f.z, 0xffd65c, 0.5, 6, 1.2); P.fountain(f.x, gy, f.z, 0xffd65c); break;
+    case 'willow': ring(f.x, f.z, 0x6b4a2b, 2, 8, 0.4, 1.5); P.puff(f.x, gy + 1.5, f.z, { count: 26, color: 0x6b5a3b, speed: 6, size: 0.8, life: 1.2, drag: 2.5, grow: 2, gravity: 2, radius: 1 }); break;
     case 'cast': break;
-    case 'azkaban': column(f.x, f.z, 0x000000, 1.5); break;
-    case 'chain': if (f.pts) lightning(f.pts, col); break;
-    case 'storm': ring(f.x, f.z, 0x9fb8ff, f.r ?? 6, (f.r ?? 6) * 0.2, 1.5, 0.3); column(f.x, f.z, 0x5a6aff, 1.5); break;
-    case 'stormhit': ring(f.x, f.z, col, 0.5, f.r ?? 6, 0.7); for (let i = 0; i < 4; i++) lightning([f.x + (Math.random() - 0.5) * (f.r ?? 6), f.z + (Math.random() - 0.5) * (f.r ?? 6), f.x, f.z], col, 40); break;
-    case 'reveal': ring(f.x, f.z, 0xffe9a0, 0.3, 3, 0.8, 1.2); break;
-    case 'seal': column(f.x, f.z, 0xd4af37, 2); ring(f.x, f.z, 0xd4af37, 0.5, 5, 1.5); break;
+    case 'azkaban': column(f.x, f.z, 0x000000, 1.5); P.puff(f.x, gy + 0.5, f.z, { count: 40, color: 0x101014, dir: new THREE.Vector3(0, 1, 0), cone: 0.35, speed: 5, size: 1.4, life: 2, drag: 1, grow: 3, radius: 0.8 }); break;
+    case 'chain':
+      if (f.pts) {
+        lightning(f.pts, col);
+        const v: THREE.Vector3[] = [];
+        for (let i = 0; i + 1 < f.pts.length; i += 2) v.push(new THREE.Vector3(f.pts[i], heightAt(f.pts[i], f.pts[i + 1]) + 1.3, f.pts[i + 1]));
+        P.zap(v, col);
+      }
+      break;
+    case 'storm': ring(f.x, f.z, 0x9fb8ff, f.r ?? 6, (f.r ?? 6) * 0.2, 1.5, 0.3); column(f.x, f.z, 0x5a6aff, 1.5); P.burst(f.x, gy + 9, f.z, { count: 70, color: 0x9fb8ff, intensity: 3, radius: f.r ?? 6, flat: true, speed: 1, size: 0.3, life: 1.5, gravity: 3, drag: 0.5 }); break;
+    case 'stormhit':
+      ring(f.x, f.z, col, 0.5, f.r ?? 6, 0.7);
+      for (let i = 0; i < 4; i++) lightning([f.x + (Math.random() - 0.5) * (f.r ?? 6), f.z + (Math.random() - 0.5) * (f.r ?? 6), f.x, f.z], col, 40);
+      P.shockwave(f.x, gy, f.z, f.r ?? 6, col);
+      P.sparks(f.x, gy + 0.5, f.z, col, 50);
+      break;
+    case 'reveal': ring(f.x, f.z, 0xffe9a0, 0.3, 3, 0.8, 1.2); P.motes(f.x, gy, f.z, 0xffe9a0, 30); break;
+    case 'seal': column(f.x, f.z, 0xd4af37, 2); ring(f.x, f.z, 0xd4af37, 0.5, 5, 1.5); P.fountain(f.x, gy, f.z, 0xd4af37, 120); break;
   }
+  // the caster's wand arm rises and strikes; the tip flashes at the strike (see frame)
   if (f.k === 'cast' && f.h) {
     const w = wizards.get(f.h);
-    if (w) puff(w.root.position.x + Math.sin(w.tf) * 0.6, w.root.position.z - Math.cos(w.tf) * 0.6, 0xffffff, 0.3);
+    if (w) w.castPending = true;
   }
 }
 
@@ -538,11 +579,19 @@ function frame() {
   }
   const k = 1 - Math.exp(-dt * 12);
   for (const w of wizards.values()) {
+    const px = w.root.position.x, pz = w.root.position.z;
     w.root.position.x += (w.tx - w.root.position.x) * k;
     w.root.position.z += (w.tz - w.root.position.z) * k;
     w.root.position.y = heightAt(w.root.position.x, w.root.position.z);
-    w.body.rotation.y = -w.tf;
-    if (w.patronus.visible) w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
+    const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
+    w.body.rotation.y += turn * Math.min(1, dt * 14);
+    const speed = dt > 0 ? Math.hypot(w.root.position.x - px, w.root.position.z - pz) / dt : 0;
+    if (w.update(dt, speed, w.castPending)) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
+    w.castPending = false;
+    if (w.patronus.visible) {
+      w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
+      particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
+    }
   }
   for (const c of creatures.values()) {
     c.root.position.x += (c.tx - c.root.position.x) * k;
@@ -555,12 +604,22 @@ function frame() {
     b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, k * 2);
     b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, k * 2);
     b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
+    particles.trail(b, b.position, b.userData.color ?? 0xffffff);
+    const spin = b.getObjectByName('spin');
+    if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
   }
   for (let i = effects.length - 1; i >= 0; i--) {
     const e = effects[i];
     e.t += dt;
     e.update(Math.min(1, e.t / e.life), e.obj);
-    if (e.t >= e.life) { scene.remove(e.obj); effects.splice(i, 1); }
+    if (e.t >= e.life) {
+      scene.remove(e.obj);
+      effects.splice(i, 1);
+      // every effect mesh owns its geometry and material: free them (sprites share one geometry: keep it)
+      const o = e.obj as THREE.Mesh;
+      if (!(e.obj as THREE.Sprite).isSprite) o.geometry?.dispose();
+      (o.material as THREE.Material | undefined)?.dispose();
+    }
   }
   elderGlint.rotation.y += dt * 2;
   elderGlint.position.y = 2.6 + heightAt(elderGlint.position.x, elderGlint.position.z) + Math.sin(clock * 2) * 0.2;
@@ -591,11 +650,14 @@ function frame() {
       pos.needsUpdate = true;
       (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
     }
-    world.tick(clock, dt, !snap.willowCalm && [...wizards.values()].some((w) => Math.hypot(w.root.position.x - 45, w.root.position.z) < 9), R.sunDir);
+    world.tick(clock, dt, !snap.willowCalm && [...wizards.values()].some((w) => Math.hypot(w.root.position.x - 45, w.root.position.z) < 9), R.sunDir,
+      { hour: snap.hour, banner: look.banner, focus: my?.root.position });
   }
+  particles.setQuality(quality);
+  particles.update(dt, camera, R.renderer, R.day);
   // spells light up their surroundings: the pool goes to the bolts nearest the camera
   const lit = [...bolts.values()]
-    .map((b) => ({ x: b.position.x, z: b.position.z, color: (b.userData.color as number) ?? 0xffffff, d: b.position.distanceToSquared(camera.position) }))
+    .map((b) => ({ x: b.position.x, y: b.position.y + 0.2, z: b.position.z, color: (b.userData.color as number) ?? 0xffffff, d: b.position.distanceToSquared(camera.position) }))
     .sort((a, b) => a.d - b.d);
   R.setBoltLights(lit);
 

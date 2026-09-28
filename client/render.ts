@@ -41,6 +41,10 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   sky.scale.setScalar(4000);
   scene.add(sky);
   const su = sky.material.uniforms;
+  // The Preetham sky (and its sun disc) is far brighter than 1 around the sun; bloomed, a low sun
+  // floods half the screen with haze. Cap it just below the bloom threshold: the sky never blooms,
+  // only lamps, windows and spells do.
+  sky.material.fragmentShader = sky.material.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', 'gl_FragColor = vec4( texColor * min( 1.0, 1.05 / max( dot( texColor, vec3( 0.2126, 0.7152, 0.0722 ) ), 1e-4 ) ), 1.0 );');
   su.turbidity.value = 5;
   su.rayleigh.value = 1.6;
   su.mieCoefficient.value = 0.004;
@@ -74,7 +78,8 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const flareHost = new THREE.PointLight(0xffffff, 0, 1);
   const flare = new Lensflare();
   const tl = new THREE.TextureLoader();
-  flare.addElement(new LensflareElement(tl.load('/textures/lensflare0.png'), 520, 0, new THREE.Color(1, 0.95, 0.85)));
+  // kept small and dim: the bloom pass already spreads the sun, and a big flare washes out a low sun
+  flare.addElement(new LensflareElement(tl.load('/textures/lensflare0.png'), 280, 0, new THREE.Color(0.6, 0.56, 0.5)));
   for (const [size, d] of [[60, 0.55], [80, 0.7], [120, 0.9], [70, 1.0]]) flare.addElement(new LensflareElement(tl.load('/textures/lensflare3.png'), size, d));
   flareHost.add(flare);
   scene.add(flareHost);
@@ -129,6 +134,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
 
   const sunDir = new THREE.Vector3(0, 1, 0);
   const skyDay = new THREE.Color(0xa9c4e6), skyDusk = new THREE.Color(0xe8a070), skyNight = new THREE.Color(0x0b1026), tmp = new THREE.Color();
+  const cloudNight = new THREE.Color(0x8a9ac8);
   const tint = new THREE.Color();
   let dayFactor = 1;
 
@@ -167,7 +173,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       if (env.day && env.night) scene.environment = dayFactor > 0.3 ? env.day : env.night;
       scene.environmentIntensity = env.day ? (dayFactor > 0.3 ? 0.35 + 0.45 * dayFactor : 0.6) : 0.12 + 0.55 * dayFactor;
       flareHost.position.copy(camera.position).addScaledVector(sunDir, 1500);
-      flare.visible = dayFactor > 0.4 && weather === 'clear';
+      flare.visible = dayFactor > 0.75 && weather === 'clear';
 
       tmp.copy(skyNight).lerp(skyDay, dayFactor).lerp(skyDusk, dusk * 0.6).multiply(tint);
       if (weather === 'rain') tmp.multiplyScalar(0.6);
@@ -187,24 +193,29 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       renderer.toneMappingExposure = 0.55 + 0.35 * dayFactor;
       // clouds drift with the wind and take the colour of the sky (golden at dusk, dark at night)
       clouds.position.x = (performance.now() / 1000) * 3 % 2400;
-      const cc = new THREE.Color(1, 1, 1).lerp(skyDusk, dusk * 0.7).multiplyScalar(0.25 + 0.75 * dayFactor).multiply(tint);
+      // clouds: white by day, golden at dusk, dim moonlit blue-grey at night
+      const cc = new THREE.Color(1, 1, 1).lerp(skyDusk, dusk * 0.7).lerp(cloudNight, 1 - dayFactor).multiplyScalar(0.12 + 0.88 * dayFactor).multiply(tint);
       if (weather !== 'clear') cc.multiplyScalar(0.7);
       for (const m of cloudMats) { m.color.copy(cc); m.opacity = weather === 'clear' ? 0.75 : 0.95; }
       scene.background = dayFactor > 0.02 ? null : tmp;
       bloom.strength = (0.45 + 0.5 * (1 - dayFactor)) * look.glow;
+      // by day, sunlit surfaces run bright too: raise the threshold so only real light sources bloom
+      bloom.threshold = 1.1 + 1.4 * dayFactor * dayFactor;
       (grade.uniforms.tint.value as THREE.Color).copy(tint).lerp(new THREE.Color(1, 1, 1), 0.35);
     },
-    setBoltLights(bolts: { x: number; z: number; color: number }[]) {
+    setBoltLights(bolts: { x: number; y?: number; z: number; color: number }[]) {
       boltLights.forEach((l, i) => {
         const b = bolts[i];
         l.intensity = b ? 18 : 0;
-        if (b) { l.position.set(b.x, 1.5, b.z); l.color.setHex(b.color); }
+        if (b) { l.position.set(b.x, b.y ?? 1.5, b.z); l.color.setHex(b.color); }
       });
     },
     /** Low quality: 1x pixels, smaller shadow map, no bloom pass. Used on weak GPUs (auto-detected) or ?q=low. */
     setQuality(q: 'low' | 'high') {
       const low = q === 'low';
-      renderer.setPixelRatio(low ? 0.75 : Math.min(2, devicePixelRatio));
+      const ratio = low ? 0.75 : Math.min(2, devicePixelRatio);
+      renderer.setPixelRatio(ratio);
+      composer.setPixelRatio(ratio); // the HDR target is what is really rendered; scale it too
       sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
       sun.shadow.map?.dispose();
       sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;

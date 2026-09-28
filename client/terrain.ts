@@ -52,7 +52,16 @@ function freedom(x: number, z: number) {
   return f;
 }
 
-const LAKE = { x: -110, z: 40, r: 55 };
+/**
+ * The flatness mask: 0 where the ground is held flat because something is built on it (castle,
+ * courtyard, roads and paths, Hogsmeade, the pitch, the hut, the tomb), 1 where it rolls freely.
+ * Grass and other ground cover only grow where this is high.
+ */
+export const flatness = freedom;
+
+export const LAKE = { x: -110, z: 40, r: 55 };
+/** The sea plane's height: below the lowest rolling ground (about -6 m); only the southern inlet dips under it. */
+export const SEA_LEVEL = -9;
 
 /** Ground height at (x, z). */
 export function heightAt(x: number, z: number): number {
@@ -84,16 +93,19 @@ export function makeTerrain(grassMat: THREE.MeshStandardMaterial, rockMat: THREE
   inner.rotateX(-Math.PI / 2);
   const p = inner.getAttribute('position');
   const col: number[] = [];
+  const grid = new Float32Array(p.count);
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), z = p.getZ(i);
     const y = heightAt(x, z);
     p.setY(i, y);
+    grid[i] = y;
     const v = fbm(x * 0.02, z * 0.02) - 0.5;
     const dry = Math.max(0, v) * 0.35;
     const wet = y < -0.6 ? Math.min(1, -y / 4) : 0; // muddy shore
     col.push(0.85 + v * 0.18 + dry - wet * 0.35, 0.9 + v * 0.12 - wet * 0.3, 0.78 + v * 0.06 - dry * 0.5 - wet * 0.2);
   }
   inner.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  innerGrid = grid;
   inner.computeVertexNormals();
   const innerMesh = new THREE.Mesh(inner, grassMat);
   innerMesh.receiveShadow = true;
@@ -126,6 +138,21 @@ export function makeTerrain(grassMat: THREE.MeshStandardMaterial, rockMat: THREE
   ringMesh.receiveShadow = true;
   group.add(ringMesh);
   return { group, ground: innerMesh };
+}
+
+// The inner mesh's vertex heights (257 x 257 over ±320 m): things planted on the ground (grass)
+// follow the rendered triangles exactly instead of the smooth function between them.
+const INNER = 640, SEGS = 256, STEP = INNER / SEGS;
+let innerGrid: Float32Array | null = null;
+/** Height of the rendered terrain surface at (x, z): the inner mesh's triangles, or heightAt() outside it. */
+export function surfaceAt(x: number, z: number): number {
+  const fx = (x + INNER / 2) / STEP, fz = (z + INNER / 2) / STEP;
+  if (!innerGrid || fx < 0 || fz < 0 || fx >= SEGS || fz >= SEGS) return heightAt(x, z);
+  const ix = Math.floor(fx), iz = Math.floor(fz), u = fx - ix, v = fz - iz;
+  const W = SEGS + 1;
+  const ha = innerGrid[iz * W + ix], hb = innerGrid[(iz + 1) * W + ix], hc = innerGrid[(iz + 1) * W + ix + 1], hd = innerGrid[iz * W + ix + 1];
+  // PlaneGeometry splits each cell along the (x0, z1)-(x1, z0) diagonal
+  return u + v <= 1 ? ha + (hd - ha) * u + (hb - ha) * v : hc + (hb - hc) * (1 - u) + (hd - hc) * (1 - v);
 }
 
 /** Lay a flat strip of geometry (paths) onto the terrain. */
