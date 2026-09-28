@@ -64,24 +64,24 @@ export function makeWizard(house: House, isMe: boolean): WizardModel {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 10), new THREE.MeshLambertMaterial({ color: 0x1a1a22 }));
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 10), new THREE.MeshStandardMaterial({ color: 0x1a1a22 }));
   robe.position.y = 0.8;
   body.add(robe);
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 12), new THREE.MeshLambertMaterial({ color: HOUSE_COLORS[house] }));
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 12), new THREE.MeshStandardMaterial({ color: HOUSE_COLORS[house] }));
   scarf.rotation.x = Math.PI / 2;
   scarf.position.y = 1.5;
   body.add(scarf);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshLambertMaterial({ color: 0xf0c9a0 }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshStandardMaterial({ color: 0xf0c9a0 }));
   head.position.y = 1.75;
   body.add(head);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.7, 10), new THREE.MeshLambertMaterial({ color: 0x15151c }));
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.7, 10), new THREE.MeshStandardMaterial({ color: 0x15151c }));
   hat.position.y = 2.2;
   hat.rotation.z = 0.12;
   body.add(hat);
   const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.03, 14), hat.material);
   brim.position.y = 1.92;
   body.add(brim);
-  const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.55, 5), new THREE.MeshLambertMaterial({ color: 0x4a2e19 }));
+  const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.55, 5), new THREE.MeshStandardMaterial({ color: 0x4a2e19 }));
   wand.position.set(0.35, 1.25, -0.3);
   wand.rotation.x = -1.1;
   body.add(wand);
@@ -127,7 +127,7 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
   const root = new THREE.Group();
   const label = new Label(0.7);
   let anim: (t: number) => void = () => {};
-  const lam = (c: number, extra: Partial<THREE.MeshLambertMaterialParameters> = {}) => new THREE.MeshLambertMaterial({ color: c, ...extra });
+  const lam = (c: number, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...extra });
   switch (kind) {
     case 'pixie': {
       const b = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), lam(0x2a6bff, { emissive: 0x0a1a55 }));
@@ -190,10 +190,10 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
       break;
     }
     case 'dementor': {
-      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.8, 3, 8, 1, true), new THREE.MeshLambertMaterial({ color: 0x0a0a0c, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.8, 3, 8, 1, true), new THREE.MeshStandardMaterial({ color: 0x0a0a0c, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
       robe.position.y = 2.5;
       root.add(robe);
-      const hood = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), new THREE.MeshLambertMaterial({ color: 0x050507 }));
+      const hood = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), new THREE.MeshStandardMaterial({ color: 0x050507 }));
       hood.position.y = 4;
       root.add(hood);
       anim = (t) => { root.children[0].position.y = 2.5 + Math.sin(t * 1.5) * 0.3; hood.position.y = 4 + Math.sin(t * 1.5) * 0.3; };
@@ -208,8 +208,9 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
 export function makeBolt(kind: string, e: Element): THREE.Object3D {
   const color = kind === 'disarm' ? 0xff3b3b : kind === 'root' ? 0x9fe8ff : ELEMENT_COLORS[e];
   const g = new THREE.Group();
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+  // HDR colours (> 1) so the bloom pass makes spells glow
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(6) }));
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
   g.add(core, halo);
   g.position.y = 1.3;
   return g;

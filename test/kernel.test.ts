@@ -449,3 +449,27 @@ describe('review regressions', () => {
     expect(w2.flags.elderWandHolder).toBeNull();
   });
 });
+
+describe('winners reshape the world', () => {
+  it('the House Cup winner hangs its banners; a decree redecorates and raises a statue', () => {
+    const w = mkWorld();
+    const a = join(w, 'Cedric Diggory');
+    a.reputation = 300;
+    a.termReputation = 300;
+    w.forceEndTerm();
+    expect(w.looks().banner).toBe('Hufflepuff');
+    const r = w.decree(a.id, { world: { aesthetics: { aurora: true, skyTint: '#ffd0a0', glow: 2 } } }, 'Fair play for all', false);
+    expect(r.ok).toBe(true);
+    const look = w.snapshot().look;
+    expect(look.aurora).toBe(true);
+    expect(look.skyTint).toBe('#ffd0a0');
+    expect(look.statues).toEqual([{ name: 'Cedric Diggory', house: 'Hufflepuff', term: 2, inscription: 'Fair play for all' }]);
+  });
+  it('rejects colours that are not colours', () => {
+    const w = mkWorld();
+    const a = join(w, 'Vandal');
+    a.reputation = 300;
+    w.forceEndTerm();
+    expect(w.decree(a.id, { world: { aesthetics: { skyTint: 'url(javascript:1)' } } }, undefined, true).ok).toBe(false);
+  });
+});

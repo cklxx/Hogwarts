@@ -87,6 +87,19 @@ export const RulebookSchema = z.object({
       dayLengthSeconds: num(120, 7200, 900, 'Real seconds per in-game day'),
       weather: z.enum(['clear', 'rain', 'snow', 'fog']).default('clear'),
       eternalNight: z.boolean().default(false).describe('Dementors roam forever'),
+      aesthetics: z
+        .object({
+          skyTint: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#ffffff').describe('Colour multiplied into the sky, fog and ambient light'),
+          sunIntensity: num(0.2, 3, 1, 'Strength of sunlight and moonlight'),
+          fogDensity: num(0, 3, 1, 'Highland mist multiplier (0 = crystal clear)'),
+          glow: num(0, 3, 1, 'How strongly magic, candles and windows bloom'),
+          bannerHouse: z.enum(['cup', 'Gryffindor', 'Hufflepuff', 'Ravenclaw', 'Slytherin']).default('cup').describe('Whose banners hang from the castle; "cup" = last House Cup winner'),
+          lanterns: z.boolean().default(false).describe('Floating lanterns over the grounds'),
+          fireworks: z.boolean().default(false).describe('Weasleys\' Wildfire Whiz-bangs every night'),
+          aurora: z.boolean().default(false).describe('Northern lights over the Highlands'),
+        })
+        .prefault({})
+        .describe('How the world looks. Purely visual, entirely yours to redecorate.'),
     })
     .prefault({}),
   terms: z

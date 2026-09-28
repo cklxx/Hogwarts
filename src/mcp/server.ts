@@ -275,7 +275,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   server.registerTool('decree', {
     title: 'Issue a Ministry decree',
-    description: 'MINISTER ONLY, ONCE PER TERM. Rewrite the world\'s Rulebook with a JSON merge patch (e.g. {"combat":{"damageMultiplier":1.5},"magic":{"apparitionOnGrounds":true}}). Laws: {"laws":[{"name":"...","on":"kill|respawn|cast|pulse","source":"(Runes)"}]} replaces the law list. Every value must stay inside the constitutional bounds (see rulebook include_schema). dry_run defaults to TRUE — call again with dry_run:false to enact.',
+    description: 'MINISTER ONLY, ONCE PER TERM. Rewrite the world\'s Rulebook with a JSON merge patch (e.g. {"combat":{"damageMultiplier":1.5},"magic":{"apparitionOnGrounds":true}}). Laws: {"laws":[{"name":"...","on":"kill|respawn|cast|pulse","source":"(Runes)"}]} replaces the law list. Redecorate the world too: {"world":{"aesthetics":{"aurora":true,"fireworks":true,"skyTint":"#ffd0a0","bannerHouse":"Hufflepuff"}}} — and every enacted decree raises your statue in the Courtyard. Every value must stay inside the constitutional bounds (see rulebook include_schema). dry_run defaults to TRUE — call again with dry_run:false to enact.',
     inputSchema: {
       patch: z.record(z.string(), z.unknown()),
       proclamation: z.string().max(280).optional(),

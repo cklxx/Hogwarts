@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { LANDMARKS, OBSTACLES } from '../src/shared/map';
+import { createDecor, type Look } from './decor';
+import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { makeBolt, makeCreature, makeWizard, wizardColor, type WizardModel } from './models';
 
@@ -9,7 +11,7 @@ interface SW { h: string; n: string; ho: House; x: number; z: number; f: number;
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number }
-interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean }
+interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
   hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number } | null)[];
@@ -53,46 +55,32 @@ async function gate(): Promise<string> {
 
 // ------------------------------------------------------------------ rendering setup
 const canvas = $<HTMLCanvasElement>('#view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(2, devicePixelRatio));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x9fb8d9, 60, 320);
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 2000);
-const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a4a2a, 0.9);
-scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 400 });
-scene.add(sun, sun.target);
+const R = createRenderer(canvas);
+const { scene, camera } = R;
 const world = buildWorld(scene);
-const stars = new THREE.Points(
-  new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 1500 * 3 }, (_, i) => (i % 3 === 1 ? 250 + Math.random() * 200 : (Math.random() - 0.5) * 1600)), 3)),
-  new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0 }),
-);
-scene.add(stars);
+const decor = createDecor(scene, world.bannerSpots);
+// Quality: ?q=low|high forces it; otherwise measure the first seconds and drop to low if slow.
+const forcedQ = new URLSearchParams(location.search).get('q');
+let quality: 'low' | 'high' = forcedQ === 'low' ? 'low' : 'high';
+const applyQuality = (q: 'low' | 'high') => { quality = q; R.setQuality(q); world.setQuality(q); };
+applyQuality(quality);
+const perf = { frames: 0, time: 0, done: !!forcedQ };
+const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
 const weatherPts = new THREE.Points(
   new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 3000 * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 40 : (Math.random() - 0.5) * 120)), 3)),
   new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.8 }),
 );
 weatherPts.visible = false;
 scene.add(weatherPts);
-const elderGlint = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0xe0c3ff }));
+const elderGlint = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), new THREE.MeshStandardMaterial({ color: 0xe0c3ff, emissive: 0xc9a0ff, emissiveIntensity: 4 }));
 scene.add(elderGlint);
 const aimRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 24), new THREE.MeshBasicMaterial({ color: 0xff5050, side: THREE.DoubleSide, transparent: true, opacity: 0.8, depthTest: false }));
 aimRing.rotation.x = -Math.PI / 2;
 aimRing.visible = false;
 scene.add(aimRing);
 
-function resize() {
-  renderer.setSize(innerWidth, innerHeight, false);
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-}
-addEventListener('resize', resize);
-resize();
+addEventListener('resize', R.resize);
+R.resize();
 
 // ------------------------------------------------------------------ state
 let snap: Snap | null = null;
@@ -179,7 +167,7 @@ function apply(s: Snap) {
   for (const p of s.p) {
     seenP.add(p.i);
     let b = bolts.get(p.i);
-    if (!b) { b = makeBolt(p.k, p.e); b.position.set(p.x, 1.3, p.z); scene.add(b); bolts.set(p.i, b); }
+    if (!b) { b = makeBolt(p.k, p.e); b.position.set(p.x, 1.3, p.z); b.userData.color = p.k === 'disarm' ? 0xff3b3b : p.k === 'root' ? 0x9fe8ff : ELEMENT_COLORS[p.e]; scene.add(b); bolts.set(p.i, b); }
     b.tx = p.x; b.tz = p.z;
   }
   for (const [i, b] of bolts) if (!seenP.has(i)) { scene.remove(b); bolts.delete(i); }
@@ -502,7 +490,6 @@ function sendInput(dt: number) {
 }
 
 // ------------------------------------------------------------------ frame
-const sky = new THREE.Color();
 let prev = performance.now();
 function frame() {
   requestAnimationFrame(frame);
@@ -510,6 +497,13 @@ function frame() {
   const dt = Math.min(0.1, (now - prev) / 1000);
   prev = now;
   clock += dt;
+  if (!perf.done && snap) {
+    perf.frames++; perf.time += dt;
+    if (perf.time > 3) {
+      perf.done = true;
+      if (perf.time / perf.frames > 0.045 && quality === 'high') { applyQuality('low'); toast('Graphics quality lowered for smoother play (add ?q=high to force).'); }
+    }
+  }
   const k = 1 - Math.exp(-dt * 12);
   for (const w of wizards.values()) {
     w.root.position.x += (w.tx - w.root.position.x) * k;
@@ -542,25 +536,16 @@ function frame() {
     const t = my.root.position;
     camera.position.set(t.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist, 1.5 + Math.sin(camPitch) * camDist, t.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist);
     camera.lookAt(t.x, 1.8, t.z);
-    sun.position.set(t.x + 40, 80, t.z + 30);
-    sun.target.position.set(t.x, 0, t.z);
     weatherPts.position.set(t.x, 0, t.z);
   }
 
-  // sky from the hour (the Great Hall ceiling does the same)
+  // lighting, sky and decorations from the hour, the weather and whatever the last Minister decreed
   if (snap) {
-    const h = snap.hour;
-    const day = Math.max(0, Math.min(1, Math.sin(((h - 6) / 12) * Math.PI) * 1.6));
-    const dusk = new THREE.Color(0xe08a5a), noon = new THREE.Color(0x8fb6e8), night = new THREE.Color(0x0b1026);
-    sky.copy(night).lerp(h > 5 && h < 9 || h > 17 && h < 21 ? dusk : noon, day);
-    if (snap.weather === 'fog') sky.lerp(new THREE.Color(0x8c8c8c), 0.6);
-    if (snap.weather === 'rain') sky.multiplyScalar(0.7);
-    scene.background = sky;
-    (scene.fog as THREE.Fog).color.copy(sky);
-    (scene.fog as THREE.Fog).far = snap.weather === 'fog' ? 90 : 320;
-    sun.intensity = 0.15 + 1.5 * day;
-    hemi.intensity = 0.25 + 0.7 * day;
-    (stars.material as THREE.PointsMaterial).opacity = 1 - day;
+    const look: Look = snap.look ?? DEFAULT_LOOK;
+    R.update(snap.hour, snap.weather, look, my ? my.root.position : new THREE.Vector3());
+    const night = 1 - R.day;
+    for (const m of world.nightGlow) m.emissiveIntensity = (0.35 + 3.2 * night) * look.glow;
+    decor.update(look, R.day, clock, dt);
     weatherPts.visible = snap.weather === 'rain' || snap.weather === 'snow';
     if (weatherPts.visible) {
       const pos = weatherPts.geometry.getAttribute('position') as THREE.BufferAttribute;
@@ -569,14 +554,18 @@ function frame() {
       pos.needsUpdate = true;
       (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
     }
-    world.tick(clock, !snap.willowCalm && [...wizards.values()].some((w) => Math.hypot(w.root.position.x - 45, w.root.position.z) < 9));
+    world.tick(clock, dt, !snap.willowCalm && [...wizards.values()].some((w) => Math.hypot(w.root.position.x - 45, w.root.position.z) < 9), R.sunDir);
   }
-  scene.traverse((o) => { if (o.name === 'candle') o.position.y += Math.sin(clock * 2 + o.id) * 0.002; });
+  // spells light up their surroundings: the pool goes to the bolts nearest the camera
+  const lit = [...bolts.values()]
+    .map((b) => ({ x: b.position.x, z: b.position.z, color: (b.userData.color as number) ?? 0xffffff, d: b.position.distanceToSquared(camera.position) }))
+    .sort((a, b) => a.d - b.d);
+  R.setBoltLights(lit);
 
   updateAim();
   sendInput(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('#banner').hidden = true; }
-  renderer.render(scene, camera);
+  R.render();
 }
 
 setInterval(hud, 100);

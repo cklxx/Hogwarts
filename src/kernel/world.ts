@@ -37,6 +37,8 @@ export const ACHIEVEMENTS: Record<string, { name: string; rep: number; text: str
   first_blood: { name: 'Duellist', rep: 0, text: 'You stunned another wizard. Bow first next time.' },
 };
 
+export interface Statue { name: string; house: House; term: number; inscription: string }
+
 export interface EntityView { id: string; name: string; pos: Vec2; hp: number; maxHp: number; kind: 'wizard' | 'creature' }
 
 export interface WorldOptions { seed?: number; rules?: Rulebook }
@@ -52,7 +54,7 @@ export class World {
   term: Term;
   houseCups: { term: number; winner: House | null; points: Record<House, number> }[] = [];
   decrees: DecreeRecord[] = [];
-  flags = { loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0 };
+  flags = { statues: [] as Statue[], loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0 };
   private fxQueue: Fx[] = [];
   private listeners = new Set<(e: WorldEvent) => void>();
   private eventSeq = 0;
@@ -689,6 +691,9 @@ export class World {
     if (!before.magic.apparitionOnGrounds && this.rules.magic.apparitionOnGrounds)
       this.emit('decree', 'The anti-Apparition jinx over Hogwarts has been lifted — as Dumbledore did for lessons, once.');
     for (const w2 of this.wizards.values()) this.clampVitals(w2);
+    // The Minister leaves a mark on the world itself: a statue in the courtyard.
+    this.flags.statues = [...this.flags.statues, { name: w.name, house: w.house, term: this.term.n, inscription: this.rules.proclamation.slice(0, 80) }].slice(-8);
+    this.emit('decree', `A statue of Minister ${w.name} rises in the Courtyard.`, { who: [w.id] });
     return { ok: true as const, dryRun: false, changes: res.changes };
   }
 
@@ -720,7 +725,7 @@ export class World {
     this.houseCups.push({ term: this.term.n, winner, points });
     for (const w of this.wizards.values()) w.decreeCharges = 0;
     const top = [...this.wizards.values()].sort((a, b) => b.reputation - a.reputation)[0];
-    const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points!` : 'No house earned any points.';
+    const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
     if (top && top.reputation >= this.rules.terms.ministerMinReputation) {
       top.decreeCharges = 1;
       this.flags.ministerId = top.id;
@@ -1180,7 +1185,15 @@ export class World {
       fx: this.drainFx(),
       elder: this.flags.elderWandHolder ? null : TOMB,
       willowCalm: this.now < this.flags.willowCalmUntil,
+      look: this.looks(),
     };
+  }
+
+  /** Everything the renderer needs to redecorate the world: set by decrees and the House Cup. */
+  looks() {
+    const a = this.rules.world.aesthetics;
+    const cup = this.houseCups.at(-1)?.winner ?? null;
+    return { ...a, banner: a.bannerHouse === 'cup' ? cup : a.bannerHouse, cupHouse: cup, statues: this.flags.statues };
   }
 
   privateState(wid: string) {
@@ -1221,7 +1234,7 @@ export class World {
     w.term = data.term;
     w.houseCups = data.houseCups ?? [];
     w.decrees = data.decrees ?? [];
-    w.flags = { ...w.flags, ...data.flags };
+    w.flags = { ...w.flags, ...data.flags, statues: data.flags?.statues ?? [] };
     w.seq = data.seq ?? 0;
     for (const x of data.wizards) {
       const wz: Wizard = { ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } };

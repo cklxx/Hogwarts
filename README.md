@@ -86,6 +86,17 @@ claude mcp add --transport http hogwarts http://localhost:7777/mcp \
 - 每学期（默认 15 分钟，`TERM_SECONDS` 可调）结束：本学期声望按学院汇总颁发**学院杯**；**声望最高者（≥100）被任命为魔法部长**，获得 1 次法令；所有人声望 ×0.5。
 - **法令（decree）**：对 Rulebook 的 JSON merge patch，每个值必须落在 zod schema 的"宪法边界"内；可以附带最多 5 条**法律** —— 世界在 `kill / respawn / cast / pulse(每 10 秒)` 事件上运行的 Runes 程序。`dry_run` 默认开启，确认后再生效。下一任部长上任时，上一任未用的法令作废。
 
+### 胜者改造世界
+- **学院杯**：学期末得分最高的学院，旗帜会挂满城堡（天文塔、主楼、两翼）。
+- **部长法令**除了改规则，还能重新装饰世界（纯视觉，schema 限定范围）：`world.aesthetics` 的 `skyTint`（全局调色）、`sunIntensity`、`fogDensity`、`glow`（泛光强度）、`bannerHouse`、`lanterns`（漂浮灯笼）、`fireworks`（韦斯莱烟花）、`aurora`（北方极光）。
+  例：`{"world":{"aesthetics":{"aurora":true,"fireworks":true,"skyTint":"#ffd0a0"}}}`
+- 每道生效的法令都会在城堡入口大道两侧**为部长立一座铜像**（带学院色基座、铭文为部长宣言、夜间有补光），最多保留 8 座。
+
+### 画面
+全部贴图在浏览器启动时用 canvas 程序化绘制（无图片资源）：错缝石砖 + 高度图当 bumpMap、石板瓦、鹅卵石、木纹、都铎式灰泥木框、草叶笔触；贴图按世界尺寸铺 UV（砖在任何墙上都一样大），地面用低频顶点色掩盖平铺感。
+光照：Preetham 物理天空随游戏时间移动太阳 → 日光/月光方向光（阴影跟随玩家）→ PMREM 环境光 → HDR → Bloom（窗户、蜡烛、咒语发光）→ 调色（部长的 skyTint、饱和度、暗角）→ ACES。飞行中的咒语会借用光源池照亮周围；黑湖是带实时反射的 Water 着色器；夜晚有萤火虫、火把闪烁、星空与月亮。
+画质自动检测：前 3 秒平均帧时 > 45ms 自动降档（关 Bloom、关湖面反射、隐藏草簇、0.75x 像素）；`?q=low` / `?q=high` 可强制。
+
 ## MCP 工具
 
 `enroll` `login` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full 提前返回，并汇报期间变化） `stop` `cast` `say` `events` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。

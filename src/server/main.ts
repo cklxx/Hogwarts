@@ -248,6 +248,8 @@ setInterval(() => {
   }
 }, 100);
 
+// Failing to bind is fatal (the uncaughtException guard above must not keep a deaf process alive).
+http.on('error', (e) => { console.error(`[hogwarts] cannot listen on ${HOST}:${PORT}:`, (e as Error).message); process.exit(1); });
 http.listen(PORT, HOST, () => {
   console.log(`[hogwarts] ${PUBLIC_URL}  (MCP: ${PUBLIC_URL}/mcp, WS: /ws)  term ${world.term.n}, ${world.rules.terms.lengthSeconds}s per term`);
 });
