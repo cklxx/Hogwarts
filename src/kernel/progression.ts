@@ -27,7 +27,18 @@ export function mod(w: Wizard, m: ItemMod): number {
   return equippedItems(w).reduce((s, i) => s + (i.mods[m] ?? 0), 0);
 }
 
-export function derived(w: Wizard, rb: Rulebook) {
+export interface Derived {
+  readonly maxHp: number;
+  readonly maxMana: number;
+  readonly manaRegen: number;
+  readonly speedMult: number;
+  readonly power: number;
+  readonly care: number;
+  readonly ward: number;
+}
+
+/** Uncached reference implementation (the cache below is tested against it). */
+export function derivedUncached(w: Wizard, rb: Rulebook): Derived {
   const core = CORE_BONUS[w.wand.core] ?? {};
   const elder = equippedItems(w).some((i) => i.unique === 'elder_wand');
   return {
@@ -40,6 +51,52 @@ export function derived(w: Wizard, rb: Rulebook) {
     care: 1 + (core.care ?? 0) / 100,
     ward: Math.min(0.5, mod(w, 'ward') / 100),
   };
+}
+
+/**
+ * Per-wizard cache of derived stats. derived() runs many times per wizard per tick (movement,
+ * regeneration, damage, entity views, snapshots) and computing it walks the equipment seven times.
+ * The cache is validated against everything the result depends on: year, wand core, the items array
+ * (identity and length), every equipped slot, the curse aura and the three rulebook numbers. So
+ * equip/unequip/forge/destroy/level-up/curse/decree all invalidate it without any call site having to
+ * remember to (tests and MCP tools mutate wizards directly). Items are immutable once forged.
+ * The returned object is shared: treat it as read-only.
+ */
+interface DerivedCache {
+  year: number; core: string; items: Item[]; nItems: number; eqKeys: string[]; eqVals: (string | undefined)[]; cursed: boolean;
+  base: number; perYear: number; regen: number; value: Derived;
+}
+const derivedCache = new WeakMap<Wizard, DerivedCache>();
+
+function isCursed(w: Wizard) {
+  const a = w.auras;
+  if (!a) return false;
+  for (let i = 0; i < a.length; i++) if (a[i].k === 'cursed') return true;
+  return false;
+}
+
+function sameEquip(c: DerivedCache, eq: Wizard['equipped']) {
+  let i = 0;
+  for (const k in eq) {
+    if (i >= c.eqKeys.length || c.eqKeys[i] !== k || c.eqVals[i] !== eq[k as keyof typeof eq]) return false;
+    i++;
+  }
+  return i === c.eqKeys.length;
+}
+
+export function derived(w: Wizard, rb: Rulebook): Derived {
+  const cursed = isCursed(w);
+  const m = rb.magic;
+  const c = derivedCache.get(w);
+  if (c && c.year === w.year && c.core === w.wand.core && c.items === w.items && c.nItems === w.items.length && c.cursed === cursed
+    && c.base === m.baseMaxMana && c.perYear === m.manaPerYear && c.regen === m.manaRegen && sameEquip(c, w.equipped)) return c.value;
+  const value = derivedUncached(w, rb);
+  const eqKeys = Object.keys(w.equipped);
+  derivedCache.set(w, {
+    year: w.year, core: w.wand.core, items: w.items, nItems: w.items.length, cursed, base: m.baseMaxMana, perYear: m.manaPerYear, regen: m.manaRegen, value,
+    eqKeys, eqVals: eqKeys.map((k) => w.equipped[k as keyof Wizard['equipped']]),
+  });
+  return value;
 }
 
 /** Item forging economics: a budget of "enchantment points" set by the forger's year. */

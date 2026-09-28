@@ -1,3 +1,5 @@
+// First: with REALMS=N this process becomes the front door for N realm processes and never gets past this import.
+import { clientIp, realm, realmWorker } from './realms.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -12,6 +14,8 @@ import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, type McpSession } from '../mcp/server.js';
+import { SnapshotFanout } from './fanout.js';
+import { allowMessage, corked, enqueue, meDue, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = Number(process.env.PORT ?? 7777);
@@ -37,6 +41,7 @@ function load(): World {
   return w;
 }
 const world = load();
+world.tokenPrefix = realm.prefix;
 warmPathfinding();
 ensureNpcs(world, Number(process.env.NPC_COUNT ?? 4));
 function save() {
@@ -63,7 +68,7 @@ process.on('unhandledRejection', (e) => { console.error('[hogwarts] unhandled re
 // Enrolment rate limit per client address (stops scripted throwaway wizards).
 const enrolLog = new Map<string, number[]>();
 function allowEnrol(req: IncomingMessage) {
-  const ip = req.socket.remoteAddress ?? '?';
+  const ip = clientIp(req);
   const now = Date.now();
   const recent = (enrolLog.get(ip) ?? []).filter((t) => now - t < 10 * 60_000);
   if (recent.length >= 5) return false;
@@ -127,7 +132,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
     const session: McpSession = { wizardId: token ? world.byToken(token)?.id ?? null : null, baseUrl: PUBLIC_URL, allowEnrol: () => allowEnrol(req) };
     if (session.wizardId) world.touch(session.wizardId);
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
+      sessionIdGenerator: () => realm.prefix + randomUUID(),
       onsessioninitialized: (id) => { mcpSessions.set(id, { transport, session, seen: Date.now() }); },
     });
     transport.onclose = () => { if (transport.sessionId) mcpSessions.delete(transport.sessionId); };
@@ -160,6 +165,7 @@ const http = createServer(async (req, res) => {
       const w = world.byToken(tokenOf(req, url) ?? '');
       return w ? json(res, 200, { ...world.whoami(w.id), token: w.token, mcpUrl: `${PUBLIC_URL}/mcp` }) : json(res, 401, { error: 'unknown token' });
     }
+    if (url.pathname === '/api/realms') return json(res, 200, { mode: realm.mode, realms: [{ id: realm.id, up: true, ...realmStats(), restarts: 0 }] });
     if (url.pathname === '/api/leaderboard') return json(res, 200, world.leaderboard());
     if (url.pathname === '/api/history') return json(res, 200, HISTORY);
     if (url.pathname === '/api/rules') return json(res, 200, { rules: world.rules, decrees: world.decrees });
@@ -245,6 +251,7 @@ http.on('upgrade', (req, socket, head) => {
     ws.on('message', (raw) => {
       let m: ClientMsg;
       try { m = JSON.parse(String(raw)); } catch { return; }
+      if (!allowMessage(ws, m)) return; // per-socket rate limits (net.ts)
       handleClient(ws, w.id, m);
     });
     ws.on('error', () => ws.terminate());
@@ -252,21 +259,41 @@ http.on('upgrade', (req, socket, head) => {
   });
 });
 
+// Events: encoded once, queued for the sockets connected right now, written with the next broadcast (net.ts).
 world.onEvent((e) => {
-  const msg = JSON.stringify({ t: 'event', e });
-  for (const [ws, wid] of clients) if (!e.to || e.to === wid) ws.send(msg);
+  const msg = Buffer.from(JSON.stringify({ t: 'event', e }));
+  for (const [ws, wid] of clients) if (!e.to || e.to === wid) enqueue(ws, msg);
 });
+
+// Snapshots: built once per broadcast; each client gets the entities within AOI_RADIUS metres of it
+// (0 = everything), shared by every client in the same AOI cell (fanout.ts). The private 'me' state
+// goes out at most 5 Hz and only when it changed; slow sockets skip snapshots; each socket gets its
+// events + snapshot + 'me' in one write (net.ts).
+const fanout = new SnapshotFanout(Number(process.env.AOI_RADIUS ?? 140), Number(process.env.AOI_CELL ?? 16));
+let broadcasts = 0;
 setInterval(() => {
   if (!clients.size) { world.drainFx(); return; }
-  const snap = JSON.stringify({ t: 'snap', s: world.snapshot() });
+  broadcasts++;
+  fanout.load(world.snapshot());
   for (const [ws, wid] of clients) {
-    ws.send(snap);
-    ws.send(JSON.stringify({ t: 'me', s: world.privateState(wid) }));
+    corked(ws, () => {
+      const w = world.wizards.get(wid);
+      if (!w || !readyForSnapshot(ws)) return;
+      ws.send(fanout.payloadFor(w.pos.x, w.pos.z), { binary: false });
+      if (meDue(ws, broadcasts)) sendMeIfChanged(ws, JSON.stringify({ t: 'me', s: world.privateState(wid) }));
+    });
   }
 }, 100);
+
+function realmStats() {
+  let players = 0;
+  for (const x of world.wizards.values()) if (!x.npc && world.online(x)) players++;
+  return { players, wizards: world.wizards.size, clients: clients.size, mcp: mcpSessions.size };
+}
 
 // Failing to bind is fatal (the uncaughtException guard above must not keep a deaf process alive).
 http.on('error', (e) => { console.error(`[hogwarts] cannot listen on ${HOST}:${PORT}:`, (e as Error).message); process.exit(1); });
 http.listen(PORT, HOST, () => {
-  console.log(`[hogwarts] ${PUBLIC_URL}  (MCP: ${PUBLIC_URL}/mcp, WS: /ws)  term ${world.term.n}, ${world.rules.terms.lengthSeconds}s per term`);
+  console.log(`[hogwarts] ${PUBLIC_URL}  (MCP: ${PUBLIC_URL}/mcp, WS: /ws)  term ${world.term.n}, ${world.rules.terms.lengthSeconds}s per term${realm.mode === 'worker' ? `  [realm ${realm.id}]` : ''}`);
+  realmWorker(http, realmStats);
 });
