@@ -13,8 +13,8 @@ import { ensureNpcs } from '../kernel/npc.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
-import { createMcpServer, type McpSession } from '../mcp/server.js';
-import { LOGIN_FAIL_PER_IP_PER_MIN } from '../shared/constants.js';
+import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
+import { FORGE_FAIL_PER_MIN, LOGIN_FAIL_PER_IP_PER_MIN } from '../shared/constants.js';
 import { SnapshotFanout } from './fanout.js';
 import { FailWindow } from './limits.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
@@ -79,17 +79,32 @@ function allowEnrol(req: IncomingMessage) {
   return true;
 }
 
-// Failed logins per client address (MCP login, /api/me, /api/owls with an unknown key): docs/AGENT_LINK.md §A.2.
+// Failed logins per client address: docs/AGENT_LINK.md §A.2. Every place a key is presented counts a wrong
+// one (MCP login, an MCP initialize with a Bearer header, the WebSocket upgrade, /api/me, /api/owls).
 const loginFails = new FailWindow(LOGIN_FAIL_PER_IP_PER_MIN);
 const LOGIN_THROTTLED = 'Too many wrong keys from your address in the last minute. Wait a minute, then try again.';
-/** The wizard behind a request's key, counting a wrong key as a failed login; undefined when throttled or unknown. */
-function keyed(req: IncomingMessage, url: URL, res: ServerResponse) {
+/**
+ * Check a presented key. The key is looked up FIRST: a right key always works, however many wrong keys
+ * came from the same address (a NAT, a campus, a buggy agent on the same machine must not be able to make
+ * a browser forget its key). Only a wrong key is throttled ('throttled') or counted ('unknown').
+ */
+function checkKey(req: IncomingMessage, token: string | undefined) {
+  const w = token ? world.byToken(token) : undefined;
+  if (w) return w;
   const ip = clientIp(req);
-  if (!loginFails.allowed(ip)) { json(res, 429, { error: LOGIN_THROTTLED }); return undefined; }
-  const w = world.byToken(tokenOf(req, url) ?? '');
-  if (!w) { loginFails.fail(ip); json(res, 401, { error: 'unknown token' }); }
+  if (!loginFails.allowed(ip)) return 'throttled' as const;
+  loginFails.fail(ip);
+  return 'unknown' as const;
+}
+/** The wizard behind a request's key; otherwise answers 401 (wrong key) or 429 (too many wrong keys) and returns undefined. */
+function keyed(req: IncomingMessage, url: URL, res: ServerResponse) {
+  const w = checkKey(req, tokenOf(req, url));
+  if (w === 'throttled') { json(res, 429, { error: LOGIN_THROTTLED }); return undefined; }
+  if (w === 'unknown') { json(res, 401, { error: 'unknown token' }); return undefined; }
   return w;
 }
+// Refused forge_item parcels per wizard (§B.1), shared by all of its MCP sessions: a new session does not reset it.
+const forgeFails = new FailWindow(FORGE_FAIL_PER_MIN);
 
 // ------------------------------------------------------------------ HTTP
 const json = (res: ServerResponse, code: number, body: unknown) => {
@@ -142,16 +157,24 @@ function sessionsOf(wid: string) {
   for (const e of mcpSessions.values()) if (e.session.wizardId === wid) n++;
   return n;
 }
+/** Close code for a socket whose key was changed (it reconnects only with the new key). */
+const KEY_CHANGED = 4001;
 /**
- * A wizard's key changed (MCP rotate_key or the browser's [更换密钥]): the new key goes to that wizard's
- * own sockets only ({t:'token'}, so the browser updates its storage), and every other MCP session bound
- * to the wizard is closed (not `keep`, the session that asked). Its client reconnects with the old key,
- * which no longer works.
+ * A wizard's key changed (docs/AGENT_LINK.md §A.3). A rotation is the remedy for a leaked key, so nothing
+ * that holds the old key may keep acting or learn the new one:
+ *  - every MCP session bound to the wizard is closed except `keepMcp` (the agent session that asked);
+ *  - every browser socket of the wizard is closed except `keepWs` (the browser tab that asked), and only
+ *    that socket is sent the new key ({t:'token'}). An open socket is no proof of being the owner — a
+ *    thief who had the key may hold one — so the others re-authenticate with the new key (a tab of the
+ *    same browser finds it in localStorage; after an agent's rotate_key the human gets it from the agent).
  */
-function rotated(wid: string, token: string, keep?: string) {
-  const msg = JSON.stringify({ t: 'token', token });
-  for (const [ws, id] of clients) if (id === wid && ws.readyState === 1) ws.send(msg);
-  for (const [id, e] of [...mcpSessions]) if (id !== keep && e.session.wizardId === wid) closeMcp(id, e);
+function rotated(wid: string, token: string, keep: { keepMcp?: string; keepWs?: WebSocket } = {}) {
+  for (const [ws, id] of [...clients]) {
+    if (id !== wid) continue;
+    if (ws === keep.keepWs) { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'token', token })); }
+    else ws.close(KEY_CHANGED, 'key changed');
+  }
+  for (const [id, e] of [...mcpSessions]) if (id !== keep.keepMcp && e.session.wizardId === wid) closeMcp(id, e);
 }
 
 async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
@@ -167,9 +190,12 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
       return json(res, 503, { jsonrpc: '2.0', error: { code: -32000, message: 'Too many open MCP sessions; try again later.' }, id: null });
     }
     const token = tokenOf(req, url);
+    // A Bearer key is a login: a wrong one counts as a failed login (and the session starts unbound).
+    const keyedBy = token ? checkKey(req, token) : undefined;
+    if (keyedBy === 'throttled') return json(res, 429, { jsonrpc: '2.0', error: { code: -32000, message: LOGIN_THROTTLED }, id: null });
     const session: McpSession = {
-      wizardId: token ? world.byToken(token)?.id ?? null : null, baseUrl: PUBLIC_URL, ip: clientIp(req), allowEnrol: () => allowEnrol(req),
-      loginFails, sessionsOf, rotated,
+      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: PUBLIC_URL, ip: clientIp(req), allowEnrol: () => allowEnrol(req),
+      loginFails, forgeFails, sessionsOf, rotated: (wid, tok, keep) => rotated(wid, tok, { keepMcp: keep }),
     };
     if (session.wizardId) world.touch(session.wizardId);
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
@@ -215,8 +241,10 @@ const http = createServer(async (req, res) => {
       if (!w) return;
       const raw = url.searchParams.get('since');
       const since = raw !== null && /^\d{1,12}$/.test(raw) ? Number(raw) : undefined;
-      const owls = world.owlsFor(w.id, since);
-      return json(res, 200, { owls, cursor: owls.at(-1)?.id ?? since ?? w.agentReadUpTo });
+      // answers to confirm_with_player went to the agent as {approved}: not pushed again as the human's words
+      const all = world.owlsFor(w.id, since);
+      const owls = all.filter((m) => !isConfirmAnswer(w.owlbox, m.re));
+      return json(res, 200, { owls, cursor: all.at(-1)?.id ?? since ?? w.agentReadUpTo, read: w.agentReadUpTo });
     }
     if (url.pathname === '/api/realms') return json(res, 200, { mode: realm.mode, realms: [{ id: realm.id, up: true, ...realmStats(), restarts: 0 }] });
     if (url.pathname === '/api/leaderboard') return json(res, 200, world.leaderboard());
@@ -274,7 +302,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'owl': world.owl(wid, 'player', String(m.text ?? '')); break;
       case 'answer': world.answerAsk(wid, Number(m.id), String(m.choice ?? '')); break;
       case 'paircode': { const c = world.mintPairCode(wid); reply({ t: 'paircode', code: c.code, expiresIn: c.expiresIn }); break; }
-      case 'rotate': rotated(wid, world.rotateToken(wid)); break;
+      case 'rotate': rotated(wid, world.rotateToken(wid), { keepWs: ws }); break;
       case 'pause': world.setAgentPaused(wid, m.on === true); break;
       case 'book': book(); break;
       case 'simulate': reply({ t: 'sim', r: world.simulate(wid, String(m.source ?? ''), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
@@ -310,8 +338,9 @@ const clients = new Map<WebSocket, string>();
 http.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname !== '/ws') return socket.destroy();
-  const w = world.byToken(url.searchParams.get('token') ?? '');
-  if (!w) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy(); }
+  const w = checkKey(req, url.searchParams.get('token') ?? undefined);
+  if (w === 'throttled') { socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return socket.destroy(); }
+  if (w === 'unknown') { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy(); }
   wss.handleUpgrade(req, socket, head, (ws) => {
     clients.set(ws, w.id);
     w.connections++;

@@ -41,7 +41,7 @@
 
 ### A.3 换钥（泄露后的补救）
 
-- MCP `rotate_key`（`destructiveHint`）与浏览器 **[更换密钥]**（二次确认）：生成新 token，旧 token 立即失效；向该巫师的所有 WS 连接推送 `{t:'token', token}`（浏览器更新 localStorage）；关闭该巫师的**其他** MCP 会话（不关调用者）。
+- MCP `rotate_key`（`destructiveHint`）与浏览器 **[更换密钥]**（二次确认）：生成新 token，旧 token 立即失效；关闭该巫师的**其他** MCP 会话（不关调用者）。新 token **只**推给发起换钥的那个浏览器 socket（`{t:'token', token}`，浏览器更新 localStorage）；该巫师的其他 WS 连接一律以 close code 4001 关闭，不推新钥——开着的 socket 不能证明是本人，泄露后小偷可能正开着一个。Agent 发起的 `rotate_key` 因此关闭该巫师的全部 WS 连接，人类凭 Agent 给的新链接 / 钥匙串里的新钥重新进入。
 - 内核新增 `tokenIndex: Map<token, wizardId>`，`byToken` O(1)；`restore()` 重建；`rotateToken(wid)` 维护。
 - WS `welcome` 不再带 `token`（客户端本来就有）。
 

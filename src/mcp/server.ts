@@ -25,9 +25,17 @@ export interface McpSession {
   allowEnrol?: () => boolean;
   /** Failed logins per address (LOGIN_FAIL_PER_IP_PER_MIN), shared by every session of the server. */
   loginFails?: FailWindow;
+  /**
+   * Refused forge_item parcels per wizard (FORGE_FAIL_PER_MIN), shared by every session of the server so
+   * that opening a new session does not reset it. Without it (a server made in a test) each session has its own.
+   */
+  forgeFails?: FailWindow;
   /** How many MCP sessions are bound to this wizard (derived by scanning the sessions, never counted). */
   sessionsOf?: (wid: string) => number;
-  /** The wizard's key was rotated: push it to its browsers and close its other MCP sessions (not `keep`). */
+  /**
+   * The wizard's key was rotated by its agent: close its other MCP sessions (not `keep`) and its browser
+   * sockets (a thief's open socket must not keep playing, nor be handed the new key). main.ts.
+   */
   rotated?: (wid: string, token: string, keep?: string) => void;
 }
 
@@ -46,6 +54,18 @@ export const KEY_IN_ARGS = 'That contains your Owl Post key. Never write your ke
 /** The two answers of a confirm_with_player question in the browser (≤ 40 characters each). */
 export const CONFIRM_YES = '✅ 同意 Approve';
 export const CONFIRM_NO = '❌ 拒绝 Decline';
+
+/**
+ * Is owl `m` the human's answer to a confirm_with_player question? confirm_with_player already handed that
+ * answer to the agent as {approved}, so listen, wait(until:"owl") and /api/owls (the bridge's channel push)
+ * do not deliver it a second time as a message from the human.
+ */
+export function isConfirmAnswer(owlbox: readonly OwlMsg[], re: number | undefined): boolean {
+  if (re === undefined) return false;
+  const q = owlbox.find((x) => x.id === re);
+  const o = q?.ask?.options;
+  return !!o && o.length === 2 && o[0] === CONFIRM_YES && o[1] === CONFIRM_NO;
+}
 
 export const INSTRUCTIONS = `You are connected to a living Hogwarts. Each MCP session acts as ONE wizard.
 If this session has no wizard bound (whoami says so): first look in your persistent memory for a Hogwarts "Owl Post key" and call login with it; if you find none, ask your human to open the Owl Post in the game (Esc) and generate a pairing code, then call pair with it. (若本会话未绑定巫师：先在你的记忆里找猫头鹰邮递密钥并调用 login；找不到就请人类在游戏里生成配对码，再调用 pair。) enroll creates a brand-new wizard. When a result carries "remember", follow it. Never print your key; if it leaks, call rotate_key.
@@ -91,7 +111,7 @@ function agentOwl(m: OwlMsg, question?: OwlMsg) {
 
 export function createMcpServer(world: World, session: McpSession): McpServer {
   const server = new McpServer({ name: 'hogwarts', version: '0.8.0' }, { instructions: INSTRUCTIONS });
-  const forgeFails = new FailWindow(FORGE_FAIL_PER_MIN);
+  const forgeFails = session.forgeFails ?? new FailWindow(FORGE_FAIL_PER_MIN);
   const clientName = () => server.server.getClientVersion()?.name ?? 'agent';
   const bound = () => (session.wizardId && world.wizards.has(session.wizardId) ? session.wizardId : null);
   const canElicit = () => !!server.server.getClientCapabilities()?.elicitation?.form;
@@ -156,7 +176,12 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
       const deadline = Date.now() + seconds * 1000;
       while (Date.now() < deadline && !extra.signal.aborted) {
         const s = world.askState(wid, ask.id);
-        if (s.state === 'answered') return { approved: s.answer === CONFIRM_YES, via: 'browser', ...(s.answer === CONFIRM_YES ? {} : { reason: 'declined' }) };
+        if (s.state === 'answered') {
+          // the answer is delivered here, as {approved}: if it is the next owl the agent has to read, it is read now
+          const ans = world.wizards.get(wid)?.owlbox.find((m) => m.re === ask.id);
+          if (ans && !world.owlsFor(wid).some((m) => m.id < ans.id)) world.markOwlsRead(wid, ans.id);
+          return { approved: s.answer === CONFIRM_YES, via: 'browser', ...(s.answer === CONFIRM_YES ? {} : { reason: 'declined' }) };
+        }
         if (s.state !== 'open') return { approved: false, via: 'browser', reason: s.state === 'expired' ? 'no answer (expired)' : 'question lost' };
         world.touch(wid);
         await sleep(200);
@@ -209,10 +234,15 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     description: 'Bind this session to an existing wizard using its secret Owl Post key (token).',
     inputSchema: { token: z.string().min(8) },
   }, async ({ token }: { token: string }) => {
+    // The key is looked up first: a right key always works, however many wrong ones came from the same
+    // address (NAT, a campus, a buggy agent on the same machine); only wrong keys are throttled and counted.
     const ip = session.ip ?? '?';
-    if (session.loginFails && !session.loginFails.allowed(ip)) return fail(LOGIN_THROTTLED);
     const w = world.byToken(token.trim());
-    if (!w) { session.loginFails?.fail(ip); return fail('No wizard has that key.'); }
+    if (!w) {
+      if (session.loginFails && !session.loginFails.allowed(ip)) return fail(LOGIN_THROTTLED);
+      session.loginFails?.fail(ip);
+      return fail('No wizard has that key.');
+    }
     session.wizardId = w.id;
     world.touch(w.id);
     return out(bindResult(w.id));
@@ -241,7 +271,13 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const w = world.wizards.get(wid)!;
     const token = world.rotateToken(wid);
     session.rotated?.(wid, token, session.id);
-    return { rotated: true, name: w.name, registry: w.id, token, note: 'The old key no longer works anywhere. This session stays connected.', remember: rememberBlock(w.name, w.id), connect: connectBlock(baseUrl) };
+    return {
+      rotated: true, name: w.name, registry: w.id, token,
+      note: 'The old key no longer works anywhere. This session stays connected; your other agent sessions and every open game tab of this wizard were disconnected (a thief\'s too).',
+      play: `${baseUrl}/#k=${token}`,
+      playNote: 'Your human needs the new key to play in the browser again: give them this link (or the key).',
+      remember: rememberBlock(w.name, w.id), connect: connectBlock(baseUrl),
+    };
   }));
 
   register('whoami', {
@@ -341,13 +377,14 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const start = { t: world.now, hp: w.hp, mana: w.mana, x: w.pos.x, z: w.pos.z, ev: world.events.at(-1)?.id ?? 0, walking: !!w.goal };
     // the kernel's wake contract: public events but your own chat, private events to you, never your own owls
     const mine = () => world.inboxFor(w.id, start.ev);
+    const fromHuman = (e: WorldEvent) => e.type === 'owl' && e.from === 'player' && !isConfirmAnswer(w.owlbox, e.owl?.re);
     const maxMana = () => world.privateState(w.id).maxMana;
     const done = () => {
       switch (until) {
         case 'arrived': return start.walking && !w.goal;
         case 'hurt': return w.hp < start.hp - 0.5;
         case 'event': return mine().length > 0;
-        case 'owl': return mine().some((e) => e.type === 'owl' && e.from === 'player');
+        case 'owl': return mine().some(fromHuman);
         case 'mana_full': return w.mana >= maxMana() - 0.5;
         default: return false;
       }
@@ -366,7 +403,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
       moved: r1(Math.hypot(w.pos.x - start.x, w.pos.z - start.z)), at: { x: r1(w.pos.x), z: r1(w.pos.z), place: world.placeName(w.pos) },
       walking: !!w.goal, state: world.whoami(w.id).state,
       events: evs.slice(-20).map(agentEvent),
-      ...(evs.some((e) => e.type === 'owl' && e.from === 'player') ? { owls: 'Your human wrote to you: call listen to read (and acknowledge) their owls.' } : {}),
+      ...(evs.some(fromHuman) ? { owls: 'Your human wrote to you: call listen to read (and acknowledge) their owls.' } : {}),
     });
   });
 
@@ -426,13 +463,15 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     inputSchema: { seconds: z.number().min(0.5).max(LISTEN_MAX_S).optional().describe('how long to wait at most (default 20)') },
   }, me(async (wid, a: { seconds?: number }, extra) => {
     const deadline = Date.now() + (a.seconds ?? 20) * 1000;
-    while (!world.owlsFor(wid).length && Date.now() < deadline && !extra.signal.aborted) {
+    const w = world.wizards.get(wid)!;
+    const news = () => world.owlsFor(wid).filter((m) => !isConfirmAnswer(w.owlbox, m.re));
+    while (!news().length && Date.now() < deadline && !extra.signal.aborted) {
       world.touch(wid);
       await sleep(200);
     }
     if (!world.wizards.has(wid)) throw new Error('Unknown wizard.');
-    const w = world.wizards.get(wid)!;
-    const owls = world.takeOwls(wid).map((m) => agentOwl(m, m.re !== undefined ? w.owlbox.find((q) => q.id === m.re) : undefined));
+    // answers to confirm_with_player were already delivered as {approved}: read (the watermark moves past them), not repeated
+    const owls = world.takeOwls(wid).filter((m) => !isConfirmAnswer(w.owlbox, m.re)).map((m) => agentOwl(m, m.re !== undefined ? w.owlbox.find((q) => q.id === m.re) : undefined));
     return owls.length ? { owls } : { owls, note: 'Nothing from your human yet. Call listen again when you are idle.' };
   }));
 
@@ -461,12 +500,12 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
       lore: z.string().max(200).optional(),
     },
   }, me((wid, a: { wizard_id: string; name: string; slot: string; mods?: Record<string, number>; charm?: string; lore?: string }) => {
-    if (!forgeFails.allowed('s')) throw new Error(FORGE_THROTTLED);
+    if (!forgeFails.allowed(wid)) throw new Error(FORGE_THROTTLED);
     try {
       const r = world.forgeItem(wid, a.wizard_id.trim(), a);
       return { forged: r.item.name, id: r.item.id, deliveredTo: r.target, mods: r.item.mods, charm: !!r.item.charm, notes: r.notes };
     } catch (e) {
-      forgeFails.fail('s');
+      forgeFails.fail(wid);
       throw e;
     }
   }));

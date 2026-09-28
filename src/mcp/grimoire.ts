@@ -1,4 +1,4 @@
-import { ELEMENTS } from '../shared/constants.js';
+import { ELEMENTS, HP_FLOOR, HP_FLOOR_FRAC, MANAREGEN_FLOOR_FRAC, MANA_FLOOR, MANA_FLOOR_FRAC, POWER_FLOOR, SPEED_FLOOR, WARD_MAX, WARD_MIN } from '../shared/constants.js';
 import { CREATURES } from '../kernel/creatures.js';
 import { MOD_LIMITS, gasLimit, itemBudget, maxNodes, spellbookSize } from '../kernel/progression.js';
 import type { Rulebook } from '../kernel/rulebook.js';
@@ -84,5 +84,8 @@ ITEMS (forge_item)
 ${Object.entries(MOD_LIMITS).map(([k, v]) => `  ${k.padEnd(10)} max ${v.max}, ${v.pts} pts per unit — ${v.doc}`).join('\n')}
   charm: optional Runes source (validated at the forger's year, +1 point per 4 nodes). The holder
   invokes it with use_item at 20% mana discount, using the HOLDER's caps.
+  Attribute floors (属性的下限): whatever you wear, max health stays >= max(${HP_FLOOR}, ${HP_FLOOR_FRAC * 100}% of your year's base),
+  max mana >= max(${MANA_FLOOR}, ${MANA_FLOOR_FRAC * 100}%), mana regen >= ${MANAREGEN_FLOOR_FRAC * 100}% of the rule, speed >= ${SPEED_FLOOR * 100}%, power >= ${POWER_FLOOR * 100}%,
+  ward within ${WARD_MIN * 100}%..+${WARD_MAX * 100}%.
 `;
 }
