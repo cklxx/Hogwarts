@@ -342,7 +342,8 @@ export function makeAuraRing() {
   m.visible = false;
   return m;
 }
-const AURA_COLORS: [string, number][] = [['c', 0x9b3cff], ['f', 0xff7a1a], ['v', 0x6cff3c], ['i', 0x8fe3ff], ['g', 0x7dffb0]];
+/** Aura letters (World auraFlags). Jinxes come first so a hexed wizard is easy to spot: j Jelly-Legs (lilac), z Tarantallegra (magenta), b Furnunculus (yellow-green), t Bat-Bogey (grey). */
+const AURA_COLORS: [string, number][] = [['j', 0xc9a8ff], ['z', 0xff3cc8], ['b', 0xb5e03a], ['t', 0x9a9aa6], ['c', 0x9b3cff], ['f', 0xff7a1a], ['v', 0x6cff3c], ['i', 0x8fe3ff], ['g', 0x7dffb0]];
 export function setAuraRing(ring: THREE.Mesh, flags: string, t: number) {
   const hit = AURA_COLORS.find(([f]) => flags.includes(f));
   ring.visible = !!hit;

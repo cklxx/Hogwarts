@@ -38,11 +38,134 @@ export interface ControlsDeps {
   /** Live view of main.ts' camera orbit. */
   cam: { yaw: number; pitch: number; dist: number };
   toast: (text: string) => void;
-  panels: { book: () => void; menu: () => void };
+  panels: { book: () => void; menu: () => void; owl: () => void; trunk: () => void };
+  /** The player's agent as the HUD sees it (me.agent), or null before the first 'me'. */
+  agent: () => AgentView | null;
+  /** Open the Owl Post and mint a pairing code (tutorial step 5). */
+  pair: () => void;
+}
+
+// ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
+/** Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …` asks first. */
+export type ChatRoute = { to: 'public'; text: string } | { to: 'agent'; text: string } | { to: 'ask'; word: string; text: string; rest: string };
+export function routeChat(raw: string): ChatRoute | null {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  const mine = /^@(?:agent|a)(?=$|[\s:：,，])[\s:：,，]*/i.exec(text);
+  if (mine) { const rest = text.slice(mine[0].length).trim(); return rest ? { to: 'agent', text: rest } : null; }
+  const other = /^@([^\s:：,，]+)[\s:：,，]*/.exec(text);
+  if (other) return { to: 'ask', word: other[1], text, rest: text.slice(other[0].length).trim() };
+  return { to: 'public', text };
+}
+
+/**
+ * A key handed over in the page address: `#k=<token>` (the fragment never reaches a server or a log) or the old
+ * `?token=<token>`. Returns the token and the address to put back with both removed (other parameters such as
+ * ?q=low stay), or clean = null when there was nothing to remove.
+ */
+export function tokenFromUrl(href: string): { token: string | null; clean: string | null } {
+  let u: URL;
+  try { u = new URL(href); } catch { return { token: null, clean: null }; }
+  const hash = new URLSearchParams(u.hash.replace(/^#/, ''));
+  const fromHash = hash.get('k');
+  const fromQuery = u.searchParams.get('token');
+  if (!fromHash && !fromQuery && !hash.has('k') && !u.searchParams.has('token')) return { token: null, clean: null };
+  hash.delete('k');
+  u.searchParams.delete('token');
+  const h = hash.toString();
+  return { token: (fromHash || fromQuery || '').trim() || null, clean: u.pathname + u.search + (h ? `#${h}` : '') };
+}
+
+/** me.agent (World.agentState, plus the MCP session count the server may add). */
+export interface AgentInfo {
+  seen?: { client: string; tool: string; at: number } | null;
+  goal?: string | null;
+  paused?: boolean;
+  sessions?: number;
+  connected?: boolean;
+}
+export interface AgentView { connected: boolean; client: string; ago: number | null; tool: string | null; goal: string | null; paused: boolean }
+/** An agent seen within this many seconds counts as connected when the server does not say how many MCP sessions there are. */
+export const AGENT_LIVE_S = 300;
+/** "claude-code" → "Claude Code". */
+export function clientLabel(name: string | null | undefined): string {
+  const n = String(name ?? '').trim();
+  if (!n || n === 'agent') return 'Agent';
+  if (/^claude[-_ ]?code$/i.test(n)) return 'Claude Code';
+  return n.split(/[-_ ]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ').slice(0, 32);
+}
+/** The HUD's view of the agent at world time `now` (seen.at is world time, rounded down to 5 s by the kernel). */
+export function agentView(a: AgentInfo | null | undefined, now: number): AgentView {
+  const seen = a?.seen ?? null;
+  const ago = seen ? Math.max(0, Math.floor(now - seen.at)) : null;
+  const connected = typeof a?.connected === 'boolean' ? a.connected
+    : typeof a?.sessions === 'number' ? a.sessions > 0
+    : ago !== null && ago < AGENT_LIVE_S;
+  return { connected, client: clientLabel(seen?.client), ago, tool: seen?.tool || null, goal: a?.goal || null, paused: !!a?.paused };
+}
+/** "3 秒前" / "3s ago". */
+export function agoText(s: number | null): string {
+  if (s === null) return '';
+  if (s < 5) return L('刚刚', 'just now');
+  if (s < 60) return L(`${s} 秒前`, `${s}s ago`);
+  if (s < 3600) return L(`${Math.floor(s / 60)} 分钟前`, `${Math.floor(s / 60)} min ago`);
+  return L(`${Math.floor(s / 3600)} 小时前`, `${Math.floor(s / 3600)} h ago`);
+}
+
+/** me.hex (World.hexState). */
+export interface HexState {
+  auras: { k: string; mag: number; left: number }[];
+  silenced: number;
+  bound: { id: string; name: string; slot: string; left: number }[];
+  respite: number;
+  safe?: boolean;
+  pvp?: boolean;
+}
+export const JINX_LABEL: Record<string, { zh: string; en: string }> = {
+  jelly: { zh: '腿脚发软', en: 'Jelly-Legs' },
+  dance: { zh: '塔朗泰拉舞', en: 'Tarantallegra' },
+  boils: { zh: '火疖子', en: 'Furnunculus' },
+  bats: { zh: '蝙蝠精咒', en: 'Bat-Bogey Hex' },
+};
+function jinxDetail(a: { k: string; mag: number }): string {
+  switch (a.k) {
+    case 'jelly': return L(`移速 −${Math.round(a.mag * 100)}%`, `−${Math.round(a.mag * 100)}% speed`);
+    case 'dance': return L('脚步乱跳', 'your steps wander');
+    case 'boils': return L(`每秒 −${a.mag} 生命，不会打晕你`, `−${a.mag} HP/s, never knocks you out`);
+    case 'bats': return L(`每秒 −${a.mag} 生命，外加短暂沉默`, `−${a.mag} HP/s and a brief silence`);
+    default: return '';
+  }
+}
+/**
+ * The curse banner's words (§C.6): what is on you, how to end it, how to find out who. `hexed` is false when only
+ * the post-cleanse respite is left (the banner then shows a quiet line instead). Never names a sender.
+ */
+export function curseText(h: HexState | null | undefined): { hexed: boolean; head: string; parts: string[]; cure: string; who: string; resting: string | null; respite: string | null } | null {
+  if (!h) return null;
+  const parts: string[] = h.auras.map((a) => {
+    const n = JINX_LABEL[a.k] ?? { zh: a.k, en: a.k };
+    const d = jinxDetail(a);
+    return `${L(n.zh, n.en)}${d ? L(`（${d}）`, ` (${d})`) : ''} ${L(`${a.left} 秒`, `${a.left}s`)}`;
+  });
+  if (h.silenced > 0) parts.push(L(`🤐 锁舌封喉：${h.silenced} 秒内不能施法、不能公开说话（猫头鹰照飞）`, `🤐 Langlock: no casting or speaking aloud for ${h.silenced}s (owls still fly)`));
+  for (const b of h.bound) parts.push(L(`🔒 「${b.name}」粘在身上（剩 ${b.left} 秒）`, `🔒 "${b.name}" is stuck to you (${b.left}s)`));
+  const hexed = parts.length > 0;
+  const resting = hexed && h.auras.length && (h.safe || h.pvp === false)
+    ? (h.safe ? L('你在安全区里，恶咒暂停中。', 'You are in a safe zone: the jinxes are resting.') : L('魔法部法令关闭了决斗，恶咒暂停中。', 'A decree has switched duelling off: the jinxes are resting.'))
+    : null;
+  return {
+    hexed,
+    head: L('⚠️ 有人给你下了黑魔法：', '⚠️ Someone has put Dark magic on you: '),
+    parts,
+    cure: L('解除：念「咒立停 Finite Incantatem」；进安全区会暂停；或者等它消退。', 'To end it: cast Finite Incantatem; a safe zone suspends it; or wait for it to wear off.'),
+    who: L('想知道是谁？念「原形立现 Revelio」。', 'Want to know who? Cast Revelio.'),
+    resting,
+    respite: h.respite > 0 ? L(`🛡️ 喘息：${h.respite} 秒内不会再中恶咒。`, `🛡️ Respite: no new jinx can reach you for ${h.respite}s.`) : null,
+  };
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const esc =(s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const now = () => performance.now() / 1000;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -289,6 +412,12 @@ export function createControls(d: ControlsDeps) {
     d.send({ t: 'cast', key, x: aim.x, z: aim.z, target: k ?? undefined });
     pendingCasts.push({ name: key, kind: 'self', target: k, targetKind: null });
   }
+  /** Cast a spell by name on yourself (the trunk's and the curse banner's Finite Incantatem / Revelio buttons). */
+  function castOnSelf(key: string) {
+    const p = myPos();
+    d.send({ t: 'cast', key, x: p?.x ?? aim.x, z: p?.z ?? aim.z, target: d.myHandle() || undefined });
+    pendingCasts.push({ name: key, kind: 'self', target: null, targetKind: null });
+  }
   /** Cast a spell by its key (name or id) at a given entity; used by the action key. */
   function castAt(key: string, k: string) {
     const m = model(k);
@@ -475,6 +604,8 @@ export function createControls(d: ControlsDeps) {
     $('#tb-tab').onclick = () => cycleTarget();
     $('#tb-act').onclick = () => doAction();
     $('#tb-help').onclick = () => toggleHelp();
+    $('#tb-owl').onclick = () => d.panels.owl();
+    $('#tb-trunk').onclick = () => d.panels.trunk();
   }
 
   // ------------------------------------------------------------------ per-frame update (called from main.ts' frame loop)
@@ -638,6 +769,9 @@ export function createControls(d: ControlsDeps) {
     if (w?.s.includes('X')) status.push(L('💫 被击晕', '💫 stunned'));
     if (w?.s.includes('S')) status.push(L('🛡️ 护盾', '🛡️ shielded'));
     if (e.s.includes('R')) status.push(L('🌿 定身', '🌿 rooted'));
+    if (w?.s.includes('Q')) status.push(L('🤐 沉默', '🤐 silenced'));
+    const jinx = [['j', 'jelly'], ['z', 'dance'], ['b', 'boils'], ['t', 'bats']].filter(([f]) => e.s.includes(f)).map(([, k]) => L(JINX_LABEL[k].zh, JINX_LABEL[k].en));
+    if (jinx.length) status.push(`🕸️ ${jinx.join('、')}`);
     const m = model(k)!.root.position;
     if (zonesAt(m.x, m.z).includes('great_hall')) status.push(L('🕊️ 安全区', '🕊️ safe zone'));
     const dist = distTo(k);
@@ -718,9 +852,11 @@ export function createControls(d: ControlsDeps) {
       ${row('F', L('交互：在地标旁阅读禁书区的书页、扶起身边倒下的同伴（屏幕上会出现提示）', 'Interact: read a Restricted Section page at its landmark, revive a fallen friend (a prompt appears)'))}
       ${row('B', L('咒语书：阅读、修改、铸造咒语（咒语就是 Runes 程序）', 'Spellbook: read, edit and forge spells (spells are Runes programs)'))}
       ${row('R', L('禁书区：四道封印谜题', 'Restricted Section: four seal puzzles'))}
+      ${row('O', L('猫头鹰面板：和你自己的 Agent 私聊、回答它的提问（聊天框里以 @agent 或 @a 开头也行）', 'Owl panel: talk privately with your own agent and answer its questions (or start a chat line with @agent / @a)'))}
+      ${row('T', L('行囊：穿上、卸下、销毁物品；解除被诅咒物品的粘身', 'Trunk: equip, unequip and destroy items; break a cursed binding'))}
       ${row('L', L('排行榜与学院杯', 'Leaderboard and House Cup'))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}
-      ${row('Esc', L('猫头鹰邮递：把你的 AI Agent 连进来、切换语言', 'Owl Post: connect your AI agent, switch language'))}
+      ${row('Esc', L('猫头鹰邮递：生成配对码把你的 AI Agent 连进来、管理密钥、切换语言', 'Owl Post: a pairing code to connect your AI agent, your key, the language'))}
       ${row('H / ?', L('打开 / 关闭本帮助', 'This help'))}
       </table>
       <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom.')}</p>
@@ -739,6 +875,9 @@ export function createControls(d: ControlsDeps) {
     slotOf: (name) => (d.me()?.hotbar.findIndex((s) => s?.name === name) ?? -1),
     openMenu: () => d.panels.menu(),
     openBook: () => d.panels.book(),
+    openOwl: () => d.panels.owl(),
+    pair: () => d.pair(),
+    agent: d.agent,
   });
 
   // ------------------------------------------------------------------ server replies (routed from main.ts)
@@ -772,9 +911,9 @@ export function createControls(d: ControlsDeps) {
     get selected() { return selected; },
     /** What the spellbook's Simulate/Cast buttons should aim at. */
     targetKey: () => target ?? hovered,
-    keydown, update, hud, castSlot, castKey, clearTarget, toggleHelp,
+    keydown, update, hud, castSlot, castKey, castOnSelf, clearTarget, toggleHelp,
     helpOpen: () => !$('#helppanel').hidden,
-    notify: (ev: 'book' | 'menu') => tutorial.notify(ev),
+    notify: (ev: 'book' | 'menu' | 'owl') => tutorial.notify(ev),
     onCast, onGoto, onError, onArmory, onSeals,
   };
 }
@@ -812,7 +951,7 @@ function makeTargetRing() {
   return g;
 }
 
-// ------------------------------------------------------------------ onboarding (5 steps, skippable, remembered)
+// ------------------------------------------------------------------ onboarding (6 steps, skippable, remembered; the 6th only with an agent connected)
 type CastInfo = { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null };
 interface TutorialDeps {
   me: () => CMe | null;
@@ -824,13 +963,16 @@ interface TutorialDeps {
   slotOf: (spellName: string) => number;
   openMenu: () => void;
   openBook: () => void;
+  openOwl: () => void;
+  pair: () => void;
+  agent: () => AgentView | null;
 }
 function createTutorial(t: TutorialDeps) {
   const KEY = 'hogwarts.tutorial';
   const load = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
   const save = (v: string) => { try { localStorage.setItem(KEY, v); } catch { /* private mode */ } };
   const saved = load();
-  let step = saved === 'done' ? -1 : Math.max(0, Math.min(4, Number(saved) || 0));
+  let step = saved === 'done' ? -1 : Math.max(0, Math.min(5, Number(saved) || 0));
   let start: { x: number; z: number } | null = null;
   let doneUntil = 0;
   let lastHtml = '';
@@ -841,6 +983,9 @@ function createTutorial(t: TutorialDeps) {
     if (b.dataset.act === 'skip') finish(false);
     if (b.dataset.act === 'menu') { t.openMenu(); notify('menu'); }
     if (b.dataset.act === 'book') t.openBook();
+    if (b.dataset.act === 'pair') t.pair();
+    if (b.dataset.act === 'owl') t.openOwl();
+    if (b.dataset.act === 'later') finish(true);
     if (b.dataset.act === 'close') { doneUntil = 0; el.hidden = true; }
   });
 
@@ -890,7 +1035,14 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       title: () => L('连接你的 AI Agent', 'Connect your AI agent'),
-      body: () => L(`${t.touch ? '点右上角的 <b>☰</b>' : `按 ${key('Esc')}`} 打开<b>猫头鹰邮递</b>：把里面的命令粘贴到终端，你的 Agent（例如 Claude Code）就能替你走路、施法、用代码写新咒语。<br/><span class="hint">如果锁定着目标，第一次 Esc 会先取消目标。</span>`, `${t.touch ? 'Tap <b>☰</b> (top right)' : `Press ${key('Esc')}`} to open the <b>Owl Post</b>: paste its command into a terminal and your agent (e.g. Claude Code) can walk, cast and write new spells for you.<br/><span class="hint">If you have a target, the first Esc clears it.</span>`) + `<p><button data-act="menu">🦉 ${L('打开猫头鹰邮递', 'Open the Owl Post')}</button></p>`,
+      body: () => L(`${t.touch ? '点右边的 <b>☰</b>' : `按 ${key('Esc')}`} 打开<b>猫头鹰邮递</b>，点 <b>[生成配对码]</b>，然后对你的 Agent（例如 Claude Code）说一句：<br/><i>「连上霍格沃茨，配对码 XXX-XXX」</i><br/>它就能替你走路、施法、用代码写新咒语。<br/><span class="hint">如果锁定着目标，第一次 Esc 会先取消目标。没有 Agent？点「以后再说」。</span>`, `${t.touch ? 'Tap <b>☰</b>' : `Press ${key('Esc')}`} to open the <b>Owl Post</b>, click <b>[Get a pairing code]</b>, then tell your agent (e.g. Claude Code):<br/><i>"Connect to Hogwarts, pairing code XXX-XXX"</i><br/>It can then walk, cast and write new spells for you.<br/><span class="hint">If you have a target, the first Esc clears it. No agent? Click "Later".</span>`)
+        + `<p><button data-act="pair">🦉 ${L('生成配对码', 'Get a pairing code')}</button> <button data-act="later" class="tut-skip">${L('以后再说', 'Later')}</button></p>`,
+      live: () => { const a = t.agent(); return a?.connected ? `<div class="dir">✅ ${L(`${esc(a.client)} 已连接`, `${esc(a.client)} is connected`)}</div>` : ''; },
+    },
+    {
+      title: () => L('和你的 Agent 说句话', 'Say hello to your agent'),
+      body: () => L(`按 ${key('O')} 打开<b>猫头鹰面板</b>，给你的 Agent 写一句话（只有你们俩看得见）。也可以在聊天框里以 <b>@agent</b> 开头。它回的话和提问都会出现在这里。`, `Press ${key('O')} to open the <b>Owl panel</b> and write your agent a line (only the two of you see it). A chat line starting with <b>@agent</b> works too. Its replies and questions show up there.`)
+        + `<p><button data-act="owl">🦉 ${L('打开猫头鹰面板', 'Open the Owl panel')}</button> <button data-act="later" class="tut-skip">${L('跳过这一步', 'Skip this step')}</button></p>`,
     },
   ];
 
@@ -903,6 +1055,8 @@ function createTutorial(t: TutorialDeps) {
       } else el.hidden = true;
       return;
     }
+    // the last step (talk to your agent) only appears while an agent is connected
+    if (step === 5 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
     const dots = STEPS.map((_, i) => `<i class="${i < step ? 'done' : i === step ? 'cur' : ''}"></i>`).join('');
     const html = `<div class="tut-head"><span>${L('新手引导', 'Tutorial')} ${step + 1}/${STEPS.length} · <b>${s.title()}</b></span><button class="tut-skip" data-act="skip" title="${L('跳过教程', 'Skip the tutorial')}">${L('跳过', 'Skip')}</button></div>` +
@@ -936,13 +1090,14 @@ function createTutorial(t: TutorialDeps) {
       if (p && start && Math.hypot(p.x - start.x, p.z - start.z) > 3) { advance(); return; }
     }
     if (step === 3 && me.ui.includes('tempus')) { advance(); return; }
+    if (step === 4 && t.agent()?.connected) { advance(); return; }
     render();
   }
-  function notify(ev: 'cast' | 'book' | 'menu', c?: CastInfo) {
+  function notify(ev: 'cast' | 'book' | 'menu' | 'owl', c?: CastInfo) {
     if (step < 0) return;
     if (ev === 'cast' && step === 1 && c && c.kind === 'harm' && c.targetKind && c.targetKind !== 'wizard') advance();
     else if (ev === 'book' && step === 2) advance();
-    else if (ev === 'menu' && step === 4) advance();
+    else if (ev === 'owl' && step === 5) advance();
   }
   function restart() { step = 0; start = null; doneUntil = 0; save('0'); render(); }
   return { tick, notify, restart };

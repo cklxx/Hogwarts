@@ -7,7 +7,7 @@ import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { heightAt } from './terrain';
 import { makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, wizardColor, type WizardModel } from './models';
-import { createControls } from './controls';
+import { agentView, agoText, createControls, curseText, routeChat, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string }
@@ -19,37 +19,67 @@ interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
   hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self' } | null)[];
   stunned: number; jailed: number; decree: boolean; title: { zh: string; en: string; next: { zh: string; en: string; how: string } | null }; ui: string[]; seals: number; map: { name: string; registry: string; house: string; year: number; where: string; x: number; z: number }[] | null; proclamation: string;
+  /** What is hexing you (World.hexState), or null. */
+  hex?: HexState | null;
+  /** Your agent (World.agentState, plus the MCP session count the server may add). */
+  agent?: AgentInfo | null;
+  agents?: { sessions?: number } | null;
 }
-interface Ev { id: number; type: string; text: string; zh?: string; to?: string }
+/** Owl Post events carry `from` and `owl` (docs/AGENT_LINK.md §C.2). */
+interface Ev { id: number; type: string; text: string; zh?: string; to?: string; t?: number; from?: 'player' | 'agent'; owl?: { id: number; options?: string[]; expiresAt?: number; re?: number } }
+/** An item as World.armory lists it. */
+interface TrunkItem {
+  id: string; name: string; slot: string; mods: Record<string, number>; lore?: string; charm?: unknown; unique?: string; equipped: boolean;
+  cursed?: boolean; anon?: boolean; bound?: boolean; boundSecondsLeft?: number; jinx?: { kind: string; mag: number; seconds: number } | null; forgedByName?: string;
+}
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const LS = 'hogwarts.token';
+const loadToken = () => { try { return localStorage.getItem(LS); } catch { return null; } };
+const saveToken = (t: string) => { try { localStorage.setItem(LS, t); } catch { /* private mode: this tab still plays */ } };
+const dropToken = () => { try { localStorage.removeItem(LS); } catch { /* ignore */ } };
+/** The key goes in a header, never in a URL (URLs end up in logs and histories). */
+const fetchMe = (t: string) => fetch('/api/me', { headers: { authorization: `Bearer ${t}` } }).catch(() => null);
+/** Public facts about you from /api/me (never the key). */
+let account: { registry: string; mcpUrl: string } = { registry: '', mcpUrl: '' };
+async function readAccount(r: Response | null) {
+  const j = await r?.json().catch(() => null);
+  if (j) account = { registry: String(j.registry ?? ''), mcpUrl: String(j.mcpUrl ?? '') };
+}
 
 // ------------------------------------------------------------------ the gate (login)
 async function gate(): Promise<string> {
-  const url = new URL(location.href);
-  const fromUrl = url.searchParams.get('token');
-  if (fromUrl) { localStorage.setItem(LS, fromUrl); history.replaceState(null, '', location.pathname); }
-  const saved = localStorage.getItem(LS);
+  // a key handed over in the address (#k=… from an agent's enrol link, or the old ?token=…) is taken, then wiped from it
+  const { token: fromUrl, clean } = tokenFromUrl(location.href);
+  if (clean !== null) history.replaceState(null, '', clean);
+  if (fromUrl) {
+    const r = await fetchMe(fromUrl);
+    if (r?.ok) { saveToken(fromUrl); await readAccount(r); return fromUrl; }
+  }
+  const saved = loadToken();
   if (saved) {
-    const r = await fetch(`/api/me?token=${encodeURIComponent(saved)}`).catch(() => null);
-    if (r?.ok) return saved;
-    localStorage.removeItem(LS);
+    const r = await fetchMe(saved);
+    if (r?.ok) { await readAccount(r); return saved; }
+    if (r && r.status === 401) dropToken();
   }
   return new Promise((done) => {
     const err = $('#gate-err');
     $('#gate-go').onclick = async () => {
       const r = await fetch('/api/enroll', { method: 'POST', body: JSON.stringify({ name: $<HTMLInputElement>('#gate-name').value, house: $<HTMLSelectElement>('#gate-house').value }) });
-      const j = await r.json();
+      const j = await r.json().catch(() => ({ error: 'The owl got lost. Try again.' }));
       if (!r.ok) { err.textContent = tr(j.error); return; }
-      localStorage.setItem(LS, j.token);
+      saveToken(j.token);
+      await readAccount(await fetchMe(j.token));
       done(j.token);
     };
     $('#gate-login').onclick = async () => {
-      const t = $<HTMLInputElement>('#gate-token').value.trim();
-      const r = await fetch(`/api/me?token=${encodeURIComponent(t)}`);
-      if (!r.ok) { err.textContent = 'The owl does not recognise that key.'; return; }
-      localStorage.setItem(LS, t);
+      const raw = $<HTMLInputElement>('#gate-token').value.trim();
+      // a pasted play link works too
+      const t = (/^https?:/.test(raw) ? tokenFromUrl(raw).token : null) ?? raw;
+      const r = t ? await fetchMe(t) : null;
+      if (!r?.ok) { err.textContent = L('猫头鹰不认识这把密钥。', 'The owl does not recognise that key.'); return; }
+      saveToken(t);
+      await readAccount(r);
       done(t);
     };
     $<HTMLInputElement>('#gate-name').onkeydown = (e) => { if (e.key === 'Enter') $('#gate-go').click(); };
@@ -91,6 +121,7 @@ let me: Me | null = null;
 let myHandle = '';
 let token = '';
 let ws: WebSocket | null = null;
+let wsFails = 0;
 const wizards = new Map<string, WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh }>();
 const creatures = new Map<string, ReturnType<typeof makeCreature> & { tx: number; tz: number; tf: number; aura: THREE.Mesh }>();
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
@@ -104,7 +135,13 @@ function connect() {
   ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
   ws.onmessage = (m) => {
     const msg = JSON.parse(m.data);
-    if (msg.t === 'welcome') { myHandle = msg.handle; for (const e of msg.events) feed(e, false); menuInfo(msg.mcpUrl); }
+    if (msg.t === 'welcome') {
+      myHandle = msg.handle;
+      if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
+      for (const e of msg.events ?? []) feed(e, false);
+      menuInfo(msg.mcpUrl);
+      if (msg.pair?.code) onPairCode(msg.pair);
+    }
     else if (msg.t === 'snap') apply(msg.s);
     else if (msg.t === 'me') me = msg.s;
     else if (msg.t === 'event') feed(msg.e, true);
@@ -112,16 +149,32 @@ function connect() {
       ctl.onCast(msg.r);
       if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
       else if (msg.r.notes?.length) toast(msg.r.notes.join(' · '));
+      if (!$('#trunk').hidden) send({ t: 'book' }); // Finite Incantatem / Revelio change what the trunk shows
     }
-    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); }
+    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); }
+    else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
+    else if (msg.t === 'token') onToken(String(msg.token ?? ''));
+    else if (msg.t === 'owls' && Array.isArray(msg.owls)) { for (const o of msg.owls) owlFromMsg(o); renderOwl(); }
     else if (msg.t === 'seals') { ctl.onSeals(msg.section); renderSeals(msg.section, msg.current); }
     else if (msg.t === 'goto') ctl.onGoto(msg.goal);
     else if (msg.t === 'sealmsg') { const r = msg.r; toast(r.runes ? L(`📜 第 ${r.tier} 道封印的第 ${r.page}/${r.of} 页已抄进你的笔记。`, `📜 Page ${r.page}/${r.of} of seal ${r.tier} copied into your notes.`) : r.opened ? L(`📕 封印打开了！`, `📕 The seal opens! ${r.reward}`) : `✗ ${L('ALGIZ 没有出现。封印纹丝不动，还反咬了你一口（-15 生命）。', r.message)}`); }
     else if (msg.t === 'sim') showSim(msg.r);
     else if (msg.t === 'forged') { bookOut(`✓ ${L('已铸造', 'Forged')} ${msg.name}.${msg.notes.length ? '\n' + msg.notes.join('\n') : ''}`, 'good'); }
-    else if (msg.t === 'err') { ctl.onError(); if (!$('#book').hidden) bookOut(`✗ ${tr(msg.error)}`, 'bad'); else toast(`✗ ${tr(msg.error)}`); }
+    else if (msg.t === 'err') {
+      ctl.onError();
+      const text = `✗ ${tr(String(msg.error ?? ''))}`;
+      if (!$('#book').hidden) bookOut(text, 'bad');
+      else if (onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
+      else toast(text);
+    }
   };
-  ws.onclose = () => setTimeout(connect, 1500);
+  let opened = false;
+  ws.onopen = () => { opened = true; wsFails = 0; };
+  ws.onclose = () => {
+    // a key that stopped working (changed elsewhere) never reconnects: back to the gate instead of retrying forever
+    if (!opened && ++wsFails >= 3) void fetchMe(token).then((r) => { if (r?.status === 401) { dropToken(); location.reload(); } });
+    setTimeout(connect, 1500);
+  };
 }
 const send = (o: unknown) => { if (ws?.readyState === 1) ws.send(JSON.stringify(o)); };
 
@@ -139,7 +192,7 @@ function apply(s: Snap) {
       wizards.set(w.h, m);
     }
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
-    const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
+    const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '') + (w.s.includes('Q') ? '🤐' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
     setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
@@ -266,13 +319,16 @@ function spawnFx(f: Fx) {
 
 // ------------------------------------------------------------------ HUD
 function feed(e: Ev, fresh: boolean) {
+  // the private Owl Post lives in its own panel, never in the public feed
+  if (e.type === 'owl' || e.type === 'ask') { onOwlEvent(e, fresh); return; }
   const d = document.createElement('div');
   d.className = `${e.type} ${e.to ? 'private' : ''}`;
   const text = lang === 'zh' && e.zh ? e.zh : e.text;
   d.textContent = text;
   $('#feed').append(d);
   while ($('#feed').children.length > 14) $('#feed').firstChild!.remove();
-  if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'egg' && e.to) || e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000'))) banner(text);
+  if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'egg' && e.to) || (e.type === 'curse' && e.to) || e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000'))) banner(text);
+  if (fresh && e.type === 'curse' && !$('#trunk').hidden) send({ t: 'book' });
 }
 let bannerT = 0;
 function banner(text: string) {
@@ -328,6 +384,7 @@ function hud() {
   else ov.hidden = true;
   drawMinimap();
   drawMarauder();
+  linkHud();
 }
 const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
@@ -404,19 +461,451 @@ async function showBoard() {
   b.hidden = false;
 }
 
-function menuInfo(mcpUrl: string) {
-  $('#menu').innerHTML = `<h2>${L('猫头鹰邮递', 'Owl Post')}</h2>
+// ------------------------------------------------------------------ Owl Post menu (Esc): pairing code, connect commands, your key (docs/AGENT_LINK.md §A, §C.6)
+let mcpUrl = '';
+/** When each panel last asked the server for something: an 'err' right after belongs to that panel. */
+const lastSent = { owl: -1e9, trunk: -1e9, menu: -1e9 };
+const mark = (k: keyof typeof lastSent) => { lastSent[k] = performance.now(); };
+const recent = (k: keyof typeof lastSent) => performance.now() - lastSent[k] < 3000;
+/** The pairing code on screen: `until` is performance.now() ms; `worldT` the world time it was minted at. */
+let pairing: { code: string; until: number; worldT: number; wasConnected: boolean } | null = null;
+let pairExpired = false;
+let pairedWith: string | null = null;
+let pairAsked = -1e9;
+let keyShown = false;
+let rotateArmed = false;
+let menuMsg = '';
+const PAIR_SAY = (code: string) => L(`连上霍格沃茨，配对码 ${code}`, `Connect to Hogwarts, pairing code ${code}`);
+const worldNow = () => snap?.t ?? 0;
+function agentNow(): AgentView | null {
+  if (!me) return null;
+  const a: AgentInfo = { ...(me.agent ?? {}) };
+  if (typeof a.sessions !== 'number' && typeof me.agents?.sessions === 'number') a.sessions = me.agents.sessions;
+  return agentView(a, worldNow());
+}
+
+function menuInfo(url?: string) {
+  if (url) mcpUrl = url;
+  else if (!mcpUrl) mcpUrl = account.mcpUrl || `${location.origin}/mcp`;
+  const bridge = `claude mcp add -s user hogwarts -- npx tsx src/mcp/stdio-bridge.ts ${mcpUrl}`;
+  const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
+  $('#menu').innerHTML = `<h2>${L('猫头鹰邮递', 'Owl Post')} <small>${L('—— 按 Esc 关闭', '— Esc to close')}</small></h2>
+    <section class="op-first">
+      <h3>${L('连接你的 Agent', 'Connect your agent')}</h3>
+      <div id="op-pair"></div>
+      <div id="op-agent" class="hint"></div>
+    </section>
+    <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
+    <p>${L('<b>推荐：stdio 桥</b>（在霍格沃茨仓库目录里运行一次。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (run once in the Hogwarts checkout; after the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
+    <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
+    <p>${L('<b>HTTP 直连 + 配置头</b>（命令里是字面的 <code>${HOGWARTS_TOKEN}</code>，要用单引号；再在 shell profile 里 <code>export HOGWARTS_TOKEN=你的密钥</code>）：', '<b>Direct HTTP with a header</b> (the command holds a literal <code>${HOGWARTS_TOKEN}</code> in single quotes; put <code>export HOGWARTS_TOKEN=&lt;your key&gt;</code> in your shell profile):')}</p>
+    <div class="op-cmd"><pre id="op-header">${esc(header)}</pre><button class="ghost" data-copy="op-header">${L('复制', 'Copy')}</button></div>
+    <h3>${L('你的猫头鹰邮递密钥', 'Your Owl Post key')}</h3>
+    <div id="op-key"></div>
+    <p class="op-registry">${L('你的登记号', 'Your registry number')}: <code>${esc(account.registry || '—')}</code><br/><span class="hint">${L('登记号是魔法部的公开记录，猫头鹰凭它投递包裹。', 'Your registry number is a public Ministry record: owls deliver parcels by it.')}</span></p>
+    <p id="op-msg" class="hint"></p>
     <p>${L('语言 Language：', 'Language 语言: ')}<button id="lang-zh">中文</button> <button id="lang-en">English</button></p>
-    <p>${L('你的 Agent 可以操控这个巫师、用代码铸造咒语和魔法道具。把它连到 MCP 服务器：', 'Your agent can play this wizard, forge spells as code, and forge items. Connect it to the MCP server:')}</p>
-    <pre>claude mcp add --transport http hogwarts ${mcpUrl} \\\n  --header "Authorization: Bearer ${token}"</pre>
-    <p>${L('或任意 MCP 客户端', 'Or any MCP client')}: <code>${mcpUrl}</code> + header <code>Authorization: Bearer &lt;token&gt;</code>.<br/>${L('你的秘密猫头鹰邮递密钥（token）：', 'Your secret Owl Post key (token):')}</p>
-    <pre>${token}</pre>
-    <p>${L('然后对你的 Agent 说：<i>「读一下 grimoire，写一个专门收割残血敌人的咒语，放到 6 号快捷栏。」</i>', 'Then ask your agent: <i>"Read the grimoire, then invent a spell that finishes off wounded enemies and put it on hotbar 6."</i>')}</p>
-    <p><button id="logout">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></p>`;
+    <p><button id="logout" class="ghost">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></p>`;
   $('#lang-zh').onclick = () => setLang('zh');
   $('#lang-en').onclick = () => setLang('en');
-  $('#logout').onclick = () => { localStorage.removeItem(LS); location.reload(); };
+  $('#logout').onclick = () => { dropToken(); location.reload(); };
   $('#close-menu').onclick = () => { $('#menu').hidden = true; };
+  lastPairHtml = lastKeyHtml = '';
+  renderMenuLive();
+}
+$('#menu').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+  if (!b) return;
+  if (b.dataset.copy) copyText(b.dataset.copy === 'op-say' && pairing ? PAIR_SAY(pairing.code) : ($('#' + b.dataset.copy)?.textContent ?? ''), b);
+  const act = b.dataset.act;
+  if (act === 'pair') requestPairCode();
+  if (act === 'showkey') { keyShown = !keyShown; renderMenuLive(); }
+  if (act === 'rotate') { rotateArmed = true; renderMenuLive(); }
+  if (act === 'rotate-no') { rotateArmed = false; renderMenuLive(); }
+  if (act === 'rotate-yes') { rotateArmed = false; menuMsg = L('正在更换密钥……', 'Changing your key…'); mark('menu'); send({ t: 'rotate' }); renderMenuLive(); }
+});
+function copyText(text: string, b: HTMLElement) {
+  const o = b.textContent;
+  navigator.clipboard?.writeText(text).then(() => { b.textContent = L('已复制 ✓', 'Copied ✓'); setTimeout(() => { b.textContent = o; }, 1200); }, () => { /* no clipboard: select it by hand */ });
+}
+function requestPairCode() {
+  if (performance.now() - pairAsked < 1500) return;
+  pairAsked = performance.now();
+  pairedWith = null;
+  menuMsg = '';
+  mark('menu');
+  send({ t: 'paircode' });
+}
+/** Tutorial step 5 and the Owl Post's first button: open the Owl Post and mint a pairing code. */
+function pairNow() {
+  if ($('#menu').hidden) toggleMenu();
+  requestPairCode();
+}
+function onPairCode(r: { code?: string; expiresIn?: number }) {
+  if (!r?.code) return;
+  pairing = { code: String(r.code), until: performance.now() + 1000 * Math.max(1, Number(r.expiresIn) || 180), worldT: worldNow(), wasConnected: !!agentNow()?.connected };
+  pairExpired = false;
+  pairedWith = null;
+  renderMenuLive();
+}
+function onToken(t: string) {
+  if (!t) return;
+  token = t;
+  saveToken(t);
+  menuMsg = L('🔑 密钥已更换：旧密钥立即失效，这个浏览器已经换上了新密钥。已连接的 Agent 需要重新配对。', '🔑 Key changed: the old one stopped working at once and this browser now holds the new one. Connected agents need to pair again.');
+  pairing = null;
+  renderMenuLive();
+  toast(menuMsg);
+}
+function onMenuError(text: string) {
+  if (!recent('menu') || $('#menu').hidden) return false;
+  menuMsg = text;
+  renderMenuLive();
+  return true;
+}
+let lastPairHtml = '', lastKeyHtml = '';
+/** The live parts of the Owl Post: pairing code with its countdown, the agent line, the key. */
+function renderMenuLive() {
+  if ($('#menu').hidden || !$('#op-pair')) return;
+  const a = agentNow();
+  // the pairing is done once the agent that redeemed the code shows up
+  if (pairing && a && ((a.tool === 'pair' && (me?.agent?.seen?.at ?? -1) >= pairing.worldT - 5) || (!pairing.wasConnected && a.connected))) { pairedWith = a.client; pairing = null; }
+  let left = pairing ? Math.max(0, Math.ceil((pairing.until - performance.now()) / 1000)) : 0;
+  if (pairing && left <= 0) { pairing = null; pairExpired = true; left = 0; }
+  let html: string;
+  if (pairedWith) {
+    html = `<p class="op-ok">✅ ${L(`${esc(pairedWith)} 已连接`, `${esc(pairedWith)} is connected`)}</p><p class="hint">${L('现在可以按 <kbd>O</kbd> 和它说话。', 'Press <kbd>O</kbd> to talk to it.')}</p>`;
+  } else if (pairing) {
+    html = `<div class="op-code">${esc(pairing.code)}</div>
+      <p>${L('对你的 Agent 说：', 'Tell your agent:')}<br/><b class="op-say">${L(`「${esc(PAIR_SAY(pairing.code))}」`, `"${esc(PAIR_SAY(pairing.code))}"`)}</b></p>
+      <p><button class="ghost" data-copy="op-say">${L('复制这句话', 'Copy the sentence')}</button> <button class="ghost" data-act="pair">${L('换一个', 'New code')}</button> <span class="hint">${L('有效期', 'Valid for')} <span id="op-count"></span> · ${L('只能用一次', 'single use')}</span></p>`;
+  } else {
+    html = `<p><button data-act="pair" class="op-big">🦉 ${L('生成配对码', 'Get a pairing code')}</button></p>
+      <p class="hint">${pairExpired ? L('配对码过期了，再生成一个吧。', 'That code expired; get a new one.') : L('得到一个 6 位配对码（3 分钟内有效，只能用一次），然后对你的 Agent 说：「连上霍格沃茨，配对码 XXX-XXX」。不用复制任何长密钥。', 'You get a 6-character code (3 minutes, single use); then tell your agent: "Connect to Hogwarts, pairing code XXX-XXX". No long key to copy.')}</p>`;
+  }
+  if (html !== lastPairHtml) { $('#op-pair').innerHTML = html; lastPairHtml = html; }
+  const cnt = document.getElementById('op-count');
+  if (cnt) cnt.textContent = fmtT(left);
+  const agentLine = a?.connected
+    ? `🤖 ${esc(a.client)} ${L('已连接', 'connected')}${a.ago !== null ? ` · ${agoText(a.ago)}${a.tool ? `：${esc(a.tool)}` : ''}` : ''}${a.paused ? L(' · ⏸ 已暂停', ' · ⏸ paused') : ''}`
+    : L('🤖 还没有 Agent 连接。', '🤖 No agent connected yet.');
+  const al = $('#op-agent');
+  if (al.innerHTML !== agentLine) al.innerHTML = agentLine;
+  const keyHtml = (keyShown
+    ? `<div class="op-cmd"><pre id="op-token">${esc(token)}</pre><button class="ghost" data-copy="op-token">${L('复制', 'Copy')}</button></div><p><button class="ghost" data-act="showkey">${L('隐藏密钥', 'Hide the key')}</button> `
+    : `<p class="hint">${L('密钥就像你的魔杖：谁拿到它谁就能扮成你。别贴到公开的地方。', 'Your key is like your wand: whoever holds it can play as you. Never paste it anywhere public.')}</p><p><button class="ghost" data-act="showkey">${L('显示密钥', 'Show the key')}</button> `)
+    + (rotateArmed
+      ? `<b>${L('确定更换？旧密钥会立即失效。', 'Change it? The old key stops working at once.')}</b> <button data-act="rotate-yes">${L('确定更换', 'Change it')}</button> <button class="ghost" data-act="rotate-no">${L('取消', 'Cancel')}</button></p>`
+      : `<button class="ghost" data-act="rotate">${L('更换密钥', 'Change the key')}</button> <span class="hint">${L('（泄露了就换：旧密钥立即失效）', '(leaked? change it: the old key dies at once)')}</span></p>`);
+  if (keyHtml !== lastKeyHtml) { $('#op-key').innerHTML = keyHtml; lastKeyHtml = keyHtml; }
+  const msg = $('#op-msg');
+  if (msg.textContent !== menuMsg) msg.textContent = menuMsg;
+}
+
+// ------------------------------------------------------------------ the Owl panel (O): you and your own agent, privately (§C.1)
+type OwlLine = { id: number; from: 'player' | 'agent'; text: string; t: number; ask?: { options: string[]; expiresAt: number }; answer?: string | null; re?: number; lost?: number };
+const owlLog: OwlLine[] = [];
+const owlIds = new Set<number>();
+const askPending = new Map<number, string>();
+let owlUnread = 0;
+let owlStatus = '';
+let owlDirty = true;
+let owlPopUntil = 0;
+function addOwl(l: OwlLine, fresh: boolean) {
+  if (owlIds.has(l.id)) return;
+  owlIds.add(l.id);
+  if (l.re !== undefined) {
+    const q = owlLog.find((x) => x.id === l.re);
+    if (q) q.answer = l.text;
+    askPending.delete(l.re);
+  }
+  owlLog.push(l);
+  owlLog.sort((a, b) => a.id - b.id);
+  while (owlLog.length > 120) owlIds.delete(owlLog.shift()!.id);
+  owlDirty = true;
+  if (fresh && l.from === 'agent') {
+    if ($('#owl').hidden) { owlUnread++; owlPop(l); }
+  }
+  renderOwl();
+}
+function onOwlEvent(e: Ev, fresh: boolean) {
+  const from = e.from === 'agent' ? 'agent' : 'player';
+  const text = String((lang === 'zh' && e.zh) || e.text || '');
+  const id = typeof e.owl?.id === 'number' ? e.owl.id : -e.id;
+  const ask = e.type === 'ask' && e.owl?.options?.length ? { options: e.owl.options, expiresAt: Number(e.owl.expiresAt ?? 0) } : undefined;
+  addOwl({ id, from, text, t: Number(e.t ?? worldNow()), ask, re: e.owl?.re }, fresh);
+}
+/** An OwlMsg (World.owlsFor shape), if the server sends the owlbox itself. */
+function owlFromMsg(o: { id: number; from: 'player' | 'agent'; text: string; t: number; ask?: { options: string[]; expiresAt: number }; answered?: boolean; answer?: string; re?: number; lost?: number }) {
+  if (!o || typeof o.id !== 'number') return;
+  addOwl({ id: o.id, from: o.from === 'agent' ? 'agent' : 'player', text: String(o.text ?? ''), t: Number(o.t ?? 0), ask: o.ask, answer: o.answered ? o.answer ?? null : undefined, re: o.re, lost: o.lost }, false);
+}
+function sendOwl(text: string) {
+  const t = text.trim();
+  if (!t) return;
+  mark('owl');
+  send({ t: 'owl', text: t });
+  owlStatus = '';
+  owlDirty = true;
+  ctl.notify('owl');
+}
+function answerAsk(id: number, choice: string) {
+  if (askPending.has(id)) return;
+  askPending.set(id, choice);
+  mark('owl');
+  send({ t: 'answer', id, choice });
+  owlDirty = true;
+  renderOwl();
+}
+function onOwlError(text: string) {
+  if (!recent('owl')) return false;
+  askPending.clear();
+  owlStatus = text;
+  owlDirty = true;
+  renderOwl();
+  return !$('#owl').hidden;
+}
+/** A question's state at world time `now`. */
+const askStateOf = (l: OwlLine, now: number) => l.answer === '(expired)' ? 'expired' : l.answer != null ? 'answered' : l.ask && now >= l.ask.expiresAt ? 'expired' : askPending.has(l.id) ? 'pending' : 'open';
+function askHtml(l: OwlLine, now: number) {
+  if (!l.ask) return '';
+  const st = askStateOf(l, now);
+  if (st === 'answered') return `<div class="ow-ans">✓ ${L('你选了', 'You chose')}: <b>${esc(l.answer ?? '')}</b></div>`;
+  if (st === 'expired') return `<div class="ow-ans hint">${L('（提问已过期）', '(the question expired)')}</div>`;
+  return `<div class="ow-opts">${l.ask.options.map((o) => `<button data-ask="${l.id}" data-choice="${esc(o)}"${st === 'pending' ? ' disabled' : ''}>${esc(o)}</button>`).join('')}<span class="hint" data-left="${l.id}"></span></div>`;
+}
+let owlStates = '';
+function renderOwl() {
+  const panel = $('#owl');
+  const now = worldNow();
+  // a question that just expired (or was answered) redraws its buttons
+  const states = owlLog.filter((l) => l.ask).map((l) => askStateOf(l, now)).join();
+  if (states !== owlStates) { owlStates = states; owlDirty = true; }
+  if (!panel.hidden && owlDirty) {
+    owlDirty = false;
+    const a = agentNow();
+    $('#owl-who').innerHTML = a?.connected ? `🤖 ${esc(a.client)}${a.paused ? L(' · ⏸ 已暂停', ' · ⏸ paused') : ''}` : `<span class="hint">${L('Agent 未连接：信会留在信箱里，它连上后用 listen 收。', 'No agent connected: owls wait in the owlbox until it listens.')}</span>`;
+    const log = $('#owl-log');
+    log.innerHTML = owlLog.length
+      ? owlLog.map((l) => `<div class="ow ${l.from}"><span class="ow-from">${l.from === 'agent' ? '🤖 Agent' : L('🧙 你', '🧙 You')}</span>${l.re !== undefined ? `<span class="hint">${L('（回答）', ' (answer)')}</span>` : ''}<div class="ow-text">${esc(l.text)}</div>${askHtml(l, now)}</div>`).join('')
+      : `<div class="hint">${L('这里只有你和你的 Agent。写一句话，按回车寄出。', 'Only you and your agent see this. Write a line and press Enter.')}</div>`;
+    log.scrollTop = log.scrollHeight;
+    $('#owl-status').textContent = owlStatus;
+  }
+  // question countdowns, without rebuilding the buttons under the pointer
+  document.querySelectorAll<HTMLElement>('[data-left]').forEach((el) => {
+    const l = owlLog.find((x) => x.id === Number(el.dataset.left));
+    if (l?.ask) el.textContent = L(` ${Math.max(0, Math.ceil(l.ask.expiresAt - now))} 秒内回答`, ` answer within ${Math.max(0, Math.ceil(l.ask.expiresAt - now))}s`);
+  });
+  const pop = $('#owlpop');
+  if (!pop.hidden && (performance.now() > owlPopUntil || !panel.hidden)) pop.hidden = true;
+}
+function owlPop(l: OwlLine) {
+  const pop = $('#owlpop');
+  pop.innerHTML = `<div class="op-head">🦉 ${L('你的 Agent 说', 'Your agent says')} <span class="hint">${L('（按 O 回复）', '(O to reply)')}</span></div><div class="ow-text">${esc(l.text)}</div>${askHtml(l, worldNow())}`;
+  pop.hidden = false;
+  owlPopUntil = performance.now() + (l.ask ? Math.max(4, l.ask.expiresAt - worldNow()) * 1000 : 9000);
+}
+function toggleOwl(force?: boolean) {
+  const p = $('#owl');
+  p.hidden = !(force ?? p.hidden);
+  if (!p.hidden) {
+    owlUnread = 0;
+    owlDirty = true;
+    $('#owlpop').hidden = true;
+    renderOwl();
+    $<HTMLInputElement>('#owl-input').focus();
+  }
+}
+document.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('[data-ask]') as HTMLButtonElement | null;
+  if (b) { if (!b.disabled) answerAsk(Number(b.dataset.ask), b.dataset.choice ?? ''); }
+  else if ((e.target as HTMLElement).closest('#owlpop')) toggleOwl(true);
+});
+$<HTMLInputElement>('#owl-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { const i = e.target as HTMLInputElement; sendOwl(i.value); i.value = ''; }
+});
+$('#owl-send').onclick = () => { const i = $<HTMLInputElement>('#owl-input'); sendOwl(i.value); i.value = ''; i.focus(); };
+$('#owl-close').onclick = () => toggleOwl(false);
+
+/** A chat line starting with an @word that is not @agent: ask where it goes before anyone else can read it. */
+let atPending: { text: string; rest: string } | null = null;
+function askWhere(word: string, text: string, rest: string) {
+  atPending = { text, rest };
+  const el = $('#atask');
+  el.innerHTML = `<p>${L(`「@${esc(word)}」不是你的 Agent。这句话要发到哪里？`, `"@${esc(word)}" is not your agent. Where should this go?`)}</p><p class="hint">${esc(text)}</p>
+    <p><button data-at="public">${L('发到公共频道', 'Public chat')}</button> <button data-at="agent">${L('给我的 Agent（私密）', 'My agent (private)')}</button> <button class="ghost" data-at="cancel">${L('取消', 'Cancel')}</button></p>`;
+  el.hidden = false;
+}
+$('#atask').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+  if (!b || !atPending) return;
+  if (b.dataset.at === 'public') send({ t: 'chat', text: atPending.text });
+  if (b.dataset.at === 'agent') sendOwl(atPending.rest || atPending.text);
+  atPending = null;
+  $('#atask').hidden = true;
+});
+/** The chat box: public by default, `@agent …` / `@a …` is a private owl, any other `@word …` asks first. */
+function sendChat(raw: string) {
+  const r = routeChat(raw);
+  if (!r) return;
+  if (r.to === 'public') send({ t: 'chat', text: r.text });
+  else if (r.to === 'agent') sendOwl(r.text);
+  else askWhere(r.word, r.text, r.rest);
+}
+
+// ------------------------------------------------------------------ agent presence widget (HUD, from me.agent)
+let lastAgentHtml = '';
+function renderAgentBox() {
+  const el = $('#agentbox');
+  const a = agentNow();
+  let html = '';
+  if (a && (a.connected || a.paused)) {
+    const act = a.ago !== null ? ` · ${agoText(a.ago)}${a.tool ? `：<code>${esc(a.tool)}</code>` : ''}` : '';
+    html = `<div>🤖 <b>${esc(a.client)}</b> ${a.paused ? L('已暂停', 'paused') : L('已连接', 'connected')}${act}</div>`
+      + (a.goal ? `<div class="ab-goal">🎯 ${L('目标', 'Goal')}: ${esc(a.goal)}</div>` : '')
+      + `<div class="ab-row"><button data-act="pause" class="${a.paused ? '' : 'ghost'}">${a.paused ? L('▶ 继续 Agent', '▶ Resume agent') : L('⏸ 暂停 Agent', '⏸ Pause agent')}</button> <button data-act="owl" class="ghost">🦉 O${owlUnread ? ` <b class="ab-n">${owlUnread}</b>` : ''}</button></div>`;
+  } else if (owlUnread) {
+    html = `<div class="ab-row"><button data-act="owl" class="ghost">🦉 ${L('新猫头鹰', 'New owls')} <b class="ab-n">${owlUnread}</b></button></div>`;
+  } else if (me) {
+    html = `<div class="hint">🤖 ${L('Agent 未连接 · Esc → 生成配对码', 'No agent · Esc → pairing code')}</div>`;
+  }
+  if (html !== lastAgentHtml) { el.innerHTML = html; lastAgentHtml = html; el.hidden = !html; }
+}
+$('#agentbox').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+  if (!b) return;
+  if (b.dataset.act === 'pause') send({ t: 'pause', on: !me?.agent?.paused });
+  if (b.dataset.act === 'owl') toggleOwl(true);
+});
+
+// ------------------------------------------------------------------ curse banner (from me.hex)
+function renderCurseBar() {
+  const el = $('#cursebar');
+  const c = curseText(me?.hex);
+  if (!c || (!c.hexed && !c.respite)) { el.hidden = true; return; }
+  if (!el.firstElementChild) {
+    el.innerHTML = `<div class="cb-text"></div><div class="cb-acts"><button data-act="finite">✨ ${L('咒立停', 'Finite Incantatem')}</button> <button class="ghost" data-act="revelio">👁️ ${L('原形立现', 'Revelio')}</button> <button class="ghost" data-act="trunk">🧳 ${L('行囊', 'Trunk')} (T)</button></div>`;
+  }
+  el.classList.toggle('quiet', !c.hexed);
+  const text = c.hexed
+    ? `<b>${esc(c.head)}</b>${c.parts.map(esc).join(' · ')}${L('。', '.')}<br/>${esc(c.cure)} ${esc(c.who)}${c.resting ? `<br/><i>${esc(c.resting)}</i>` : ''}`
+    : esc(c.respite ?? '');
+  const t = el.querySelector('.cb-text') as HTMLElement;
+  if (t.innerHTML !== text) t.innerHTML = text;
+  (el.querySelector('.cb-acts') as HTMLElement).hidden = !c.hexed;
+  const fin = el.querySelector('[data-act="finite"]') as HTMLButtonElement;
+  const why = finiteBlocked();
+  fin.disabled = !!why;
+  fin.title = why ?? '';
+  el.hidden = false;
+}
+$('#cursebar').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+  if (!b || b.disabled) return;
+  if (b.dataset.act === 'finite') ctl.castOnSelf('Finite Incantatem');
+  if (b.dataset.act === 'revelio') ctl.castOnSelf('Revelio');
+  if (b.dataset.act === 'trunk') toggleTrunk(true);
+});
+
+// ------------------------------------------------------------------ the trunk (T): equip, unequip, destroy; break a cursed binding (§C.6)
+let trunkItems: TrunkItem[] = [];
+let trunkAt = 0;
+let knownSpells: Set<string> | null = null;
+let trunkMsg = '';
+let destroyArmed: string | null = null;
+let trunkRefetch = 0;
+const SLOT_ICON: Record<string, string> = { wand: '🪄', robe: '🥻', amulet: '📿', trinket: '💍', broom: '🧹' };
+const SLOT_ZH: Record<string, string> = { wand: '魔杖', robe: '长袍', amulet: '护身符', trinket: '小饰物', broom: '扫帚' };
+const MOD_ZH: Record<string, string> = { maxHp: '生命上限', maxMana: '法力上限', manaRegen: '回蓝', speed: '移速', power: '威力', ward: '护甲' };
+function onArmory(armory: { items?: TrunkItem[]; spells?: { name: string }[] }) {
+  if (Array.isArray(armory.items)) { trunkItems = armory.items; trunkAt = performance.now(); }
+  if (Array.isArray(armory.spells)) knownSpells = new Set(armory.spells.map((s) => s.name));
+  renderTrunk(true);
+}
+const knows = (name: string, year: number) => knownSpells ? knownSpells.has(name) : (me?.year ?? 1) >= year;
+/** Why Finite Incantatem cannot be cast from the trunk or the banner, or null. */
+function finiteBlocked(): string | null {
+  return knows('Finite Incantatem', 2) ? null : L('你还不会「咒立停」：需 2 年级', 'You do not know Finite Incantatem yet: needs year 2');
+}
+function boundLeft(it: TrunkItem): number {
+  const live = me?.hex?.bound?.find((b) => b.id === it.id);
+  if (live) return live.left;
+  if (!it.bound) return 0;
+  return Math.max(0, Math.ceil((it.boundSecondsLeft ?? 0) - (performance.now() - trunkAt) / 1000));
+}
+function modsText(m: Record<string, number>) {
+  return Object.entries(m ?? {}).filter(([, v]) => v).map(([k, v]) => `<span class="${v < 0 ? 'neg' : 'pos'}">${esc(L(MOD_ZH[k] ?? k, k))} ${v > 0 ? '+' : ''}${v}</span>`).join(' ');
+}
+function renderTrunk(rebuild = false) {
+  const el = $('#trunk');
+  if (el.hidden) return;
+  if (rebuild) {
+    const fin = finiteBlocked(), rev = knows('Revelio', 1) ? null : L('你还不会「原形立现」', 'You do not know Revelio yet');
+    $('#trunk-cure').innerHTML = `<button data-act="finite"${fin ? ` disabled title="${esc(fin)}"` : ''}>✨ ${L('念咒立停解咒', 'Cast Finite Incantatem to break curses')}</button>${fin ? ` <span class="hint">${esc(fin)}</span>` : ''}
+      <button class="ghost" data-act="revelio"${rev ? ` disabled title="${esc(rev)}"` : ''}>👁️ ${L('念原形立现，看看是谁', 'Cast Revelio: who sent it?')}</button>`;
+    $('#trunk-list').innerHTML = trunkItems.length ? trunkItems.map((it) => {
+      const bound = boundLeft(it) > 0;
+      const badges = [
+        it.equipped ? `<span class="tb eq">${L('已穿戴', 'equipped')}</span>` : '',
+        it.cursed ? (bound ? `<span class="tb curse">🔒 ${L('被诅咒（粘身，剩', 'cursed (stuck,')} <b data-bound="${esc(it.id)}">${boundLeft(it)}</b> ${L('秒）', 's left)')}</span>` : `<span class="tb curse">☠️ ${L('被诅咒', 'cursed')}</span>`) : '',
+        it.jinx ? `<span class="tb curse">🕸️ ${L('带恶咒', 'jinxed')}</span>` : '',
+        it.anon ? `<span class="tb anon">✉️ ${L('匿名寄来', 'anonymous')}</span>` : it.forgedByName && it.forgedByName !== me?.name && it.forgedByName !== 'Legend' ? `<span class="tb">${L('寄件人', 'from')} ${esc(it.forgedByName)}</span>` : '',
+      ].join(' ');
+      const stuck = bound ? ` disabled title="${esc(L('粘身中：先念咒立停，或等它消退', 'Stuck: cast Finite Incantatem first, or wait'))}"` : '';
+      const wear = it.equipped ? `<button class="ghost" data-act="unequip" data-slot="${esc(it.slot)}"${stuck}>${L('卸下', 'Unequip')}</button>` : `<button class="ghost" data-act="equip" data-id="${esc(it.id)}">${L('穿上', 'Equip')}</button>`;
+      const del = it.unique === 'elder_wand' ? '' : destroyArmed === it.id
+        ? `<button data-act="destroy-yes" data-id="${esc(it.id)}">${L('确定销毁', 'Destroy it')}</button> <button class="ghost" data-act="destroy-no">${L('取消', 'Cancel')}</button>`
+        : `<button class="ghost" data-act="destroy" data-id="${esc(it.id)}"${stuck}>${L('销毁', 'Destroy')}</button>`;
+      return `<li class="${it.cursed ? 'cursed' : ''}"><div class="ti-name">${SLOT_ICON[it.slot] ?? '📦'} <b>${esc(it.name)}</b> <span class="hint">${esc(L(SLOT_ZH[it.slot] ?? it.slot, it.slot))}</span> ${badges}</div>
+        <div class="ti-mods">${modsText(it.mods)}${it.lore ? ` <i class="hint">“${esc(it.lore)}”</i>` : ''}</div><div class="ti-acts">${wear} ${del}</div></li>`;
+    }).join('') : `<li class="hint">${L('箱子是空的。让你的 Agent 用 forge_item 给你锻造点东西吧。', 'Your trunk is empty. Ask your agent to forge you something (forge_item).')}</li>`;
+    $('#trunk-msg').textContent = trunkMsg;
+  }
+  // live countdowns; once a binding wears off, ask for a fresh list
+  document.querySelectorAll<HTMLElement>('#trunk-list [data-bound]').forEach((b) => {
+    const it = trunkItems.find((x) => x.id === b.dataset.bound);
+    const left = it ? boundLeft(it) : 0;
+    b.textContent = String(left);
+    if (left <= 0 && performance.now() - trunkRefetch > 2000) { trunkRefetch = performance.now(); send({ t: 'book' }); }
+  });
+}
+function toggleTrunk(force?: boolean) {
+  const t = $('#trunk');
+  t.hidden = !(force ?? t.hidden);
+  if (!t.hidden) { trunkMsg = ''; destroyArmed = null; send({ t: 'book' }); renderTrunk(true); }
+}
+function onTrunkError(text: string) {
+  if (!recent('trunk') || $('#trunk').hidden) return false;
+  trunkMsg = text;
+  send({ t: 'book' });
+  return true;
+}
+$('#trunk').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+  if (!b || b.disabled) return;
+  const act = b.dataset.act;
+  trunkMsg = '';
+  mark('trunk');
+  if (act === 'close') { toggleTrunk(false); return; }
+  if (act === 'finite') { ctl.castOnSelf('Finite Incantatem'); return; }
+  if (act === 'revelio') { ctl.castOnSelf('Revelio'); return; }
+  if (act === 'equip') send({ t: 'equip', item: b.dataset.id });
+  else if (act === 'unequip') send({ t: 'unequip', slot: b.dataset.slot });
+  else if (act === 'destroy') { destroyArmed = b.dataset.id ?? null; renderTrunk(true); return; }
+  else if (act === 'destroy-no') { destroyArmed = null; renderTrunk(true); return; }
+  else if (act === 'destroy-yes') { destroyArmed = null; send({ t: 'destroy', item: b.dataset.id }); }
+  else return;
+  send({ t: 'book' }); // the server does not answer equip / unequip / destroy: read the trunk again
+});
+
+/** The Owl Post parts of the 10 Hz HUD. */
+function linkHud() {
+  renderAgentBox();
+  renderCurseBar();
+  renderMenuLive();
+  renderOwl();
+  renderTrunk();
 }
 
 // ------------------------------------------------------------------ spellbook (in-browser Runes editor)
@@ -480,7 +969,7 @@ function toggleMenu() {
   const m = $('#menu');
   m.hidden = !m.hidden;
   $('#board').hidden = true;
-  if (!m.hidden) ctl.notify('menu');
+  if (!m.hidden) { ctl.notify('menu'); rotateArmed = false; if (!$('#op-pair')) menuInfo(); renderMenuLive(); }
 }
 const ctl = createControls({
   canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,
@@ -490,26 +979,34 @@ const ctl = createControls({
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
     get dist() { return camDist; }, set dist(v: number) { camDist = v; },
   },
-  panels: { book: toggleBook, menu: toggleMenu },
+  panels: { book: toggleBook, menu: toggleMenu, owl: () => toggleOwl(), trunk: () => toggleTrunk() },
+  agent: agentNow,
+  pair: pairNow,
 });
 addEventListener('keydown', (e) => {
   const chat = $<HTMLInputElement>('#chat');
   if (document.activeElement === chat) {
-    if (e.key === 'Enter') { if (chat.value.trim()) send({ t: 'chat', text: chat.value }); chat.value = ''; chat.blur(); }
+    if (e.key === 'Enter') { sendChat(chat.value); chat.value = ''; chat.blur(); }
     if (e.key === 'Escape') chat.blur();
     return;
   }
+  // typing never triggers game keys (O and T included)
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName ?? '')) {
-    if (e.key === 'Escape') (document.activeElement as HTMLElement).blur();
+    if (e.key === 'Escape') { if (document.activeElement === $('#owl-input')) toggleOwl(false); (document.activeElement as HTMLElement).blur(); }
     return;
   }
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
+  if (e.key === 'o' || e.key === 'O') { if (!e.repeat) toggleOwl(); e.preventDefault(); return; }
+  if (e.key === 't' || e.key === 'T') { if (!e.repeat) toggleTrunk(); return; }
   if (e.key === 'Enter') { chat.focus(); e.preventDefault(); return; }
   if (e.key === 'Escape') {
     // close the topmost panel, then drop the target, then open the Owl Post
+    if (!$('#atask').hidden) { $('#atask').hidden = true; atPending = null; return; }
     if (!$('#book').hidden) { $('#book').hidden = true; return; }
+    if (!$('#owl').hidden) { toggleOwl(false); return; }
+    if (!$('#trunk').hidden) { toggleTrunk(false); return; }
     if (!$('#seals').hidden) { $('#seals').hidden = true; return; }
     if (ctl.helpOpen()) { ctl.toggleHelp(false); return; }
     if (!$('#board').hidden) { $('#board').hidden = true; return; }
