@@ -320,7 +320,7 @@ export function createControls(d: ControlsDeps) {
     const rk = fallen ? reviveKey() : null;
     if (fallen && rk) {
       const w = wIdx.get(fallen)!, m = model(fallen)!.root.position;
-      return { label: L(`按 F 扶起 ${esc(w.n)}（快快复苏）`, `F — revive ${esc(w.n)} (Rennervate)`), x: m.x, z: m.z, y: m.y + 1.2, act: () => castAt(rk, fallen) };
+      return { label: L(`按 F 扶起 ${esc(w.n)}（快快复苏）`, `F — revive ${esc(w.n)} (Rennervate)`), x: m.x, z: m.z, y: m.y + 2.6, act: () => castAt(rk, fallen) };
     }
     if (seals) {
       for (const s of seals) {
@@ -331,7 +331,7 @@ export function createControls(d: ControlsDeps) {
           if (!l || Math.hypot(l.x - p.x, l.z - p.z) > 9.5) continue;
           return {
             label: L(`按 F 阅读书页 ·「${esc(s.zh)}」第 ${pg.page} 页`, `F — read the page (${esc(s.name.split('—')[0].trim())}, page ${pg.page})`),
-            x: l.x, z: l.z, y: heightAt(l.x, l.z) + 2.2,
+            x: l.x, z: l.z, y: heightAt(l.x, l.z) + 3.8,
             act: () => { lastRead = now(); d.send({ t: 'readpage', tier: s.tier }); },
           };
         }
@@ -537,7 +537,9 @@ export function createControls(d: ControlsDeps) {
       const q = m.root.position;
       mesh.position.set(q.x, heightAt(q.x, q.z) + 0.1, q.z);
       const ck = cIdx.get(k)?.k;
-      mesh.scale.setScalar(scale * (ck ? SIZE[ck] ?? 1 : 1));
+      // grow with distance so a far-off pixie's ring stays readable
+      const far = Math.max(1, d.camera.position.distanceTo(q) / 28);
+      mesh.scale.setScalar(scale * (ck ? SIZE[ck] ?? 1 : 1) * far);
       const col = REL_COLOR[relation(k)];
       mesh.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mm?.color) mm.color.setHex(col); });
     };
