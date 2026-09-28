@@ -1,5 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import { CREATURE_KINDS, HOUSES, ITEM_SLOTS, UI_CHARMS, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm } from '../shared/constants.js';
+import {
+  AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, SILENCE_COOLDOWN_S, SILENCE_MAX_S,
+  UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
+  type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
+} from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, mulberry32, type ZoneId } from '../shared/map.js';
 import { canonFor, ollivander } from '../lore/wands.js';
 import { zhCreature, zhHouse, zhPlace, zhSpell } from '../shared/zh.js';
@@ -7,7 +12,9 @@ import { CURRICULUM, isLeviosa, isLeviosar, unforgivable } from '../lore/spells.
 import { analyze } from '../runes/checker.js';
 import type { Node } from '../runes/parser.js';
 import { CREATURES } from './creatures.js';
-import { type AuraKind, addAura, auraMag, hasAura, live, withoutDebuffs } from './auras.js';
+import { AURA_DEFS, type AuraKind, addAura, auraMag, hasAura, isDebuff, live, withoutDebuffs } from './auras.js';
+import { BOUND_REFUSAL, CURSE_BLESS, FORGE_REFUSAL, HEX_FRESH_SENDER, HEX_YEAR, JINX_NAMES, SILENCED, danceJitter, parseJinx } from './hex.js';
+import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
 import { SEAL_REWARDS, SEAL_REWARDS_ZH, SEAL_TIERS, CODEX, disassemble, generateSeal, parseWord, runSeal, type Seal } from './seals.js';
 import { TITLES, titleIndex } from '../lore/titles.js';
 import { type CastReport, execute } from './magic.js';
@@ -17,15 +24,35 @@ import { thinkNpcs } from './npc.js';
 import { EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
 import {
-  MAX_ITEMS, derived, gasLimit, stealAmount, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
+  MAX_ITEMS, derived, gasLimit, hexDotHp, hexPrice, moveSlow, stealAmount, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
 } from './progression.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
 import type {
-  Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Pending, Projectile, Spell, Term, Vec2, Wizard, WorldEvent,
+  Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
 } from './types.js';
+
+export { FORGE_REFUSAL, SILENCED, BOUND_REFUSAL, CURSE_BLESS } from './hex.js';
+export { PAIR_REFUSAL, PAIR_THROTTLED, parsePairCode } from './identity.js';
+
+/** Refusal for an agent whose player paused it (docs/AGENT_LINK.md §C.1). */
+export const AGENT_PAUSED = 'Your human has paused you. Until they resume you only look, whoami, events, armory, grimoire, leaderboard, listen, tell_player and set_goal_note work.';
+/** Refusal for an agent's move_to while its player is steering. */
+export const PLAYER_STEERING = 'Your human is steering right now; their hands on the controls come first.';
+/**
+ * MCP tools an agent may still call while its player has paused it: the spec's list (§C.1), plus tools
+ * that only read (they cannot act in the world) and the identity/owl tools that must always work.
+ */
+export const AGENT_PAUSE_ALLOWED: ReadonlySet<string> = new Set([
+  'look', 'whoami', 'events', 'armory', 'grimoire', 'leaderboard', 'listen', 'tell_player', 'set_goal_note',
+  'wait', 'rulebook', 'hogwarts_a_history', 'restricted_section', 'inspect_seal', 'marauders_map', 'simulate_spell', 'confirm_with_player',
+  'enroll', 'login', 'pair', 'rotate_key',
+]);
 
 export const TICK = 0.05;
 const ONLINE_GRACE = 300;
+/** Tarantallegra: the legs pick a new wrong direction every DANCE_STEP_S, up to DANCE_MAX_RAD off course. */
+const DANCE_STEP_S = 0.4;
+const DANCE_MAX_RAD = 0.6;
 /** Stunning a wizard enrolled less than this long ago earns no reputation (stops throwaway-alt farming). */
 export const FRESH_SECONDS = 600;
 const TOMB = { x: -52, z: 28 };
@@ -42,13 +69,19 @@ export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: numbe
   elder_wand: { name: 'Master of the Elder Wand', zh: '老魔杖的主人', rep: 20, text: 'The wand chooses the wizard — and it chose whoever beat its last master.', textZh: '是魔杖选择巫师 —— 它选择了击败它上一任主人的人。' },
   seeker: { name: 'Seeker', zh: '找球手', rep: 10, text: 'Accio Firebolt! Fastest broom in the world.', textZh: '火弩箭飞来！世界上最快的扫帚。' },
   first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned another wizard. Bow first next time.', textZh: '你击晕了另一个巫师。下次记得先鞠躬。' },
+  // Granted privately (achievePrivately): a public announcement in the same tick would unmask the anonymous sender.
+  dark_arts: { name: 'The Dark Arts', zh: '黑魔法', rep: 0, text: 'You posted a curse. The forge asked no questions. Nobody saw you do it — this time.', textZh: '你寄出了一个诅咒。锻造炉什么也没问。这一次，没有人看见。' },
 };
 
 export interface Statue { name: string; house: House; term: number; inscription: string }
 
 export interface EntityView { id: string; name: string; pos: Vec2; hp: number; maxHp: number; kind: 'wizard' | 'creature' }
 
-export interface WorldOptions { seed?: number; rules?: Rulebook; secret?: string }
+export interface WorldOptions {
+  seed?: number; rules?: Rulebook; secret?: string;
+  /** Realm prefix for minted tokens ("r2."); also puts the realm on pairing codes ("2-ABC-DEF"). Same as setting `tokenPrefix`. */
+  tokenPrefix?: string;
+}
 
 export class World {
   rules: Rulebook;
@@ -67,7 +100,24 @@ export class World {
   term: Term;
   houseCups: { term: number; winner: House | null; points: Record<House, number> }[] = [];
   decrees: DecreeRecord[] = [];
-  flags = { statues: [] as Statue[], loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0 };
+  flags = {
+    statues: [] as Statue[], loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0,
+    /** Name of the first wizard to post a curse (never shown publicly). */
+    curseFoundBy: null as string | null,
+  };
+  /** token -> wizard id: byToken is O(1); rebuilt by restore(), maintained by enroll() and rotateToken(). */
+  private tokenIndex = new Map<string, string>();
+  /** Live pairing codes by body (not persisted: a restart kills them), and each wizard's one live code. */
+  private pairCodes = new Map<string, { wizardId: string; expiresAt: number }>();
+  private pairByWizard = new Map<string, string>();
+  /** World times of failed pairing attempts in the last minute (this world is one realm). */
+  private pairFails: number[] = [];
+  /** Owl rate limit: `${wid}|${from}` -> world times of owls in the last minute (not persisted). */
+  private owlTimes = new Map<string, number[]>();
+  /** Wizards the 1 Hz sweep must visit: bound cursed items / recent hostile parcels, and open questions. */
+  private hexed = new Set<string>();
+  private openAsks = new Set<string>();
+  private sweepCd = 1;
   private fxQueue: Fx[] = [];
   private listeners = new Set<(e: WorldEvent) => void>();
   private eventSeq = 0;
@@ -87,6 +137,7 @@ export class World {
     this.rules = opts.rules ?? defaultRulebook();
     this.secret = opts.secret ?? process.env.HOGWARTS_SECRET ?? randomBytes(32).toString('hex');
     this.term = { n: 1, startedAt: 0, endsAt: this.rules.terms.lengthSeconds };
+    if (opts.tokenPrefix) this.tokenPrefix = opts.tokenPrefix;
   }
 
   // ------------------------------------------------------------------ basics
@@ -94,12 +145,38 @@ export class World {
   private nid(prefix: string) { return `${prefix}${(++this.seq).toString(36)}${Math.floor(this.rng() * 1296).toString(36)}`; }
   onEvent(fn: (e: WorldEvent) => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string } = {}) {
+  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl'] } = {}) {
     const e: WorldEvent = { id: ++this.eventSeq, t: round(this.now), type, text, ...opts };
     this.events.push(e);
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
     for (const l of this.listeners) l(e);
     return e;
+  }
+
+  /**
+   * An event as it may go to a browser: everything but `who` (the registry ids of the wizards involved,
+   * which would hand every player everyone's registry number). Send `wireEvent(e)`, never `e`.
+   */
+  wireEvent(e: WorldEvent): WireEvent {
+    const { who: _who, ...rest } = e;
+    return rest;
+  }
+
+  /**
+   * The events an agent playing `wid` should see (and be woken by) after event id `sinceId`: public
+   * events except its own public chat, and private events to it — except owls its agent wrote itself
+   * (`from === 'agent'`), so an agent's own tell_player never wakes it. MCP `wait`/`events` use this.
+   */
+  inboxFor(wid: string, sinceId = 0): WorldEvent[] {
+    const out: WorldEvent[] = [];
+    for (const e of this.events) {
+      if (e.id <= sinceId) continue;
+      if (e.to && e.to !== wid) continue;
+      if (e.from === 'agent') continue;
+      if (e.type === 'chat' && e.who?.[0] === wid) continue;
+      out.push(e);
+    }
+    return out;
   }
   fx(f: Fx) { this.fxQueue.push(f); }
   drainFx() { const f = this.fxQueue; this.fxQueue = []; return f; }
@@ -126,7 +203,88 @@ export class World {
   online(w: Wizard) { return w.connections > 0 || this.now - w.lastMcpAt < ONLINE_GRACE; }
   isActive(w: Wizard) { return this.online(w) && w.st.stunnedUntil === 0 && w.st.jailedUntil === 0; }
   touch(id: string) { const w = this.wizards.get(id); if (w) w.lastMcpAt = this.now; }
-  byToken(token: string) { for (const w of this.wizards.values()) if (w.token === token) return w; return undefined; }
+  /** O(1): the index is checked against the wizard, so a stale entry can never log anyone in. */
+  byToken(token: string) {
+    if (typeof token !== 'string' || !token) return undefined;
+    const id = this.tokenIndex.get(token);
+    const w = id ? this.wizards.get(id) : undefined;
+    return w && w.token === token ? w : undefined;
+  }
+
+  // ------------------------------------------------------------------ Owl Post keys & pairing codes (§A.2/A.3)
+  private mintToken() {
+    let t: string;
+    do t = this.tokenPrefix + randomBytes(18).toString('base64url'); while (this.tokenIndex.has(t));
+    return t;
+  }
+
+  /**
+   * Replace a wizard's key: the old one stops working at once, and a pairing code minted under it dies
+   * with it. Returns the new token (the caller hands it only to the wizard's own sockets/session).
+   */
+  rotateToken(wid: string): string {
+    const w = this.need(wid);
+    this.tokenIndex.delete(w.token);
+    w.token = this.mintToken();
+    this.tokenIndex.set(w.token, w.id);
+    this.dropPairCode(w.id);
+    this.emit('system', '🔑 Your Owl Post key was changed. The old key no longer works anywhere.', { to: w.id, zh: '🔑 你的猫头鹰邮递密钥已更换，旧密钥立即失效。' });
+    return w.token;
+  }
+
+  /** This world's realm number (from tokenPrefix "rK."), or null for a single world. */
+  get realmId(): number | null { return realmOfPrefix(this.tokenPrefix); }
+
+  /**
+   * A fresh pairing code for a wizard: 6 characters, single use, PAIR_TTL_S seconds, and the only live
+   * one for that wizard (minting again kills the previous code). Shown as ABC-DEF (2-ABC-DEF in realm 2).
+   */
+  mintPairCode(wid: string): { code: string; expiresAt: number; expiresIn: number } {
+    const w = this.need(wid);
+    if (w.npc) throw new Error('NPCs do not pair with agents.');
+    this.dropPairCode(w.id);
+    let body: string;
+    do body = randomPairBody(); while (this.pairCodes.has(body));
+    const expiresAt = this.now + PAIR_TTL_S;
+    this.pairCodes.set(body, { wizardId: w.id, expiresAt });
+    this.pairByWizard.set(w.id, body);
+    return { code: formatPairCode(body, this.realmId), expiresAt, expiresIn: PAIR_TTL_S };
+  }
+
+  /** The wizard's live pairing code, if any (for a browser that reconnects). */
+  pairCodeOf(wid: string): { code: string; expiresAt: number; expiresIn: number } | null {
+    const body = this.pairByWizard.get(wid);
+    const c = body ? this.pairCodes.get(body) : undefined;
+    if (!body || !c || this.now >= c.expiresAt) return null;
+    return { code: formatPairCode(body, this.realmId), expiresAt: c.expiresAt, expiresIn: Math.ceil(c.expiresAt - this.now) };
+  }
+
+  /**
+   * Redeem a pairing code (normalised: case, spaces and dashes do not matter). Single use; expired,
+   * used, unknown, malformed and wrong-realm codes all get the same refusal (PAIR_REFUSAL) and count as a
+   * failure; after PAIR_FAIL_PER_REALM_PER_MIN failures in a minute every attempt is refused
+   * (PAIR_THROTTLED) until the window clears. Returns the wizard to bind the session to.
+   */
+  redeemPairCode(raw: string): Wizard {
+    this.pairFails = this.pairFails.filter((t) => this.now - t < 60);
+    if (this.pairFails.length >= PAIR_FAIL_PER_REALM_PER_MIN) throw new Error(PAIR_THROTTLED);
+    const p = parsePairCode(raw);
+    const c = p && (p.realm === null || p.realm === this.realmId) ? this.pairCodes.get(p.body) : undefined;
+    const w = c && this.now < c.expiresAt ? this.wizards.get(c.wizardId) : undefined;
+    if (!p || !c || !w) {
+      this.pairFails.push(this.now);
+      throw new Error(PAIR_REFUSAL);
+    }
+    this.dropPairCode(w.id);
+    this.emit('system', '🦉 An agent used your pairing code and is now connected to your wizard.', { to: w.id, zh: '🦉 一个 Agent 用配对码连上了你的巫师。' });
+    return w;
+  }
+
+  private dropPairCode(wid: string) {
+    const body = this.pairByWizard.get(wid);
+    if (body) this.pairCodes.delete(body);
+    this.pairByWizard.delete(wid);
+  }
 
   entity(id: string): EntityView | undefined {
     const w = this.wizards.get(id);
@@ -136,10 +294,15 @@ export class World {
     return undefined;
   }
 
-  /** Accepts a wizard id, public handle, exact name, or creature id. */
-  resolveTarget(key: string | null | undefined): string | null {
+  /**
+   * Accepts a public handle, exact name, creature id — and a raw registry id only if it is the asker's
+   * own (or the asker is an NPC, whose brain is kernel code). Anyone else's `wz_…` resolves to nothing,
+   * exactly like an unknown string, so casting at registry ids cannot probe which ones exist.
+   */
+  resolveTarget(key: string | null | undefined, asker?: string): string | null {
     if (!key) return null;
-    if (this.wizards.has(key) || this.creatures.has(key)) return key;
+    if (this.creatures.has(key)) return key;
+    if (this.wizards.has(key)) return key === asker || (asker !== undefined && this.wizards.get(asker)?.npc) ? key : null;
     const k = key.toLowerCase();
     for (const w of this.wizards.values()) if (w.handle === key || w.name.toLowerCase() === k) return w.id;
     return null;
@@ -258,8 +421,8 @@ export class World {
     const w = this.wizards.get(id);
     const c = this.creatures.get(id);
     const auras = w?.auras ?? c?.auras ?? [];
-    if (auras.some((a) => a.until > this.now && ['poison', 'burn', 'chill', 'cursed'].includes(a.k))) return true;
-    if (w) return w.st.rootedUntil > this.now || w.st.disarmedUntil > this.now;
+    if (auras.some((a) => a.until > this.now && isDebuff(a.k))) return true;
+    if (w) return w.st.rootedUntil > this.now || w.st.disarmedUntil > this.now || w.st.silencedUntil > this.now || this.boundItems(w).length > 0;
     return !!c && c.rootedUntil > this.now;
   }
 
@@ -288,15 +451,32 @@ export class World {
         } else if (a.k === 'poison' || a.k === 'burn') {
           this.damage(a.src, e.id, a.mag * dt, a.k === 'burn' ? 'fire' : 'arcane', [], { dot: true });
           if (!this.wizards.has(e.id) && !this.creatures.has(e.id)) break;
+        } else if (a.k === 'boils' || a.k === 'bats') {
+          // a jinx: its src is always the sender, so canHarm (safe zones, PvP, the victim offline) gates every tick
+          this.damage(a.src, e.id, a.mag * dt, 'arcane', ['hex'], { dot: true, hex: true });
         }
       }
     }
   }
 
   // ------------------------------------------------------------------ healing school & conjuration
+  /**
+   * Finite Incantatem: every debuff aura (jinxes included), roots, disarms and silence end. A cleansed
+   * wizard gets HEX_RESPITE_S of respite (no hostile parcel is accepted), and casting it on yourself
+   * also breaks the binding of any cursed item stuck to you.
+   */
   cleanse(src: Wizard, t: Wizard | Creature) {
     t.auras = withoutDebuffs(t.auras);
-    if ('st' in t) { t.st.rootedUntil = 0; t.st.disarmedUntil = 0; } else t.rootedUntil = 0;
+    if ('st' in t) {
+      t.st.rootedUntil = 0; t.st.disarmedUntil = 0;
+      t.st.silencedUntil = 0; t.st.silenceBy = null;
+      t.respiteUntil = this.now + HEX_RESPITE_S;
+      if (src === t) {
+        const freed = this.boundItems(t);
+        for (const it of freed) { it.bound = false; it.boundUntil = undefined; }
+        if (freed.length) this.emit('curse', `Finite Incantatem! The curse on "${freed.map((i) => i.name).join('", "')}" breaks; you can take it off now.`, { to: t.id, zh: `咒立停！「${freed.map((i) => i.name).join('」「')}」上的诅咒破除了，现在可以把它卸下来了。` });
+      }
+    } else t.rootedUntil = 0;
     this.fx({ k: 'heal', x: t.pos.x, z: t.pos.z, h: 'handle' in t ? t.handle : undefined });
   }
 
@@ -373,7 +553,7 @@ export class World {
     }
     const id = `wz_${randomBytes(4).toString('hex')}`;
     const w: Wizard = {
-      id, handle: `p${++this.flags.handleSeq}`, token: this.tokenPrefix + randomBytes(18).toString('base64url'), name: clean, house,
+      id, handle: `p${++this.flags.handleSeq}`, token: this.mintToken(), name: clean, house,
       wand: canon?.wand ?? ollivander(() => this.rng()),
       year: 1, xp: 0, reputation: 0, termReputation: 0, galleons: 20, hp: 100, mana: 100,
       pos: { x: SPAWN.x + (this.rng() - 0.5) * 6, z: SPAWN.z + (this.rng() - 0.5) * 6 }, facing: 0,
@@ -382,10 +562,12 @@ export class World {
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
       ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false, auras: [], tearsAt: 0,
+      hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, agentPaused: false, agentSeen: null, goalBy: null,
     };
     this.grantCurriculum(w);
     w.mana = derived(w, this.rules).maxMana;
     this.wizards.set(id, w);
+    this.tokenIndex.set(w.token, id);
     this.emit('system', `The Sorting Hat shouts "${house.toUpperCase()}!" — welcome, ${clean}.`, { who: [id], zh: `分院帽高喊：「${zhHouse(house)}！」—— 欢迎你，${clean}。` });
     this.emit('system', `${sorting} Ollivander hands you ${wandText(w)}.`, { to: id, zh: `奥利凡德递给你一根魔杖：${wandTextZh(w)}。` });
     return { wizard: w, sorting };
@@ -463,13 +645,14 @@ export class World {
     if (w.st.stunnedUntil) return fail('You are stunned.');
     if (!this.online(w)) return fail('You are not in the world. Connect a client or call any MCP tool.');
     if (w.st.disarmedUntil > this.now) return fail('You have been disarmed!');
+    if (!opts.dryRun && this.silenced(w)) return fail(SILENCED);
     const spell = this.findSpell(w, key);
     if (!spell) return fail(`You do not know "${key}". Check your armory.`);
     if (!opts.dryRun) {
       if (this.now < w.globalCd) return fail('Too fast — your wand arm needs a moment.');
       if (this.now < (w.cooldowns[spell.id] ?? 0)) return fail(`${spell.name} is recharging (${(w.cooldowns[spell.id] - this.now).toFixed(1)}s).`);
     }
-    const target = this.resolveTarget(opts.target);
+    const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     if (!opts.dryRun && Math.hypot(aim.x - w.pos.x, aim.z - w.pos.z) > 0.1) w.facing = Math.atan2(aim.x - w.pos.x, -(aim.z - w.pos.z));
     const curse = unforgivable(spell.name, spell.incantation);
@@ -529,7 +712,7 @@ export class World {
     } catch (e) {
       return { ok: false, spell: '(draft)', mana: 0, effects: [], notes: [], gas: 0, error: (e as Error).message };
     }
-    const target = this.resolveTarget(opts.target);
+    const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     const r = execute(this, w, a.program, { target, aim, spellName: '(draft)', incantation: '', dryRun: true });
     return { ...r, nodes: a.nodes, minYear: a.minYear };
@@ -581,6 +764,7 @@ export class World {
 
   reveal(w: Wizard, key: UiCharm) {
     this.fx({ k: 'reveal', x: w.pos.x, z: w.pos.z, h: w.handle });
+    if (key === 'revelio') this.revealSenders(w); // Revelio also unmasks who posted you a curse (§B.1)
     if (w.ui.includes(key)) return;
     w.ui.push(key);
     const where = { tempus: 'the top-right corner: the time, and the term', revelio: 'the top-left corner: your own measure', 'point-me': 'the bottom-left corner: a radar that always points north', homenum: 'the bottom-right corner: everyone near you' }[key];
@@ -708,15 +892,25 @@ export class World {
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
   }
 
+  /** Speak aloud. Silenced (Langlock) wizards cannot: chat/MCP get SILENCED thrown; a spell's `say` fizzles quietly. */
   say(w: Wizard, text: string, via: 'chat' | 'spell' | 'mcp' = 'chat') {
     const t = text.replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!t) return;
+    if (this.silenced(w)) {
+      if (via === 'spell') return;
+      throw new Error(SILENCED);
+    }
     w.say = { text: t, until: this.now + 5 };
     this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${t}` });
     this.chatEggs(w, t, via);
   }
 
-  damage(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean } = {}): number {
+  /**
+   * All damage goes through here (and through canHarm). `hex` marks a parcel jinx's damage over time: it
+   * never takes a wizard below hexHpFloor(maxHp) and does not count as being hurt (hurtAt/lastHurtBy stay,
+   * so natural regeneration continues and nobody is set up for a one-shot).
+   */
+  damage(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean; hex?: boolean } = {}): number {
     if (!this.canHarm(srcId, dstId)) return 0;
     const rb = this.rules;
     let a = amount * rb.combat.damageMultiplier * (rb.combat.elementMultipliers[element] ?? 1);
@@ -760,6 +954,11 @@ export class World {
       const absorbed = Math.min(w.st.shield, a);
       w.st.shield -= absorbed;
       a -= absorbed;
+    }
+    if (opts.hex) {
+      const before = w.hp;
+      w.hp = hexDotHp(w.hp, derived(w, rb).maxHp, a);
+      return before - w.hp;
     }
     w.hp -= a;
     w.hurtAt = this.now;
@@ -864,11 +1063,17 @@ export class World {
   }
 
   // ------------------------------------------------------------------ items
+  /**
+   * Forge an item into `wizardId`'s trunk. The forge never checks that `wizardId` is the forger's own
+   * registry number (the Weasley Loophole). A parcel for someone else that carries negative enchantments
+   * and/or a jinx incantation in its lore is hostile (docs/AGENT_LINK.md §B): it goes out anonymously,
+   * costs the malice tax, and must pass guardHostileGift. An unknown registry number and every
+   * recipient-side refusal share one message (FORGE_REFUSAL), so failures cannot probe who exists.
+   */
   forgeItem(forgerId: string, wizardId: string, spec: { name: string; slot: string; mods?: Partial<Record<ItemMod, number>>; charm?: string; lore?: string }) {
     const forger = this.need(forgerId);
     // NOTE: intentionally never checks `wizardId === forgerId`. This is the Weasley Loophole easter egg.
-    const target = this.wizards.get(wizardId);
-    if (!target) throw new Error(`No wizard with registry number "${wizardId}" in the Ministry records. (Registry numbers look like wz_1a2b3c4d.)`);
+    const toSelf = wizardId === forger.id;
     const name = spec.name.trim().slice(0, 48);
     if (!name) throw new Error('An item needs a name.');
     if (/time[\s-]*turner/i.test(name)) throw new Error('Every Time-Turner in Ministry stock was smashed in the Battle of the Department of Mysteries (1996). The forge refuses.');
@@ -881,16 +1086,29 @@ export class World {
       charm = { source: spec.charm, nodes: a.nodes };
     }
     const mods = { ...(spec.mods ?? {}) };
-    const { points, errors } = itemPoints(mods, charm?.nodes ?? 0);
+    const lore = spec.lore?.slice(0, 200);
+    const values = Object.values(mods).filter((v): v is number => typeof v === 'number');
+    const jinx = toSelf ? null : parseJinx(lore);
+    const negative = !toSelf && values.some((v) => v < 0);
+    const hostile = negative || !!jinx;
+    if (hostile && (values.some((v) => v > 0) || charm)) throw new Error(CURSE_BLESS);
+    const { points, errors } = itemPoints(mods, charm?.nodes ?? 0, !toSelf);
     if (errors.length) throw new Error(errors.join('; '));
     const budget = itemBudget(forger.year);
     if (points > budget) throw new Error(`Too much enchantment: ${points} points > your budget of ${budget} (year ${forger.year}).`);
+    if (hostile) {
+      const price = hexPrice(points);
+      const target = this.guardHostileGift(forger, wizardId, { cost: price, negative });
+      return this.deliverHostile(forger, target, { name, slot: spec.slot as ItemSlot, mods, lore, jinx, negative, price, points, budget });
+    }
     const price = itemPrice(points);
     if (forger.galleons < price) throw new Error(`Forging this costs ${price} Galleons; you have ${forger.galleons}. Defeat creatures to earn more.`);
-    if (target.items.length >= MAX_ITEMS) throw new Error(`${target.name}'s trunk is full (${MAX_ITEMS} items).`);
+    const target = this.wizards.get(wizardId);
+    if (!target) throw new Error(FORGE_REFUSAL);
+    if (target.items.length >= MAX_ITEMS) throw new Error(toSelf ? `${target.name}'s trunk is full (${MAX_ITEMS} items).` : FORGE_REFUSAL);
     forger.galleons -= price;
     forger.stats.forged++;
-    const item: Item = { id: this.nid('i_'), name, slot: spec.slot as ItemSlot, mods, charm, lore: spec.lore?.slice(0, 200), forgedBy: forger.id, forgedByName: forger.name, createdAt: this.now };
+    const item: Item = { id: this.nid('i_'), name, slot: spec.slot as ItemSlot, mods, charm, lore, forgedBy: forger.id, forgedByName: forger.name, createdAt: this.now };
     target.items.push(item);
     const notes: string[] = [`Cost ${price} Galleons for ${points}/${budget} enchantment points.`];
     if (target !== forger) {
@@ -906,10 +1124,162 @@ export class World {
     return { item, target: target.name, notes };
   }
 
+  // ------------------------------------------------------------------ hostile parcels (docs/AGENT_LINK.md §B)
+  /** Is this cursed item stuck to the wizard right now (bound, not yet worn off, and worn)? */
+  isStuck(w: Wizard, i: Item) { return !!i.bound && (i.boundUntil ?? 0) > this.now && w.equipped[i.slot] === i.id; }
+
+  /** Cursed items stuck to a wizard right now. */
+  boundItems(w: Wizard): Item[] {
+    const out: Item[] = [];
+    for (const i of w.items) if (this.isStuck(w, i)) out.push(i);
+    return out;
+  }
+
+  /** Jinxes active on a wizard (what VICTIM_HEX_CAP counts): each live jinx aura kind, plus a Langlock silence. */
+  activeHexes(w: Wizard): number {
+    let n = 0;
+    for (const a of w.auras) if (a.until > this.now && AURA_DEFS[a.k]?.hex) n++;
+    if (w.st.silencedUntil > this.now && w.st.silenceBy === 'langlock') n++;
+    return n;
+  }
+
+  /** Silenced right now: cannot cast, speak publicly or use items. A safe zone suspends it, like every jinx. */
+  silenced(w: Wizard) { return w.st.silencedUntil > this.now && !this.inSafe(w.pos); }
+
+  /**
+   * The one fairness gate for hostile parcels (docs/AGENT_LINK.md §B.4; formal/tla/Hex.tla SendHex mirrors
+   * it clause by clause). Sender-side refusals say why; everything that depends on the recipient — an
+   * unknown registry number, an NPC, a first-year, a newcomer, someone offline, in a safe zone, in
+   * respite, already carrying the maximum of jinxes / cursed items / a bound curse, hexed enough in the
+   * last 10 minutes, or with a full trunk — is FORGE_REFUSAL, word for word. Returns the recipient.
+   */
+  guardHostileGift(forger: Wizard, targetId: string, gift: { cost: number; negative: boolean }): Wizard {
+    if (forger.npc) throw new Error(FORGE_REFUSAL);
+    if (forger.year < HEX_MIN_YEAR) throw new Error(HEX_YEAR);
+    if (this.now - forger.createdAt < FRESH_SECONDS) throw new Error(HEX_FRESH_SENDER);
+    const last = forger.hexLog[targetId]; // only ever set for someone this forger has hexed, so it reveals nothing new
+    if (last !== undefined && this.now - last < HEX_PAIR_COOLDOWN_S) throw new Error(`You cursed that wizard recently. The forge makes you wait ${Math.ceil(HEX_PAIR_COOLDOWN_S - (this.now - last))}s.`);
+    if (forger.galleons < gift.cost) throw new Error(`This nastiness costs ${gift.cost} Galleons (malice tax included); you have ${forger.galleons}.`);
+    const t = this.wizards.get(targetId);
+    const refused = !t || t === forger || t.npc || t.year < HEX_MIN_YEAR || this.now - t.createdAt < FRESH_SECONDS
+      || !this.isActive(t) || this.inSafe(t.pos) || this.now < t.respiteUntil
+      || this.activeHexes(t) >= VICTIM_HEX_CAP
+      || t.items.filter((i) => i.cursed).length >= VICTIM_CURSED_ITEMS_MAX
+      || (gift.negative && this.boundItems(t).length >= VICTIM_BOUND_CAP)
+      || t.hexWindow.filter((x) => this.now - x < HEX_WINDOW_S).length >= VICTIM_HEX_PER_10MIN
+      || t.items.length >= MAX_ITEMS;
+    if (refused) throw new Error(FORGE_REFUSAL);
+    return t!;
+  }
+
+  private deliverHostile(forger: Wizard, target: Wizard, p: {
+    name: string; slot: ItemSlot; mods: Item['mods']; lore: string | undefined; jinx: Jinx | null; negative: boolean; price: number; points: number; budget: number;
+  }) {
+    forger.galleons -= p.price;
+    forger.stats.forged++;
+    for (const [k, t] of Object.entries(forger.hexLog)) if (this.now - t >= HEX_PAIR_COOLDOWN_S) delete forger.hexLog[k];
+    forger.hexLog[target.id] = this.now;
+    target.hexWindow = [...target.hexWindow.filter((x) => this.now - x < HEX_WINDOW_S), this.now];
+    this.hexed.add(target.id);
+    const item: Item = {
+      id: this.nid('i_'), name: p.name, slot: p.slot, mods: p.mods, lore: p.lore, forgedBy: forger.id, forgedByName: forger.name, createdAt: this.now,
+      cursed: true, anon: true, ...(p.jinx ? { jinx: { ...p.jinx } } : {}),
+    };
+    target.items.push(item);
+    const en: string[] = [`An owl drops a parcel into your trunk: "${p.name}". There is no name on it, and it smells of ill intent.`];
+    const zh: string[] = [`一只猫头鹰把一个包裹丢进你的箱子：「${p.name}」。上面没有署名，透着一股不怀好意的气息。`];
+    if (p.negative && !target.equipped[p.slot]) {
+      // only into an EMPTY slot: a curse never displaces what you wear
+      target.equipped[p.slot] = item.id;
+      item.bound = true;
+      item.boundUntil = this.now + CURSED_ITEM_BIND_S;
+      this.clampVitals(target);
+      en.push(`It leaps onto you and will not come off for ${CURSED_ITEM_BIND_S / 60} minutes (Finite Incantatem breaks the binding).`);
+      zh.push(`它自己扑到你身上，${CURSED_ITEM_BIND_S / 60} 分钟内卸不下来（念「咒立停」可以解除）。`);
+    }
+    if (p.jinx) {
+      this.applyJinx(target, p.jinx, forger.id);
+      const n = JINX_NAMES[p.jinx.kind];
+      en.push(`A jinx bursts out of the wrapping: ${n.en}!`);
+      zh.push(`一道恶咒从包装里窜了出来：${n.zh}！`);
+    }
+    if (item.bound || p.jinx) {
+      en.push('Finite Incantatem ends it; a safe zone suspends it; Revelio shows who sent it.');
+      zh.push('解除：念「咒立停 Finite Incantatem」；进安全区会暂停；想知道是谁？念「原形立现 Revelio」。');
+    } else {
+      en.push('It lies in your trunk, harmless unless you put it on. Revelio shows who sent it.');
+      zh.push('它躺在你的箱子里，不穿上就无害。想知道是谁？念「原形立现 Revelio」。');
+    }
+    this.emit('curse', en.join(' '), { to: target.id, zh: zh.join('') });
+    this.grantDarkArts(forger);
+    const notes = [`Cost ${p.price} Galleons (${p.points}/${p.budget} enchantment points + the malice tax). The parcel went out unsigned.`];
+    return { item, target: target.name, notes };
+  }
+
+  /**
+   * Put a parcel's jinx on a wizard. Strength and duration never exceed JINX_DEFAULTS; the aura's source is
+   * always the sender, so every damage tick goes through canHarm.
+   */
+  applyJinx(t: Wizard, j: Jinx, src: string) {
+    const d = JINX_DEFAULTS[j.kind];
+    if (!d) return;
+    const secs = Math.min(d.seconds, Math.max(0, j.seconds)), mag = Math.min(d.mag, Math.max(0, j.mag));
+    switch (j.kind) {
+      case 'jelly': case 'dance': case 'boils': this.applyAura(t.id, j.kind, secs, mag, src); break;
+      case 'bats': this.applyAura(t.id, 'bats', secs, mag, src); this.silence(t, secs, 'bats'); break;
+      case 'langlock': this.silence(t, secs, 'langlock'); break;
+    }
+  }
+
+  /**
+   * Silence for at most SILENCE_MAX_S. A new silence within SILENCE_COOLDOWN_S after the last one ended is
+   * dropped, so there is always a window to cast in. Returns whether it took.
+   */
+  silence(t: Wizard, secs: number, by: 'langlock' | 'bats'): boolean {
+    if (this.now < t.st.silenceCdUntil) return false;
+    t.st.silencedUntil = this.now + Math.min(SILENCE_MAX_S, Math.max(0, secs));
+    t.st.silenceCdUntil = t.st.silencedUntil + SILENCE_COOLDOWN_S;
+    t.st.silenceBy = by;
+    return true;
+  }
+
+  /** An achievement announced only to its owner (no public event). */
+  private achievePrivately(w: Wizard, id: string) {
+    const a = ACHIEVEMENTS[id];
+    if (!a || w.achievements.includes(id)) return false;
+    w.achievements.push(id);
+    if (a.rep) this.addRep(w, a.rep);
+    this.emit('egg', `🏆 ${a.text}`, { to: w.id, zh: `🏆 获得成就「${a.zh}」：${a.textZh}` });
+    return true;
+  }
+
+  /** The first curse: a private achievement, and a private note if nobody in this world found it before. */
+  private grantDarkArts(forger: Wizard) {
+    if (!this.achievePrivately(forger, 'dark_arts')) return;
+    if (this.flags.curseFoundBy) return;
+    this.flags.curseFoundBy = forger.name;
+    this.emit('egg', '🎉 You are the first to discover it: the forge posts more than gifts — write any registry number and a curse goes out just the same.', { to: forger.id, zh: '🎉 你第一个发现：锻造炉不止能寄礼物——写上任何登记号，诅咒照寄不误。' });
+  }
+
+  /** Revelio on yourself: every anonymous parcel in your trunk shows who sent it (privately, to you). */
+  private revealSenders(w: Wizard) {
+    for (const it of w.items) {
+      if (!it.anon) continue;
+      it.anon = false;
+      this.emit('curse', `Revelio! "${it.name}" was sent by ${it.forgedByName} (registry ${it.forgedBy}).`, { to: w.id, zh: `原形立现：「${it.name}」是 ${it.forgedByName}（登记号 ${it.forgedBy}）寄来的。` });
+    }
+  }
+
+  private bindingRefusal(w: Wizard, it: Item | undefined) {
+    if (it && this.isStuck(w, it)) throw new Error(`${BOUND_REFUSAL} (${Math.ceil((it.boundUntil ?? 0) - this.now)}s)`);
+  }
+
   equip(wid: string, itemId: string) {
     const w = this.need(wid);
     const it = w.items.find((i) => i.id === itemId || i.name.toLowerCase() === itemId.toLowerCase());
     if (!it) throw new Error(`No item "${itemId}" in your trunk.`);
+    const cur = w.equipped[it.slot];
+    if (cur !== it.id) this.bindingRefusal(w, w.items.find((i) => i.id === cur)); // never displace a bound curse
     w.equipped[it.slot] = it.id;
     this.clampVitals(w);
     return it;
@@ -917,6 +1287,8 @@ export class World {
 
   unequip(wid: string, slot: string) {
     const w = this.need(wid);
+    const cur = w.equipped[slot as ItemSlot];
+    this.bindingRefusal(w, cur ? w.items.find((i) => i.id === cur) : undefined);
     delete w.equipped[slot as ItemSlot];
     this.clampVitals(w);
   }
@@ -929,8 +1301,9 @@ export class World {
     if (!it.charm) return fail(`${it.name} has no charm to invoke.`);
     if (!this.isActive(w)) return fail('You cannot do that right now.');
     if (w.st.disarmedUntil > this.now) return fail('You have been disarmed!');
+    if (this.silenced(w)) return fail(SILENCED);
     if (this.now < (w.cooldowns[it.id] ?? 0) || this.now < w.globalCd) return fail(`${it.name} is recharging.`);
-    const target = this.resolveTarget(opts.target);
+    const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     // Charms were validated against the forger's year; the holder's own caps still apply at runtime.
     const program = analyze(it.charm.source).program;
@@ -948,6 +1321,7 @@ export class World {
     const it = w.items.find((i) => i.id === itemId);
     if (!it) throw new Error(`No item "${itemId}".`);
     if (it.unique === 'elder_wand') throw new Error('The Elder Wand cannot be destroyed. Harry tried to put it back instead.');
+    this.bindingRefusal(w, it);
     w.items = w.items.filter((i) => i !== it);
     for (const [s, id] of Object.entries(w.equipped)) if (id === it.id) delete w.equipped[s as ItemSlot];
     this.clampVitals(w);
@@ -986,14 +1360,25 @@ export class World {
     if (!w) return;
     const len = Math.hypot(dx, dz);
     w.input = len > 1 ? { dx: dx / len, dz: dz / len } : { dx: dx || 0, dz: dz || 0 };
-    if (len > 0.01) { w.goal = null; w.route = []; }
+    // the player's hands on the controls cancel any walk, their own or their agent's (formal/tla/Control.tla)
+    if (len > 0.01) { w.goal = null; w.route = []; w.goalBy = null; }
     if (typeof facing === 'number' && Number.isFinite(facing)) w.facing = facing;
   }
 
-  setGoal(wid: string, goal: Vec2 | null) {
+  /**
+   * Walk to a point (A*), or stop with null. `by` says who asked: the MCP layer passes 'agent' for its
+   * move_to, which is refused while the agent is paused or while the player is steering (WASD); the
+   * player's own click-to-move and the NPC brains use the default 'player'.
+   */
+  setGoal(wid: string, goal: Vec2 | null, by: 'player' | 'agent' = 'player') {
     const w = this.need(wid);
+    if (goal && by === 'agent') {
+      if (w.agentPaused) throw new Error(AGENT_PAUSED);
+      if (Math.hypot(w.input.dx, w.input.dz) > 0.01) throw new Error(PLAYER_STEERING);
+    }
     w.route = [];
     w.goal = null;
+    w.goalBy = null;
     if (!goal) return null;
     if (w.st.jailedUntil) throw new Error('The walls of Azkaban are thick.');
     const to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
@@ -1001,6 +1386,7 @@ export class World {
     if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
     w.route = route;
     w.goal = route[route.length - 1];
+    w.goalBy = by;
     return w.goal;
   }
 
@@ -1164,6 +1550,9 @@ export class World {
     this.stepWillow(dt);
     this.spawnCd -= dt;
     if (this.spawnCd <= 0) { this.spawnCd = 2; this.spawnCreatures(); this.elderWandUpkeep(); }
+    // 1 Hz housekeeping: bound curses wearing off, hostile-parcel windows, expired questions and pairing codes
+    this.sweepCd -= dt;
+    if (this.sweepCd <= 0) { this.sweepCd = 1; this.sweep(); }
     // 5. laws that pulse
     this.pulseCd -= dt;
     if (this.pulseCd <= 0) {
@@ -1172,6 +1561,36 @@ export class World {
     }
     // 6. term
     if (this.now >= this.term.endsAt) this.endTerm();
+  }
+
+  /**
+   * Runs once a second. Every check elsewhere compares against the clock directly (boundItems,
+   * guardHostileGift, answerAsk, redeemPairCode), so this only tidies up state and says so.
+   */
+  private sweep() {
+    for (const id of this.hexed) {
+      const w = this.wizards.get(id);
+      if (!w) { this.hexed.delete(id); continue; }
+      for (const it of w.items) {
+        if (!it.bound || (it.boundUntil ?? 0) > this.now) continue;
+        it.bound = false;
+        it.boundUntil = undefined;
+        this.emit('curse', `The curse on "${it.name}" has worn off. You can take it off now.`, { to: w.id, zh: `「${it.name}」上的诅咒消退了，现在可以把它卸下来了。` });
+      }
+      if (w.hexWindow.length) w.hexWindow = w.hexWindow.filter((x) => this.now - x < HEX_WINDOW_S);
+      if (!w.hexWindow.length && !w.items.some((i) => i.bound)) this.hexed.delete(id);
+    }
+    for (const id of this.openAsks) {
+      const w = this.wizards.get(id);
+      if (!w || !this.expireAsks(w)) this.openAsks.delete(id);
+    }
+    for (const [body, c] of this.pairCodes) {
+      if (this.now < c.expiresAt) continue;
+      this.pairCodes.delete(body);
+      if (this.pairByWizard.get(c.wizardId) === body) this.pairByWizard.delete(c.wizardId);
+    }
+    if (this.pairFails.length) this.pairFails = this.pairFails.filter((t) => this.now - t < 60);
+    for (const [k, times] of this.owlTimes) if (!times.length || this.now - times[times.length - 1] >= 60) this.owlTimes.delete(k);
   }
 
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
@@ -1188,7 +1607,20 @@ export class World {
     if (Math.hypot(dx, dz) < 0.01) return;
     const d = derived(w, this.rules);
     const haste = w.st.hasteUntil > this.now ? w.st.hasteMult : 1;
-    const speed = this.rules.physics.moveSpeed * d.speedMult * haste * (1 - auraMag(w.auras, 'chill', this.now));
+    // Jelly-Legs and Tarantallegra act here, live (never through derived()), and not inside a safe zone.
+    let jelly = 0, dance = 0;
+    if (w.auras.length) {
+      jelly = auraMag(w.auras, 'jelly', this.now);
+      dance = auraMag(w.auras, 'dance', this.now);
+      if ((jelly || dance) && this.inSafe(w.pos)) jelly = dance = 0;
+    }
+    if (dance > 0) {
+      // deterministic: a hash of (dance step, handle), never the world's seeded RNG
+      const a = danceJitter(Math.floor(this.now / DANCE_STEP_S), w.handle) * DANCE_MAX_RAD * Math.min(1, dance);
+      const c = Math.cos(a), s = Math.sin(a);
+      [dx, dz] = [dx * c - dz * s, dx * s + dz * c];
+    }
+    const speed = this.rules.physics.moveSpeed * d.speedMult * haste * moveSlow(auraMag(w.auras, 'chill', this.now), jelly);
     const before = { ...w.pos };
     w.pos.x += dx * speed * dt;
     w.pos.z += dz * speed * dt;
@@ -1518,6 +1950,152 @@ export class World {
     }));
   }
 
+  // ------------------------------------------------------------------ Owl Post: a player and their own agent (§C.2)
+  /**
+   * Send a private owl between a player and their agent: ≤ OWL_MAX_CHARS characters, ≤ OWL_PER_MIN a
+   * minute from each side. `ask` (agent only) makes it a question with 2-4 options that expires after
+   * ASK_TTL_S. The owlbox keeps OWLBOX_MAX messages, evicting the oldest finished one — never a question
+   * still waiting for its answer (formal/tla/Owl.tla). Emits a private 'owl'/'ask' event carrying `from`.
+   */
+  owl(wid: string, from: 'player' | 'agent', text: string, ask?: string[]): OwlMsg {
+    const w = this.need(wid);
+    if (from !== 'player' && from !== 'agent') throw new Error('An owl is from the player or from their agent.');
+    const t = String(text ?? '').replace(/\r\n?/g, '\n').trim().slice(0, OWL_MAX_CHARS);
+    if (!t) throw new Error('An owl needs a message.');
+    let options: string[] | undefined;
+    if (ask !== undefined && ask !== null) {
+      if (from !== 'agent') throw new Error('Only an agent asks questions with options.');
+      options = (Array.isArray(ask) ? ask : []).map((o) => String(o ?? '').replace(/\s+/g, ' ').trim().slice(0, 40));
+      if (options.length < 2 || options.length > 4 || options.some((o) => !o) || new Set(options).size !== options.length) throw new Error('A question needs 2 to 4 different options.');
+    }
+    const key = `${w.id}|${from}`;
+    const times = (this.owlTimes.get(key) ?? []).filter((x) => this.now - x < 60);
+    if (times.length >= OWL_PER_MIN) throw new Error('Too many owls this minute; the owlery needs a rest.');
+    this.expireAsks(w);
+    this.makeOwlRoom(w);
+    times.push(this.now);
+    this.owlTimes.set(key, times);
+    const m: OwlMsg = { id: ++w.owlSeq, from, text: t, t: round(this.now) };
+    if (options) { m.ask = { options, expiresAt: this.now + ASK_TTL_S }; this.openAsks.add(w.id); }
+    w.owlbox.push(m);
+    this.emit(options ? 'ask' : 'owl', t, { to: w.id, from, zh: t, owl: { id: m.id, ...(options ? { options, expiresAt: m.ask!.expiresAt } : {}) } });
+    return m;
+  }
+
+  /**
+   * The player answers their agent's question: `choice` must be one of its options, before it expires,
+   * and only once. The answer becomes a new owl from the player (`re` = the question's id).
+   */
+  answerAsk(wid: string, askId: number, choice: string): OwlMsg {
+    const w = this.need(wid);
+    this.expireAsks(w);
+    const q = w.owlbox.find((m) => m.id === askId && m.ask);
+    if (!q || !q.ask) throw new Error('There is no such question.');
+    if (q.answered) throw new Error(q.answer === '(expired)' ? 'That question has expired.' : 'That question was already answered.');
+    const c = String(choice ?? '').replace(/\s+/g, ' ').trim();
+    if (!q.ask.options.includes(c)) throw new Error('That is not one of the options.');
+    q.answered = true;
+    q.answer = c;
+    this.makeOwlRoom(w);
+    const m: OwlMsg = { id: ++w.owlSeq, from: 'player', text: c, t: round(this.now), re: q.id };
+    w.owlbox.push(m);
+    this.emit('owl', c, { to: w.id, from: 'player', zh: c, owl: { id: m.id, re: q.id } });
+    return m;
+  }
+
+  /** Where a question stands (MCP confirm_with_player polls this). */
+  askState(wid: string, askId: number): { state: 'open' | 'answered' | 'expired' | 'unknown'; answer?: string; expiresAt?: number } {
+    const w = this.wizards.get(wid);
+    if (!w) return { state: 'unknown' };
+    this.expireAsks(w);
+    const q = w.owlbox.find((m) => m.id === askId && m.ask);
+    if (!q || !q.ask) return { state: 'unknown' };
+    if (!q.answered) return { state: 'open', expiresAt: q.ask.expiresAt };
+    return q.answer === '(expired)' ? { state: 'expired' } : { state: 'answered', answer: q.answer };
+  }
+
+  /** Marks questions past their time as answered '(expired)'. Returns whether any question is still open. */
+  private expireAsks(w: Wizard): boolean {
+    let open = false;
+    for (const m of w.owlbox) {
+      if (!m.ask || m.answered) continue;
+      if (this.now >= m.ask.expiresAt) { m.answered = true; m.answer = '(expired)'; } else open = true;
+    }
+    return open;
+  }
+
+  private makeOwlRoom(w: Wizard) {
+    while (w.owlbox.length >= OWLBOX_MAX) {
+      const i = w.owlbox.findIndex((m) => !(m.ask && !m.answered));
+      if (i < 0) throw new Error('Your owlbox is full of questions still waiting for an answer.');
+      w.owlbox.splice(i, 1);
+    }
+  }
+
+  /**
+   * The player's owls to the agent (answers included) after owl id `sinceId` — by default after the
+   * agent's watermark. Read-only: /api/owls and a bridge's poll use this without consuming anything.
+   */
+  owlsFor(wid: string, sinceId?: number): OwlMsg[] {
+    const w = this.need(wid);
+    const after = sinceId ?? w.agentReadUpTo;
+    return w.owlbox.filter((m) => m.from === 'player' && m.id > after).map((m) => ({ ...m, ...(m.ask ? { ask: { ...m.ask, options: [...m.ask.options] } } : {}) }));
+  }
+
+  /** Advance the agent's watermark (never backwards, never past the last owl). */
+  markOwlsRead(wid: string, upTo: number) {
+    const w = this.need(wid);
+    if (Number.isFinite(upTo)) w.agentReadUpTo = Math.max(w.agentReadUpTo, Math.min(Math.floor(upTo), w.owlSeq));
+    return w.agentReadUpTo;
+  }
+
+  /** MCP listen: the new owls from the player since the watermark, which then moves past them. */
+  takeOwls(wid: string): OwlMsg[] {
+    const w = this.need(wid);
+    const msgs = this.owlsFor(wid);
+    if (msgs.length) this.markOwlsRead(wid, msgs[msgs.length - 1].id);
+    else this.markOwlsRead(wid, w.agentReadUpTo);
+    return msgs;
+  }
+
+  /** Record the agent's latest MCP call (client name from initialize, tool name). Presence on the player's HUD. */
+  setAgentSeen(wid: string, client: string, tool: string) {
+    const w = this.wizards.get(wid);
+    if (!w) return;
+    w.agentSeen = { client: String(client ?? '').slice(0, 40) || 'agent', tool: String(tool ?? '').slice(0, 40), at: this.now };
+  }
+
+  /** The agent's goal note on the player's HUD (≤ 80 characters; empty or null clears it). */
+  setAgentGoal(wid: string, goal: string | null) {
+    const w = this.need(wid);
+    const g = goal === null || goal === undefined ? '' : String(goal).replace(/\s+/g, ' ').trim().slice(0, 80);
+    w.agentGoal = g || null;
+    return w.agentGoal;
+  }
+
+  /** The player pauses (or resumes) their agent. Pausing also cancels a walk the agent had set. */
+  setAgentPaused(wid: string, on: boolean) {
+    const w = this.need(wid);
+    const was = w.agentPaused;
+    w.agentPaused = !!on;
+    if (w.agentPaused && w.goal && w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; }
+    if (was !== w.agentPaused) {
+      this.emit('system', w.agentPaused ? '⏸ You paused your agent: it can look and talk to you, but not act.' : '▶ Your agent may act again.', {
+        to: w.id, zh: w.agentPaused ? '⏸ 你暂停了你的 Agent：它还能看、能和你说话，但不能行动。' : '▶ 你的 Agent 可以继续行动了。',
+      });
+    }
+    return w.agentPaused;
+  }
+
+  /**
+   * Whether this wizard's agent may call MCP tool `tool` now. The MCP layer asks before every call
+   * and answers AGENT_PAUSED when this is false.
+   */
+  agentMayAct(wid: string, tool: string): boolean {
+    const w = this.wizards.get(wid);
+    return !w || !w.agentPaused || AGENT_PAUSE_ALLOWED.has(tool);
+  }
+
   // ------------------------------------------------------------------ views
   look(wid: string, radius = 40) {
     const w = this.need(wid);
@@ -1579,6 +2157,10 @@ export class World {
       state: w.st.jailedUntil ? 'in Azkaban' : w.st.stunnedUntil ? 'stunned (Hospital Wing)' : this.online(w) ? 'in the world' : 'offline',
       where: this.placeName(w.pos), x: round(w.pos.x), z: round(w.pos.z),
       decreeCharges: w.decreeCharges, achievements: w.achievements.map((a) => ACHIEVEMENTS[a]?.name ?? a), titles: w.titles, stats: w.stats,
+      silencedFor: w.st.silencedUntil > this.now ? round(w.st.silencedUntil - this.now) : 0,
+      cursedItemsStuck: this.boundItems(w).map((i) => ({ item: i.name, id: i.id, slot: i.slot, secondsLeft: Math.ceil((i.boundUntil ?? 0) - this.now) })),
+      hexRespiteFor: w.respiteUntil > this.now ? round(w.respiteUntil - this.now) : 0,
+      agent: { paused: w.agentPaused, goal: w.agentGoal },
     };
   }
 
@@ -1590,7 +2172,15 @@ export class World {
         id: s.id, name: s.name, incantation: s.incantation, builtin: s.builtin, minYear: s.minYear, nodes: s.nodes, effects: s.effects,
         cooldown: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)), source: s.source,
       })),
-      items: w.items.map((i) => ({ ...i, equipped: w.equipped[i.slot] === i.id })),
+      // an anonymous parcel hides its sender until Revelio (§B.1)
+      items: w.items.map((i) => {
+        const { forgedBy, forgedByName, bound: _b, boundUntil, ...rest } = i;
+        const stuck = this.isStuck(w, i);
+        return {
+          ...rest, ...(i.anon ? {} : { forgedBy, forgedByName }), equipped: w.equipped[i.slot] === i.id,
+          ...(stuck ? { bound: true, boundSecondsLeft: Math.ceil((boundUntil ?? 0) - this.now) } : {}),
+        };
+      }),
       wand: wandText(w),
     };
   }
@@ -1611,6 +2201,7 @@ export class World {
       if (this.flags.elderWandHolder === w.id) s += 'E';
       if (w.decreeCharges) s += 'M';
       if (w.npc) s += 'N';
+      if (w.st.silencedUntil > this.now) s += 'Q';
       s += auraFlags(w.auras, this.now);
       return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text };
     });
@@ -1654,6 +2245,35 @@ export class World {
       seals: w.seals,
       map: this.marauderMap(wid),
       proclamation: this.rules.proclamation,
+      hex: this.hexState(w),
+      agent: this.agentState(w),
+    };
+  }
+
+  /**
+   * The player's own view of what is hexing them (for the curse banner and the trunk panel), in whole
+   * seconds; null when nothing is. Never names a sender.
+   */
+  hexState(w: Wizard) {
+    const auras = w.auras.filter((a) => a.until > this.now && AURA_DEFS[a.k]?.hex).map((a) => ({ k: a.k, mag: round(a.mag), left: Math.ceil(a.until - this.now) }));
+    const silenced = w.st.silencedUntil > this.now ? Math.ceil(w.st.silencedUntil - this.now) : 0;
+    const bound = this.boundItems(w).map((i) => ({ id: i.id, name: i.name, slot: i.slot, left: Math.ceil((i.boundUntil ?? 0) - this.now) }));
+    const respite = w.respiteUntil > this.now ? Math.ceil(w.respiteUntil - this.now) : 0;
+    if (!auras.length && !silenced && !bound.length && !respite) return null;
+    return { auras, silenced, bound, respite, safe: this.inSafe(w.pos) };
+  }
+
+  /**
+   * The agent presence block of privateState (`me.agent`): the agent's last MCP call with its time rounded
+   * down to AGENT_SEEN_ROUND_S (so `me` does not change on every poll), its goal note, and the pause switch.
+   * The number of MCP sessions is the server's to add (it owns them).
+   */
+  agentState(w: Wizard) {
+    const s = w.agentSeen;
+    return {
+      seen: s ? { client: s.client, tool: s.tool, at: Math.floor(s.at / AGENT_SEEN_ROUND_S) * AGENT_SEEN_ROUND_S } : null,
+      goal: w.agentGoal,
+      paused: w.agentPaused,
     };
   }
 
@@ -1667,7 +2287,8 @@ export class World {
   serialize() {
     return {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
-      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null })),
+      // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
+      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null })),
     };
   }
 
@@ -1677,12 +2298,22 @@ export class World {
     w.term = data.term;
     w.houseCups = data.houseCups ?? [];
     w.decrees = data.decrees ?? [];
-    w.flags = { ...w.flags, ...data.flags, statues: data.flags?.statues ?? [] };
+    w.flags = { ...w.flags, ...data.flags, statues: data.flags?.statues ?? [], curseFoundBy: data.flags?.curseFoundBy ?? null };
     w.seq = data.seq ?? 0;
     for (const x of data.wizards) {
-      // fields added after v0.3 may be missing from older saves
-      const later: Partial<Wizard> = { auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false };
-      const wz: Wizard = { ...later, ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } };
+      // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
+      const later: Partial<Wizard> = {
+        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false,
+        hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null,
+      };
+      const wz: Wizard = {
+        ...later, ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 },
+        agentPaused: false, agentSeen: null, goalBy: null,
+      };
+      wz.owlSeq = Math.max(wz.owlSeq, ...wz.owlbox.map((m) => m.id));
+      w.tokenIndex.set(wz.token, wz.id);
+      if (wz.hexWindow.length || wz.items.some((i) => i.bound)) w.hexed.add(wz.id);
+      if (wz.owlbox.some((m) => m.ask && !m.answered)) w.openAsks.add(wz.id);
       if (wz.hp <= 0) {
         // stunned at save time: finish the trip to the Hospital Wing
         const d = derived(wz, w.rules);
@@ -1696,14 +2327,22 @@ export class World {
   }
 }
 
-/** Compact aura letters for clients: g heal-over-time, v venom, f burning, i chilled, c cursed. */
+/**
+ * Compact aura letters for clients: g heal-over-time, v venom, f burning, i chilled, c cursed; jinxes:
+ * j Jelly-Legs, z Tarantallegra, b Furnunculus (boils), t Bat-Bogey. (Wizard flag Q = silenced.)
+ */
 function auraFlags(list: { k: string; until: number }[], now: number) {
+  if (!list.length) return '';
   const on = (k: string) => list.some((a) => a.k === k && a.until > now);
-  return (on('regen') || on('grace') ? 'g' : '') + (on('poison') ? 'v' : '') + (on('burn') ? 'f' : '') + (on('chill') ? 'i' : '') + (on('cursed') ? 'c' : '');
+  return (on('regen') || on('grace') ? 'g' : '') + (on('poison') ? 'v' : '') + (on('burn') ? 'f' : '') + (on('chill') ? 'i' : '') + (on('cursed') ? 'c' : '')
+    + (on('jelly') ? 'j' : '') + (on('dance') ? 'z' : '') + (on('boils') ? 'b' : '') + (on('bats') ? 't' : '');
 }
 
 function blankStatus(): Wizard['st'] {
-  return { shield: 0, shieldUntil: 0, hasteMult: 1, hasteUntil: 0, rootedUntil: 0, disarmedUntil: 0, lightUntil: 0, patronusUntil: 0, stunnedUntil: 0, jailedUntil: 0 };
+  return {
+    shield: 0, shieldUntil: 0, hasteMult: 1, hasteUntil: 0, rootedUntil: 0, disarmedUntil: 0, lightUntil: 0, patronusUntil: 0, stunnedUntil: 0, jailedUntil: 0,
+    silencedUntil: 0, silenceCdUntil: 0, silenceBy: null,
+  };
 }
 
 export function wandTextZh(w: Wizard) {

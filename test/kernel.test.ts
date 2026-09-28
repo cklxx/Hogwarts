@@ -390,6 +390,39 @@ describe('review regressions', () => {
     expect(r.effects.join()).not.toMatch(/wz_/);
   });
 
+  it('spell errors never print registry numbers either (num, repeat, after, a vanished target)', () => {
+    const w = mkWorld();
+    const a = join(w, 'Snoop');
+    const b = join(w, 'Target');
+    a.year = 2;
+    b.pos = { x: a.pos.x + 2, z: a.pos.z };
+    for (const src of ['(+ 1 (first (wizards 30)))', '(repeat (first (wizards 30)) (say 1))', '(after (first (wizards 30)) (say 1))']) {
+      const r = w.simulate(a.id, src);
+      expect(r.ok, src).toBe(false);
+      expect(r.error, src).toContain('@Target');
+      expect(r.error, src).not.toMatch(/wz_/);
+    }
+  });
+
+  it("casting at someone else's raw registry number finds nobody, exactly like a made-up one", () => {
+    const w = mkWorld();
+    const a = join(w, 'Prober');
+    const b = join(w, 'Hidden');
+    b.pos = { x: a.pos.x + 3, z: a.pos.z };
+    expect(w.resolveTarget(b.id, a.id)).toBeNull();
+    expect(w.resolveTarget(b.id)).toBeNull();
+    expect(w.resolveTarget('wz_00000000', a.id)).toBeNull();
+    expect(w.resolveTarget(a.id, a.id)).toBe(a.id); // your own is fine
+    expect(w.resolveTarget(b.handle, a.id)).toBe(b.id); // combat is by handle or name
+    expect(w.resolveTarget('hidden', a.id)).toBe(b.id);
+    const real = w.simulate(a.id, '(say (str target))', { target: b.id });
+    const fake = w.simulate(a.id, '(say (str target))', { target: 'wz_00000000' });
+    expect(real.effects).toEqual(fake.effects);
+    // NPC brains are kernel code and may still aim by id
+    b.npc = true;
+    expect(w.resolveTarget(a.id, b.id)).toBe(a.id);
+  });
+
   it('a delayed block cannot schedule more delayed blocks', () => {
     const w = mkWorld();
     const a = join(w, 'Chainer');

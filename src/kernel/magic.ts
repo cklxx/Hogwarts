@@ -59,7 +59,7 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
     if (isVec(v)) return { x: v.x, z: v.z };
     if (isRef(v)) {
       const e = world.entity(v.id);
-      if (!e) throw new RuneError(`${v.id} is gone`, at.line, at.col);
+      if (!e) throw new RuneError(`${show(v)} is gone`, at.line, at.col);
       return { ...e.pos };
     }
     throw new RuneError(`expected an entity or point, got ${show(v)}`, at.line, at.col);

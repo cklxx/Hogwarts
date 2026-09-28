@@ -13,12 +13,16 @@ Run everything: `TLA2TOOLS=/path/to/tla2tools.jar LEAN=/path/to/lean formal/run.
 
 | Spec | Mirrors | Checked |
 |---|---|---|
-| `Hostility` | `World.canHarm` | 10 invariants over every combination of houses, activity, safe zones, liveness, PvP and friendly-fire (1,048,576 states): no self-harm, safe zones are safe, the stunned are untouchable, benign creatures never attack, the phoenix can't be harmed, summons never harm their owner and harm exactly what their owner may, wild creatures only hunt wizards and summons, attacking a summon counts as attacking its owner. **Re-checked on 3,000 random real worlds in `test/formal.test.ts`.** |
+| `Hostility` | `World.canHarm` | 10 invariants over every combination of houses, activity, safe zones, liveness, PvP and friendly-fire (1,048,576 states): no self-harm, safe zones are safe, the stunned are untouchable, benign creatures never attack, the phoenix can't be harmed, summons never harm their owner and harm exactly what their owner may, wild creatures only hunt wizards and summons, attacking a summon counts as attacking its owner. **Re-checked on 3,000 random real worlds in `test/formal.test.ts`**, whose wizards carry random jinx auras (and whose jinx damage must obey the same relation and the hex floor). |
 | `CastTxn` | `magic.ts execute`, `(after …)` | mana never negative; a fizzle changes nothing; each transaction applies ≤ E effects; only top-level casts schedule delayed blocks (≤ A each); the pending queue is bounded. |
 | `Lifecycle` | `tick`, `stun`, `revive`, `sendToAzkaban`, summons | summons exist only while their owner is active; *liveness*: nobody stays stunned or in Azkaban forever; a summon vanishes when its life runs out unless recast. |
 | `ElderWand` | `placeEggs`, `transferElderWand`, `elderWandUpkeep` | exactly one Elder Wand, ever: in the tomb or in one wizard's trunk. |
 | `TermDecree` | `endTerm`, `decree`, `applyPatch` | at most one decree charge in the world; NPCs never rule; only the Minister decrees; ≤ 1 decree per term; rules stay within their constitutional bounds. |
 | `Seals` | `readSealPage`, `breakSeal` | seals break in order and only for a qualified wizard holding every page; ≤ 3 attempts per window; progress is monotone. |
+| `Pairing` | `mintPairCode`, `redeemPairCode`, the 1 Hz sweep | a code binds at most once, never after its TTL, one live code per wizard, failed attempts per window ≤ the realm cap (every attempt is refused beyond it); a used or dead code never comes back; *liveness*: every code is eventually used or dead. |
+| `Hex` | `guardHostileGift` + `deliverHostile` / `applyJinx` / `silence`, jinx DoT through `canHarm`, `cleanse`, the sweep | one recipient, three ready senders and one unready: ≤ Cap active jinxes, ≤ 2 cursed items, ≤ 1 bound curse, ≤ WinCap parcels per window, jinx damage never below max(1, 25 % max health), movement never below 25 %, silence bounded and always followed by a casting window, newcomers/NPCs/first-years never hexed and unready senders never send, the sender pays exactly (the recipient nothing), a safe zone suspends everything, per-pair cooldown and respite hold; *liveness*: every hex and every silence ends. Each clause of the gate was removed in turn and TLC found the violation (docs/AGENT_LINK.md). |
+| `Owl` | `owl`, `answerAsk`, `expireAsks`, `makeOwlRoom` | the owlbox is bounded; an unanswered question is never evicted (a new owl is refused instead); a question is answered at most once and only with one of its options (or expires); ids increase; *liveness*: every question is answered or expires. |
+| `Control` | `setInput`, `setGoal(…, by)`, `setAgentPaused`, `agentMayAct` | a paused agent never acts (only AGENT_PAUSE_ALLOWED tools run) and has no walk; WASD always ends the agent's walk and an agent cannot start one while the player steers; the player's own controls are never refused; *liveness*: a player who wants the wheel gets it. |
 
 ## Lean proofs (`lean/Hogwarts.lean`)
 
@@ -28,6 +32,15 @@ spends exactly its cost and a fizzle is free · **effects per cast ≤ E·(1+A)*
 properties imply) · caps clamp · healing never exceeds max health · aura stacking never exceeds a
 cap · summons never exceed the cap · decrees stay constitutional · **Feistel rounds are injective
 for any round function**, so every seal has exactly one answer.
+
+Agent link (docs/AGENT_LINK.md §A.5, §B.8): `pair_guess_bound` (a window's checked guesses hit at most
+as many of the 31⁶ codes as there are guesses, so live · hits ≤ cap · live) and `pair_lifetime_odds`
+(< 10⁻⁶ to guess a code during its life) · the `derived()` floors `hp_floor`, `mana_floor`,
+`manaregen_floor` (+ `manaregen_pos`: mana never drains), `speed_floor`, `move_floor` (+ `always_moves`),
+`power_pos` ⇒ `damage_nonneg`, `ward_bounded` (+ `ward_scale`) · `hex_dot_floor` (and over any number
+of ticks, `hex_dots_floor`), `hex_dot_never_stuns` · `hex_cost_pos`, `hex_cost_mono`, `sender_pays` ·
+timing constants fit together (`cooldown_covers_binding`, `silence_duty`, `open_questions_fit`). Every
+shared constant is printed into the vectors and compared with `src/shared/constants.ts`.
 
 ## Scope, honestly
 
