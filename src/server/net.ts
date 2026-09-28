@@ -42,6 +42,15 @@ export const LIMITS: Record<string, [number, number]> = {
   seals: [4, 8],
   readpage: [2, 5],
   breakseal: [2, 5],
+  equip: [4, 8],
+  unequip: [4, 8],
+  destroy: [2, 5],
+  // Owl Post (docs/AGENT_LINK.md §C.5). The kernel also caps owls at OWL_PER_MIN a minute per side.
+  owl: [1, 5],
+  answer: [2, 5],
+  paircode: [0.2, 3],
+  rotate: [0.05, 2],
+  pause: [1, 5],
   other: [30, 60],
   all: [80, 120],
 };

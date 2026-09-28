@@ -27,11 +27,16 @@
  * `login` tool with a token of another realm, the front door first moves the session there: it opens
  * a session under the same id in the token's realm (replaying the client's `initialize`), routes the
  * session there from then on, and closes the old one. The client notices nothing.
+ *
+ * MCP `pair`: pairing codes minted in realm K read "K-ABC-DEF" (docs/AGENT_LINK.md §A.2). A `pair` call
+ * whose code names another realm moves the session there first, through the same hook as `login`, so the
+ * code is redeemed (and its failures counted) by the realm that minted it.
  */
 import { fork, type ChildProcess } from 'node:child_process';
 import { Agent, createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { parsePairCode } from '../kernel/identity.js';
 
 export interface RealmStats { players: number; wizards: number; clients: number; mcp: number }
 
@@ -104,6 +109,20 @@ export function loginToken(msg: unknown): string | null {
     if (x && x.method === 'tools/call' && x.params?.name === 'login' && typeof x.params.arguments?.token === 'string') return x.params.arguments.token.trim();
   }
   return null;
+}
+/** The realm the first `pair` tool call in a JSON-RPC message (or batch) names by its code prefix ("2-ABC-DEF"), if any. */
+export function pairRealm(msg: unknown): number | null {
+  for (const m of Array.isArray(msg) ? msg : [msg]) {
+    const x = m as { method?: unknown; params?: { name?: unknown; arguments?: { code?: unknown } } } | null;
+    if (x && x.method === 'tools/call' && x.params?.name === 'pair' && typeof x.params.arguments?.code === 'string') return parsePairCode(x.params.arguments.code)?.realm ?? null;
+  }
+  return null;
+}
+/** The realm a `login` (by its token) or a `pair` (by its code) in this message belongs to: where the session must live. */
+export function targetRealm(msg: unknown): number | null {
+  const tok = loginToken(msg);
+  if (tok !== null) return realmOf(tok) ?? 0;
+  return pairRealm(msg);
 }
 const isInitialize = (msg: unknown) => !!msg && typeof msg === 'object' && (msg as { method?: unknown }).method === 'initialize';
 
@@ -271,10 +290,10 @@ async function runPrimary() {
     const body = await readAll(req, 1_000_000);
     if (!body) return json(res, 413, { jsonrpc: '2.0', error: { code: -32000, message: 'body too large' }, id: null });
     let msg: unknown;
-    if (!sid || body.includes('"login"')) { try { msg = JSON.parse(body.toString('utf8')); } catch { /* the realm answers that */ } }
+    if (!sid || body.includes('"login"') || body.includes('"pair"')) { try { msg = JSON.parse(body.toString('utf8')); } catch { /* the realm answers that */ } }
     if (sid && known) {
-      const tok = loginToken(msg);
-      const from = realms[choose(req, url)], to = tok !== null ? realms[realmOf(tok) ?? 0] : undefined;
+      const target = targetRealm(msg);
+      const from = realms[choose(req, url)], to = target !== null ? realms[target] : undefined;
       if (from && to && to !== from) await rehome(sid, from, to, req);
     }
     forward(req, res, realms[choose(req, url)], body, !sid && isInitialize(msg) ? (status, h) => {

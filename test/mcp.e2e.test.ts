@@ -7,7 +7,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 
-const PORT = 17000 + Math.floor(Math.random() * 1000);
+const PORT = Number(process.env.HOGWARTS_TEST_PORT ?? 17000 + Math.floor(Math.random() * 1000));
 const BASE = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 
@@ -120,5 +120,104 @@ describe('MCP over streamable HTTP', () => {
     });
     ws.close();
     expect([...got]).toEqual(expect.arrayContaining(['welcome', 'snap', 'me', 'cast']));
+  });
+
+  it('links a player and their agent: pair, owls, pause, rotate — and never leaks the key', async () => {
+    const r = await fetch(`${BASE}/api/enroll`, { method: 'POST', body: JSON.stringify({ name: 'Owl Keeper' }) });
+    const { token } = (await r.json()) as { token: string };
+    const wsMsgs: string[] = [];
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}`);
+    const next = (pred: (m: any) => boolean, ms = 8000) => new Promise<any>((ok, bad) => {
+      const t = setTimeout(() => bad(new Error('ws timeout')), ms);
+      const on = (raw: WebSocket.RawData) => { const m = JSON.parse(String(raw)); if (pred(m)) { clearTimeout(t); ws.off('message', on); ok(m); } };
+      ws.on('message', on);
+    });
+    ws.on('message', (raw) => wsMsgs.push(String(raw)));
+    const welcome = await next((m) => m.t === 'welcome');
+    expect(welcome.token).toBeUndefined();
+    expect(welcome.registry).toMatch(/^wz_/);
+
+    // pairing: the browser mints a code, a token-less agent session redeems it
+    ws.send(JSON.stringify({ t: 'paircode' }));
+    const pc = await next((m) => m.t === 'paircode');
+    expect(pc.code).toMatch(/^[A-Z2-9]{3}-[A-Z2-9]{3}$/);
+    const agent = await client();
+    const mcpTexts: string[] = [];
+    const say = async (name: string, args: Record<string, unknown> = {}) => { const x = await call(agent, name, args); if (!['pair', 'rotate_key'].includes(name)) mcpTexts.push(x.text); return x; };
+    const paired = await say('pair', { code: pc.code.toLowerCase() });
+    expect(paired.isError).toBe(false);
+    expect(paired.data.registry).toBe(welcome.registry);
+    expect(paired.data.connect.claudeCode).toContain('${HOGWARTS_TOKEN}');
+    expect(JSON.stringify(paired.data.connect)).not.toContain(token);
+    expect((await say('pair', { code: pc.code })).isError).toBe(true); // single use
+    const who = await say('whoami');
+    expect(who.data.agents).toEqual({ sessions: 1, clients: 1 });
+
+    // tell_player with a question -> browser answers -> listen
+    const asked = await say('tell_player', { text: 'Forest or lake?', options: ['forest', 'lake'] });
+    expect(asked.data.question).toBe(true);
+    const ask = await next((m) => m.t === 'event' && m.e.type === 'ask');
+    expect(ask.e.from).toBe('agent');
+    expect(ask.e.who).toBeUndefined();
+    ws.send(JSON.stringify({ t: 'answer', id: ask.e.owl.id, choice: 'lake' }));
+    ws.send(JSON.stringify({ t: 'owl', text: 'hello agent' }));
+    await new Promise((ok) => setTimeout(ok, 300));
+    const heard = await say('listen', { seconds: 5 });
+    expect(heard.data.owls.map((o: any) => o.text)).toEqual(['lake', 'hello agent']);
+    expect(heard.data.owls[0].answers).toBe(asked.data.sent);
+    const owls = await (await fetch(`${BASE}/api/owls?since=0`, { headers: { Authorization: `Bearer ${token}` } })).json() as any;
+    expect(owls.owls.length).toBe(2);
+    expect((await fetch(`${BASE}/api/owls`, { headers: { Authorization: 'Bearer nope-nope-nope' } })).status).toBe(401);
+
+    // pause: actions refused, talking allowed
+    ws.send(JSON.stringify({ t: 'pause', on: true }));
+    await new Promise((ok) => setTimeout(ok, 300));
+    const refused = await say('cast', { spell: '1' });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/paused/);
+    expect((await say('look')).isError).toBe(false);
+    expect((await say('set_goal_note', { goal: 'waiting for my human' })).isError).toBe(false);
+    ws.send(JSON.stringify({ t: 'pause', on: false }));
+    await new Promise((ok) => setTimeout(ok, 300));
+    expect((await say('look')).isError).toBe(false);
+
+    // a key in the arguments is refused
+    expect((await say('say', { text: `my key is ${token}` })).text).toMatch(/Owl Post key/);
+    mcpTexts.pop();
+
+    // rotate: old key dead, new key works, browser told, other sessions closed, caller kept
+    const other = await client(token);
+    expect((await call(other, 'whoami')).data.registry).toBe(welcome.registry);
+    const gotToken = next((m) => m.t === 'token');
+    const rot = await say('rotate_key');
+    expect(rot.isError).toBe(false);
+    const fresh = rot.data.token as string;
+    expect(fresh).not.toBe(token);
+    expect((await gotToken).token).toBe(fresh);
+    expect((await fetch(`${BASE}/api/me?token=${encodeURIComponent(token)}`)).status).toBe(401);
+    const meNew = await fetch(`${BASE}/api/me?token=${encodeURIComponent(fresh)}`);
+    expect(meNew.status).toBe(200);
+    expect(JSON.stringify(await meNew.json())).not.toContain(fresh);
+    expect((await call(await client(token), 'whoami')).isError).toBe(true);
+    expect((await call(await client(fresh), 'whoami')).data.registry).toBe(welcome.registry);
+    await expect(call(other, 'whoami')).rejects.toThrow();
+    expect((await say('whoami')).isError).toBe(false);
+
+    // confirm with the browser connected: the player declines
+    const conf = call(agent, 'confirm_with_player', { question: 'Destroy everything?', timeout_seconds: 10 });
+    const q = await next((m) => m.t === 'event' && m.e.type === 'ask');
+    ws.send(JSON.stringify({ t: 'answer', id: q.e.owl.id, choice: q.e.owl.options[1] }));
+    expect((await conf).data.approved).toBe(false);
+
+    ws.close();
+    await new Promise((ok) => setTimeout(ok, 300));
+    // no browser, no elicitation: nobody to ask
+    const none = await say('confirm_with_player', { question: 'Sure?', timeout_seconds: 5 });
+    expect(none.data).toEqual({ approved: false, via: 'none', reason: 'no human reachable' });
+
+    for (const t of [token, fresh]) {
+      expect(wsMsgs.filter((m) => !m.startsWith('{"t":"token"')).some((m) => m.includes(t))).toBe(false);
+      expect(mcpTexts.some((m) => m.includes(t))).toBe(false);
+    }
   });
 });
