@@ -11,6 +11,9 @@ import { LAKE, flatness, surfaceAt } from './terrain';
  * sway in the vertex shader (rolling gusts + flutter), bending away from the player's feet.
  */
 
+/** Everything that sways (grass, tree crowns, pennants, chimney smoke) leans with the same wind. */
+export const WIND = new THREE.Vector2(0.8, 0.35);
+
 interface Level { grid: number; chunk: number; perChunk: number }
 const LEVELS: Record<'low' | 'high', Level> = {
   high: { grid: 7, chunk: 14, perChunk: 900 }, // 44,100 clumps x 4 blades
@@ -70,7 +73,7 @@ export function createGrass(scene: THREE.Scene) {
     uTime: { value: 0 },
     uFocus: { value: new THREE.Vector3() },
     uRadius: { value: 40 },
-    uWind: { value: new THREE.Vector2(0.8, 0.35) },
+    uWind: { value: WIND },
   };
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
   mat.onBeforeCompile = (sh) => {

@@ -3,12 +3,10 @@ import { Water } from 'three/addons/objects/Water.js';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
 import { tex as fileTex } from './assets';
-import { createGrass } from './grass';
+import { WIND, createGrass } from './grass';
 import { drape, heightAt, makeTerrain } from './terrain';
 import { cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
 
-/** Everything that sways (grass, tree crowns, pennants) reads the same wind. */
-export const WIND = new THREE.Vector2(0.8, 0.35);
 const windTime = { value: 0 };
 
 /** A pointed (Gothic) arch, `w` wide and `h` tall, standing on y = 0. */

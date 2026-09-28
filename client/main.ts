@@ -172,7 +172,11 @@ function apply(s: Snap) {
     m.label.draw(c.o ? `${creatureName(c.k, NAMES[c.k])} (${mine ? L('你的', 'yours') : L('召唤物', 'conjured')})` : creatureName(c.k, NAMES[c.k]), mine ? '#b8ffb8' : c.o ? '#ffd9a0' : benign ? '#ffffff' : '#ffdddd', c.hp / c.m);
     setAuraRing(m.aura, c.s + (mine ? 'g' : ''), clock);
   }
-  for (const [i, m] of creatures) if (!seenC.has(i)) { puff(m.root.position.x, m.root.position.z, 0x333333); scene.remove(m.root); creatures.delete(i); }
+  for (const [i, m] of creatures) if (!seenC.has(i)) {
+    puff(m.root.position.x, m.root.position.z, 0x333333);
+    particles.puff(m.root.position.x, m.root.position.y + 1, m.root.position.z, { count: 14, color: 0x2a282c, speed: 2, up: 0.8, size: 1, life: 1.4, drag: 2.5, grow: 2.5, radius: 0.6 });
+    scene.remove(m.root); creatures.delete(i);
+  }
 
   const seenP = new Set<string>();
   for (const p of s.p) {
