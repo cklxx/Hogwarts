@@ -340,3 +340,23 @@ describe('world simulation', () => {
     expect(w2.byToken(a.token)?.spells.some((s) => s.name === 'Zap')).toBe(true);
   });
 });
+
+describe('pathfinding', () => {
+  it('walks into the Great Hall through its only door', () => {
+    const w = mkWorld();
+    const a = join(w, 'Walker');
+    a.pos = { x: 30, z: 5 };
+    w.setGoal(a.id, { x: 0, z: -60 });
+    expect(a.route.length).toBeGreaterThan(1);
+    run(w, 20);
+    expect(a.goal).toBeNull();
+    expect(Math.hypot(a.pos.x, a.pos.z + 60)).toBeLessThan(1);
+  });
+  it('routes around the whole castle', () => {
+    const w = mkWorld();
+    const a = join(w, 'Walker');
+    w.setGoal(a.id, { x: 40, z: -150 });
+    run(w, 40);
+    expect(Math.hypot(a.pos.x - 40, a.pos.z + 150)).toBeLessThan(1);
+  });
+});

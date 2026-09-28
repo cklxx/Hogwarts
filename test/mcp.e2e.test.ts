@@ -70,6 +70,12 @@ describe('MCP over streamable HTTP', () => {
     expect(cast.data.ok).toBe(true);
     expect(cast.data.mana).toBeGreaterThan(0);
 
+    const walk = await call(c, 'move_to', { landmark: 'great_hall' });
+    expect(walk.isError).toBe(false);
+    const waited = await call(c, 'wait', { seconds: 15, until: 'arrived' });
+    expect(waited.data.reason).toBe('arrived');
+    expect(waited.data.at.place).toBe('The Great Hall');
+
     const look = await call(c, 'look');
     expect(look.data.you.place).toBeTruthy();
 

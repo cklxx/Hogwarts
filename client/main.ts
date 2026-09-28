@@ -8,7 +8,7 @@ import { makeBolt, makeCreature, makeWizard, wizardColor, type WizardModel } fro
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; s: string; say?: string }
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
-interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string }
+interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number }
 interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
@@ -125,6 +125,10 @@ function connect() {
     else if (msg.t === 'event') feed(msg.e, true);
     else if (msg.t === 'cast' && !msg.r.ok) toast(`✗ ${msg.r.spell}: ${msg.r.error}`);
     else if (msg.t === 'cast' && msg.r.notes?.length) toast(msg.r.notes.join(' · '));
+    else if (msg.t === 'book') renderBook(msg.armory, msg.grimoire);
+    else if (msg.t === 'sim') showSim(msg.r);
+    else if (msg.t === 'forged') { bookOut(`✓ Forged ${msg.name}.${msg.notes.length ? '\n' + msg.notes.join('\n') : ''}`, 'good'); }
+    else if (msg.t === 'err') { if (!$('#book').hidden) bookOut(`✗ ${msg.error}`, 'bad'); else toast(`✗ ${msg.error}`); }
   };
   ws.onclose = () => setTimeout(connect, 1500);
 }
@@ -208,10 +212,26 @@ function column(x: number, z: number, color: number, life = 1.2) {
   m.position.set(x, 4, z);
   addEffect(m, life, (k, o) => { ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - k); o.scale.x = o.scale.z = 1 + k; });
 }
+function floatText(x: number, z: number, text: string, color: string) {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 64;
+  const g = c.getContext('2d')!;
+  g.font = 'bold 44px Georgia'; g.textAlign = 'center';
+  g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(text, 64, 48);
+  g.fillStyle = color; g.fillText(text, 64, 48);
+  const tex = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(1.6, 0.8, 1);
+  sp.renderOrder = 20;
+  const jx = (Math.random() - 0.5) * 0.8;
+  sp.position.set(x + jx, 2.4, z);
+  addEffect(sp, 1.1, (k, o) => { o.position.y = 2.4 + k * 1.8; (o as THREE.Sprite).material.opacity = 1 - k * k; if (k >= 1) tex.dispose(); });
+}
+
 function spawnFx(f: Fx) {
   const col = f.e ? ELEMENT_COLORS[f.e] : 0xffffff;
   switch (f.k) {
-    case 'hit': puff(f.x, f.z, col, 1); break;
+    case 'hit': puff(f.x, f.z, col, 1); if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0')); break;
     case 'nova': ring(f.x, f.z, col, 0.5, f.r ?? 5, 0.6); ring(f.x, f.z, 0xffffff, 0.2, (f.r ?? 5) * 0.7, 0.4, 1); break;
     case 'heal': column(f.x, f.z, 0x6cff8a, 0.9); break;
     case 'shield': ring(f.x, f.z, 0x9fd3ff, 1.5, 1.2, 0.5, 1); break;
@@ -354,6 +374,45 @@ function menuInfo(mcpUrl: string) {
   $('#close-menu').onclick = () => { $('#menu').hidden = true; };
 }
 
+// ------------------------------------------------------------------ spellbook (in-browser Runes editor)
+type ArmorySpell = { id: string; name: string; incantation: string; builtin: boolean; minYear: number; nodes: number; effects: string[]; source: string };
+let bookSpells: ArmorySpell[] = [];
+let bookSel: string | null = null;
+function toggleBook() {
+  const b = $('#book');
+  b.hidden = !b.hidden;
+  if (!b.hidden) send({ t: 'book' });
+}
+function bookOut(text: string, cls = '') { const o = $('#sp-out'); o.textContent = text; o.className = cls; }
+function renderBook(armory: { spells: ArmorySpell[]; hotbar: { slot: number; spell: string | null }[] }, grimoireText: string) {
+  bookSpells = armory.spells;
+  $('#grimoire').textContent = grimoireText;
+  const slotOf = (name: string) => armory.hotbar.find((h) => h.spell === name)?.slot;
+  $('#book-list').innerHTML = `<li data-id="">＋ <b>New spell</b><small>write your own</small></li>` + bookSpells.map((s) =>
+    `<li data-id="${s.id}" class="${s.id === bookSel ? 'sel' : ''}">${s.builtin ? '📖' : '✒️'} <b>${esc(s.name)}</b>${slotOf(s.name) ? ` <i>[${slotOf(s.name)}]</i>` : ''}<small>y${s.minYear} · ${s.nodes} nodes · ${esc(s.effects.join(', ') || '—')}</small></li>`).join('');
+  $('#book-list').querySelectorAll('li').forEach((li) => { (li as HTMLElement).onclick = () => loadSpell((li as HTMLElement).dataset.id || null); });
+}
+function loadSpell(id: string | null) {
+  bookSel = id;
+  const s = bookSpells.find((x) => x.id === id);
+  $<HTMLInputElement>('#sp-name').value = s ? (s.builtin ? `${s.name} II` : s.name) : '';
+  $<HTMLInputElement>('#sp-inc').value = s && !s.builtin ? s.incantation : '';
+  $<HTMLTextAreaElement>('#sp-src').value = s?.source ?? '';
+  $('#book-list').querySelectorAll('li').forEach((li) => li.classList.toggle('sel', (li as HTMLElement).dataset.id === (id ?? '')));
+  bookOut(s?.builtin ? `${s.name} is part of the standard curriculum. Edit it and forge it under a new name to make it yours.` : s ? 'Edit and Forge to rework it (same name replaces it).' : 'Write a Runes program. Open the Grimoire below for every word you can use.');
+}
+function showSim(r: { ok: boolean; mana: number; effects: string[]; notes: string[]; gas: number; error?: string; nodes?: number }) {
+  bookOut(r.ok
+    ? `✓ Would cast for ${r.mana} mana (${r.gas} gas${r.nodes ? `, ${r.nodes} nodes` : ''}).\n${r.effects.map((e) => '  • ' + e).join('\n') || '  (no effects)'}${r.notes.length ? '\n' + r.notes.map((n) => '  ! ' + n).join('\n') : ''}`
+    : `✗ Fizzles: ${r.error}${r.gas ? ` (after ${r.gas} gas)` : ''}`, r.ok ? 'good' : 'bad');
+}
+$('#sp-sim').onclick = () => send({ t: 'simulate', source: $<HTMLTextAreaElement>('#sp-src').value, x: aim.x, z: aim.z, target: aimTarget ?? undefined });
+$('#sp-forge').onclick = () => {
+  const slot = Number($<HTMLSelectElement>('#sp-slot').value) || undefined;
+  send({ t: 'forge', name: $<HTMLInputElement>('#sp-name').value, incantation: $<HTMLInputElement>('#sp-inc').value || undefined, source: $<HTMLTextAreaElement>('#sp-src').value, slot });
+};
+$('#sp-forget').onclick = () => { const n = $<HTMLInputElement>('#sp-name').value; if (n) send({ t: 'unlearn', spell: n }); };
+
 // ------------------------------------------------------------------ input
 const raycaster = new THREE.Raycaster();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -364,10 +423,17 @@ addEventListener('keydown', (e) => {
     if (e.key === 'Escape') chat.blur();
     return;
   }
-  if (document.activeElement?.tagName === 'INPUT') return;
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName ?? '')) {
+    if (e.key === 'Escape') (document.activeElement as HTMLElement).blur();
+    return;
+  }
+  if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'Enter') { chat.focus(); e.preventDefault(); return; }
   if (e.key === 'Tab') { e.preventDefault(); showBoard(); return; }
-  if (e.key === 'Escape') { $('#menu').hidden = !$('#menu').hidden; $('#board').hidden = true; return; }
+  if (e.key === 'Escape') {
+    if (!$('#book').hidden) { $('#book').hidden = true; return; }
+    $('#menu').hidden = !$('#menu').hidden; $('#board').hidden = true; return;
+  }
   if (/^[1-6]$/.test(e.key)) { selected = Number(e.key) - 1; castSelected(); return; }
   keys.add(e.key.toLowerCase());
 });

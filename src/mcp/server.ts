@@ -137,7 +137,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   server.registerTool('move_to', {
     title: 'Walk somewhere',
-    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Walking takes real time (~7 m/s). Call look to check progress.`,
+    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. Walking takes real time (~7 m/s): follow with wait(until:"arrived").`,
     inputSchema: { landmark: z.string().optional(), x: z.number().optional(), z: z.number().optional() },
   }, me((wid, a: { landmark?: string; x?: number; z?: number }) => {
     const l = a.landmark ? landmarkById(a.landmark) : undefined;
@@ -149,6 +149,45 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const d = Math.hypot(g.x - w.pos.x, g.z - w.pos.z);
     return { walkingTo: l?.name ?? g, distance: Math.round(d), etaSeconds: Math.round(d / world.rules.physics.moveSpeed), blurb: l?.blurb };
   }));
+
+  server.registerTool('wait', {
+    title: 'Let time pass',
+    description: 'Wait up to 15 seconds of game time, returning early when the condition is met. Returns what changed: health, mana, position, arrival, and new events. Use it instead of polling look/whoami in a loop.',
+    inputSchema: {
+      seconds: z.number().min(0.5).max(15),
+      until: z.enum(['time', 'arrived', 'hurt', 'event', 'mana_full']).optional().describe('return early on this condition (default: time)'),
+    },
+  }, async ({ seconds, until }) => {
+    const wid = session.wizardId;
+    const w = wid ? world.wizards.get(wid) : undefined;
+    if (!w) return fail('No wizard bound to this session. Call enroll or login first.');
+    const start = { t: world.now, hp: w.hp, mana: w.mana, x: w.pos.x, z: w.pos.z, ev: world.events.at(-1)?.id ?? 0, walking: !!w.goal };
+    const mine = () => world.events.filter((e) => e.id > start.ev && (!e.to || e.to === w.id) && !(e.type === 'chat' && e.who?.[0] === w.id));
+    const done = () => {
+      switch (until) {
+        case 'arrived': return start.walking && !w.goal;
+        case 'hurt': return w.hp < start.hp - 0.5;
+        case 'event': return mine().length > 0;
+        case 'mana_full': return w.mana >= derivedMax(w.id) - 0.5;
+        default: return false;
+      }
+    };
+    const derivedMax = (id: string) => world.privateState(id).maxMana;
+    const deadline = Date.now() + seconds * 1000;
+    while (Date.now() < deadline && !done()) {
+      world.touch(w.id);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    world.touch(w.id);
+    const r1 = (n: number) => Math.round(n * 10) / 10;
+    return out({
+      waited: r1(world.now - start.t), reason: done() ? until : 'time',
+      hp: `${Math.round(start.hp)} -> ${Math.round(w.hp)}`, mana: `${Math.round(start.mana)} -> ${Math.round(w.mana)}`,
+      moved: r1(Math.hypot(w.pos.x - start.x, w.pos.z - start.z)), at: { x: r1(w.pos.x), z: r1(w.pos.z), place: world.placeName(w.pos) },
+      walking: !!w.goal, state: world.whoami(w.id).state,
+      events: mine().slice(-20).map(({ id, type, text, to }) => ({ id, type, text, private: !!to })),
+    });
+  });
 
   server.registerTool('stop', { title: 'Stop walking', description: 'Stop moving.' }, me((wid) => { world.setGoal(wid, null); return { stopped: true }; }));
 

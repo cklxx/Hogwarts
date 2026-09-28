@@ -9,7 +9,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   snare: {
     kind: 'snare', name: "Devil's Snare", hp: 60, speed: 0, damage: 5, range: 3.5, cooldown: 1.2, aggro: 3.5, radius: 1.2,
-    xp: 22, rep: 2, galleons: 2, weak: { fire: 2, light: 3 }, spawn: { x: 41, z: -24, r: 12, max: 4 },
+    xp: 10, rep: 1, galleons: 1, weak: { fire: 2, light: 3 }, spawn: { x: 41, z: -24, r: 12, max: 4 },
     lore: 'Roots anything that lingers. Fire or sunlight.',
   },
   spider: {

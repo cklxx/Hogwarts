@@ -36,12 +36,12 @@ console.log('forge_spell:', forged.ok ? forged.data.forged : forged.data);
 for (let i = 0; ; i++) {
   const me = (await call('whoami')).data;
   if (i % 10 === 0) console.log(`[${me.name}] year ${me.year} xp ${me.xp} rep ${me.reputation} hp ${me.hp}/${me.maxHp} mana ${me.mana} @ ${me.where}`);
-  if (me.state !== 'in the world') { await sleep(1000); continue; }
+  if (me.state !== 'in the world') { await call('wait', { seconds: 2 }); continue; }
   const look = (await call('look', { radius: 60 })).data;
   const prey = look.creatures.find((x: { kind: string }) => x.kind !== 'troll' && x.kind !== 'dementor');
-  if (!prey) { await call('move_to', { landmark: i % 2 ? 'forest' : 'hagrid' }); await sleep(3000); continue; }
+  if (!prey) { await call('move_to', { landmark: i % 2 ? 'forest' : 'hagrid' }); await call('wait', { seconds: 6, until: 'event' }); continue; }
   if (me.hp < me.maxHp * 0.4) await call('cast', { spell: 'Episkey' });
-  if (prey.dist > 22) { await call('move_to', { x: prey.x, z: prey.z }); await sleep(800); continue; }
+  if (prey.dist > 22) { await call('move_to', { x: prey.x, z: prey.z }); await call('wait', { seconds: 1 }); continue; }
   await call('stop');
   const weak = prey.weakTo.includes('ice') ? 'Glacius' : prey.weakTo.includes('fire') ? 'Incendio' : 'Finisher';
   const r = (await call('cast', { spell: weak, target: prey.id })).data;

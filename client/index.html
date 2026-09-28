@@ -48,7 +48,25 @@
     <div id="board" class="panel parchment" hidden></div>
     <div id="menu" class="panel parchment" hidden></div>
     <div id="map" class="parchment" hidden><h2>The Marauder's Map</h2><canvas width="640" height="640"></canvas><ul></ul></div>
-    <div id="help" class="panel">WASD move · mouse aim · click / 1-6 cast · right-drag camera · wheel zoom · Tab leaderboard · Esc menu · Enter chat</div>
+    <div id="book" class="parchment" hidden>
+      <h2>Spellbook <small>— spells are Runes programs · B to close</small></h2>
+      <div class="cols">
+        <ul id="book-list"></ul>
+        <div class="editor">
+          <div class="row"><input id="sp-name" maxlength="40" placeholder="Spell name" /><input id="sp-inc" maxlength="60" placeholder="Incantation (what you shout)" /></div>
+          <textarea id="sp-src" spellcheck="false" placeholder="(bolt (or target aim) 14 :fire)"></textarea>
+          <div class="row">
+            <select id="sp-slot"><option value="">no hotbar slot</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            <button id="sp-sim" title="Dry run at your current aim: nothing is spent">Simulate</button>
+            <button id="sp-forge">Forge</button>
+            <button id="sp-forget" class="ghost">Unlearn</button>
+          </div>
+          <pre id="sp-out">Pick a spell on the left to read its source, or write a new one. Simulate is free.</pre>
+        </div>
+      </div>
+      <details><summary>Grimoire — the full language reference</summary><pre id="grimoire"></pre></details>
+    </div>
+    <div id="help" class="panel">WASD move · mouse aim · click / 1-6 cast · right-drag camera · wheel zoom · B spellbook · Tab leaderboard · Esc menu · Enter chat</div>
   </div>
   <script type="module" src="./main.ts"></script>
 </body>

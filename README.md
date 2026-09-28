@@ -24,6 +24,7 @@ claude mcp add --transport http hogwarts http://localhost:7777/mcp \
 - 没有 token 也能连：Agent 调用 `enroll` 会直接创建巫师并返回 token 和游戏链接（`/?token=...`），浏览器打开即可看到同一个角色。
 - 只支持 stdio 的客户端：`HOGWARTS_TOKEN=<token> npm run mcp:stdio`（HTTP↔stdio 透明桥）。
 - 示例：`npm run bot -- "Neville Longbottom"` 是一个脚本化"Agent"，通过 MCP 入学、铸造自己的咒语、按弱点挑选法术猎杀生物。
+- 没有 Agent 也能写咒语：游戏里按 `B` 打开**咒语书**，可阅读课本咒语源码、编写 Runes、免费模拟（显示法力/gas/效果/截断）、铸造并放上快捷栏；底部附完整 Grimoire。
 
 然后对 Agent 说：*"读一下 grimoire，写一个专门收割残血敌人的咒语，放到 6 号快捷栏。"*
 
@@ -87,7 +88,7 @@ claude mcp add --transport http hogwarts http://localhost:7777/mcp \
 
 ## MCP 工具
 
-`enroll` `login` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to` `stop` `cast` `say` `events` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+`enroll` `login` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full 提前返回，并汇报期间变化） `stop` `cast` `say` `events` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
 
 ## 真实的霍格沃茨
 
@@ -108,5 +109,4 @@ claude mcp add --transport http hogwarts http://localhost:7777/mcp \
 
 - 身份即 token，本地游戏未做账号体系；世界存档 `data/world.json` 明文保存 token。
 - 服务器默认监听 `0.0.0.0:7777` 方便局域网联机；公网部署前请自行加鉴权/TLS。
-- 地面是平面、移动是 2D（XZ），寻路只有"撞墙侧滑"；Agent 的 `move_to` 在复杂地形可能卡住。
-- 浏览器端没有咒语编辑器 —— 写咒语是 Agent 的活（这正是设计意图）。
+- 地面是平面、移动是 2D（XZ）；寻路网格 2m，只考虑静态障碍，不避让生物和其他巫师。

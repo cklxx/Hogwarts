@@ -50,3 +50,17 @@ input, select { font: inherit; padding: 5px 7px; border-radius: 5px; border: 1px
 #map h2 { margin: 0 0 6px; text-align: center; } #map canvas { float: left; max-width: 60%; height: auto; margin-right: 16px; } #map li { font-family: Georgia; font-size: 13px; }
 #help { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); font-size: 12px; opacity: .7; }
 @media (max-width: 800px) { #help, #minimap { display: none; } }
+
+#book { position: fixed; inset: 5vh 5vw; padding: 12px 18px; overflow: auto; z-index: 6; }
+#book h2 { margin: 0 0 8px; } #book h2 small { font-weight: normal; font-size: 13px; opacity: .7; }
+#book .cols { display: grid; grid-template-columns: minmax(180px, 1fr) 3fr; gap: 14px; }
+#book-list { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto; }
+#book-list li { padding: 5px 8px; border-radius: 5px; cursor: pointer; border-bottom: 1px solid rgba(0,0,0,.08); }
+#book-list li:hover, #book-list li.sel { background: rgba(127, 9, 9, .12); }
+#book-list li small { display: block; opacity: .65; font-size: 11px; }
+#book .row { display: flex; gap: 6px; margin: 4px 0; flex-wrap: wrap; } #book .row input { flex: 1; min-width: 120px; }
+#sp-src { width: 100%; min-height: 180px; font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; padding: 8px; border-radius: 6px; border: 1px solid #8b6b3d; background: #fffaf0; color: #2b1d0e; }
+#sp-out, #grimoire { background: #fffaf0; padding: 8px; border-radius: 5px; white-space: pre-wrap; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; max-height: 30vh; overflow: auto; }
+#sp-out.bad { color: #9b0000; } #sp-out.good { color: #1d5b1d; }
+button.ghost { background: transparent; color: #7f0909; }
+@media (max-width: 800px) { #book .cols { grid-template-columns: 1fr; } }

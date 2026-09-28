@@ -60,6 +60,8 @@ export interface Wizard {
   facing: number;
   input: { dx: number; dz: number };
   goal: Vec2 | null;
+  /** Waypoints toward `goal` from the pathfinder (not persisted). */
+  route: Vec2[];
   spells: Spell[];
   hotbar: (string | null)[];
   items: Item[];
@@ -160,6 +162,8 @@ export interface Fx {
   r?: number;
   e?: Element;
   h?: string;
+  /** damage dealt, for floating numbers */
+  n?: number;
 }
 
 export interface Term { n: number; startedAt: number; endsAt: number }

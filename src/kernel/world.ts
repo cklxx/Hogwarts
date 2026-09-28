@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { CREATURE_KINDS, HOUSES, ITEM_SLOTS, type Element, type House, type ItemMod, type ItemSlot } from '../shared/constants.js';
-import { AZKABAN, LANDMARKS, SPAWN, ZONES, inZone, mulberry32, type ZoneId } from '../shared/map.js';
+import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, inZone, mulberry32, type ZoneId } from '../shared/map.js';
 import { canonFor, ollivander } from '../lore/wands.js';
 import { CURRICULUM, isLeviosa, isLeviosar, unforgivable } from '../lore/spells.js';
 import { analyze } from '../runes/checker.js';
@@ -8,6 +8,7 @@ import type { Node } from '../runes/parser.js';
 import { CREATURES } from './creatures.js';
 import { type CastReport, execute } from './magic.js';
 import { dist, resolve, solidAt } from './physics.js';
+import { findPath } from './pathfind.js';
 import {
   MAX_ITEMS, derived, gasLimit, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
 } from './progression.js';
@@ -181,7 +182,7 @@ export class World {
       wand: canon?.wand ?? ollivander(() => this.rng()),
       year: 1, xp: 0, reputation: 0, termReputation: 0, galleons: 20, hp: 100, mana: 100,
       pos: { x: SPAWN.x + (this.rng() - 0.5) * 6, z: SPAWN.z + (this.rng() - 0.5) * 6 }, facing: 0,
-      input: { dx: 0, dz: 0 }, goal: null, spells: [], hotbar: [null, null, null, null, null, null], items: [], equipped: {},
+      input: { dx: 0, dz: 0 }, goal: null, route: [], spells: [], hotbar: [null, null, null, null, null, null], items: [], equipped: {},
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9,
@@ -400,7 +401,7 @@ export class World {
         c.damageBy[sw.id] = (c.damageBy[sw.id] ?? 0) + a;
         if (!c.target) c.target = sw.id;
       }
-      this.fx({ k: 'hit', x: c.pos.x, z: c.pos.z, e: element });
+      this.fx({ k: 'hit', x: c.pos.x, z: c.pos.z, e: element, n: Math.round(a) });
       if (c.hp <= 0) this.slay(c);
       return a;
     }
@@ -414,7 +415,7 @@ export class World {
     }
     w.hp -= a;
     w.hurtAt = this.now;
-    this.fx({ k: 'hit', x: w.pos.x, z: w.pos.z, e: element, h: w.handle });
+    this.fx({ k: 'hit', x: w.pos.x, z: w.pos.z, e: element, h: w.handle, n: Math.round(a) });
     if (w.hp <= 0) this.stun(w, srcId);
     return a;
   }
@@ -632,13 +633,21 @@ export class World {
     if (!w) return;
     const len = Math.hypot(dx, dz);
     w.input = len > 1 ? { dx: dx / len, dz: dz / len } : { dx: dx || 0, dz: dz || 0 };
-    if (len > 0.01) w.goal = null;
+    if (len > 0.01) { w.goal = null; w.route = []; }
     if (typeof facing === 'number' && Number.isFinite(facing)) w.facing = facing;
   }
 
   setGoal(wid: string, goal: Vec2 | null) {
     const w = this.need(wid);
-    w.goal = goal ? { x: clampN(goal.x, -240, 240), z: clampN(goal.z, -240, 240) } : null;
+    w.route = [];
+    w.goal = null;
+    if (!goal) return null;
+    if (w.st.jailedUntil) throw new Error('The walls of Azkaban are thick.');
+    const to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
+    const route = findPath(w.pos, to);
+    if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
+    w.route = route;
+    w.goal = route[route.length - 1];
     return w.goal;
   }
 
@@ -789,10 +798,12 @@ export class World {
     if (w.st.rootedUntil > this.now) return;
     let { dx, dz } = w.input;
     if (w.goal && Math.hypot(dx, dz) < 0.01) {
-      const gx = w.goal.x - w.pos.x, gz = w.goal.z - w.pos.z;
+      while (w.route.length > 1 && dist(w.route[0], w.pos) < 1) w.route.shift();
+      const wp = w.route[0] ?? w.goal;
+      const gx = wp.x - w.pos.x, gz = wp.z - w.pos.z;
       const gl = Math.hypot(gx, gz);
-      if (gl < 0.6) w.goal = null;
-      else { dx = gx / gl; dz = gz / gl; w.facing = Math.atan2(dx, -dz); }
+      if (gl < 0.6 && w.route.length <= 1) { w.goal = null; w.route = []; }
+      else if (gl > 1e-6) { dx = gx / gl; dz = gz / gl; w.facing = Math.atan2(dx, -dz); }
     }
     if (Math.hypot(dx, dz) < 0.01) return;
     const d = derived(w, this.rules);
@@ -1195,7 +1206,7 @@ export class World {
   serialize() {
     return {
       version: 1, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
-      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, say: null })),
+      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null })),
     };
   }
 
@@ -1207,7 +1218,7 @@ export class World {
     w.decrees = data.decrees ?? [];
     w.flags = { ...w.flags, ...data.flags };
     w.seq = data.seq ?? 0;
-    for (const x of data.wizards) w.wizards.set(x.id, { ...x, lastMcpAt: -1e9, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } });
+    for (const x of data.wizards) w.wizards.set(x.id, { ...x, route: [], lastMcpAt: -1e9, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } });
     return w;
   }
 }

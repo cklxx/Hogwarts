@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { warmPathfinding } from '../kernel/pathfind.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
+import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, type McpSession } from '../mcp/server.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -34,6 +36,7 @@ function load(): World {
   return w;
 }
 const world = load();
+warmPathfinding();
 function save() {
   mkdirSync(dirname(DATA), { recursive: true });
   writeFileSync(DATA + '.tmp', JSON.stringify(world.serialize()));
@@ -145,7 +148,44 @@ type ClientMsg =
   | { t: 'cast'; key: string; x?: number; z?: number; target?: string }
   | { t: 'chat'; text: string }
   | { t: 'equip'; item: string }
-  | { t: 'unequip'; slot: string };
+  | { t: 'unequip'; slot: string }
+  | { t: 'book' }
+  | { t: 'simulate'; source: string; x?: number; z?: number; target?: string }
+  | { t: 'forge'; name: string; incantation?: string; source: string; slot?: number }
+  | { t: 'unlearn'; spell: string }
+  | { t: 'hotbar'; slots: (string | null)[] };
+
+const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
+
+/** Every browser action goes through the same World syscalls as MCP. Nothing a client sends may throw out of here. */
+function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
+  const w = world.wizards.get(wid);
+  if (!w || !m || typeof m !== 'object') return;
+  const reply = (o: unknown) => ws.send(JSON.stringify(o));
+  const book = () => reply({ t: 'book', armory: world.armory(wid), grimoire: grimoire(w.year, world.rules) });
+  try {
+    switch (m.t) {
+      case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
+      case 'cast': reply({ t: 'cast', r: world.cast(wid, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
+      case 'chat': world.say(w, String(m.text ?? '')); break;
+      case 'equip': world.equip(wid, String(m.item)); break;
+      case 'unequip': world.unequip(wid, String(m.slot)); break;
+      case 'book': book(); break;
+      case 'simulate': reply({ t: 'sim', r: world.simulate(wid, String(m.source ?? ''), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
+      case 'forge': {
+        const r = world.forgeSpell(wid, { name: String(m.name ?? ''), incantation: m.incantation ? String(m.incantation) : undefined, source: String(m.source ?? ''), slot: finite(m.slot) ? m.slot : undefined });
+        reply({ t: 'forged', name: r.spell.name, notes: r.notes });
+        book();
+        break;
+      }
+      case 'unlearn': world.unlearn(wid, String(m.spell)); book(); break;
+      case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
+    }
+  } catch (e) {
+    reply({ t: 'err', error: (e as Error).message });
+  }
+}
 
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Map<WebSocket, string>();
@@ -162,14 +202,7 @@ http.on('upgrade', (req, socket, head) => {
     ws.on('message', (raw) => {
       let m: ClientMsg;
       try { m = JSON.parse(String(raw)); } catch { return; }
-      const wid = w.id;
-      if (m.t === 'input') world.setInput(wid, Number(m.dx) || 0, Number(m.dz) || 0, m.f);
-      else if (m.t === 'cast') {
-        const r = world.cast(wid, String(m.key), { aim: typeof m.x === 'number' && typeof m.z === 'number' ? { x: m.x, z: m.z } : null, target: m.target ?? null });
-        ws.send(JSON.stringify({ t: 'cast', r }));
-      } else if (m.t === 'chat') world.say(w, String(m.text ?? ''));
-      else if (m.t === 'equip') { try { world.equip(wid, m.item); } catch { /* ignore */ } }
-      else if (m.t === 'unequip') world.unequip(wid, m.slot);
+      handleClient(ws, w.id, m);
     });
     ws.on('close', () => { clients.delete(ws); w.connections = Math.max(0, w.connections - 1); world.setInput(w.id, 0, 0); });
   });
