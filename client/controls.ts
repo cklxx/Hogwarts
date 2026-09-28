@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { CreatureKind, House } from '../src/shared/constants';
 import { LANDMARKS, zonesAt } from '../src/shared/map';
-import { spellKind, type SpellKind } from '../src/shared/spellkind';
 import { L, creatureName, houseName, spellName } from './i18n';
 import { heightAt } from './terrain';
 
@@ -16,6 +15,8 @@ import { heightAt } from './terrain';
 export interface CWizard { h: string; n: string; ho: House; hp: number; m: number; t: string; s: string; y: number }
 export interface CCreature { i: string; k: CreatureKind; hp: number; m: number; o?: string; s: string }
 export interface CSnap { w: CWizard[]; c: CCreature[] }
+/** What a spell is for (World.privateState reads it off Spell.effects): harm aims at a foe, help at a friend or you, self needs no target. */
+export type SpellKind = 'harm' | 'help' | 'self';
 export interface CSlot { id: string; name: string; cd: number; kind?: SpellKind }
 export interface CMe { name: string; house: House; year: number; seals: number; ui: string[]; hotbar: (CSlot | null)[]; stunned: number; jailed: number }
 type Model = { root: THREE.Object3D };
@@ -225,15 +226,17 @@ export function createControls(d: ControlsDeps) {
     tabbed.add(next);
     setTarget(next);
   }
-  function nearestFallen(range: number) {
-    const me = d.me();
-    const list = [...wIdx.values()].filter((w) => w.h !== d.myHandle() && isFallen(w.h) && distTo(w.h) <= range);
-    list.sort((a, b) => (me ? Number(b.ho === me.house) - Number(a.ho === me.house) : 0) || distTo(a.h) - distTo(b.h));
-    return list[0]?.h ?? null;
+  /** Fallen wizards within `range`, nearest first: only friends (your house, its NPCs included) unless `anyone`. */
+  function fallenNear(range: number, anyone = false) {
+    return [...wIdx.values()]
+      .filter((w) => w.h !== d.myHandle() && isFallen(w.h) && (anyone || relation(w.h) === 'ally') && distTo(w.h) <= range)
+      .sort((a, b) => distTo(a.h) - distTo(b.h)).map((w) => w.h);
   }
+  /** The friend the F key and an untargeted Rennervate lift. A stunned rival is never picked for you. */
+  const nearestFallen = (range: number) => fallenNear(range)[0] ?? null;
 
   // ------------------------------------------------------------------ casting
-  const kindOf = (s: CSlot): SpellKind => s.kind ?? (spellInfo.has(s.id) ? spellKind(spellInfo.get(s.id)!.effects) : 'harm');
+  const kindOf = (s: CSlot): SpellKind => s.kind ?? 'harm';
   const isRevive = (s: CSlot) => spellInfo.get(s.id)?.effects.includes('revive') ?? s.name === 'Rennervate';
   /** Choose what a spell should land on when the player gave no explicit instruction. */
   function chooseTarget(s: CSlot): string | null {
@@ -247,8 +250,10 @@ export function createControls(d: ControlsDeps) {
     }
     if (kind === 'help') {
       if (isRevive(s)) {
-        for (const k of [hovered, target]) if (k && isFallen(k) && distTo(k) <= REVIVE_RANGE) return k;
-        return nearestFallen(REVIVE_RANGE);
+        const down = (k: string | null): k is string => !!k && isFallen(k) && distTo(k) <= REVIVE_RANGE;
+        // a friend first (the one you point at or target, else the nearest); a rival only if you point at or target them on purpose
+        for (const k of [hovered, target]) if (down(k) && relation(k) === 'ally') return k;
+        return nearestFallen(REVIVE_RANGE) ?? [hovered, target].find(down) ?? null;
       }
       const friend = (k: string | null) => !!k && wIdx.has(k) && relation(k) === 'ally' && !isFallen(k) && distTo(k) <= HELP_RANGE;
       if (friend(hovered)) return hovered;
@@ -263,9 +268,16 @@ export function createControls(d: ControlsDeps) {
     const s = me.hotbar[i];
     if (!s) { d.toast(L(`快捷栏 ${i + 1} 是空的 —— 按 B 打开咒语书，把咒语放进来。`, `Hotbar slot ${i + 1} is empty — press B to put a spell there.`)); return; }
     const kind = kindOf(s);
-    const tgt = opts.at ? null : chooseTarget(s);
+    // a revive ignores where it is aimed (the server lifts its target, else whoever is nearest), so it always picks its own
+    const revive = kind === 'help' && isRevive(s);
+    const tgt = opts.at && !revive ? null : chooseTarget(s);
+    // untargeted, the server's Rennervate lifts the nearest fallen wizard, rival or not: never hand a beaten foe back up by accident
+    if (!tgt && revive && fallenNear(REVIVE_RANGE + 1, true).length) {
+      d.toast(L('附近倒下的只有对手。真想扶起他，就先用鼠标指向或锁定他，再按这个键。', 'Only rivals are down nearby. To revive one anyway, point at or target them first, then press the key.'));
+      return;
+    }
     const m = tgt ? model(tgt) : null;
-    const p = opts.at ?? (m ? { x: m.root.position.x, z: m.root.position.z } : fallbackAim());
+    const p = m ? { x: m.root.position.x, z: m.root.position.z } : opts.at ?? fallbackAim();
     d.send({ t: 'cast', key: String(i + 1), x: p.x, z: p.z, target: tgt ?? undefined });
     pendingCasts.push({ name: s.name, kind, target: tgt, targetKind: tgt ? (cIdx.get(tgt)?.k ?? (wIdx.has(tgt) ? 'wizard' : null)) : null });
     if (pendingCasts.length > 20) pendingCasts.shift();
@@ -467,31 +479,45 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ per-frame update (called from main.ts' frame loop)
   let lastInput = '', inputTimer = 0, facing = 0;
+  /**
+   * Keyboard movement is read relative to the camera as it was when the current key combination began (plus any
+   * turning the player does by hand). The automatic drift below turns only the camera, not that basis, so it can swing
+   * in behind a strafe or a diagonal run without bending the run into a circle. Pressing another key combination
+   * re-reads the keys against the camera you now see; the joystick is always read against the live camera.
+   */
+  let moveSig = '', moveSince = 0, driftOff = 0;
   function update(dt: number) {
     index();
     d.camera.updateMatrixWorld();
     const t = now();
     const me = d.me();
-    // camera turn keys
-    if (keys.has('q')) d.cam.yaw += dt * 1.8;
-    if (keys.has('e')) d.cam.yaw -= dt * 1.8;
+    // camera turn keys (turning by hand pauses the drift, like a right-drag)
+    if (keys.has('q')) { d.cam.yaw += dt * 1.8; lastDrag = t; }
+    if (keys.has('e')) { d.cam.yaw -= dt * 1.8; lastDrag = t; }
     // movement: WASD / arrows / joystick, camera-relative
-    let fx = joy.x, fz = joy.y;
-    if (keys.has('w') || keys.has('arrowup')) fz -= 1;
-    if (keys.has('s') || keys.has('arrowdown')) fz += 1;
-    if (keys.has('a') || keys.has('arrowleft')) fx -= 1;
-    if (keys.has('d') || keys.has('arrowright')) fx += 1;
-    const s = Math.sin(d.cam.yaw), c = Math.cos(d.cam.yaw);
+    let kx = 0, kz = 0;
+    if (keys.has('w') || keys.has('arrowup')) kz -= 1;
+    if (keys.has('s') || keys.has('arrowdown')) kz += 1;
+    if (keys.has('a') || keys.has('arrowleft')) kx -= 1;
+    if (keys.has('d') || keys.has('arrowright')) kx += 1;
+    const stick = Math.hypot(joy.x, joy.y) >= 0.05;
+    const sig = stick ? 'stick' : `${kx},${kz}`;
+    if (sig !== moveSig) { moveSig = sig; moveSince = t; driftOff = 0; }
+    const fx = joy.x + kx, fz = joy.y + kz;
+    const base = d.cam.yaw - driftOff;
+    const s = Math.sin(base), c = Math.cos(base);
     let dx = fx * c + fz * s, dz = -fx * s + fz * c;
     const len = Math.hypot(dx, dz);
     if (len > 1) { dx /= len; dz /= len; }
     if (len < 0.05) dx = dz = 0;
     const moving = len >= 0.05;
     if (moving && dest) clearDest();
-    // the camera drifts in behind the way you run (never while backing up, never right after you steered it yourself)
-    if (moving && fz <= 0.1 && !dragging && t - lastDrag > 3) {
-      const behind = Math.atan2(-dx, -dz);
-      d.cam.yaw += wrap(behind - d.cam.yaw) * Math.min(1, dt * 0.55);
+    // after a moment on the same keys the camera drifts in behind the way you run; never while backing up, never for
+    // a quick sidestep, never soon after you turned it yourself, and never for the joystick (the other thumb looks)
+    if (moving && !stick && kz <= 0 && t - moveSince > 0.7 && !dragging && t - lastDrag > 3) {
+      const step = wrap(Math.atan2(-dx, -dz) - d.cam.yaw) * Math.min(1, dt * 0.55);
+      d.cam.yaw += step;
+      driftOff += step;
     }
 
     // hover + aim
