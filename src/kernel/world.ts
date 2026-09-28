@@ -1725,5 +1725,5 @@ const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, 
  */
 const HARM_EFFECTS = new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova']);
 const HELP_EFFECTS = new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend']);
-const spellKind = (effects: readonly string[]): 'harm' | 'help' | 'self' =>
+export const spellKind = (effects: readonly string[]): 'harm' | 'help' | 'self' =>
   effects.some((e) => HARM_EFFECTS.has(e)) ? 'harm' : effects.some((e) => HELP_EFFECTS.has(e)) ? 'help' : 'self';
