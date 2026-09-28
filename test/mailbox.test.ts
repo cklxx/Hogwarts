@@ -3,8 +3,8 @@
  * answers, the wake contract of MCP wait/listen, presence, and the player's pause switch.
  */
 import { describe, expect, it } from 'vitest';
-import { AGENT_PAUSED, AGENT_PAUSE_ALLOWED, PLAYER_STEERING, World } from '../src/kernel/world.js';
-import { AGENT_SEEN_ROUND_S, ASK_TTL_S, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN } from '../src/shared/constants.js';
+import { AGENT_PAUSED, AGENT_PAUSE_ALLOWED, OWLBOX_UNREAD, PLAYER_STEERING, World } from '../src/kernel/world.js';
+import { AGENT_SEEN_ROUND_S, ASK_TTL_S, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PLAYER_GRACE_S } from '../src/shared/constants.js';
 import type { Wizard } from '../src/kernel/types.js';
 
 function mk() {
@@ -69,6 +69,44 @@ describe('owls', () => {
     }
     expect(a.owlbox.every((m) => m.ask && !m.answered)).toBe(true);
     expect(() => w.owl(a.id, 'player', 'hello?')).toThrow(/full of questions/);
+  });
+  it("an agent's owls never push out its player's unread owls (the reviewer's case: one important owl, then 50 from the agent)", () => {
+    const w = mk();
+    const a = join(w, 'Alice');
+    w.owl(a.id, 'player', 'IMPORTANT: stop attacking the centaurs');
+    for (let i = 0; i < OWLBOX_MAX; i++) { owlEvery(w, 2.1); w.owl(a.id, 'agent', `status ${i}`); }
+    expect(a.owlbox).toHaveLength(OWLBOX_MAX);
+    expect(a.owlbox.filter((m) => m.from === 'player').map((m) => m.text)).toEqual(['IMPORTANT: stop attacking the centaurs']);
+    expect(w.takeOwls(a.id).map((m) => m.text)).toEqual(['IMPORTANT: stop attacking the centaurs']);
+    // once read, it is an ordinary finished message and may make room
+    owlEvery(w, 2.1);
+    w.owl(a.id, 'agent', 'one more');
+    expect(a.owlbox.some((m) => m.from === 'player')).toBe(false);
+  });
+
+  it('a box full of unread player owls: an agent must listen first; a newer player owl drops the oldest, and the agent is told how many it missed', () => {
+    const w = mk();
+    const a = join(w, 'Alice');
+    for (let i = 0; i < OWLBOX_MAX; i++) { owlEvery(w, 2.1); w.owl(a.id, 'player', `p${i}`); }
+    owlEvery(w, 2.1);
+    expect(() => w.owl(a.id, 'agent', 'hello?')).toThrow(OWLBOX_UNREAD);
+    expect(() => w.owl(a.id, 'agent', 'ok?', ['yes', 'no'])).toThrow(OWLBOX_UNREAD);
+    const since = w.events.at(-1)!.id;
+    for (let i = 0; i < 3; i++) { owlEvery(w, 2.1); w.owl(a.id, 'player', `late ${i}`); }
+    expect(a.owlbox).toHaveLength(OWLBOX_MAX);
+    const got = w.takeOwls(a.id);
+    expect(got).toHaveLength(OWLBOX_MAX);
+    expect(got[0]).toMatchObject({ text: 'p3', lost: 3 }); // p0, p1, p2 were dropped just before it
+    expect(got.reduce((n, m) => n + (m.lost ?? 0), 0)).toBe(3);
+    // the player is told once (privately, in both languages), and that also wakes a waiting agent
+    const told = w.inboxFor(a.id, since).filter((e) => e.type === 'system');
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatchObject({ to: a.id });
+    expect(told[0].zh).toMatch(/挤掉/);
+    // after listening, room is made from read owls first
+    owlEvery(w, 2.1);
+    expect(w.owl(a.id, 'agent', 'sorry, I was busy').from).toBe('agent');
+    expect(w.owl(a.id, 'player', 'fine').lost).toBeUndefined();
   });
 });
 
@@ -227,14 +265,59 @@ describe('presence and the pause switch', () => {
     w.setAgentPaused(a.id, true);
     expect(a.goal).not.toBeNull();
     w.setAgentPaused(a.id, false);
+    w.setGoal(a.id, null); // the player stops
+    w.now += PLAYER_GRACE_S;
     w.setGoal(a.id, { x: 80, z: 60 }, 'agent');
     w.setInput(a.id, 0, 1);
     expect(a.goal).toBeNull();
     expect(() => w.setGoal(a.id, { x: 80, z: 60 }, 'agent')).toThrow(PLAYER_STEERING);
     w.setInput(a.id, 0, 0);
+    expect(() => w.setGoal(a.id, { x: 80, z: 60 }, 'agent')).toThrow(PLAYER_STEERING); // just let go: the grace
+    w.now += PLAYER_GRACE_S;
     expect(w.setGoal(a.id, { x: 80, z: 60 }, 'agent')).not.toBeNull();
     run(w, 1);
     expect(a.pos.x).toBeGreaterThan(60);
+  });
+
+  it("an agent never overrides or cancels the player's click-to-move: the human comes first", () => {
+    const w = mk();
+    const a = join(w, 'Alice');
+    w.setGoal(a.id, { x: 70, z: 60 }); // the player clicks the ground
+    const mine = { ...a.goal! };
+    w.now += 10; // long after the click: the walk itself still has priority
+    expect(() => w.setGoal(a.id, { x: 90, z: 60 }, 'agent')).toThrow(PLAYER_STEERING);
+    expect(w.setGoal(a.id, null, 'agent')).toBeNull(); // the agent's stop ends only a walk the agent set
+    expect([a.goal, a.goalBy]).toEqual([mine, 'player']);
+    expect(w.playerSteering(a)).toBe(true);
+    // the player's walk ends; the grace runs from the arrival, then the agent may walk again
+    for (let t = 0; t < 10 && a.goal; t += 0.05) w.tick(0.05);
+    expect(a.goal).toBeNull();
+    expect(() => w.setGoal(a.id, { x: 90, z: 60 }, 'agent')).toThrow(PLAYER_STEERING);
+    run(w, PLAYER_GRACE_S + 0.1);
+    expect(w.playerSteering(a)).toBe(false);
+    w.setGoal(a.id, { x: 90, z: 60 }, 'agent');
+    expect(a.goalBy).toBe('agent');
+    // a click replaces the agent's walk at once; the agent's stop leaves it alone
+    w.setGoal(a.id, { x: 50, z: 60 });
+    expect(a.goalBy).toBe('player');
+    w.setGoal(a.id, null, 'agent');
+    expect(a.goal).not.toBeNull();
+    // and the agent's own stop does end the agent's own walk
+    w.setGoal(a.id, null);
+    w.now += PLAYER_GRACE_S;
+    w.setGoal(a.id, { x: 90, z: 60 }, 'agent');
+    w.setGoal(a.id, null, 'agent');
+    expect([a.goal, a.goalBy]).toEqual([null, null]);
+  });
+
+  it('a paused agent keeps exactly the nine tools of §C.1: never the key, never a rebinding, nothing else', () => {
+    const w = mk();
+    const a = join(w, 'Alice');
+    w.setAgentPaused(a.id, true);
+    expect([...AGENT_PAUSE_ALLOWED].sort()).toEqual(['armory', 'events', 'grimoire', 'leaderboard', 'listen', 'look', 'set_goal_note', 'tell_player', 'whoami']);
+    for (const tool of ['rotate_key', 'enroll', 'login', 'pair', 'read_seal_page', 'unlearn_spell', 'set_hotbar', 'wait', 'confirm_with_player', 'simulate_spell']) expect(w.agentMayAct(a.id, tool), tool).toBe(false);
+    for (const tool of AGENT_PAUSE_ALLOWED) expect(AGENT_PAUSED).toContain(tool);
+    expect(w.agentMayAct('wz_nobody', 'enroll')).toBe(true); // no wizard bound: nothing to pause
   });
 });
 

@@ -62,6 +62,11 @@ export const PAIR_LEN = 6;
 /** 31^6 = 887 503 681 possible codes (Lean: pair_space). */
 export const PAIR_SPACE = PAIR_ALPHABET.length ** PAIR_LEN;
 export const PAIR_TTL_S = 180;
+/**
+ * Failed pairing attempts per minute: per source (IP) and per realm. A source over its own cap is refused
+ * without spending the realm's budget (World.redeemPairCode(code, source)), so locking a realm out takes
+ * at least PAIR_FAIL_PER_REALM_PER_MIN / PAIR_FAIL_PER_IP_PER_MIN = 3 sources (Lean: realm_lock_needs_sources).
+ */
 export const PAIR_FAIL_PER_IP_PER_MIN = 10;
 export const PAIR_FAIL_PER_REALM_PER_MIN = 30;
 export const LOGIN_FAIL_PER_IP_PER_MIN = 20;
@@ -107,8 +112,11 @@ export const JINX_DEFAULTS: Record<JinxKind, { mag: number; seconds: number }> =
 /** Owl Post between a player and their own agent. */
 export const OWLBOX_MAX = 50;
 export const OWL_MAX_CHARS = 400;
+/** Owls a minute from each side (the player and the agent count separately, so a chatty agent never gags its player). */
 export const OWL_PER_MIN = 30;
 export const ASK_TTL_S = 45;
 export const LISTEN_MAX_S = 45;
 /** Agent presence timestamps are rounded down to this many seconds (so `me` does not change every tick). */
 export const AGENT_SEEN_ROUND_S = 5;
+/** The human comes first: an agent's move_to is refused for this long after the player last steered (WASD or a click walk). */
+export const PLAYER_GRACE_S = 2;

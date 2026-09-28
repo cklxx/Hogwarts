@@ -204,6 +204,7 @@ def OWL_MAX_CHARS : Nat := 400
 def OWL_PER_MIN : Nat := 30
 def ASK_TTL_S : Nat := 45
 def LISTEN_MAX_S : Nat := 45
+def PLAYER_GRACE_S : Nat := 2
 /-- NEG_LIMITS: maxHp, maxMana, manaRegen, speed, power, ward. -/
 def NEG_LIMITS : List (String × Int) :=
   [("maxHp", -30), ("maxMana", -30), ("manaRegen", -3), ("speed", -20), ("power", -15), ("ward", -20)]
@@ -268,6 +269,24 @@ theorem pair_guess_bound (g : List Nat) (cap live : Nat) (hg : g.length ≤ cap)
     guessing it is below one in a million. -/
 theorem pair_lifetime_odds : PAIR_FAIL_PER_REALM_PER_MIN * (PAIR_TTL_S / 60) * 1000000 < pairSpace := by
   rw [pair_space_val]; decide
+
+/-- The failures a realm counts in a window, given each source's count (World.redeemPairCode refuses a
+    source at PAIR_FAIL_PER_IP_PER_MIN before counting, so no source adds more than that). -/
+def realmFails : List Nat → Nat
+  | [] => 0
+  | f :: fs => f + realmFails fs
+theorem realm_fails_le (cap : Nat) : ∀ fs : List Nat, (∀ f ∈ fs, f ≤ cap) → realmFails fs ≤ fs.length * cap
+  | [], _ => by simp [realmFails]
+  | f :: fs, h => by
+    have h1 := h f (by simp)
+    have h2 := realm_fails_le cap fs (fun x hx => h x (by simp [hx]))
+    simp only [realmFails, List.length_cons, Nat.succ_mul]; omega
+/-- realm_lock_needs_sources: filling the realm's window (which refuses everyone, the right code
+    included) takes failures from at least 3 sources; one address alone never locks a realm. -/
+theorem realm_lock_needs_sources (fs : List Nat) (h : ∀ f ∈ fs, f ≤ PAIR_FAIL_PER_IP_PER_MIN)
+    (full : PAIR_FAIL_PER_REALM_PER_MIN ≤ realmFails fs) : 3 ≤ fs.length := by
+  have := realm_fails_le PAIR_FAIL_PER_IP_PER_MIN fs h
+  unfold PAIR_FAIL_PER_REALM_PER_MIN PAIR_FAIL_PER_IP_PER_MIN at *; omega
 
 /-! ### derived() floors (progression.ts, §B.7): a curse scales you down, never out -/
 
@@ -342,6 +361,17 @@ theorem hex_dots_floor (maxHp : Nat) : ∀ (ds : List Nat) (hp : Nat), hexFloor 
   | [], _, h => h
   | d :: ds, hp, h => hex_dots_floor maxHp ds _ (hex_dot_floor hp maxHp d h)
 
+/-- progression.ts `hexTickDmg`: one jinx tick after every multiplier (rules, the victim's ward), capped
+    at the jinx's own rate for the tick. -/
+def hexTick (rate scaled : Nat) : Nat := min rate scaled
+/-- hex_tick_capped: a cursed ward (or a decree) never makes a jinx outgrow its table. -/
+theorem hex_tick_capped (r s : Nat) : hexTick r s ≤ r := by unfold hexTick; omega
+/-- …while a protective ward still softens it. -/
+theorem hex_tick_softens (r s : Nat) (h : s ≤ r) : hexTick r s = s := by unfold hexTick; omega
+/-- With the worst cursed ward (the damage scaled to 125 %), the tick is still the table's rate. -/
+theorem hex_tick_worst_ward (r : Nat) : hexTick r (r * (100 - WARD_MIN_PCT).toNat / 100) = r := by
+  unfold hexTick WARD_MIN_PCT; simp; omega
+
 /-! ### What a curse costs its sender (§B.2, §B.4) -/
 
 /-- progression.ts `itemPrice` for whole points. -/
@@ -362,6 +392,15 @@ theorem cooldown_covers_binding : CURSED_ITEM_BIND_S ≤ HEX_PAIR_COOLDOWN_S := 
 theorem silence_duty : SILENCE_MAX_S * 5 ≤ SILENCE_MAX_S + SILENCE_COOLDOWN_S := by decide
 /-- Questions last less than the owl rate window, so at most OWL_PER_MIN are ever open: they always fit in the owlbox. -/
 theorem open_questions_fit : ASK_TTL_S ≤ 60 ∧ OWL_PER_MIN < OWLBOX_MAX := by decide
+/-- The longest a parcel's effect lasts: any jinx of JINX_DEFAULTS, or a silence. -/
+def longestHex : Nat := (JINX_DEFAULTS.map fun (_, _, s) => s).foldl max SILENCE_MAX_S
+theorem longest_hex_val : longestHex = 20 := by decide
+/-- hexes_leave_gaps: the parcels the 10-minute window admits (from all senders together) cannot cover
+    it, so no group of senders keeps anyone jinxed without a gap — the ratio formal/tla/HexLive.tla's
+    liveness is checked under (LeavesGaps: WinCap × the longest effect < WinLen). -/
+theorem hexes_leave_gaps : VICTIM_HEX_PER_10MIN * longestHex < HEX_WINDOW_S := by decide
+/-- The player's grace is shorter than a question's life: an agent that asks first is never locked out by it. -/
+theorem grace_short : PLAYER_GRACE_S < ASK_TTL_S := by decide
 
 /-! ## Conformance vectors (compared with the TypeScript code in test/formal.test.ts) -/
 
@@ -386,7 +425,7 @@ def agentLinkVectors : String :=
     ("HEX_RESPITE_S", toString HEX_RESPITE_S), ("SILENCE_MAX_S", toString SILENCE_MAX_S),
     ("SILENCE_COOLDOWN_S", toString SILENCE_COOLDOWN_S), ("FORGE_FAIL_PER_MIN", toString FORGE_FAIL_PER_MIN),
     ("OWLBOX_MAX", toString OWLBOX_MAX), ("OWL_MAX_CHARS", toString OWL_MAX_CHARS), ("OWL_PER_MIN", toString OWL_PER_MIN),
-    ("ASK_TTL_S", toString ASK_TTL_S), ("LISTEN_MAX_S", toString LISTEN_MAX_S)]
+    ("ASK_TTL_S", toString ASK_TTL_S), ("LISTEN_MAX_S", toString LISTEN_MAX_S), ("PLAYER_GRACE_S", toString PLAYER_GRACE_S)]
   let negs := obj (NEG_LIMITS.map fun (k, v) => (k, toString v))
   let jinx := obj (JINX_DEFAULTS.map fun (k, m, s) => (k, s!"[{m},{s}]"))
   let hpF := [1, 2, 3, 4, 5, 6, 7].map fun y => s!"[{y},{hpFloor y}]"
@@ -427,9 +466,16 @@ def agentLinkVectors : String :=
           out := out ++ [s!"[{hp},{mh},{d},{hexDot hp mh d}]"]
     return out
   let hexC := [0, 1, 2, 8, 14, 34].map fun p => s!"[{p},{hexCost p}]"
+  let hexT := Id.run do
+    let mut out : List String := []
+    for r in [0, 3, 30] do
+      for s in [0, 2, 3, 4, 30, 37] do
+        out := out ++ [s!"[{r},{s},{hexTick r s}]"]
+    return out
   obj [("constants", consts), ("negLimits", negs), ("jinxDefaults", jinx), ("hpFloor", arr hpF), ("maxHp", arr maxHp),
     ("maxMana", arr maxMana), ("manaRegen", arr regen), ("speed", arr speed), ("power", arr power), ("ward", arr ward),
-    ("moveSlow", arr slow), ("hexFloor", arr hexF), ("hexDot", arr hexD), ("hexCost", arr hexC)]
+    ("moveSlow", arr slow), ("hexFloor", arr hexF), ("hexDot", arr hexD), ("hexCost", arr hexC),
+    ("hexTick", arr hexT), ("longestHex", toString longestHex)]
 
 
 def xpSamples : List Nat := (List.range 90).map (· * 50)

@@ -58,6 +58,8 @@ export interface WizardStatus {
   silenceCdUntil: number;
   /** Which jinx the current silence belongs to (a Bat-Bogey's silence is part of that one hex). */
   silenceBy: 'langlock' | 'bats' | null;
+  /** Who sent it (World.jinxBites: the silence rests while the PvP rules would not let them harm you). Never shown. */
+  silenceSrc?: string | null;
 }
 
 /** One message in the private Owl Post between a player and their own agent. */
@@ -73,6 +75,8 @@ export interface OwlMsg {
   answer?: string;
   /** For a player's answer: the id of the question it answers. */
   re?: number;
+  /** A player's owl: this many older owls from the player were dropped unread just before it (the owlbox was full). */
+  lost?: number;
 }
 
 /** What the agent last did (not persisted; `at` is world time). */
@@ -152,6 +156,8 @@ export interface Wizard {
   agentSeen: AgentSeen | null;
   /** Not persisted: who set `goal` (a player's WASD cancels either; pausing the agent cancels the agent's). */
   goalBy?: 'agent' | 'player' | null;
+  /** Not persisted: world time the player last steered (WASD, a click walk, reaching its end); PLAYER_GRACE_S. */
+  steerAt?: number;
 }
 
 export interface CreatureDef {

@@ -217,21 +217,78 @@ describe('jinxes in the lore', () => {
     expect(b.hp).toBeGreaterThan(after); // natural regeneration was never interrupted
   });
 
-  it('a jinx damage tick goes through canHarm: no damage in a safe zone, or between housemates without friendly fire', () => {
+  it('a jinx acts only while it bites (jinxBites): never in a safe zone, never once the PvP rules forbid it — wherever the sender stands', () => {
     const w = mk();
     const [a, b] = pair(w);
     hex(w, a, b, { name: 'Sweets', slot: 'trinket', lore: 'Furnunculus' });
     b.pos = { ...SAFE };
     b.hp = 60;
     run(w, 2);
-    expect(b.hp).toBeGreaterThanOrEqual(60);
-    const w2 = mk();
-    w2.rules.combat.friendlyFire = false;
-    const a2 = wiz(w2, 'House A', 'ravenclaw', 60, 60), b2 = wiz(w2, 'House B', 'ravenclaw', 64, 60);
-    hex(w2, a2, b2, { name: 'Sweets', slot: 'trinket', lore: 'Furnunculus' });
-    b2.hp = 60;
-    run(w2, 2);
-    expect(b2.hp).toBeGreaterThanOrEqual(60);
+    expect(b.hp).toBeGreaterThanOrEqual(60); // the victim in a safe zone: suspended
+    // the sender walking into the Great Hall changes nothing for the victim (no side channel on where they are)
+    b.pos = { x: 64, z: 60 };
+    const trace: number[] = [];
+    for (const where of [{ x: 60, z: 60 }, { ...SAFE }, { x: 60, z: 60 }]) {
+      a.pos = where;
+      const before = b.hp;
+      run(w, 1);
+      trace.push(b.hp - before);
+    }
+    expect(w.canHarm(a.id, b.id)).toBe(true);
+    for (const d of trace) expect(d).toBeCloseTo(trace[0], 1);
+    expect(trace[0]).toBeLessThan(0); // 3/s jinx against 2/s natural regeneration
+    // a decree switching PvP off rests every jinx at once: damage, Jelly-Legs and the silence
+    const c = wiz(w, 'Second Sender', 'ravenclaw', 60, 64);
+    hex(w, c, b, { name: 'Socks', slot: 'amulet', lore: 'Jelly-Legs' });
+    w.rules.combat.pvp = false;
+    expect(w.jinxBites(a.id, b.id)).toBe(false);
+    expect(w.hexState(b)).toMatchObject({ pvp: false, safe: false }); // the banner can say why it rests
+    const hp = b.hp;
+    run(w, 1);
+    expect(b.hp).toBeGreaterThan(hp);
+    const d = wiz(w, 'Control', 'hufflepuff', 64, 64);
+    w.setInput(b.id, 1, 0); w.setInput(d.id, 1, 0);
+    const x0 = b.pos.x, y0 = d.pos.x;
+    run(w, 1);
+    expect(b.pos.x - x0).toBeCloseTo(d.pos.x - y0, 3);
+    b.st.silencedUntil = w.now + 3; b.st.silenceBy = 'langlock'; b.st.silenceSrc = a.id;
+    expect(w.silenced(b)).toBe(false);
+    w.rules.combat.pvp = true;
+    expect(w.silenced(b)).toBe(true);
+  });
+
+  it('the gate refuses what the PvP rules forbid: PvP off, or a housemate without friendly fire (the same sentence, nothing charged)', () => {
+    const w = mk();
+    w.rules.combat.friendlyFire = false;
+    const a = wiz(w, 'House A', 'ravenclaw', 60, 60), b = wiz(w, 'House B', 'ravenclaw', 64, 60), c = wiz(w, 'Rival', 'slytherin', 64, 64);
+    const gold = a.galleons;
+    expect(() => hex(w, a, b, { name: 'Sweets', slot: 'trinket', lore: 'Langlock' })).toThrow(FORGE_REFUSAL);
+    expect(() => hex(w, a, b, { name: 'Lead Robe', slot: 'robe', mods: { speed: -20 } })).toThrow(FORGE_REFUSAL);
+    expect([a.galleons, b.items.length, b.st.silencedUntil]).toEqual([gold, 0, 0]);
+    expect(w.cast(b.id, 'Lumos').ok).toBe(true);
+    w.rules.combat.friendlyFire = true;
+    expect(() => hex(w, a, b, { name: 'Sweets', slot: 'trinket', lore: 'Langlock' })).not.toThrow();
+    w.rules.combat.pvp = false;
+    expect(() => hex(w, a, c, { name: 'Lead Robe', slot: 'robe', mods: { speed: -20 } })).toThrow(FORGE_REFUSAL);
+    expect([c.items.length, w.boundItems(c).length, derived(c, w.rules).speedMult]).toEqual([0, 0, 1]);
+    // a benign gift is still just a gift
+    expect(() => w.forgeItem(a.id, c.id, { name: 'Scarf', slot: 'robe', mods: { ward: 1 } })).not.toThrow();
+  });
+
+  it('a cursed negative ward never lets a jinx outgrow its table (≤ 3 HP a second)', () => {
+    const w = mk();
+    const b = wiz(w, 'Victim', 'slytherin', 64, 60, 7);
+    const a = wiz(w, 'Binder', 'gryffindor', 60, 60, 4), c = wiz(w, 'Boiler', 'hufflepuff', 60, 64, 2);
+    hex(w, a, b, { name: 'Brittle Robe', slot: 'robe', mods: { ward: -20 } });
+    expect(derived(b, w.rules).ward).toBeCloseTo(-0.2);
+    hex(w, c, b, { name: 'Sweets', slot: 'trinket', lore: 'Furnunculus' });
+    b.hurtAt = w.now; // hold natural regeneration off for the measurement (a jinx never touches hurtAt itself)
+    const before = b.hp;
+    for (let t = 0; t < 1; t += 0.05) { b.hurtAt = w.now; w.tick(0.05); }
+    expect(before - b.hp).toBeGreaterThan(2.9);
+    expect(before - b.hp).toBeLessThanOrEqual(JINX_DEFAULTS.boils.mag + 1e-6);
+    // an ordinary spell still feels the cursed ward (only jinxes are capped)
+    expect(w.damage(c.id, b.id, 10, 'arcane')).toBeCloseTo(10 * derived(c, w.rules).power * 1.2);
   });
 
   it('Jelly-Legs slows you, never below a quarter of your speed, and not in a safe zone', () => {
@@ -306,6 +363,48 @@ describe('jinxes in the lore', () => {
     expect(b.st.silencedUntil).toBe(firstEnds);
     expect(w.cast(b.id, 'Lumos').ok).toBe(true);
     expect(b.st.silenceCdUntil).toBe(firstEnds + SILENCE_COOLDOWN_S);
+  });
+
+  it('the casting window survives a restart and a knock-out: no second Langlock straight after the first', () => {
+    const w = mk();
+    const [a, b] = pair(w);
+    const c = wiz(w, 'Second Sender', 'ravenclaw', 60, 64);
+    hex(w, a, b, { name: 'Gag 1', slot: 'trinket', lore: 'Langlock' });
+    run(w, SILENCE_MAX_S + 0.1);
+    const cd = b.st.silenceCdUntil;
+    expect(cd - w.now).toBeGreaterThan(SILENCE_COOLDOWN_S - 1);
+    // a restart keeps the silence state (and its cooldown) ...
+    const w2 = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    const b2 = w2.wizards.get(b.id)!, c2 = w2.wizards.get(c.id)!;
+    b2.connections = 1; c2.connections = 1;
+    expect(b2.st.silenceCdUntil).toBe(cd);
+    hex(w2, c2, b2, { name: 'Gag 2', slot: 'amulet', lore: 'Langlock' });
+    expect(w2.silenced(b2)).toBe(false);
+    expect(w2.cast(b2.id, 'Lumos').ok).toBe(true);
+    // ... and so does a silence still running at save time
+    const w3 = mk();
+    const [a3, b3] = pair(w3);
+    hex(w3, a3, b3, { name: 'Gag', slot: 'trinket', lore: 'Langlock' });
+    const w4 = World.restore(JSON.parse(JSON.stringify(w3.serialize())));
+    const b4 = w4.wizards.get(b3.id)!;
+    b4.connections = 1;
+    expect([b4.st.silencedUntil, b4.st.silenceBy, b4.st.silenceSrc]).toEqual([b3.st.silencedUntil, 'langlock', a3.id]);
+    expect(w4.cast(b4.id, 'Lumos').error).toBe(SILENCED);
+    // a knock-out and respawn reset the status, but not the cooldown
+    const w5 = mk();
+    const [a5, b5] = pair(w5);
+    const c5 = wiz(w5, 'Second Sender', 'ravenclaw', 60, 64);
+    hex(w5, a5, b5, { name: 'Gag 1', slot: 'trinket', lore: 'Langlock' });
+    w5.damage(null, b5.id, 10_000, 'arcane');
+    expect(b5.st.stunnedUntil).toBeGreaterThan(0);
+    run(w5, w5.rules.combat.respawnSeconds + 0.2);
+    expect(b5.st.stunnedUntil).toBe(0);
+    expect(b5.st.silencedUntil).toBe(0);
+    expect(b5.st.silenceCdUntil - w5.now).toBeGreaterThan(SILENCE_COOLDOWN_S - SILENCE_MAX_S);
+    b5.pos = { x: 64, z: 60 }; // out of the Hospital Wing
+    hex(w5, c5, b5, { name: 'Gag 2', slot: 'amulet', lore: 'Langlock' });
+    expect(w5.silenced(b5)).toBe(false);
+    expect(w5.cast(b5.id, 'Lumos').ok).toBe(true);
   });
 
   it('a Bat-Bogey is a short DoT and a silence, and counts as one jinx', () => {

@@ -4,11 +4,12 @@
  *     (including every agent-link constant and the stat floors of docs/AGENT_LINK.md §B.7/§B.8).
  *  2. The invariants model-checked in formal/tla/Hostility.tla are re-checked against the real
  *     World.canHarm on randomly generated worlds (so the model and the code cannot drift apart) —
- *     with jinx auras on the wizards, whose damage must obey the same relation and the hex floor.
+ *     with jinx auras on the wizards, whose effects must obey World.jinxBites (canHarm(null, victim) and
+ *     the PvP rules, implied by canHarm(sender, victim)), the tick cap and the hex floor.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { derived, derivedUncached, hexDotHp, hexHpFloor, hexPrice, hpFloor, moveSlow, stealAmount, yearForXp } from '../src/kernel/progression.js';
+import { derived, derivedUncached, hexDotHp, hexHpFloor, hexPrice, hexTickDmg, hpFloor, moveSlow, stealAmount, yearForXp } from '../src/kernel/progression.js';
 import { titleIndex } from '../src/lore/titles.js';
 import { World } from '../src/kernel/world.js';
 import { mulberry32 } from '../src/shared/map.js';
@@ -21,6 +22,7 @@ type AgentLinkVectors = {
   hpFloor: [number, number][]; maxHp: [number, number, number][]; maxMana: [number, number, number][];
   manaRegen: [number, number, number, number][]; speed: [number, number][]; power: [number, number][]; ward: [number, number][];
   moveSlow: [number, number, number][]; hexFloor: [number, number][]; hexDot: [number, number, number, number][]; hexCost: [number, number][];
+  hexTick: [number, number, number][]; longestHex: number;
 };
 const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.url), 'utf8')) as {
   yearForXp: [number, number][]; titleIndex: [number, number, number, number, number][]; steal: [number, number, number][];
@@ -52,6 +54,7 @@ describe('Lean conformance vectors: the agent link (docs/AGENT_LINK.md §A.5, §
       VICTIM_HEX_PER_10MIN: K.VICTIM_HEX_PER_10MIN, HEX_WINDOW_S: K.HEX_WINDOW_S, HEX_RESPITE_S: K.HEX_RESPITE_S,
       SILENCE_MAX_S: K.SILENCE_MAX_S, SILENCE_COOLDOWN_S: K.SILENCE_COOLDOWN_S, FORGE_FAIL_PER_MIN: K.FORGE_FAIL_PER_MIN,
       OWLBOX_MAX: K.OWLBOX_MAX, OWL_MAX_CHARS: K.OWL_MAX_CHARS, OWL_PER_MIN: K.OWL_PER_MIN, ASK_TTL_S: K.ASK_TTL_S, LISTEN_MAX_S: K.LISTEN_MAX_S,
+      PLAYER_GRACE_S: K.PLAYER_GRACE_S,
     });
     expect(A.negLimits).toEqual(K.NEG_LIMITS);
     expect(A.jinxDefaults).toEqual(Object.fromEntries(Object.entries(K.JINX_DEFAULTS).map(([k, v]) => [k, [Math.round(v.mag * 10), v.seconds]])));
@@ -91,12 +94,19 @@ describe('Lean conformance vectors: the agent link (docs/AGENT_LINK.md §A.5, §
     for (const [hp, mh, d, v] of A.hexDot) expect([hp, mh, d, hexDotHp(hp, mh, d)]).toEqual([hp, mh, d, v]);
     for (const [p, c] of A.hexCost) expect([p, hexPrice(p)]).toEqual([p, c]);
   });
+  it('hex_tick_capped / hexes_leave_gaps', () => {
+    for (const [r, s, v] of A.hexTick) expect([r, s, hexTickDmg(r, s)]).toEqual([r, s, v]);
+    const longest = Math.max(K.SILENCE_MAX_S, ...Object.values(K.JINX_DEFAULTS).map((j) => j.seconds));
+    expect(A.longestHex).toBe(longest);
+    expect(K.VICTIM_HEX_PER_10MIN * longest).toBeLessThan(K.HEX_WINDOW_S);
+  });
 });
 
 describe('Hostility.tla invariants hold for World.canHarm', () => {
   it('on 3000 random worlds', () => {
     const rnd = mulberry32(2024);
     const rj = mulberry32(88); // jinxes draw from their own stream, so the worlds above are the ones they always were
+    const seen = { bit: 0, spared: 0, senderElsewhere: 0, capped: 0 }; // each branch below must actually be exercised
     const SAFE = { x: 0, z: -56 }; // the Great Hall
     for (let trial = 0; trial < 3000; trial++) {
       const w = new World({ seed: trial, secret: 'x' });
@@ -118,10 +128,14 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       };
       const sa = mkC('sa', 'serpent', a.id), sb = mkC('sb', 'birds', b.id);
       mkC('pixie', 'pixie', null); mkC('unicorn', 'unicorn', null); mkC('phoenix', 'phoenix', null);
-      // jinx auras from the other wizard (or from nobody), random health, sometimes a Langlock
+      // jinx auras from the other wizard (or from nobody), random health, sometimes a Langlock, a shield, or
+      // a cursed ward (−20%) that would amplify damage if nothing capped a jinx tick
       for (const x of [a, b]) {
-        for (const k of ['jelly', 'dance', 'boils', 'bats'] as const) if (rj() < 0.4) w.applyAura(x.id, k, 10, K.JINX_DEFAULTS[k].mag, rj() < 0.8 ? (x === a ? b.id : a.id) : null);
-        if (rj() < 0.3) { x.st.silencedUntil = w.now + 3; x.st.silenceBy = 'langlock'; }
+        const other = x === a ? b.id : a.id;
+        for (const k of ['jelly', 'dance', 'boils', 'bats'] as const) if (rj() < 0.4) w.applyAura(x.id, k, 10, K.JINX_DEFAULTS[k].mag, rj() < 0.8 ? other : null);
+        if (rj() < 0.3) { x.st.silencedUntil = w.now + 3; x.st.silenceBy = 'langlock'; x.st.silenceSrc = rj() < 0.8 ? other : null; }
+        if (rj() < 0.15) { x.st.shield = 5; x.st.shieldUntil = w.now + 3; }
+        if (rj() < 0.3) { x.items = [{ id: 'curse', name: 'Cursed Robe', slot: 'robe', mods: { ward: -20 }, forgedBy: other, forgedByName: 'x', createdAt: 0, cursed: true }]; x.equipped = { robe: 'curse' }; }
         x.hp = 1 + Math.floor(rj() * derived(x, w.rules).maxHp);
       }
       const ids = [a.id, b.id, 'sa', 'sb', 'pixie', 'unicorn', 'phoenix'];
@@ -150,14 +164,32 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
           expect(w.canHarm(s, d)).toBe(expected); // SummonProxy
         }
       }
-      // HexDotObeysHostility + hex_dot_floor: a jinx tick hurts exactly when canHarm(src, victim) says so,
-      // never below max(1, 25% max health), and never counts as being hurt
+      // HexDotObeysHostility + hex_dot_floor + hex_tick_capped. A jinx acts exactly when jinxBites(src, victim)
+      // says so: canHarm(null, victim) (in play, not in a safe zone) and the PvP rules between sender and
+      // victim, wherever the sender stands. So canHarm(src, victim) ⇒ jinxBites, and !jinxBites ⇒ nothing
+      // (Jelly-Legs, Tarantallegra and the silence ask the same relation). When it bites, a victim above the
+      // floor and without a shield always loses health; never more than the tick's rate, never below
+      // max(1, 25% max health), and it never counts as being hurt.
       for (const x of [a, b]) {
+        const pvpOk = (src: string | null) => { const s = src ? w.wizards.get(src) : undefined; return !s || (s !== x && w.rules.combat.pvp && (s.house !== x.house || w.rules.combat.friendlyFire)); };
+        for (const au of x.auras) {
+          const bites = w.jinxBites(au.src, x.id);
+          expect(bites).toBe(w.canHarm(null, x.id) && pvpOk(au.src));
+          if (au.src && w.canHarm(au.src, x.id)) expect(bites).toBe(true);
+        }
+        if (x.st.silencedUntil > w.now) expect(w.silenced(x)).toBe(!safe(x.id) && pvpOk(x.st.silenceSrc ?? null));
         for (const au of x.auras.filter((q) => q.k === 'boils' || q.k === 'bats')) {
-          const before = x.hp, hurtAt = x.hurtAt, by = x.lastHurtBy, can = w.canHarm(au.src, x.id), wasStunned = x.st.stunnedUntil;
-          const dealt = w.damage(au.src, x.id, au.mag * 7, 'arcane', ['hex'], { dot: true, hex: true });
-          if (!can) { expect(dealt).toBe(0); expect(x.hp).toBe(before); }
-          expect(x.hp).toBeGreaterThanOrEqual(Math.min(before, hexHpFloor(derived(x, w.rules).maxHp)));
+          const before = x.hp, hurtAt = x.hurtAt, by = x.lastHurtBy, bites = w.jinxBites(au.src, x.id), wasStunned = x.st.stunnedUntil;
+          const floor = hexHpFloor(derived(x, w.rules).maxHp), shielded = x.st.shieldUntil > w.now && x.st.shield > 0;
+          const rate = au.mag * 0.35;
+          const dealt = w.damage(au.src, x.id, rate, 'arcane', ['hex'], { dot: true, hex: true });
+          if (!bites) { expect(dealt).toBe(0); expect(x.hp).toBe(before); seen.spared++; }
+          if (bites && before > floor && !shielded) { expect(dealt).toBeGreaterThan(0); expect(x.hp).toBeLessThan(before); seen.bit++; }
+          if (bites && au.src && !w.canHarm(au.src, x.id)) seen.senderElsewhere++; // the sender in a safe zone: still bites
+          if (bites && !shielded && before - rate > floor && derived(x, w.rules).ward < 0) { expect(dealt).toBeCloseTo(rate, 9); seen.capped++; }
+          expect(dealt).toBeLessThanOrEqual(rate + 1e-9);
+          expect(before - x.hp).toBeLessThanOrEqual(rate + 1e-9);
+          expect(x.hp).toBeGreaterThanOrEqual(Math.min(before, floor));
           expect(x.hp).toBeGreaterThan(0);
           expect(x.st.stunnedUntil).toBe(wasStunned); // a jinx never knocks anyone out
           expect([x.hurtAt, x.lastHurtBy]).toEqual([hurtAt, by]);
@@ -165,6 +197,7 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       }
       void sa; void sb;
     }
+    expect(Math.min(seen.bit, seen.spared, seen.senderElsewhere, seen.capped)).toBeGreaterThan(20);
   });
 });
 

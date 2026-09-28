@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAIR_REFUSAL, PAIR_THROTTLED, World } from '../src/kernel/world.js';
 import { formatPairCode, parsePairCode, realmOfPrefix } from '../src/kernel/identity.js';
-import { PAIR_ALPHABET, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_LEN, PAIR_SPACE, PAIR_TTL_S } from '../src/shared/constants.js';
+import { PAIR_ALPHABET, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_LEN, PAIR_SPACE, PAIR_TTL_S } from '../src/shared/constants.js';
 import type { Wizard } from '../src/kernel/types.js';
 
 function mk(opts: { tokenPrefix?: string } = {}) {
@@ -183,6 +183,28 @@ describe('pairing codes', () => {
     run(w, 61);
     const again = w.mintPairCode(a.id).code;
     expect(w.redeemPairCode(again)).toBe(a);
+  });
+
+  it('a source over its own cap is refused without spending the realm budget: one address cannot lock everyone out', () => {
+    const w = mk();
+    const a = join(w, 'Alice');
+    const { code } = w.mintPairCode(a.id);
+    // one noisy address hammers away far past its cap ...
+    for (let i = 0; i < PAIR_FAIL_PER_REALM_PER_MIN * 3; i++) {
+      let msg = '';
+      try { w.redeemPairCode('ZZZ-ZZZ', '203.0.113.9'); } catch (e) { msg = (e as Error).message; }
+      expect(msg).toBe(i < PAIR_FAIL_PER_IP_PER_MIN ? PAIR_REFUSAL : PAIR_THROTTLED);
+    }
+    // ... and the player at home still pairs with the right code
+    expect(w.redeemPairCode(code, '198.51.100.7')).toBe(a);
+    // it takes PAIR_FAIL_PER_REALM_PER_MIN / PAIR_FAIL_PER_IP_PER_MIN addresses to fill the realm's window
+    const sources = PAIR_FAIL_PER_REALM_PER_MIN / PAIR_FAIL_PER_IP_PER_MIN;
+    expect(sources).toBe(3);
+    for (let s = 1; s < sources; s++) for (let i = 0; i < PAIR_FAIL_PER_IP_PER_MIN; i++) expect(() => w.redeemPairCode('ZZZ-ZZZ', `10.0.0.${s}`)).toThrow(PAIR_REFUSAL);
+    const second = w.mintPairCode(a.id).code;
+    expect(() => w.redeemPairCode(second, '198.51.100.7')).toThrow(PAIR_THROTTLED);
+    run(w, 61);
+    expect(w.redeemPairCode(second, '203.0.113.9')).toBe(a); // the window clears for everyone
   });
 
   it('come from the OS CSPRNG: minting never moves the seeded world RNG', () => {

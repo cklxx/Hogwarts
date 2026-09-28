@@ -35,7 +35,7 @@
 - 浏览器 Esc「猫头鹰邮递」→ 点 **[生成配对码]** → 显示 `ABC-DEF`（字母表 `ABCDEFGHJKMNPQRSTUVWXYZ23456789`，31 字符，6 位，空间 31^6 ≈ 8.9 亿），倒计时 180 秒。
 - 人对 Agent 说一句：「连上霍格沃茨，配对码 ABC-DEF」。Agent 调 `pair({code})`：绑定本会话、返回 `{ok, name, house, registry, token, remember}`（桥自动保存）。
 - 浏览器立即显示「✅ Claude Code 已连接」（来自 C.3 的在线状态）。**不做二次审批**：码单次有效、180 秒过期、每个巫师同时只有一个活码、失败限速，暴力破解期望成功率可忽略（Lean 证明上界，见 A.5）。
-- 限速：`pair` 失败每 IP 每分钟 10 次、每领域每分钟 30 次；`login` 失败每 IP 每分钟 20 次。
+- 限速：`pair` 失败每 IP 每分钟 10 次、每领域每分钟 30 次；`login` 失败每 IP 每分钟 20 次。内核 `redeemPairCode(code, source)` 按来源（服务器传客户端 IP）计数：已超每 IP 上限的来源**先被拒绝、不计入领域额度**，所以锁住整个领域至少要 3 个来源（Lean `realm_lock_needs_sources`，TLA `RealmLockNeedsSources`）。权衡：领域额度满时连正确的码也被拒（这正是 `GuessesBounded` 成立的原因），3 个以上 IP 持续乱试仍能让全领域 1 分钟内无法配对；可接受，因为浏览器里的密钥与 `login` 不受影响。
 - REALMS：多领域时码带领域前缀 `2-ABC-DEF`；前门按前缀把 MCP 会话迁到对应领域（复用 `login` 跨领域迁移会话的同一钩子）。单领域时无前缀。
 - 反方向（Agent 先注册）：`enroll` 结果的 `play` 链接改为 `http://host/#k=<token>`（fragment 不会发给服务器、不进日志）；网页 gate 读取 `#k=`（兼容旧 `?token=`）后立刻 `history.replaceState` 抹掉。
 
@@ -56,7 +56,7 @@
 
 ### A.5 形式化
 
-- `formal/tla/Pairing.tla`：码状态 `fresh → used | dead`，时钟；动作 `Mint`、`Redeem`、`Expire`、`Guess`（受每窗口失败上限约束）。不变式 `CodeSingleUse`、`ExpiredNeverRedeemable`、`AtMostOneLivePerWizard`、`GuessesBounded`；活性 `EveryCodeSettles: fresh ~> (used ∨ dead)`（`WF(Expire)`）。
+- `formal/tla/Pairing.tla`：码状态 `fresh → used | dead`，时钟；动作 `Mint`、`Redeem`、`Expire`、`Guess(source)`（受每窗口失败上限与每来源上限约束）。不变式 `CodeSingleUse`、`ExpiredNeverRedeemable`、`AtMostOneLivePerWizard`、`GuessesBounded`、`SourceBounded`、`RealmLockNeedsSources`；活性 `EveryCodeSettles: fresh ~> (used ∨ dead)`（`WF(Expire)`）。
 - Lean：`pair_guess_bound`：窗口内命中数 ≤ 尝试上限 × 活码数 / 空间（以自然数不等式表述，空间 = 31^6）；`vectors` 输出 `PAIR_SPACE`，`test/formal.test.ts` 与 `PAIR_ALPHABET.length ** PAIR_LEN` 比对。
 
 ## B. 彩蛋：有登记号就能寄——礼物，或者诅咒
@@ -93,9 +93,10 @@
 | `Langlock` | 锁舌封喉 | 沉默 | 不能施法、不能公开说话 |
 
 - 所有恶咒 aura 都是 `debuff:true`，**实时计算，不进 `derived()`**（不碰 wf/perf 的 derived 缓存键）。`afflicted()` 改为读 `AURA_DEFS[k].debuff`。
-- aura 的 `src` 永远是寄件人 → 每个伤害 tick 都经过 `canHarm`，安全区 / PvP 关闭 / 离线自动失效。
+- aura（与沉默）的 `src` 永远是寄件人。每个效果（伤害 tick、软腿、乱舞、沉默）都问 `World.jinxBites(src, victim)` = `canHarm(null, victim)`（受害者在场、不在安全区）∧ PvP 规则允许寄件人伤害受害者（PvP 开；同学院需友伤）。**不看寄件人站在哪**：寄件人走进大礼堂不会让恶咒暂停，否则受害者能借此推断寄件人的位置。`canHarm(src, victim) ⇒ jinxBites`（3000 个随机世界复查）。
+- 伤害上限：每个 tick 经过所有乘数（规则、受害者的 ward）后再截到表内速率（`hexTickDmg`，Lean `hex_tick_capped`）——诅咒的负 ward 不能把 3/秒 放大。
 - 恶咒伤害地板：hex DoT 不会把生命压到 `max(1, 25% maxHp)` 以下，且**不刷新** `hurtAt/lastHurtBy`（不打断回血、不制造一击必杀）。
-- 沉默：每次 ≤ 5 秒，之后 20 秒内新的沉默直接丢弃（永远有施法窗口）。沉默只挡 `cast` / 公开 `say` / `use_item`；**猫头鹰（C 部分）、`listen`、`simulate_spell` 永远可用**。
+- 沉默：每次 ≤ 5 秒，之后 20 秒内新的沉默直接丢弃（永远有施法窗口）；`silencedUntil / silenceCdUntil / silenceBy / silenceSrc` 持久化，冷却跨重启、跨被击倒复活保留。沉默只挡 `cast` / 公开 `say` / `use_item`；**猫头鹰（C 部分）、`listen`、`simulate_spell` 永远可用**。
 - 移动地板：`1 − chill − jelly ≥ 0.25`，永远能挪。
 - 咒立停（cleanse）清掉全部恶咒 aura 与沉默，并给 60 秒「喘息」免疫（`respiteUntil`）。
 
@@ -104,7 +105,7 @@
 hostile = `(有负数属性 ∨ 有恶咒) ∧ target ≠ forger`。任何一条不满足都拒绝（未知/受保护目标用同一句通用拒绝）：
 
 - 寄件人：非 NPC；年级 ≥ 2；入学满 `FRESH_SECONDS`（600 秒）。
-- 收件人：非 NPC；年级 ≥ 2；入学满 600 秒；**在线**；**不在安全区**；不在喘息期。
+- 收件人：非 NPC；年级 ≥ 2；入学满 600 秒；**在线**；**不在安全区**；不在喘息期；**PvP 规则允许寄件人伤害他**（PvP 关闭或同学院且无友伤时拒绝，同一句通用拒绝，不扣钱）。寄件人在哪不影响（猫头鹰哪儿都能飞）。
 - 收件人身上活跃恶咒 < 3；诅咒物品数 < 2；粘身诅咒物品 < 1（只针对负数物品）；10 分钟内收到的恶意包裹 < 3（所有寄件人合计）。
 - 同一寄件人对同一收件人冷却 300 秒。
 - 寄件人付得起（物品价 + 恶意税）。金加隆守恒：寄件人减少量 = 价格 + 税，收件人不变。
@@ -136,7 +137,8 @@ respiteUntil: number;
 
 ### B.8 形式化
 
-- `formal/tla/Hex.tla`：一个收件人、三个寄件人；动作 `SendHex(s)`（完全按闸门）、`Tick`、`Cleanse`、`Silence`、`Expire`、`EnterSafe/LeaveSafe`、`GoOffline/GoOnline`。不变式：`HexCountBounded`、`CursedItemsBounded`、`BoundBounded`、`WindowBounded`、`HpFloorUnderDot`、`MovableAlways`、`SilenceNeverPermanent`、`FreshAndNpcImmune`、`SafeSuspends`、`SenderPays`、`PairCooldownHolds`、`RespiteHolds`。活性：`EventuallyClean`、`EventuallyCanCast`（`WF(Tick)`）。
+- `formal/tla/Hex.tla`：一个收件人、若干寄件人（含未满条件者与同学院者）；动作 `SendHex(s)`（完全按闸门）、`Tick`、`Cleanse`、`Destroy`、`Earn`（寄件人重新赚钱）、`Decree`（切换 PvP）、安全区 / 在线切换。不变式：`HexCountBounded`、`CursedItemsBounded`、`BoundBounded`、`WindowBounded`、`HpFloorUnderDot`、`MovableAlways`、`SilenceNeverPermanent`、`FreshAndNpcImmune`、`RulesRespected`；动作性质 `SafeSuspends`、`RulesSuspend`、`SenderPays`、`PairCooldownHolds`、`RespiteHolds`、`CastingWindow`。
+- `formal/tla/HexLive.tla`（扩展 Hex）：活性 `EventuallyClean`、`EventuallyCanCast`（只有 `WF(Tick)`），在真实常量保持的比例下检查——窗口容纳的包裹数 × 最长效果 < 窗口长度（`LeavesGaps`；Lean `hexes_leave_gaps`：3 × 20 秒 < 600 秒），且每个恶咒 / 沉默持续 ≥ 2 tick，所以成立靠的是闸门而不是时钟：去掉窗口子句 TLC 会找到永远有恶咒的反例。
 - `Hostility.tla` 不变；`test/formal.test.ts` 的 3000 个随机世界加上带恶咒 aura 的实体，重查全部敌意不变式。
 - Lean：`hp_floor`、`mana_floor`、`speed_floor`、`move_floor`、`power_pos`（⇒ 伤害非负）、`ward_bounded`、`manaregen_floor`、`hex_dot_floor`、`hex_cost_pos`；所有常量与若干采样进入 `vectors`，TS 侧比对。
 
@@ -147,7 +149,7 @@ respiteUntil: number;
 - **猫头鹰面板**（按 `O`，或聊天框以 `@agent ` / `@a ` 开头）：私密对话，只在你和你的 Agent 之间。未知的 `@词` 前缀会先问「发到公共频道还是给 Agent？」防止误发。
 - Agent 的回复与提问出现在面板里，并在屏幕上弹出提示；提问带按钮（2–4 个选项），点了就回给 Agent。
 - **在线状态小组件**（HUD）：「🤖 Claude Code 已连接 · 3 秒前：move_to · 目标：去禁林打八眼巨蛛」。
-- **接管**：你按 WASD 或点地面走路时，Agent 设的目的地立即取消（人永远优先）。HUD 有 **[暂停 Agent]** 开关：暂停时内核拒绝该巫师 MCP 会话的所有动作类调用（只允许 look / whoami / events / armory / grimoire / leaderboard / listen / tell_player / set_goal_note），Agent 收到「你的主人暂停了你」。
+- **接管**：你按 WASD 或点地面走路时，Agent 设的目的地立即取消（人永远优先）。反过来 Agent 的 `move_to` 在你按着方向键、你点的目的地还没走到、或你上次操作后 `PLAYER_GRACE_S = 2` 秒内都会被拒（`PLAYER_STEERING`）；Agent 的 `stop` 只停它自己设的目的地。HUD 有 **[暂停 Agent]** 开关：暂停时内核拒绝该巫师 MCP 会话的所有动作类调用（只允许 look / whoami / events / armory / grimoire / leaderboard / listen / tell_player / set_goal_note），Agent 收到「你的主人暂停了你」。
 
 ### C.2 数据模型与内核
 
@@ -161,7 +163,7 @@ agentPaused: boolean; agentSeen: { client: string; tool: string; at: number } | 
 // WorldEvent + from?: 'player' | 'agent'；EventType += 'owl' | 'ask' | 'curse'
 ```
 
-- `owl(wid, from, text, ask?)`：≤ 400 字，每巫师每分钟 ≤ 30 条；箱满（50）时淘汰最旧的**已结束**消息，**未回答的提问永不被淘汰**；发出私有事件 `to=wid, from`。
+- `owl(wid, from, text, ask?)`：≤ 400 字，每巫师每分钟**每一方**（玩家、Agent 分别计）≤ 30 条——话多的 Agent 用不掉主人的额度；箱满（50）时淘汰最旧的**已结束**消息，**未回答的提问永不被淘汰**，**Agent 还没读的主人来信也最后才淘汰**：Agent 的新消息永远挤不掉它（箱里只剩未读来信与未答提问时拒绝，`OWLBOX_UNREAD`：先 `listen`）；只有主人更新的来信能挤掉最旧的未读来信，且不是悄悄丢：被挤掉的条数记在下一封未读来信的 `lost` 上，Agent 收信时看到，主人收到一次私信提示。发出私有事件 `to=wid, from`。
 - `answerAsk(wid, id, choice)`：选项必须属于该提问、未过期（45 秒）、未回答过；否则拒绝。`tick` 把过期提问标记为 `answer='(expired)'`。
 - `wait` 的 `mine()` 修正：包含 `to===me` 的私有事件，但**排除 `from==='agent'`**（Agent 自己的话不会唤醒自己）。
 - 在线状态走 `privateState()`（`me` 消息，逐 socket、变化才发），**不进 `snapshot()`**（fanout 会丢弃新顶层键）；`at` 取整到 5 秒，避免 `me` 每 tick 抖动。
@@ -203,8 +205,8 @@ MCP 会话的 `clientInfo.name`（如 `claude-code`）在 initialize 时记录�
 
 ### C.7 形式化
 
-- `formal/tla/Owl.tla`：有界信箱 + 提问 / 回答 / 过期。不变式 `BoxBounded`、`UnansweredAskNeverEvicted`、`AnsweredAtMostOnce`、`AnswerIsAnOption`；活性 `AskEventuallySettles: asked ~> (answered ∨ expired)`（`WF(Tick)`）。
-- `formal/tla/Control.tla`：`paused ∈ BOOLEAN`、人类输入、Agent 目标。不变式 `PausedBlocksAgent`、`HumanInputClearsAgentGoal`；活性 `HumanCanAlwaysReclaim`。
+- `formal/tla/Owl.tla`：有界信箱 + 提问 / 回答 / 过期。不变式 `BoxBounded`、`UnansweredAskNeverEvicted`、`AnsweredAtMostOnce`、`AnswerIsAnOption`、`AgentNeverEvictsUnread`、`UnreadNeverSilentlyLost`；活性 `AskEventuallySettles: asked ~> (answered ∨ expired)`（`WF(Tick)`）。
+- `formal/tla/Control.tla`：`paused ∈ BOOLEAN`、人类输入、Agent 目标。不变式 `PausedBlocksAgent`、`HumanInputClearsAgentGoal`、`PlayerGoalIsThePlayers`（Agent 既不覆盖也不取消玩家点的目的地）；动作性质 `AgentWaitsItsTurn`；活性 `HumanCanAlwaysReclaim`。
 
 ## D. 工作包与文件边界
 
@@ -230,5 +232,5 @@ HEX_RESPITE_S = 60; SILENCE_MAX_S = 5; SILENCE_COOLDOWN_S = 20; HEX_HP_FLOOR_FRA
 FORGE_FAIL_PER_MIN = 12;
 JINX_DEFAULTS = { jelly: {mag: 0.4, seconds: 20}, dance: {mag: 1, seconds: 20}, boils: {mag: 3, seconds: 12},
                   bats: {mag: 3, seconds: 5}, langlock: {mag: 1, seconds: 5} };
-OWLBOX_MAX = 50; OWL_MAX_CHARS = 400; OWL_PER_MIN = 30; ASK_TTL_S = 45; LISTEN_MAX_S = 45;
+OWLBOX_MAX = 50; OWL_MAX_CHARS = 400; OWL_PER_MIN = 30; ASK_TTL_S = 45; LISTEN_MAX_S = 45; PLAYER_GRACE_S = 2;
 ```

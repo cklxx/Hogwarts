@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
-  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, SILENCE_COOLDOWN_S, SILENCE_MAX_S,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S,
+  SILENCE_COOLDOWN_S, SILENCE_MAX_S,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
 } from '../shared/constants.js';
@@ -24,7 +25,7 @@ import { thinkNpcs } from './npc.js';
 import { EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
 import {
-  MAX_ITEMS, derived, gasLimit, hexDotHp, hexPrice, moveSlow, stealAmount, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
+  MAX_ITEMS, derived, gasLimit, hexDotHp, hexPrice, hexTickDmg, moveSlow, stealAmount, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
 } from './progression.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
 import type {
@@ -34,19 +35,20 @@ import type {
 export { FORGE_REFUSAL, SILENCED, BOUND_REFUSAL, CURSE_BLESS } from './hex.js';
 export { PAIR_REFUSAL, PAIR_THROTTLED, parsePairCode } from './identity.js';
 
-/** Refusal for an agent whose player paused it (docs/AGENT_LINK.md §C.1). */
-export const AGENT_PAUSED = 'Your human has paused you. Until they resume you only look, whoami, events, armory, grimoire, leaderboard, listen, tell_player and set_goal_note work.';
-/** Refusal for an agent's move_to while its player is steering. */
-export const PLAYER_STEERING = 'Your human is steering right now; their hands on the controls come first.';
 /**
- * MCP tools an agent may still call while its player has paused it: the spec's list (§C.1), plus tools
- * that only read (they cannot act in the world) and the identity/owl tools that must always work.
+ * MCP tools an agent may still call while its player has paused it: exactly the nine of
+ * docs/AGENT_LINK.md §C.1, which only read or only talk to the player. Everything else is refused —
+ * rotate_key, and the identity tools that would rebind the session (enroll, login, pair), included.
  */
 export const AGENT_PAUSE_ALLOWED: ReadonlySet<string> = new Set([
   'look', 'whoami', 'events', 'armory', 'grimoire', 'leaderboard', 'listen', 'tell_player', 'set_goal_note',
-  'wait', 'rulebook', 'hogwarts_a_history', 'restricted_section', 'inspect_seal', 'marauders_map', 'simulate_spell', 'confirm_with_player',
-  'enroll', 'login', 'pair', 'rotate_key',
 ]);
+/** Refusal for an agent whose player paused it (docs/AGENT_LINK.md §C.1). */
+export const AGENT_PAUSED = `Your human has paused you. Until they resume you may only look and talk to them: ${[...AGENT_PAUSE_ALLOWED].join(', ')}.`;
+/** Refusal for an agent's move_to while its player is steering (or just steered, or is walking where they clicked). */
+export const PLAYER_STEERING = 'Your human is steering right now; their hands on the controls come first.';
+/** Refusal for an agent's owl when the owlbox is full of its player's owls it has not read yet. */
+export const OWLBOX_UNREAD = 'Your owlbox is full of owls from your human that you have not read. Call listen first.';
 
 export const TICK = 0.05;
 const ONLINE_GRACE = 300;
@@ -110,8 +112,9 @@ export class World {
   /** Live pairing codes by body (not persisted: a restart kills them), and each wizard's one live code. */
   private pairCodes = new Map<string, { wizardId: string; expiresAt: number }>();
   private pairByWizard = new Map<string, string>();
-  /** World times of failed pairing attempts in the last minute (this world is one realm). */
+  /** World times of failed pairing attempts in the last minute (this world is one realm), and per source (IP). */
   private pairFails: number[] = [];
+  private pairFailsBy = new Map<string, number[]>();
   /** Owl rate limit: `${wid}|${from}` -> world times of owls in the last minute (not persisted). */
   private owlTimes = new Map<string, number[]>();
   /** Wizards the 1 Hz sweep must visit: bound cursed items / recent hostile parcels, and open questions. */
@@ -262,17 +265,27 @@ export class World {
   /**
    * Redeem a pairing code (normalised: case, spaces and dashes do not matter). Single use; expired,
    * used, unknown, malformed and wrong-realm codes all get the same refusal (PAIR_REFUSAL) and count as a
-   * failure; after PAIR_FAIL_PER_REALM_PER_MIN failures in a minute every attempt is refused
-   * (PAIR_THROTTLED) until the window clears. Returns the wizard to bind the session to.
+   * failure. `source` is who is trying (the server passes the client IP): a source with
+   * PAIR_FAIL_PER_IP_PER_MIN failures in the last minute is refused (PAIR_THROTTLED) *without* spending the
+   * realm's budget, so wrong codes from one address cannot lock everyone else out. After
+   * PAIR_FAIL_PER_REALM_PER_MIN failures in a minute every attempt is refused (PAIR_THROTTLED), the right
+   * code included: that is what keeps guessing bounded (formal/tla/Pairing.tla GuessesBounded), and with
+   * sources it takes at least 3 of them to lock a realm (RealmLockNeedsSources). Returns the wizard to
+   * bind the session to.
    */
-  redeemPairCode(raw: string): Wizard {
-    this.pairFails = this.pairFails.filter((t) => this.now - t < 60);
+  redeemPairCode(raw: string, source?: string): Wizard {
+    const recent = (xs: number[] | undefined) => (xs ?? []).filter((t) => this.now - t < 60);
+    this.pairFails = recent(this.pairFails);
+    const key = typeof source === 'string' && source ? source.slice(0, 64) : null;
+    const mine = key ? recent(this.pairFailsBy.get(key)) : [];
+    if (key && mine.length >= PAIR_FAIL_PER_IP_PER_MIN) throw new Error(PAIR_THROTTLED);
     if (this.pairFails.length >= PAIR_FAIL_PER_REALM_PER_MIN) throw new Error(PAIR_THROTTLED);
     const p = parsePairCode(raw);
     const c = p && (p.realm === null || p.realm === this.realmId) ? this.pairCodes.get(p.body) : undefined;
     const w = c && this.now < c.expiresAt ? this.wizards.get(c.wizardId) : undefined;
     if (!p || !c || !w) {
       this.pairFails.push(this.now);
+      if (key) { mine.push(this.now); this.pairFailsBy.set(key, mine); }
       throw new Error(PAIR_REFUSAL);
     }
     this.dropPairCode(w.id);
@@ -410,6 +423,26 @@ export class World {
   }
   private pvp(a: Wizard, b: Wizard) { return this.rules.combat.pvp && (a.house !== b.house || this.rules.combat.friendlyFire); }
 
+  /** The PvP rules let `src` harm wizard `w` (PvP on; a housemate only with friendly fire). Where src stands plays no part. */
+  rulesLetHarm(src: string | null, w: Wizard): boolean {
+    const sw = src ? this.wizards.get(src) : undefined;
+    if (!sw) return true; // a jinx with no wizard behind it (the world's own)
+    return sw !== w && this.pvp(sw, w);
+  }
+
+  /**
+   * Whether a parcel jinx from `src` acts on `dstId` right now (docs/AGENT_LINK.md §B.3): the victim is in
+   * play and outside a safe zone — canHarm(null, victim) — and the PvP rules let the sender harm them.
+   * Unlike canHarm(src, victim) it ignores where the sender is, so a jinx pausing never tells its victim
+   * that the sender just walked into the Great Hall. Every jinx effect (damage, Jelly-Legs, Tarantallegra,
+   * the silence) asks this; canHarm(src, victim) implies it (test/formal.test.ts).
+   */
+  jinxBites(src: string | null, dstId: string): boolean {
+    if (!this.canHarm(null, dstId)) return false;
+    const dw = this.wizards.get(dstId);
+    return !dw || this.rulesLetHarm(src, dw);
+  }
+
   /** Stunned wizards within r (they are not "in play", so `around` never returns them). */
   fallen(p: Vec2, r: number, exclude?: string) {
     return [...this.nearWizards(p, Math.min(40, r))]
@@ -452,7 +485,8 @@ export class World {
           this.damage(a.src, e.id, a.mag * dt, a.k === 'burn' ? 'fire' : 'arcane', [], { dot: true });
           if (!this.wizards.has(e.id) && !this.creatures.has(e.id)) break;
         } else if (a.k === 'boils' || a.k === 'bats') {
-          // a jinx: its src is always the sender, so canHarm (safe zones, PvP, the victim offline) gates every tick
+          // a jinx: its src is always the sender; damage() asks jinxBites (the victim in play, outside a
+          // safe zone, and the PvP rules letting the sender harm them) on every tick
           this.damage(a.src, e.id, a.mag * dt, 'arcane', ['hex'], { dot: true, hex: true });
         }
       }
@@ -469,7 +503,7 @@ export class World {
     t.auras = withoutDebuffs(t.auras);
     if ('st' in t) {
       t.st.rootedUntil = 0; t.st.disarmedUntil = 0;
-      t.st.silencedUntil = 0; t.st.silenceBy = null;
+      t.st.silencedUntil = 0; t.st.silenceBy = null; t.st.silenceSrc = null; // (silenceCdUntil stays: the casting window is kept)
       t.respiteUntil = this.now + HEX_RESPITE_S;
       if (src === t) {
         const freed = this.boundItems(t);
@@ -906,12 +940,14 @@ export class World {
   }
 
   /**
-   * All damage goes through here (and through canHarm). `hex` marks a parcel jinx's damage over time: it
-   * never takes a wizard below hexHpFloor(maxHp) and does not count as being hurt (hurtAt/lastHurtBy stay,
-   * so natural regeneration continues and nobody is set up for a one-shot).
+   * All damage goes through here (and through canHarm). `hex` marks a parcel jinx's damage over time: it is
+   * gated by jinxBites instead (canHarm without the sender's position), never exceeds `amount` whatever the
+   * multipliers (hexTickDmg: a cursed ward cannot amplify it past its table), never takes a wizard below
+   * hexHpFloor(maxHp), and does not count as being hurt (hurtAt/lastHurtBy stay, so natural regeneration
+   * continues and nobody is set up for a one-shot).
    */
   damage(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean; hex?: boolean } = {}): number {
-    if (!this.canHarm(srcId, dstId)) return 0;
+    if (!(opts.hex ? this.jinxBites(srcId, dstId) : this.canHarm(srcId, dstId))) return 0;
     const rb = this.rules;
     let a = amount * rb.combat.damageMultiplier * (rb.combat.elementMultipliers[element] ?? 1);
     const by = this.credit(srcId);
@@ -950,6 +986,7 @@ export class World {
     const w = this.wizards.get(dstId);
     if (!w) return 0;
     a *= 1 - derived(w, rb).ward;
+    if (opts.hex) a = hexTickDmg(amount, a);
     if (w.st.shieldUntil > this.now && w.st.shield > 0) {
       const absorbed = Math.min(w.st.shield, a);
       w.st.shield -= absorbed;
@@ -1143,15 +1180,21 @@ export class World {
     return n;
   }
 
-  /** Silenced right now: cannot cast, speak publicly or use items. A safe zone suspends it, like every jinx. */
-  silenced(w: Wizard) { return w.st.silencedUntil > this.now && !this.inSafe(w.pos); }
+  /**
+   * Silenced right now: cannot cast, speak publicly or use items. Like every jinx it rests in a safe zone and
+   * while the PvP rules would not let its sender harm you (jinxBites, without the in-play part: a stunned or
+   * offline wizard casts nothing anyway).
+   */
+  silenced(w: Wizard) { return w.st.silencedUntil > this.now && !this.inSafe(w.pos) && this.rulesLetHarm(w.st.silenceSrc ?? null, w); }
 
   /**
    * The one fairness gate for hostile parcels (docs/AGENT_LINK.md §B.4; formal/tla/Hex.tla SendHex mirrors
    * it clause by clause). Sender-side refusals say why; everything that depends on the recipient — an
    * unknown registry number, an NPC, a first-year, a newcomer, someone offline, in a safe zone, in
-   * respite, already carrying the maximum of jinxes / cursed items / a bound curse, hexed enough in the
-   * last 10 minutes, or with a full trunk — is FORGE_REFUSAL, word for word. Returns the recipient.
+   * respite, one the PvP rules do not let the sender harm (PvP off; a housemate without friendly fire),
+   * already carrying the maximum of jinxes / cursed items / a bound curse, hexed enough in the last 10
+   * minutes, or with a full trunk — is FORGE_REFUSAL, word for word. Where the sender stands does not
+   * matter (an owl flies from anywhere). Returns the recipient.
    */
   guardHostileGift(forger: Wizard, targetId: string, gift: { cost: number; negative: boolean }): Wizard {
     if (forger.npc) throw new Error(FORGE_REFUSAL);
@@ -1163,6 +1206,7 @@ export class World {
     const t = this.wizards.get(targetId);
     const refused = !t || t === forger || t.npc || t.year < HEX_MIN_YEAR || this.now - t.createdAt < FRESH_SECONDS
       || !this.isActive(t) || this.inSafe(t.pos) || this.now < t.respiteUntil
+      || !this.rulesLetHarm(forger.id, t)
       || this.activeHexes(t) >= VICTIM_HEX_CAP
       || t.items.filter((i) => i.cursed).length >= VICTIM_CURSED_ITEMS_MAX
       || (gift.negative && this.boundItems(t).length >= VICTIM_BOUND_CAP)
@@ -1217,8 +1261,8 @@ export class World {
   }
 
   /**
-   * Put a parcel's jinx on a wizard. Strength and duration never exceed JINX_DEFAULTS; the aura's source is
-   * always the sender, so every damage tick goes through canHarm.
+   * Put a parcel's jinx on a wizard. Strength and duration never exceed JINX_DEFAULTS; the aura's (and the
+   * silence's) source is always the sender, and every effect asks jinxBites before it acts.
    */
   applyJinx(t: Wizard, j: Jinx, src: string) {
     const d = JINX_DEFAULTS[j.kind];
@@ -1226,20 +1270,22 @@ export class World {
     const secs = Math.min(d.seconds, Math.max(0, j.seconds)), mag = Math.min(d.mag, Math.max(0, j.mag));
     switch (j.kind) {
       case 'jelly': case 'dance': case 'boils': this.applyAura(t.id, j.kind, secs, mag, src); break;
-      case 'bats': this.applyAura(t.id, 'bats', secs, mag, src); this.silence(t, secs, 'bats'); break;
-      case 'langlock': this.silence(t, secs, 'langlock'); break;
+      case 'bats': this.applyAura(t.id, 'bats', secs, mag, src); this.silence(t, secs, 'bats', src); break;
+      case 'langlock': this.silence(t, secs, 'langlock', src); break;
     }
   }
 
   /**
    * Silence for at most SILENCE_MAX_S. A new silence within SILENCE_COOLDOWN_S after the last one ended is
-   * dropped, so there is always a window to cast in. Returns whether it took.
+   * dropped, so there is always a window to cast in (the window survives a respawn and a restart: see
+   * step() and restore()). Returns whether it took.
    */
-  silence(t: Wizard, secs: number, by: 'langlock' | 'bats'): boolean {
+  silence(t: Wizard, secs: number, by: 'langlock' | 'bats', src: string | null = null): boolean {
     if (this.now < t.st.silenceCdUntil) return false;
     t.st.silencedUntil = this.now + Math.min(SILENCE_MAX_S, Math.max(0, secs));
     t.st.silenceCdUntil = t.st.silencedUntil + SILENCE_COOLDOWN_S;
     t.st.silenceBy = by;
+    t.st.silenceSrc = src;
     return true;
   }
 
@@ -1361,21 +1407,35 @@ export class World {
     const len = Math.hypot(dx, dz);
     w.input = len > 1 ? { dx: dx / len, dz: dz / len } : { dx: dx || 0, dz: dz || 0 };
     // the player's hands on the controls cancel any walk, their own or their agent's (formal/tla/Control.tla)
-    if (len > 0.01) { w.goal = null; w.route = []; w.goalBy = null; }
+    if (len > 0.01) { w.goal = null; w.route = []; w.goalBy = null; w.steerAt = this.now; }
     if (typeof facing === 'number' && Number.isFinite(facing)) w.facing = facing;
   }
 
   /**
+   * The human comes first (docs/AGENT_LINK.md §C.1): the player is pressing a direction, is walking where
+   * they clicked, or did either (or arrived) less than PLAYER_GRACE_S ago.
+   */
+  playerSteering(w: Wizard): boolean {
+    return Math.hypot(w.input.dx, w.input.dz) > 0.01 || (!!w.goal && w.goalBy === 'player') || this.now - (w.steerAt ?? -1e9) < PLAYER_GRACE_S;
+  }
+
+  /**
    * Walk to a point (A*), or stop with null. `by` says who asked: the MCP layer passes 'agent' for its
-   * move_to, which is refused while the agent is paused or while the player is steering (WASD); the
-   * player's own click-to-move and the NPC brains use the default 'player'.
+   * move_to and stop. An agent's walk is refused while it is paused (AGENT_PAUSED) and while the player is
+   * steering (playerSteering: PLAYER_STEERING), and an agent's stop only ends a walk the agent set — it
+   * never overrides or cancels the player's own. The player's click-to-move and the NPC brains use the
+   * default 'player', which always wins.
    */
   setGoal(wid: string, goal: Vec2 | null, by: 'player' | 'agent' = 'player') {
     const w = this.need(wid);
-    if (goal && by === 'agent') {
+    if (by === 'agent') {
+      if (!goal) {
+        if (w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; }
+        return null;
+      }
       if (w.agentPaused) throw new Error(AGENT_PAUSED);
-      if (Math.hypot(w.input.dx, w.input.dz) > 0.01) throw new Error(PLAYER_STEERING);
-    }
+      if (this.playerSteering(w)) throw new Error(PLAYER_STEERING);
+    } else w.steerAt = this.now;
     w.route = [];
     w.goal = null;
     w.goalBy = null;
@@ -1514,7 +1574,8 @@ export class World {
         this.emit('azkaban', 'The Ministry releases you from Azkaban. Behave.', { to: w.id, zh: '魔法部把你从阿兹卡班放了出来。老实点。' });
       }
       if (w.st.stunnedUntil && this.now >= w.st.stunnedUntil) {
-        w.st = { ...blankStatus() };
+        // a fresh start, except the silence cooldown: a knock-out must not reopen the victim to a new Langlock
+        w.st = { ...blankStatus(), silenceCdUntil: w.st.silenceCdUntil };
         const d = derived(w, rb);
         w.hp = d.maxHp;
         w.mana = d.maxMana;
@@ -1590,6 +1651,7 @@ export class World {
       if (this.pairByWizard.get(c.wizardId) === body) this.pairByWizard.delete(c.wizardId);
     }
     if (this.pairFails.length) this.pairFails = this.pairFails.filter((t) => this.now - t < 60);
+    for (const [k, times] of this.pairFailsBy) if (!times.length || this.now - times[times.length - 1] >= 60) this.pairFailsBy.delete(k);
     for (const [k, times] of this.owlTimes) if (!times.length || this.now - times[times.length - 1] >= 60) this.owlTimes.delete(k);
   }
 
@@ -1601,18 +1663,22 @@ export class World {
       const wp = w.route[0] ?? w.goal;
       const gx = wp.x - w.pos.x, gz = wp.z - w.pos.z;
       const gl = Math.hypot(gx, gz);
-      if (gl < 0.6 && w.route.length <= 1) { w.goal = null; w.route = []; }
+      if (gl < 0.6 && w.route.length <= 1) {
+        if (w.goalBy === 'player') w.steerAt = this.now; // the grace runs from the end of the player's walk
+        w.goal = null; w.route = []; w.goalBy = null;
+      }
       else if (gl > 1e-6) { dx = gx / gl; dz = gz / gl; w.facing = Math.atan2(dx, -dz); }
     }
     if (Math.hypot(dx, dz) < 0.01) return;
     const d = derived(w, this.rules);
     const haste = w.st.hasteUntil > this.now ? w.st.hasteMult : 1;
-    // Jelly-Legs and Tarantallegra act here, live (never through derived()), and not inside a safe zone.
+    // Jelly-Legs and Tarantallegra act here, live (never through derived()), and only while they bite
+    // (jinxBites: not inside a safe zone, not while the PvP rules would forbid their sender to harm you).
     let jelly = 0, dance = 0;
-    if (w.auras.length) {
-      jelly = auraMag(w.auras, 'jelly', this.now);
-      dance = auraMag(w.auras, 'dance', this.now);
-      if ((jelly || dance) && this.inSafe(w.pos)) jelly = dance = 0;
+    for (const a of w.auras) {
+      if ((a.k !== 'jelly' && a.k !== 'dance') || a.until <= this.now || !this.jinxBites(a.src, w.id)) continue;
+      if (a.k === 'jelly') jelly = Math.max(jelly, a.mag);
+      else dance = Math.max(dance, a.mag);
     }
     if (dance > 0) {
       // deterministic: a hash of (dance step, handle), never the world's seeded RNG
@@ -1954,8 +2020,9 @@ export class World {
   /**
    * Send a private owl between a player and their agent: ≤ OWL_MAX_CHARS characters, ≤ OWL_PER_MIN a
    * minute from each side. `ask` (agent only) makes it a question with 2-4 options that expires after
-   * ASK_TTL_S. The owlbox keeps OWLBOX_MAX messages, evicting the oldest finished one — never a question
-   * still waiting for its answer (formal/tla/Owl.tla). Emits a private 'owl'/'ask' event carrying `from`.
+   * ASK_TTL_S. The owlbox keeps OWLBOX_MAX messages (makeOwlRoom: never a question still waiting for its
+   * answer, and never silently a player's owl the agent has not read; formal/tla/Owl.tla). Emits a
+   * private 'owl'/'ask' event carrying `from`.
    */
   owl(wid: string, from: 'player' | 'agent', text: string, ask?: string[]): OwlMsg {
     const w = this.need(wid);
@@ -1972,10 +2039,10 @@ export class World {
     const times = (this.owlTimes.get(key) ?? []).filter((x) => this.now - x < 60);
     if (times.length >= OWL_PER_MIN) throw new Error('Too many owls this minute; the owlery needs a rest.');
     this.expireAsks(w);
-    this.makeOwlRoom(w);
+    const lost = this.makeOwlRoom(w, from);
     times.push(this.now);
     this.owlTimes.set(key, times);
-    const m: OwlMsg = { id: ++w.owlSeq, from, text: t, t: round(this.now) };
+    const m: OwlMsg = { id: ++w.owlSeq, from, text: t, t: round(this.now), ...(lost ? { lost } : {}) };
     if (options) { m.ask = { options, expiresAt: this.now + ASK_TTL_S }; this.openAsks.add(w.id); }
     w.owlbox.push(m);
     this.emit(options ? 'ask' : 'owl', t, { to: w.id, from, zh: t, owl: { id: m.id, ...(options ? { options, expiresAt: m.ask!.expiresAt } : {}) } });
@@ -1996,8 +2063,8 @@ export class World {
     if (!q.ask.options.includes(c)) throw new Error('That is not one of the options.');
     q.answered = true;
     q.answer = c;
-    this.makeOwlRoom(w);
-    const m: OwlMsg = { id: ++w.owlSeq, from: 'player', text: c, t: round(this.now), re: q.id };
+    const lost = this.makeOwlRoom(w, 'player');
+    const m: OwlMsg = { id: ++w.owlSeq, from: 'player', text: c, t: round(this.now), re: q.id, ...(lost ? { lost } : {}) };
     w.owlbox.push(m);
     this.emit('owl', c, { to: w.id, from: 'player', zh: c, owl: { id: m.id, re: q.id } });
     return m;
@@ -2024,17 +2091,45 @@ export class World {
     return open;
   }
 
-  private makeOwlRoom(w: Wizard) {
+  /** A player's owl the agent has not read yet (listen moves agentReadUpTo past it). */
+  private unreadByAgent(w: Wizard, m: OwlMsg) { return m.from === 'player' && m.id > w.agentReadUpTo; }
+
+  /**
+   * Make room in a full owlbox for one owl from `incoming` (formal/tla/Owl.tla). Evicted first: the oldest
+   * finished message that is not a player's owl the agent has yet to read. A question still waiting for
+   * its answer is never evicted. An unread player owl goes only to make room for a newer owl from the
+   * player, and never silently: its count moves to the next unread player owl (`lost`, which the agent
+   * sees when it listens; the player is told once). An agent's owl never pushes out one its player wrote
+   * (it is refused with OWLBOX_UNREAD: listen first). Returns the `lost` count the incoming owl carries.
+   */
+  private makeOwlRoom(w: Wizard, incoming: 'player' | 'agent'): number {
+    let carry = 0;
     while (w.owlbox.length >= OWLBOX_MAX) {
-      const i = w.owlbox.findIndex((m) => !(m.ask && !m.answered));
-      if (i < 0) throw new Error('Your owlbox is full of questions still waiting for an answer.');
-      w.owlbox.splice(i, 1);
+      let i = w.owlbox.findIndex((m) => !(m.ask && !m.answered) && !this.unreadByAgent(w, m));
+      if (i < 0 && incoming === 'player') i = w.owlbox.findIndex((m) => this.unreadByAgent(w, m));
+      if (i < 0) {
+        if (w.owlbox.some((m) => this.unreadByAgent(w, m))) throw new Error(OWLBOX_UNREAD);
+        throw new Error('Your owlbox is full of questions still waiting for an answer.');
+      }
+      const [gone] = w.owlbox.splice(i, 1);
+      if (!this.unreadByAgent(w, gone)) continue;
+      const n = (gone.lost ?? 0) + 1;
+      if (n === 1 && !w.owlbox.some((m) => this.unreadByAgent(w, m) && m.lost) && !carry) {
+        this.emit('system', '📭 Your agent has not read your owls and the owlbox is full: your oldest unread owl was dropped. Your agent will be told how many it missed.', {
+          to: w.id, zh: '📭 你的 Agent 一直没读你的猫头鹰，信箱满了：最早一封未读的被挤掉了。Agent 收信时会知道漏了几封。',
+        });
+      }
+      const heir = w.owlbox.find((m) => this.unreadByAgent(w, m)); // the next unread player owl (ids increase)
+      if (heir) heir.lost = (heir.lost ?? 0) + n;
+      else carry += n;
     }
+    return carry;
   }
 
   /**
    * The player's owls to the agent (answers included) after owl id `sinceId` — by default after the
    * agent's watermark. Read-only: /api/owls and a bridge's poll use this without consuming anything.
+   * An owl with `lost: n` says n older owls from the player were dropped unread just before it (full box).
    */
   owlsFor(wid: string, sinceId?: number): OwlMsg[] {
     const w = this.need(wid);
@@ -2260,7 +2355,8 @@ export class World {
     const bound = this.boundItems(w).map((i) => ({ id: i.id, name: i.name, slot: i.slot, left: Math.ceil((i.boundUntil ?? 0) - this.now) }));
     const respite = w.respiteUntil > this.now ? Math.ceil(w.respiteUntil - this.now) : 0;
     if (!auras.length && !silenced && !bound.length && !respite) return null;
-    return { auras, silenced, bound, respite, safe: this.inSafe(w.pos) };
+    // safe / pvp: why the jinxes may be resting right now (a safe zone, or a decree switching PvP off)
+    return { auras, silenced, bound, respite, safe: this.inSafe(w.pos), pvp: this.rules.combat.pvp };
   }
 
   /**
@@ -2288,7 +2384,7 @@ export class World {
     return {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
-      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null })),
+      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined })),
     };
   }
 
@@ -2307,8 +2403,13 @@ export class World {
         hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null,
       };
       const wz: Wizard = {
-        ...later, ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 },
-        agentPaused: false, agentSeen: null, goalBy: null,
+        ...later, ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now,
+        // timed statuses start clean after a restart, except Azkaban and the silence with its cooldown (§B.3)
+        st: {
+          ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0, silencedUntil: x.st?.silencedUntil ?? 0, silenceCdUntil: x.st?.silenceCdUntil ?? 0,
+          silenceBy: x.st?.silenceBy ?? null, silenceSrc: x.st?.silenceSrc ?? null,
+        },
+        agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined,
       };
       wz.owlSeq = Math.max(wz.owlSeq, ...wz.owlbox.map((m) => m.id));
       w.tokenIndex.set(wz.token, wz.id);
@@ -2341,7 +2442,7 @@ function auraFlags(list: { k: string; until: number }[], now: number) {
 function blankStatus(): Wizard['st'] {
   return {
     shield: 0, shieldUntil: 0, hasteMult: 1, hasteUntil: 0, rootedUntil: 0, disarmedUntil: 0, lightUntil: 0, patronusUntil: 0, stunnedUntil: 0, jailedUntil: 0,
-    silencedUntil: 0, silenceCdUntil: 0, silenceBy: null,
+    silencedUntil: 0, silenceCdUntil: 0, silenceBy: null, silenceSrc: null,
   };
 }
 

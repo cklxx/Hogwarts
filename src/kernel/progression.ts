@@ -66,6 +66,12 @@ export const moveSlow = (chill: number, jelly: number) => Math.max(MOVE_SLOW_FLO
 export const hexHpFloor = (maxHp: number) => Math.max(1, Math.floor(maxHp * HEX_HP_FLOOR_FRAC));
 /** Health after `dmg` of jinx damage: never below the floor (nor below what you already had, if you were under it). */
 export const hexDotHp = (hp: number, maxHp: number, dmg: number) => Math.max(Math.min(hp, hexHpFloor(maxHp)), hp - Math.max(0, dmg));
+/**
+ * One jinx tick after every multiplier (rules, the victim's ward): never more than the jinx's own rate for
+ * the tick (JINX_DEFAULTS mag × dt), so a cursed negative ward or a decree cannot make a jinx outgrow its
+ * table (Lean: hex_tick_capped); a positive ward still softens it.
+ */
+export const hexTickDmg = (rate: number, scaled: number) => Math.max(0, Math.min(rate, scaled));
 
 /**
  * Uncached reference implementation (the cache below is tested against it). The unicorn's curse is the
