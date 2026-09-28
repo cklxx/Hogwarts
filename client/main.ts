@@ -224,13 +224,13 @@ function column(x: number, z: number, color: number, life = 1.2) {
     c.width = 4; c.height = 64;
     const g = c.getContext('2d')!;
     const gr = g.createLinearGradient(0, 0, 0, 64);
-    gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.6, 'rgb(90,90,90)'); gr.addColorStop(1, 'rgb(255,255,255)');
+    gr.addColorStop(0, 'rgb(0,0,0)'); gr.addColorStop(0.55, 'rgb(40,40,40)'); gr.addColorStop(0.9, 'rgb(200,200,200)'); gr.addColorStop(1, 'rgb(255,255,255)');
     g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
     columnFade = new THREE.CanvasTexture(c);
   }
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.05, 8, 20, 1, true), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.5), alphaMap: columnFade, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.05, 8, 20, 1, true), new THREE.MeshBasicMaterial({ color, alphaMap: columnFade, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
   m.position.set(x, 4 + heightAt(x, z), z);
-  addEffect(m, life, (k, o) => { ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - k) * Math.min(1, k * 8); o.scale.x = o.scale.z = 1 + k * 0.6; });
+  addEffect(m, life, (k, o) => { ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.28 * (1 - k) * Math.min(1, k * 8); o.scale.x = o.scale.z = 1 + k * 0.6; });
 }
 function floatText(x: number, z: number, text: string, color: string) {
   const c = document.createElement('canvas');
