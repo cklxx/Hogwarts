@@ -18,7 +18,8 @@ input, select { font: inherit; padding: 5px 7px; border-radius: 5px; border: 1px
 #gate > button { width: 100%; margin-top: 8px; padding: 10px; font-size: 16px; }
 #gate details { margin-top: 12px; }
 
-#me { position: fixed; top: 10px; left: 10px; min-width: 230px; }
+#topleft { position: fixed; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; max-width: min(360px, 44vw); }
+#me { min-width: 230px; }
 #me .house { font-weight: bold; }
 #clock { position: fixed; top: 10px; right: 10px; text-align: right; min-width: 200px; }
 #feed { position: fixed; right: 10px; top: 96px; width: min(380px, 40vw); max-height: 42vh; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 3px; background: transparent; border: 0; pointer-events: none; }
@@ -139,4 +140,80 @@ body.touch #touchbar { display: flex; flex-direction: column; gap: 8px; position
 body.touch #touchbar button { width: 46px; height: 46px; padding: 0; border-radius: 50%; font-size: 18px; background: rgba(12,12,24,.7); }
 @media (max-height: 500px) { body.touch #touchbar { gap: 5px; } body.touch #touchbar button { width: 38px; height: 38px; font-size: 15px; } }
 body.touch #crosshair, body.touch #help { display: none; }
-@media (max-height: 500px) { #presence, #minimap { display: none; } #chat { bottom: auto; top: 76px; width: min(220px, 30vw); } }
+@media (max-height: 500px) { #presence, #minimap { display: none; } #chat { bottom: auto; top: calc(var(--tl-bottom, 66px) + 8px); width: min(220px, 30vw); } #agentbox.ab-idle { display: none; }
+  /* the agent widget leaves the top-left stack and becomes one compact line beside the chat box, so neither the chat box
+     nor the widget runs into the tutorial card (top: 36%) or each other */
+  #agentbox:not([hidden]):not(.ab-idle) { position: fixed; top: calc(var(--tl-bottom, 66px) + 8px); left: calc(18px + min(220px, 30vw)); max-width: min(190px, 25vw);
+    display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 11.5px; }
+  #agentbox > div:first-child:not(.ab-row) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #agentbox > div:first-child code, #agentbox .ab-goal { display: none; }
+  #agentbox .ab-row { margin-top: 0; flex-wrap: nowrap; flex: none; gap: 4px; }
+  #agentbox button { padding: 1px 6px; font-size: 11px; }
+  #agentbox .ab-row button[data-act="owl"]:not(:has(.ab-n)) { display: none; } /* the touch bar has its own 🦉; keep this one only for an unread count */ }
+
+/* ------------------------------------------------------------------ Owl Post: the menu, the Owl panel, the agent widget, the trunk, the curse banner (docs/AGENT_LINK.md §C.6) */
+#menu h2 small { font-weight: normal; font-size: 13px; opacity: .7; }
+#menu h3 { margin: 12px 0 4px; font-size: 15px; color: #7f0909; }
+#menu .op-first { border: 2px solid #8b6b3d; border-radius: 8px; padding: 6px 12px 8px; background: rgba(212,175,55,.14); }
+#menu .op-first h3 { margin-top: 4px; }
+#menu .op-big { font-size: 17px; padding: 9px 18px; }
+#menu .op-code { font: bold 40px/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 6px; color: #7f0909; text-align: center; margin: 4px 0; }
+#menu .op-say { font-size: 16px; }
+#menu .op-ok { font-size: 18px; color: #1d5b1d; margin: 6px 0 2px; }
+#menu .op-cmd { display: flex; gap: 6px; align-items: flex-start; }
+#menu .op-cmd pre { flex: 1; margin: 0; }
+#menu .op-cmd button { flex: none; padding: 3px 9px; }
+#menu .op-registry code { background: #fffaf0; padding: 1px 5px; border-radius: 4px; }
+#menu button.ghost, #trunk button.ghost, #owl button.ghost, #atask button.ghost { border-color: #8b6b3d; }
+
+#agentbox { font-size: 12.5px; max-width: 100%; }
+#agentbox .ab-goal { color: #ffe08a; margin-top: 2px; }
+#agentbox .ab-row { margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap; }
+#agentbox button { padding: 2px 9px; font-size: 12px; }
+#agentbox button.ghost { background: rgba(0,0,0,.25); color: #fff5d6; }
+#agentbox code { font-size: 11px; color: #9fd3ff; }
+.ab-n { display: inline-block; min-width: 1.4em; padding: 0 4px; border-radius: 9px; background: #d4af37; color: #1b1206; text-align: center; }
+
+#owl { position: fixed; right: 10px; top: 12vh; width: min(420px, 94vw); max-height: 76vh; display: flex; flex-direction: column; padding: 10px 14px; border-radius: 10px; z-index: 6; }
+#owl h2 { margin: 0 0 4px; font-size: 19px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#owl h2 small { font-weight: normal; font-size: 12.5px; opacity: .7; }
+#owl h2 button { padding: 0 8px; }
+#owl-who { font-size: 13px; margin-bottom: 4px; }
+#owl-log { flex: 1; min-height: 120px; overflow: auto; background: #fffaf0; border: 1px solid #c9ad7a; border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+#owl-log .ow { max-width: 86%; padding: 4px 8px 5px; border-radius: 8px; font-size: 13.5px; }
+#owl-log .ow.agent { align-self: flex-start; background: #efe6ff; border: 1px solid #b9a2e0; }
+#owl-log .ow.player { align-self: flex-end; background: #fff1c9; border: 1px solid #d4af37; }
+#owl-log .ow-from { font-size: 11px; opacity: .7; margin-right: 4px; }
+.ow-text { white-space: pre-wrap; word-break: break-word; }
+.ow-opts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; align-items: center; }
+.ow-opts button { padding: 3px 11px; font-size: 13px; }
+.ow-opts button:disabled { opacity: .5; cursor: default; }
+.ow-ans { margin-top: 3px; font-size: 12.5px; }
+#owl .row { display: flex; gap: 6px; margin-top: 6px; } #owl-input { flex: 1; min-width: 0; }
+#owlpop { position: fixed; right: 10px; top: 96px; width: min(340px, 80vw); padding: 8px 12px; background: rgba(30, 18, 50, .93); border: 1px solid #b9a2e0; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.55), 0 0 16px rgba(185,162,224,.35); z-index: 5; cursor: pointer; animation: popin .25s ease-out; }
+#owlpop .op-head { font-size: 12px; color: #d9c9ff; margin-bottom: 3px; }
+@keyframes popin { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
+#atask { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(440px, 92vw); padding: 12px 16px; border-radius: 10px; z-index: 8; }
+#atask p { margin: 6px 0; }
+
+#trunk { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(640px, 94vw); max-height: 84vh; overflow: auto; padding: 12px 18px; border-radius: 10px; z-index: 6; }
+#trunk h2 { margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; } #trunk h2 small { font-weight: normal; font-size: 13px; opacity: .7; }
+#trunk h2 button { padding: 0 8px; }
+#trunk .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 4px 0 8px; }
+#trunk button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.6); }
+#trunk-list { list-style: none; margin: 0; padding: 0; }
+#trunk-list li { border: 1px solid #c9ad7a; border-radius: 7px; padding: 6px 9px; margin-bottom: 6px; background: #fffaf0; }
+#trunk-list li.cursed { border-color: #7b2cbf; background: #f4ebff; }
+#trunk-list .ti-mods { font-size: 12.5px; margin: 2px 0 4px; }
+#trunk-list .ti-mods .pos { color: #1d5b1d; } #trunk-list .ti-mods .neg { color: #9b0000; font-weight: bold; }
+#trunk-list .ti-acts button { padding: 2px 10px; font-size: 12.5px; }
+.tb { display: inline-block; font-size: 11.5px; padding: 0 6px; border-radius: 9px; background: rgba(0,0,0,.08); margin-left: 2px; }
+.tb.eq { background: #d4af37; color: #1b1206; } .tb.curse { background: #5a189a; color: #fff; } .tb.anon { background: #555; color: #fff; }
+
+#cursebar { position: fixed; left: 50%; bottom: 152px; transform: translateX(-50%); width: min(660px, 94vw); padding: 7px 12px; background: rgba(48, 10, 60, .9); border: 1px solid #b06bff; border-radius: 9px; box-shadow: 0 0 18px rgba(176, 107, 255, .45); font-size: 13px; z-index: 3; text-align: center; }
+#cursebar.quiet { background: rgba(10, 40, 30, .8); border-color: #6cff8a; box-shadow: none; font-size: 12px; padding: 4px 10px; width: auto; }
+#cursebar .cb-acts { margin-top: 5px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+#cursebar button { padding: 2px 10px; font-size: 12.5px; }
+#cursebar button.ghost { background: rgba(0,0,0,.3); color: #fff5d6; }
+#cursebar button:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 800px) { #cursebar { bottom: 120px; font-size: 12px; } #owl { top: 8vh; } }
