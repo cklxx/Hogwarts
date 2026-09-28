@@ -183,6 +183,8 @@ export interface WorldEvent {
   t: number;
   type: EventType;
   text: string;
+  /** 简体中文 */
+  zh?: string;
   /** Private events are delivered only to this wizard id. */
   to?: string;
   who?: string[];

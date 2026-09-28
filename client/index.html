@@ -11,21 +11,21 @@
   <canvas id="view"></canvas>
 
   <section id="gate" class="panel parchment">
-    <h1>Hogwarts</h1>
+    <h1 data-zh="霍格沃茨">Hogwarts</h1>
     <p class="motto">Draco dormiens nunquam titillandus</p>
-    <p>Dear student, we are pleased to inform you that you have a place at Hogwarts School of Witchcraft and Wizardry.
+    <p data-zh="亲爱的同学：我们愉快地通知您，您已获准在霍格沃茨魔法学校就读。在这里，咒语就是<em>程序</em> —— 你的 Agent 可以替你编写它们。">Dear student, we are pleased to inform you that you have a place at Hogwarts School of Witchcraft and Wizardry.
        Spells here are <em>programs</em>. Your agent can write them.</p>
-    <label>Your name <input id="gate-name" maxlength="24" placeholder="e.g. Hermione Granger" /></label>
-    <label>The Sorting Hat may consider
+    <label><span data-zh="你的名字">Your name</span> <input id="gate-name" maxlength="24" placeholder="e.g. Hermione Granger" data-zh-ph="例如 Hermione Granger（原著角色名有惊喜）" /></label>
+    <label><span data-zh="分院帽会考虑你的意愿">The Sorting Hat may consider</span>
       <select id="gate-house">
-        <option value="">— let the Hat decide —</option>
-        <option>Gryffindor</option><option>Hufflepuff</option><option>Ravenclaw</option><option>Slytherin</option>
-        <option value="not slytherin">Not Slytherin, not Slytherin...</option>
+        <option value="" data-zh="—— 让分院帽决定 ——">— let the Hat decide —</option>
+        <option value="Gryffindor" data-zh="格兰芬多">Gryffindor</option><option value="Hufflepuff" data-zh="赫奇帕奇">Hufflepuff</option><option value="Ravenclaw" data-zh="拉文克劳">Ravenclaw</option><option value="Slytherin" data-zh="斯莱特林">Slytherin</option>
+        <option value="not slytherin" data-zh="不要斯莱特林，不要斯莱特林……">Not Slytherin, not Slytherin...</option>
       </select>
     </label>
-    <button id="gate-go">Board the Hogwarts Express</button>
-    <details><summary>I already have an Owl Post key</summary>
-      <input id="gate-token" placeholder="token" /> <button id="gate-login">Log in</button>
+    <button id="gate-go" data-zh="登上霍格沃茨特快">Board the Hogwarts Express</button>
+    <details><summary data-zh="我已经有猫头鹰邮递密钥了">I already have an Owl Post key</summary>
+      <input id="gate-token" placeholder="token" /> <button id="gate-login" data-zh="登录">Log in</button>
     </details>
     <p id="gate-err" class="err"></p>
   </section>
@@ -40,44 +40,44 @@
       <div class="bar xp"><i></i><span></span></div>
       <div id="hotbar"></div>
     </div>
-    <input id="chat" maxlength="200" placeholder="Enter to speak — some words have power here" />
+    <input id="chat" maxlength="200" placeholder="Enter to speak — some words have power here" data-zh-ph="回车说话 —— 有些话在这里有魔力" />
     <div id="crosshair"></div>
     <div id="banner" hidden></div>
     <div id="overlay" hidden></div>
     <canvas id="minimap" width="220" height="220"></canvas>
     <div id="presence" class="panel"></div>
     <div id="seals" class="parchment" hidden>
-      <h2>The Restricted Section <small>— R to close</small></h2>
-      <p class="warn">The Restricted Section lies. Margin notes may be false; not every block of runes can be reached. Only running the runes tells the truth.</p>
+      <h2 data-zh="禁书区 <small>—— 按 R 关闭</small>">The Restricted Section <small>— R to close</small></h2>
+      <p class="warn" data-zh="禁书区会说谎。页边注释可能是假的；并非每一段如尼文都能被执行到。只有真正运行这些符文，才能知道真相。">The Restricted Section lies. Margin notes may be false; not every block of runes can be reached. Only running the runes tells the truth.</p>
       <div id="seal-list"></div>
       <h3 id="seal-title"></h3>
-      <div class="row"><button id="seal-read">Read the page that rests here</button> <input id="seal-words" placeholder="answer words, e.g. 0x1a2b3c4d 0x0badf00d" /> <button id="seal-break">Speak the words</button></div>
+      <div class="row"><button id="seal-read" data-zh="阅读此处的书页">Read the page that rests here</button> <input id="seal-words" placeholder="answer words, e.g. 0x1a2b3c4d 0x0badf00d" data-zh-ph="答案字，例如 0x1a2b3c4d 0x0badf00d" /> <button id="seal-break" data-zh="念出咒文">Speak the words</button></div>
       <pre id="seal-runes"></pre>
-      <details><summary>Codex of Old Runes</summary><pre id="seal-codex"></pre></details>
+      <details><summary data-zh="古代如尼文法典">Codex of Old Runes</summary><pre id="seal-codex"></pre></details>
     </div>
     <div id="board" class="panel parchment" hidden></div>
     <div id="menu" class="panel parchment" hidden></div>
-    <div id="map" class="parchment" hidden><h2>The Marauder's Map</h2><canvas width="640" height="640"></canvas><ul></ul></div>
+    <div id="map" class="parchment" hidden><h2 data-zh="活点地图">The Marauder's Map</h2><canvas width="640" height="640"></canvas><ul></ul></div>
     <div id="book" class="parchment" hidden>
-      <h2>Spellbook <small>— spells are Runes programs · B to close</small></h2>
+      <h2 data-zh="咒语书 <small>—— 咒语就是 Runes 程序 · 按 B 关闭</small>">Spellbook <small>— spells are Runes programs · B to close</small></h2>
       <div class="cols">
         <ul id="book-list"></ul>
         <div class="editor">
-          <div class="row"><input id="sp-name" maxlength="40" placeholder="Spell name" /><input id="sp-inc" maxlength="60" placeholder="Incantation (what you shout)" /></div>
+          <div class="row"><input id="sp-name" maxlength="40" placeholder="Spell name" data-zh-ph="咒语名" /><input id="sp-inc" maxlength="60" placeholder="Incantation (what you shout)" data-zh-ph="咒文（施法时喊出的话）" /></div>
           <textarea id="sp-src" spellcheck="false" placeholder="(bolt (or target aim) 14 :fire)"></textarea>
           <div class="row">
-            <select id="sp-slot"><option value="">no hotbar slot</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
-            <button id="sp-sim" title="Dry run at your current aim: nothing is spent">Simulate</button>
-            <button id="sp-forge">Forge</button>
-            <button id="sp-cast" title="Cast the selected spell at your aim">Cast</button>
-            <button id="sp-forget" class="ghost">Unlearn</button>
+            <select id="sp-slot"><option value="" data-zh="不放快捷栏">no hotbar slot</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            <button id="sp-sim" title="Dry run at your current aim: nothing is spent" data-zh-title="对准当前瞄准点预演：不消耗任何东西" data-zh="模拟">Simulate</button>
+            <button id="sp-forge" data-zh="铸造">Forge</button>
+            <button id="sp-cast" title="Cast the selected spell at your aim" data-zh-title="对准瞄准点施放所选咒语" data-zh="施放">Cast</button>
+            <button id="sp-forget" class="ghost" data-zh="遗忘">Unlearn</button>
           </div>
-          <pre id="sp-out">Pick a spell on the left to read its source, or write a new one. Simulate is free.</pre>
+          <pre id="sp-out" data-zh="在左边选一个咒语阅读它的源码，或者写一个新的。模拟是免费的。">Pick a spell on the left to read its source, or write a new one. Simulate is free.</pre>
         </div>
       </div>
-      <details><summary>Grimoire — the full language reference</summary><pre id="grimoire"></pre></details>
+      <details><summary data-zh="魔法书（Grimoire）—— 完整的语言参考">Grimoire — the full language reference</summary><pre id="grimoire"></pre></details>
     </div>
-    <div id="help" class="panel">WASD move · mouse aim · click / 1-6 cast · right-drag camera · wheel zoom · B spellbook · R Restricted Section · Tab leaderboard · Esc menu · Enter chat</div>
+    <div id="help" class="panel" data-zh="WASD 移动 · 鼠标瞄准 · 左键 / 1-6 施法 · 右键拖动转视角 · 滚轮缩放 · B 咒语书 · R 禁书区 · Tab 排行榜 · Esc 菜单 · 回车聊天">WASD move · mouse aim · click / 1-6 cast · right-drag camera · wheel zoom · B spellbook · R Restricted Section · Tab leaderboard · Esc menu · Enter chat</div>
   </div>
   <script type="module" src="./main.ts"></script>
 </body>

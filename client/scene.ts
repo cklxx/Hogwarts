@@ -2,9 +2,12 @@ import * as THREE from 'three';
 import { Water } from 'three/addons/objects/Water.js';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
 import { tex as fileTex } from './assets';
+import { drape, heightAt, makeTerrain } from './terrain';
 import { cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
 
 export interface WorldScene {
+  /** The terrain mesh, for aiming. */
+  ground: THREE.Mesh;
   /** Emissive materials that should brighten at night (windows, candles). */
   nightGlow: THREE.MeshStandardMaterial[];
   /** Points where house banners hang: position + facing yaw. */
@@ -36,41 +39,24 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     return o;
   };
 
-  // ---- ground: segmented disc with low-frequency vertex colour variation (hides tiling)
-  const groundGeo = new THREE.PlaneGeometry(640, 640, 160, 160);
-  const colors: number[] = [];
-  const pos = groundGeo.getAttribute('position');
-  const n2 = (x: number, y: number) => Math.sin(x * 0.021) * Math.cos(y * 0.017) + 0.5 * Math.sin(x * 0.047 + y * 0.031) + 0.25 * Math.cos(x * 0.11 - y * 0.09);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i);
-    const v = n2(x, y);
-    const dry = Math.max(0, v) * 0.25;
-    colors.push(0.85 + v * 0.1 + dry, 0.9 + v * 0.08, 0.8 + v * 0.05 - dry * 0.5);
-    // gentle rolling hills away from the castle and paths, sinking at the shore
-    const r = Math.hypot(x, y);
-    if (r > 300) pos.setZ(i, -2);
-  }
-  groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const ground = new THREE.Mesh(groundGeo, M.grass);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ color: 0x0f1f2c, roughness: 0.15, metalness: 0.3 }));
+  // ---- terrain: rolling grounds, a lake basin, and the Highlands (flat wherever something is built)
+  const terrain = makeTerrain(M.grass, M.rock);
+  scene.add(terrain.group);
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ color: 0x0f1f2c, roughness: 0.12, metalness: 0.35 }));
   sea.rotation.x = -Math.PI / 2;
-  sea.position.y = -1.2;
+  sea.position.y = -9; // below the lowest rolling ground (about -6 m); only the southern inlet dips under it
   scene.add(sea);
 
   // ---- paths and courtyard (cobbles, world-scaled)
   const road = (x0: number, z0: number, x1: number, z1: number, w = 4) => {
     const len = Math.hypot(x1 - x0, z1 - z0);
-    const geo = new THREE.PlaneGeometry(w, len);
+    const geo = new THREE.PlaneGeometry(w, len, 1, Math.ceil(len / 3));
     const uv = geo.getAttribute('uv');
     for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * w) / 3, (uv.getY(i) * len) / 3);
-    const m = new THREE.Mesh(geo, M.path);
-    m.rotation.x = -Math.PI / 2;
-    m.rotation.z = -Math.atan2(x1 - x0, z1 - z0);
-    m.position.set((x0 + x1) / 2, 0.02, (z0 + z1) / 2);
+    geo.rotateX(-Math.PI / 2);
+    geo.rotateY(Math.atan2(x1 - x0, z1 - z0) + Math.PI); // local -z (the strip) now points from (x0,z0) to (x1,z1)
+    geo.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    const m = new THREE.Mesh(drape(geo, 0.05), M.path);
     m.receiveShadow = true;
     scene.add(m);
   };
@@ -144,9 +130,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     switch (o.style) {
       case 'water': {
         const geo = new THREE.CircleGeometry(o.r, 64);
-        const shore = new THREE.Mesh(new THREE.RingGeometry(o.r - 1, o.r + 7, 72, 1), M.sand);
-        shore.rotation.x = -Math.PI / 2;
-        shore.position.set(o.x, 0.04, o.z);
+        const shoreGeo = new THREE.RingGeometry(o.r - 3, o.r + 7, 96, 3);
+        shoreGeo.rotateX(-Math.PI / 2);
+        shoreGeo.translate(o.x, 0, o.z);
+        const shore = new THREE.Mesh(drape(shoreGeo, 0.06), M.sand);
         shore.receiveShadow = true;
         scene.add(shore);
         const normals = fileTex('water_normal.webp', { srgb: false, fallback: waterNormals() });
@@ -253,11 +240,12 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   const jr = mulberry32(7);
   trees.forEach((t, i) => {
     if (t.kind !== 'disc') return;
-    m4.compose(new THREE.Vector3(t.x, t.h * 0.2, t.z), q, new THREE.Vector3(t.r, t.h * 0.4, t.r));
+    const gy = heightAt(t.x, t.z);
+    m4.compose(new THREE.Vector3(t.x, gy + t.h * 0.2, t.z), q, new THREE.Vector3(t.r, t.h * 0.4, t.r));
     trunkI.setMatrixAt(i, m4);
     for (let k = 0; k < 2; k++) {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), jr() * 6);
-      m4.compose(new THREE.Vector3(t.x, t.h * (0.55 + k * 0.25), t.z), q, new THREE.Vector3(t.r * (3.4 - k * 1.1), t.h * (0.55 - k * 0.15), t.r * (3.4 - k * 1.1)));
+      m4.compose(new THREE.Vector3(t.x, gy + t.h * (0.55 + k * 0.25), t.z), q, new THREE.Vector3(t.r * (3.4 - k * 1.1), t.h * (0.55 - k * 0.15), t.r * (3.4 - k * 1.1)));
       crownI.setMatrixAt(i * 2 + k, m4);
       crownI.setColorAt(i * 2 + k, col.setHSL(0.28 + jr() * 0.08, 0.45, 0.55 + jr() * 0.35));
     }
@@ -299,7 +287,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     }
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), tr() * Math.PI);
     const s = 0.6 + tr() * 0.9;
-    m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s, s, s));
+    m4.compose(new THREE.Vector3(x, heightAt(x, z), z), q, new THREE.Vector3(s, s, s));
     tufts.setMatrixAt(i, m4);
   }
   scene.add(tufts);
@@ -358,6 +346,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
 
   const lakeReflect = lake ? (lake as Water).onBeforeRender : null;
   return {
+    ground: terrain.ground,
     nightGlow, bannerSpots, lake,
     setQuality(q) {
       tufts.visible = q === 'high';

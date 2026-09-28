@@ -43,11 +43,19 @@ export const CODEX: Record<Op, string> = {
 };
 
 export const SEAL_TIERS = [
-  { tier: 1, name: 'The First Seal — Hand of Glory', year: 2, words: 1, pages: ['courtyard', 'great_hall'] },
-  { tier: 2, name: 'The Second Seal — Moste Potente Potions', year: 4, words: 2, pages: ['greenhouses', 'hagrid', 'willow'] },
-  { tier: 3, name: 'The Third Seal — Secrets of the Darkest Art', year: 5, words: 3, pages: ['tomb', 'pitch', 'dungeons', 'seventh_floor'] },
-  { tier: 4, name: 'The Fourth Seal — The Tale of the Three Brothers', year: 7, words: 4, pages: ['forest', 'hogsmeade', 'shack', 'erised', 'lake'] },
+  { tier: 1, name: 'The First Seal — Hand of Glory', zh: '第一道封印·光荣之手', year: 2, words: 1, pages: ['courtyard', 'great_hall'] },
+  { tier: 2, name: 'The Second Seal — Moste Potente Potions', zh: '第二道封印·强力药剂', year: 4, words: 2, pages: ['greenhouses', 'hagrid', 'willow'] },
+  { tier: 3, name: 'The Third Seal — Secrets of the Darkest Art', zh: '第三道封印·尖端黑魔法揭秘', year: 5, words: 3, pages: ['tomb', 'pitch', 'dungeons', 'seventh_floor'] },
+  { tier: 4, name: 'The Fourth Seal — The Tale of the Three Brothers', zh: '第四道封印·三兄弟的传说', year: 7, words: 4, pages: ['forest', 'hogsmeade', 'shack', 'erised', 'lake'] },
 ] as const;
+
+export const SEAL_REWARDS_ZH = [
+  '',
+  '所有威力上限 +20%，每次施法效果 +1',
+  '上限 +40%，效果 +2，并解锁 chain（在敌人之间跳跃的闪电）',
+  '上限 +60%，效果 +3',
+  '上限 +80%，效果 +4，并解锁 storm（在指定地点延迟爆发的风暴）',
+];
 
 export const SEAL_REWARDS = [
   '',

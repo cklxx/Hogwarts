@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { bannerTexture, glowSprite } from './textures';
+import { heightAt } from './terrain';
 
 export interface Statue { name: string; house: House; term: number; inscription: string }
 export interface Look {
@@ -105,7 +106,8 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
   const fhome = new Float32Array(FLIES * 3);
   for (let i = 0; i < FLIES; i++) {
     const a = Math.random() * 6.28, d = Math.sqrt(Math.random()) * 80;
-    fhome[i * 3] = 160 + Math.cos(a) * d; fhome[i * 3 + 1] = 0.6 + Math.random() * 3; fhome[i * 3 + 2] = 15 + Math.sin(a) * d;
+    fhome[i * 3] = 160 + Math.cos(a) * d; fhome[i * 3 + 2] = 15 + Math.sin(a) * d;
+    fhome[i * 3 + 1] = heightAt(fhome[i * 3], fhome[i * 3 + 2]) + 0.6 + Math.random() * 3;
   }
   fp.set(fhome);
   flyGeo.setAttribute('position', new THREE.BufferAttribute(fp, 3));

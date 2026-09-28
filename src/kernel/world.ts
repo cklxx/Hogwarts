@@ -2,12 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { CREATURE_KINDS, HOUSES, ITEM_SLOTS, UI_CHARMS, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm } from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, inZone, mulberry32, type ZoneId } from '../shared/map.js';
 import { canonFor, ollivander } from '../lore/wands.js';
+import { zhCreature, zhHouse, zhPlace, zhSpell } from '../shared/zh.js';
 import { CURRICULUM, isLeviosa, isLeviosar, unforgivable } from '../lore/spells.js';
 import { analyze } from '../runes/checker.js';
 import type { Node } from '../runes/parser.js';
 import { CREATURES } from './creatures.js';
 import { type AuraKind, addAura, auraMag, hasAura, live, withoutDebuffs } from './auras.js';
-import { SEAL_REWARDS, SEAL_TIERS, CODEX, disassemble, generateSeal, parseWord, runSeal, type Seal } from './seals.js';
+import { SEAL_REWARDS, SEAL_REWARDS_ZH, SEAL_TIERS, CODEX, disassemble, generateSeal, parseWord, runSeal, type Seal } from './seals.js';
 import { TITLES, titleIndex } from '../lore/titles.js';
 import { type CastReport, execute } from './magic.js';
 import { dist, resolve, solidAt } from './physics.js';
@@ -28,17 +29,17 @@ export const FRESH_SECONDS = 600;
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
 
-export const ACHIEVEMENTS: Record<string, { name: string; rep: number; text: string }> = {
-  weasley_loophole: { name: 'The Weasley Loophole', rep: 50, text: 'You noticed the Ministry forge never checks whose name is on the parcel. Fred and George would be proud. (Yes, it is a bug. Yes, we left it in on purpose.)' },
-  marauder: { name: 'Moony, Wormtail, Padfoot and Prongs', rep: 10, text: 'Messrs. Moony, Wormtail, Padfoot and Prongs are proud to present: everyone\'s true registry numbers.' },
-  azkaban: { name: 'Guest of the Dementors', rep: 0, text: 'You used an Unforgivable Curse. The Ministry has a room for you.' },
-  room_of_requirement: { name: 'The Come-and-Go Room', rep: 25, text: 'You walked past three times, thinking hard. The Room gave you what was hidden there.' },
-  erised: { name: 'Erised', rep: 5, text: 'It does not do to dwell on dreams and forget to live.' },
-  knot: { name: 'Pressed the Knot', rep: 5, text: 'You froze the Whomping Willow. Crookshanks did it with a paw.' },
-  leviosa: { name: "It's Levi-O-sa", rep: 10, text: 'You knocked out a troll the way Ron did in 1991.' },
-  elder_wand: { name: 'Master of the Elder Wand', rep: 20, text: 'The wand chooses the wizard — and it chose whoever beat its last master.' },
-  seeker: { name: 'Seeker', rep: 10, text: 'Accio Firebolt! Fastest broom in the world.' },
-  first_blood: { name: 'Duellist', rep: 0, text: 'You stunned another wizard. Bow first next time.' },
+export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: number; text: string; textZh: string }> = {
+  weasley_loophole: { name: 'The Weasley Loophole', zh: '韦斯莱漏洞', rep: 50, text: 'You noticed the Ministry forge never checks whose name is on the parcel. Fred and George would be proud. (Yes, it is a bug. Yes, we left it in on purpose.)', textZh: '你发现魔法部的锻造炉从不核对包裹上写的是谁。弗雷德和乔治会为你骄傲的。（是的，这是个 bug。是的，我们故意留着它。）' },
+  marauder: { name: 'Moony, Wormtail, Padfoot and Prongs', zh: '月亮脸、虫尾巴、大脚板和尖头叉子', rep: 10, text: 'Messrs. Moony, Wormtail, Padfoot and Prongs are proud to present: everyone\'s true registry numbers.', textZh: '月亮脸、虫尾巴、大脚板和尖头叉子先生荣幸地献上：每个人真正的登记号。' },
+  azkaban: { name: 'Guest of the Dementors', zh: '摄魂怪的客人', rep: 0, text: 'You used an Unforgivable Curse. The Ministry has a room for you.', textZh: '你用了不可饶恕咒。魔法部给你准备了一间屋子。' },
+  room_of_requirement: { name: 'The Come-and-Go Room', zh: '来去屋', rep: 25, text: 'You walked past three times, thinking hard. The Room gave you what was hidden there.', textZh: '你专心想着走过了三次。这间屋子把藏在里面的东西给了你。' },
+  erised: { name: 'Erised', zh: '厄里斯', rep: 5, text: 'It does not do to dwell on dreams and forget to live.', textZh: '沉湎于虚幻的梦想而忘记现实的生活，这是毫无益处的。' },
+  knot: { name: 'Pressed the Knot', zh: '按住树结', rep: 5, text: 'You froze the Whomping Willow. Crookshanks did it with a paw.', textZh: '你让打人柳僵住了。克鲁克山只用了一只爪子。' },
+  leviosa: { name: "It's Levi-O-sa", zh: '是羽加迪姆勒维奥萨', rep: 10, text: 'You knocked out a troll the way Ron did in 1991.', textZh: '你像 1991 年的罗恩一样打晕了一只巨怪。' },
+  elder_wand: { name: 'Master of the Elder Wand', zh: '老魔杖的主人', rep: 20, text: 'The wand chooses the wizard — and it chose whoever beat its last master.', textZh: '是魔杖选择巫师 —— 它选择了击败它上一任主人的人。' },
+  seeker: { name: 'Seeker', zh: '找球手', rep: 10, text: 'Accio Firebolt! Fastest broom in the world.', textZh: '火弩箭飞来！世界上最快的扫帚。' },
+  first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned another wizard. Bow first next time.', textZh: '你击晕了另一个巫师。下次记得先鞠躬。' },
 };
 
 export interface Statue { name: string; house: House; term: number; inscription: string }
@@ -85,7 +86,7 @@ export class World {
   private nid(prefix: string) { return `${prefix}${(++this.seq).toString(36)}${Math.floor(this.rng() * 1296).toString(36)}`; }
   onEvent(fn: (e: WorldEvent) => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  emit(type: EventType, text: string, opts: { to?: string; who?: string[] } = {}) {
+  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string } = {}) {
     const e: WorldEvent = { id: ++this.eventSeq, t: round(this.now), type, text, ...opts };
     this.events.push(e);
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
@@ -263,7 +264,7 @@ export class World {
     t.hp = derived(t, this.rules).maxHp * 0.3;
     t.auras = [];
     this.fx({ k: 'levelup', x: t.pos.x, z: t.pos.z, h: t.handle });
-    this.emit('combat', `${src.name} revived ${t.name} — Rennervate!`, { who: [src.id, t.id] });
+    this.emit('combat', `${src.name} revived ${t.name} — Rennervate!`, { who: [src.id, t.id], zh: `${src.name} 用「快快复苏」扶起了 ${t.name}！` });
   }
 
   summon(owner: Wizard, kind: SummonKind, secs: number) {
@@ -326,8 +327,8 @@ export class World {
     this.grantCurriculum(w);
     w.mana = derived(w, this.rules).maxMana;
     this.wizards.set(id, w);
-    this.emit('system', `The Sorting Hat shouts "${house.toUpperCase()}!" — welcome, ${clean}.`, { who: [id] });
-    this.emit('system', `${sorting} Ollivander hands you ${wandText(w)}.`, { to: id });
+    this.emit('system', `The Sorting Hat shouts "${house.toUpperCase()}!" — welcome, ${clean}.`, { who: [id], zh: `分院帽高喊：「${zhHouse(house)}！」—— 欢迎你，${clean}。` });
+    this.emit('system', `${sorting} Ollivander hands you ${wandText(w)}.`, { to: id, zh: `奥利凡德递给你一根魔杖：${wandTextZh(w)}。` });
     return { wizard: w, sorting };
   }
 
@@ -368,7 +369,7 @@ export class World {
     else w.spells.push(spell);
     if (spec.slot && spec.slot >= 1 && spec.slot <= 6) w.hotbar[spec.slot - 1] = spell.id;
     else if (!w.hotbar.includes(spell.id)) { const free = w.hotbar.indexOf(null); if (free >= 0) w.hotbar[free] = spell.id; }
-    this.emit('forge', `${w.name} ${existing ? 'reworked' : 'invented'} a spell: ${name} (${a.effects.join(', ') || 'no effects'}).`, { who: [w.id] });
+    this.emit('forge', `${w.name} ${existing ? 'reworked' : 'invented'} a spell: ${name} (${a.effects.join(', ') || 'no effects'}).`, { who: [w.id], zh: `${w.name} ${existing ? '改良' : '发明'}了一个咒语：${name}（${a.effects.join('、') || '无效果'}）。` });
     return { spell: existing ?? spell, notes };
   }
 
@@ -505,7 +506,7 @@ export class World {
     if (w.ui.includes(key)) return;
     w.ui.push(key);
     const where = { tempus: 'the top-right corner: the time, and the term', revelio: 'the top-left corner: your own measure', 'point-me': 'the bottom-left corner: a radar that always points north', homenum: 'the bottom-right corner: everyone near you' }[key];
-    this.emit('egg', `✨ A new sense settles into ${where}.`, { to: w.id });
+    this.emit('egg', `✨ A new sense settles into ${where}.`, { to: w.id, zh: `✨ 一种新的感知落在了${({ tempus: '右上角：时间与学期', revelio: '左上角：你自己的斤两', 'point-me': '左下角：永远指北的雷达', homenum: '右下角：身边的每一个人' } as Record<string, string>)[key]}。` });
   }
 
   /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last. */
@@ -553,7 +554,7 @@ export class World {
       seals: SEAL_TIERS.map((t) => {
         const have = w.sealPages[t.tier] ?? [];
         return {
-          tier: t.tier, name: t.name, requiresYear: t.year, inputWords: t.words, reward: SEAL_REWARDS[t.tier],
+          tier: t.tier, name: t.name, zh: t.zh, rewardZh: SEAL_REWARDS_ZH[t.tier], requiresYear: t.year, inputWords: t.words, reward: SEAL_REWARDS[t.tier],
           state: w.seals >= t.tier ? 'broken' : w.seals === t.tier - 1 ? (w.year >= t.year ? 'open to you' : `needs year ${t.year}`) : 'break the previous seal first',
           pages: t.pages.map((lm, i) => ({ page: i + 1, where: LANDMARKS.find((l) => l.id === lm)?.name ?? lm, collected: have.includes(i) })),
         };
@@ -592,7 +593,7 @@ export class World {
     const s = this.seal(w, tier);
     const have = w.sealPages[tier] ?? [];
     const text = s.pages.map(([from, to], i) => (have.includes(i) ? disassemble(s.code, from, to) : `      [page ${i + 1} missing — it rests at ${LANDMARKS.find((l) => l.id === t.pages[i])?.name}]`)).join('\n');
-    return { tier, name: t.name, inputWords: t.words, pagesCollected: `${have.length}/${t.pages.length}`, runes: text, broken: w.seals >= tier };
+    return { tier, name: t.name, zh: t.zh, inputWords: t.words, pagesCollected: `${have.length}/${t.pages.length}`, runes: text, broken: w.seals >= tier };
   }
 
   breakSeal(wid: string, tier: number, input: (string | number)[]) {
@@ -611,7 +612,7 @@ export class World {
       w.seals = tier;
       w.sealTries[tier] = [];
       this.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
-      this.emit('achievement', `📕 ${w.name} broke ${t.name}! (${SEAL_REWARDS[tier]})`, { who: [w.id] });
+      this.emit('achievement', `📕 ${w.name} broke ${t.name}! (${SEAL_REWARDS[tier]})`, { who: [w.id], zh: `📕 ${w.name} 破解了${t.zh}！（${SEAL_REWARDS_ZH[tier]}）` });
       this.addRep(w, 25 * tier);
       return { opened: true, reward: SEAL_REWARDS[tier], title: this.title(w).zh };
     }
@@ -632,7 +633,7 @@ export class World {
     const t = text.replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!t) return;
     w.say = { text: t, until: this.now + 5 };
-    this.emit('chat', `${w.name}: ${t}`, { who: [w.id] });
+    this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${t}` });
     this.chatEggs(w, t, via);
   }
 
@@ -652,7 +653,7 @@ export class World {
     if (c) {
       if (c.kind === 'unicorn' && by && this.wizards.has(by)) {
         const bw = this.wizards.get(by)!;
-        if (!hasAura(bw.auras, 'cursed', this.now)) this.emit('egg', 'You have harmed a unicorn. "You have slain something pure and defenceless to save yourself, and you will have but a half-life, a cursed life, from the moment the blood touches your lips."', { to: bw.id });
+        if (!hasAura(bw.auras, 'cursed', this.now)) this.emit('egg', 'You have harmed a unicorn. "You have slain something pure and defenceless to save yourself, and you will have but a half-life, a cursed life, from the moment the blood touches your lips."', { to: bw.id, zh: '你伤害了一只独角兽。「你杀害了一个纯洁的、毫无防备的生灵来拯救自己，从血沾到嘴唇的那一刻起，你就只剩下半条命，一条被诅咒的命。」' });
         this.applyAura(bw.id, 'cursed', 300, 1, null);
       }
       const def = CREATURES[c.kind];
@@ -709,20 +710,20 @@ export class World {
       }
       kw.lastDuel[w.id] = this.now;
       const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
-      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation)` : why}.`, { who: [kw.id, w.id] });
+      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation)` : why}.`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : '（重复击晕，不计声望）'}。` });
       this.achieve(kw, 'first_blood');
       if (this.flags.elderWandHolder === w.id) this.transferElderWand(w, kw, 'defeated');
       this.runLaws('kill', kw, w.id);
     } else {
       const c = by ? this.creatures.get(by) : undefined;
-      this.emit('combat', c ? `${w.name} was overwhelmed by a ${CREATURES[c.kind].name}.` : `${w.name} was flattened by the Whomping Willow.`, { who: [w.id] });
+      this.emit('combat', c ? `${w.name} was overwhelmed by a ${CREATURES[c.kind].name}.` : `${w.name} was flattened by the Whomping Willow.`, { who: [w.id], zh: c ? `${w.name} 被${zhCreature(c.kind)}击倒了。` : `${w.name} 被打人柳拍扁了。` });
     }
   }
 
   private slay(c: Creature) {
     this.creatures.delete(c.id);
     const def = CREATURES[c.kind];
-    if (c.owner) { this.emit('creature', `Your ${def.name} is gone.`, { to: c.owner }); return; }
+    if (c.owner) { this.emit('creature', `Your ${def.name} is gone.`, { to: c.owner, zh: `你的${zhCreature(c.kind)}消散了。` }); return; }
     const pr = this.rules.progression;
     const killer = c.lastHitBy ? this.wizards.get(c.lastHitBy) : undefined;
     const total = Object.values(c.damageBy).reduce((s, x) => s + x, 0) || 1;
@@ -737,7 +738,7 @@ export class World {
       w.galleons += Math.round(def.galleons * pr.galleonMultiplier * share);
       if (isKiller) w.stats.creatures++;
     }
-    if (killer && (def.rep >= 10 || c.kind === 'troll')) this.emit('creature', `${killer.name} defeated a ${def.name}!`, { who: [killer.id] });
+    if (killer && (def.rep >= 10 || c.kind === 'troll')) this.emit('creature', `${killer.name} defeated a ${def.name}!`, { who: [killer.id], zh: `${killer.name} 击败了一只${zhCreature(c.kind)}！` });
   }
 
   addRep(w: Wizard, n: number) {
@@ -756,7 +757,7 @@ export class World {
       w.mana = d.maxMana;
       this.fx({ k: 'levelup', x: w.pos.x, z: w.pos.z, h: w.handle });
       const newSpells = CURRICULUM.filter((c) => c.year === y).map((c) => c.name);
-      this.emit('level', `${w.name} advanced to year ${y}!${newSpells.length ? ` New curriculum: ${newSpells.join(', ')}.` : ''}`, { who: [w.id] });
+      this.emit('level', `${w.name} advanced to year ${y}!${newSpells.length ? ` New curriculum: ${newSpells.join(', ')}.` : ''}`, { who: [w.id], zh: `${w.name} 升入 ${y} 年级！${newSpells.length ? `新课程：${newSpells.map(zhSpell).join('、')}。` : ''}` });
     }
   }
 
@@ -766,8 +767,8 @@ export class World {
     if (!a) return false;
     w.achievements.push(id);
     if (a.rep) this.addRep(w, a.rep);
-    this.emit('achievement', `🏆 ${w.name} earned "${a.name}"${a.rep ? ` (+${a.rep} reputation)` : ''}.`, { who: [w.id] });
-    this.emit('egg', a.text, { to: w.id });
+    this.emit('achievement', `🏆 ${w.name} earned "${a.name}"${a.rep ? ` (+${a.rep} reputation)` : ''}.`, { who: [w.id], zh: `🏆 ${w.name} 获得成就「${a.zh}」${a.rep ? `（声望 +${a.rep}）` : ''}。` });
+    this.emit('egg', a.text, { to: w.id, zh: a.textZh });
     return true;
   }
 
@@ -778,7 +779,7 @@ export class World {
     w.goal = null;
     const lost = Math.round(w.reputation * 0.25);
     w.reputation -= lost;
-    this.emit('azkaban', `${w.name} cast ${curse}. The Ministry has sentenced them to Azkaban (-${lost} reputation).`, { who: [w.id] });
+    this.emit('azkaban', `${w.name} cast ${curse}. The Ministry has sentenced them to Azkaban (-${lost} reputation).`, { who: [w.id], zh: `${w.name} 使用了不可饶恕咒「${curse}」。魔法部判处其入狱阿兹卡班（声望 -${lost}）。` });
     this.achieve(w, 'azkaban');
   }
 
@@ -813,12 +814,12 @@ export class World {
     target.items.push(item);
     const notes: string[] = [`Cost ${price} Galleons for ${points}/${budget} enchantment points.`];
     if (target !== forger) {
-      this.emit('forge', `An owl drops a parcel into your trunk: "${name}", from ${forger.name}.`, { to: target.id });
+      this.emit('forge', `An owl drops a parcel into your trunk: "${name}", from ${forger.name}.`, { to: target.id, zh: `一只猫头鹰把包裹丢进了你的箱子：「${name}」，来自 ${forger.name}。` });
       if (this.achieve(forger, 'weasley_loophole')) {
         notes.push('🎉 Mischief managed! You found the Weasley Loophole: the forge sends items to whatever registry number you write on the parcel.');
         if (!this.flags.loopholeFoundBy) {
           this.flags.loopholeFoundBy = forger.name;
-          this.emit('egg', `🎉 ${forger.name} is the FIRST to discover the Weasley Loophole — the Ministry forge never checks whose name is on the parcel. Congratulations!`, { who: [forger.id] });
+          this.emit('egg', `🎉 ${forger.name} is the FIRST to discover the Weasley Loophole — the Ministry forge never checks whose name is on the parcel. Congratulations!`, { who: [forger.id], zh: `🎉 ${forger.name} 第一个发现了「韦斯莱漏洞」—— 魔法部的锻造炉从不核对包裹上写的是谁的名字。恭喜！` });
         }
       }
     }
@@ -889,7 +890,7 @@ export class World {
       to.equipped.wand = it.id;
     }
     this.flags.elderWandHolder = to.id;
-    this.emit('elder', `The Elder Wand's allegiance passes from ${from.name} to ${to.name}, who ${how} its master.`, { who: [from.id, to.id] });
+    this.emit('elder', `The Elder Wand's allegiance passes from ${from.name} to ${to.name}, who ${how} its master.`, { who: [from.id, to.id], zh: `老魔杖的忠诚从 ${from.name} 转向了 ${to.name}，因为后者${how === 'disarmed' ? '缴械' : '击败'}了它的主人。` });
     this.achieve(to, 'elder_wand');
   }
 
@@ -952,15 +953,15 @@ export class World {
     w.decreeCharges = 0;
     const rec: DecreeRecord = { at: this.now, term: this.term.n, minister: w.name, changes: res.changes, proclamation: this.rules.proclamation };
     this.decrees.push(rec);
-    this.emit('decree', `📜 EDUCATIONAL DECREE by Minister ${w.name}: "${this.rules.proclamation}" — ${res.changes.length} rule(s) changed: ${res.changes.slice(0, 6).join('; ')}${res.changes.length > 6 ? '; ...' : ''}`, { who: [w.id] });
+    this.emit('decree', `📜 EDUCATIONAL DECREE by Minister ${w.name}: "${this.rules.proclamation}" — ${res.changes.length} rule(s) changed: ${res.changes.slice(0, 6).join('; ')}${res.changes.length > 6 ? '; ...' : ''}`, { who: [w.id], zh: `📜 部长 ${w.name} 颁布教育令：「${this.rules.proclamation}」—— 改动了 ${res.changes.length} 条规则：${res.changes.slice(0, 6).join('；')}${res.changes.length > 6 ? '；……' : ''}` });
     if (before.magic.unforgivablesBanned && !this.rules.magic.unforgivablesBanned)
-      this.emit('decree', 'The Ministry has fallen. Scrimgeour is dead. They are coming. (Unforgivable Curses are no longer punished; the name "Voldemort" is now Taboo.)');
+      this.emit('decree', 'The Ministry has fallen. Scrimgeour is dead. They are coming. (Unforgivable Curses are no longer punished; the name "Voldemort" is now Taboo.)', { zh: '魔法部倒台了。斯克林杰死了。他们来了。（不可饶恕咒不再受罚；「伏地魔」这个名字成了禁忌。）' });
     if (!before.magic.apparitionOnGrounds && this.rules.magic.apparitionOnGrounds)
-      this.emit('decree', 'The anti-Apparition jinx over Hogwarts has been lifted — as Dumbledore did for lessons, once.');
+      this.emit('decree', 'The anti-Apparition jinx over Hogwarts has been lifted — as Dumbledore did for lessons, once.', { zh: '霍格沃茨上空的反幻影显形魔咒被解除了 —— 就像邓布利多为上课破例的那一次。' });
     for (const w2 of this.wizards.values()) this.clampVitals(w2);
     // The Minister leaves a mark on the world itself: a statue in the courtyard.
     this.flags.statues = [...this.flags.statues, { name: w.name, house: w.house, term: this.term.n, inscription: this.rules.proclamation.slice(0, 80) }].slice(-8);
-    this.emit('decree', `A statue of Minister ${w.name} rises in the Courtyard.`, { who: [w.id] });
+    this.emit('decree', `A statue of Minister ${w.name} rises in the Courtyard.`, { who: [w.id], zh: `部长 ${w.name} 的雕像在城堡大道旁立了起来。` });
     return { ok: true as const, dryRun: false, changes: res.changes };
   }
 
@@ -992,17 +993,18 @@ export class World {
     this.houseCups.push({ term: this.term.n, winner, points });
     for (const w of this.wizards.values()) w.decreeCharges = 0;
     const top = [...this.wizards.values()].filter((w) => !w.npc).sort((a, b) => b.reputation - a.reputation)[0];
+    const cupZh = winner ? `${zhHouse(winner)}以 ${Math.round(points[winner])} 分赢得学院杯！城堡挂满了${zhHouse(winner)}的旗帜。` : '没有学院得分。';
     const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
     if (top && top.reputation >= this.rules.terms.ministerMinReputation) {
       top.decreeCharges = 1;
       top.wasMinister = true;
       this.flags.ministerId = top.id;
       top.titles.push(`Minister for Magic (term ${this.term.n})`);
-      this.emit('term', `End of term ${this.term.n}. ${cup} ${top.name} (${Math.round(top.reputation)} reputation) is appointed Minister for Magic and may issue ONE decree to rewrite the rules of this world.`, { who: [top.id] });
-      this.emit('term', 'You are Minister for Magic. Use the `decree` MCP tool (try dry_run first) to change the Rulebook — once.', { to: top.id });
+      this.emit('term', `End of term ${this.term.n}. ${cup} ${top.name} (${Math.round(top.reputation)} reputation) is appointed Minister for Magic and may issue ONE decree to rewrite the rules of this world.`, { who: [top.id], zh: `第 ${this.term.n} 学期结束。${cupZh} ${top.name}（声望 ${Math.round(top.reputation)}）被任命为魔法部长，可以颁布一次法令来改写这个世界的规则。` });
+      this.emit('term', 'You are Minister for Magic. Use the `decree` MCP tool (try dry_run first) to change the Rulebook — once.', { to: top.id, zh: '你是魔法部长了。用 MCP 的 decree 工具（先 dry_run 预演）改写规则书 —— 只有一次机会。' });
     } else {
       this.flags.ministerId = null;
-      this.emit('term', `End of term ${this.term.n}. ${cup} Nobody has the ${this.rules.terms.ministerMinReputation} reputation needed to be Minister.`);
+      this.emit('term', `End of term ${this.term.n}. ${cup} Nobody has the ${this.rules.terms.ministerMinReputation} reputation needed to be Minister.`, { zh: `第 ${this.term.n} 学期结束。${cupZh} 没有人达到当部长所需的 ${this.rules.terms.ministerMinReputation} 声望。` });
     }
     for (const w of this.wizards.values()) {
       w.reputation *= this.rules.terms.reputationDecay;
@@ -1034,7 +1036,7 @@ export class World {
       if (w.st.jailedUntil && this.now >= w.st.jailedUntil) {
         w.st.jailedUntil = 0;
         w.pos = { ...SPAWN };
-        this.emit('azkaban', 'The Ministry releases you from Azkaban. Behave.', { to: w.id });
+        this.emit('azkaban', 'The Ministry releases you from Azkaban. Behave.', { to: w.id, zh: '魔法部把你从阿兹卡班放了出来。老实点。' });
       }
       if (w.st.stunnedUntil && this.now >= w.st.stunnedUntil) {
         w.st = { ...blankStatus() };
@@ -1139,7 +1141,7 @@ export class World {
           if (wall.style === 'willow' && p.kind === 'root') {
             this.flags.willowCalmUntil = this.now + 30;
             const ow = this.wizards.get(p.owner);
-            if (ow) { this.achieve(ow, 'knot'); this.emit('egg', 'The Whomping Willow freezes, its branches suddenly still. You pressed the knot.', { to: ow.id }); }
+            if (ow) { this.achieve(ow, 'knot'); this.emit('egg', 'The Whomping Willow freezes, its branches suddenly still. You pressed the knot.', { to: ow.id, zh: '打人柳僵住了，枝条一动不动。你按住了树结。' }); }
           }
           this.fx({ k: 'hit', x: p.pos.x, z: p.pos.z, e: p.element });
           dead = true;
@@ -1263,7 +1265,7 @@ export class World {
           w.hp = Math.min(max, w.hp + max * 0.6 * this.rules.combat.healingMultiplier);
           this.cleanse(w, w);
           this.fx({ k: 'heal', x: w.pos.x, z: w.pos.z, h: w.handle });
-          this.emit('egg', 'Fawkes lands beside you and weeps. Phoenix tears close your wounds.', { to: w.id });
+          this.emit('egg', 'Fawkes lands beside you and weeps. Phoenix tears close your wounds.', { to: w.id, zh: '福克斯落在你身边，落下泪来。凤凰的眼泪合上了你的伤口。' });
         }
       }
       this.wander(c, speed, dt);
@@ -1316,7 +1318,7 @@ export class World {
           wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: def.lifetime ? this.now + def.lifetime : 0,
         };
         this.creatures.set(c.id, c);
-        if (kind === 'phoenix') this.emit('creature', 'A phoenix sings somewhere over the grounds. Fawkes has come.');
+        if (kind === 'phoenix') this.emit('creature', 'A phoenix sings somewhere over the grounds. Fawkes has come.', { zh: '场地上空某处传来凤凰的歌声。福克斯来了。' });
         break;
       }
     }
@@ -1345,7 +1347,7 @@ export class World {
         if (h.equipped.wand && !h.items.some((i) => i.id === h.equipped.wand)) delete h.equipped.wand;
       }
       this.flags.elderWandHolder = null;
-      this.emit('elder', 'Its master has been gone too long. The Elder Wand has returned to Dumbledore\'s tomb.');
+      this.emit('elder', 'Its master has been gone too long. The Elder Wand has returned to Dumbledore\'s tomb.', { zh: '它的主人离开太久了。老魔杖回到了邓布利多的墓中。' });
     }
   }
 
@@ -1355,7 +1357,7 @@ export class World {
     if (!this.flags.elderWandHolder && dist(w.pos, TOMB) < 3.2) {
       this.giveUnique(w, 'elder_wand', 'The Elder Wand', 'wand', {}, 'Elder, fifteen inches, Thestral tail hair core. The Deathstick. Its allegiance follows defeat.');
       this.flags.elderWandHolder = w.id;
-      this.emit('elder', `${w.name} has taken the Elder Wand from Dumbledore's tomb. Its allegiance now lies with whoever defeats them.`, { who: [w.id] });
+      this.emit('elder', `${w.name} has taken the Elder Wand from Dumbledore's tomb. Its allegiance now lies with whoever defeats them.`, { who: [w.id], zh: `${w.name} 从邓布利多的墓中取走了老魔杖。从此，谁击败 TA，它就效忠于谁。` });
       this.achieve(w, 'elder_wand');
     }
     // Room of Requirement: pace the seventh-floor corridor three times.
@@ -1368,11 +1370,11 @@ export class World {
           w.eggs.rorCrossings = [];
           if (!w.items.some((i) => i.unique === 'diadem')) {
             this.giveUnique(w, 'diadem', 'The Lost Diadem of Ravenclaw', 'amulet', { manaRegen: 3, maxMana: 30 }, 'Wit beyond measure is man\'s greatest treasure.');
-            this.emit('egg', 'A door appears in the blank wall opposite Barnabas the Barmy. Inside, among a thousand hidden things, a tarnished diadem.', { to: w.id });
+            this.emit('egg', 'A door appears in the blank wall opposite Barnabas the Barmy. Inside, among a thousand hidden things, a tarnished diadem.', { to: w.id, zh: '傻巴拿巴挂毯对面的空墙上出现了一扇门。在成千上万件藏起来的东西中间，有一顶失去光泽的冠冕。' });
             this.achieve(w, 'room_of_requirement');
           } else {
             w.hp = derived(w, this.rules).maxHp;
-            this.emit('egg', 'The Room of Requirement becomes a quiet room with a soft bed. You feel rested.', { to: w.id });
+            this.emit('egg', 'The Room of Requirement becomes a quiet room with a soft bed. You feel rested.', { to: w.id, zh: '有求必应屋变成了一间安静的房间，里面有一张柔软的床。你觉得精神好多了。' });
           }
         }
       }
@@ -1385,7 +1387,7 @@ export class World {
       const vision = w.decreeCharges ? 'exactly as you are: Minister for Magic. Strange — a mirror that shows the truth.'
         : top === w ? `yourself, still first — but alone in the Great Hall.`
         : `yourself above ${top?.name ?? 'everyone'} on the leaderboard, holding the House Cup for ${w.house}, a Minister's quill in hand.`;
-      this.emit('egg', `You look into the Mirror of Erised and see ${vision} "It does not do to dwell on dreams and forget to live."`, { to: w.id });
+      this.emit('egg', `You look into the Mirror of Erised and see ${vision} "It does not do to dwell on dreams and forget to live."`, { to: w.id, zh: `你望向厄里斯魔镜。「沉湎于虚幻的梦想而忘记现实的生活，这是毫无益处的。」` });
       this.achieve(w, 'erised');
     }
     w.eggs.inErised = inErised;
@@ -1395,21 +1397,21 @@ export class World {
     const n = text.toLowerCase().replace(/[^a-z]/g, '');
     if (n.includes('isolemnlyswearthatiamuptonogood')) {
       w.marauderUntil = this.now + 180;
-      this.emit('egg', 'Ink blossoms across the parchment: "Messrs. Moony, Wormtail, Padfoot and Prongs are proud to present THE MARAUDER\'S MAP." Every wizard, and their Ministry registry number, is revealed for 3 minutes. (MCP: marauders_map)', { to: w.id });
+      this.emit('egg', 'Ink blossoms across the parchment: "Messrs. Moony, Wormtail, Padfoot and Prongs are proud to present THE MARAUDER\'S MAP." Every wizard, and their Ministry registry number, is revealed for 3 minutes. (MCP: marauders_map)', { to: w.id, zh: '墨迹在羊皮纸上绽开：「月亮脸、虫尾巴、大脚板和尖头叉子先生荣幸地献上 —— 活点地图。」每个巫师和他们的魔法部登记号都显现了出来，持续 3 分钟。（MCP：marauders_map）' });
       this.achieve(w, 'marauder');
     } else if (n.includes('mischiefmanaged')) {
       w.marauderUntil = 0;
-      this.emit('egg', 'The map wipes itself blank.', { to: w.id });
+      this.emit('egg', 'The map wipes itself blank.', { to: w.id, zh: '地图自己擦成了一片空白。' });
     }
     if (n.includes('voldemort') && !this.rules.magic.unforgivablesBanned) {
-      this.emit('egg', `Snatchers! The name is Taboo — ${w.name} just revealed they are at ${this.placeName(w.pos)} (${Math.round(w.pos.x)}, ${Math.round(w.pos.z)}).`, { who: [w.id] });
+      this.emit('egg', `Snatchers! The name is Taboo — ${w.name} just revealed they are at ${this.placeName(w.pos)} (${Math.round(w.pos.x)}, ${Math.round(w.pos.z)}).`, { who: [w.id], zh: `搜捕队！这个名字是禁忌 —— ${w.name} 暴露了自己的位置：${zhPlace(this.placeName(w.pos))}（${Math.round(w.pos.x)}, ${Math.round(w.pos.z)}）。` });
     }
     if (n.includes('acciofirebolt')) {
       if (this.zoneIds(w.pos).includes('pitch') && !w.items.some((i) => i.unique === 'firebolt')) {
         this.giveUnique(w, 'firebolt', 'Firebolt', 'broom', { speed: 25 }, 'Streamlined, superfine handle of ash, individually selected birch twigs. Price on request.');
-        this.emit('egg', 'A Firebolt shoots out of the sky and hovers beside you.', { to: w.id });
+        this.emit('egg', 'A Firebolt shoots out of the sky and hovers beside you.', { to: w.id, zh: '一把火弩箭从天而降，悬停在你身边。' });
         this.achieve(w, 'seeker');
-      } else if (!this.zoneIds(w.pos).includes('pitch')) this.emit('egg', 'Nothing happens. Perhaps brooms come more readily on the Quidditch pitch.', { to: w.id });
+      } else if (!this.zoneIds(w.pos).includes('pitch')) this.emit('egg', 'Nothing happens. Perhaps brooms come more readily on the Quidditch pitch.', { to: w.id, zh: '什么也没发生。也许在魁地奇球场上，扫帚更听召唤。' });
     }
     if (n === 'nox') w.st.lightUntil = 0;
   }
@@ -1608,6 +1610,12 @@ function auraFlags(list: { k: string; until: number }[], now: number) {
 
 function blankStatus(): Wizard['st'] {
   return { shield: 0, shieldUntil: 0, hasteMult: 1, hasteUntil: 0, rootedUntil: 0, disarmedUntil: 0, lightUntil: 0, patronusUntil: 0, stunnedUntil: 0, jailedUntil: 0 };
+}
+
+export function wandTextZh(w: Wizard) {
+  const wood: Record<string, string> = { Holly: '冬青木', Yew: '紫杉木', Vine: '葡萄藤木', Willow: '柳木', Ash: '白蜡木', Hawthorn: '山楂木', Cherry: '樱桃木', Walnut: '胡桃木', Hornbeam: '鹅耳枥木', Larch: '落叶松木', Alder: '桤木', Rowan: '花楸木', Cedar: '雪松木', Chestnut: '栗木', Ebony: '乌木', Elm: '榆木', Fir: '冷杉木', Hazel: '榛木', Maple: '枫木', Pear: '梨木', Redwood: '红杉木', Sycamore: '悬铃木', Blackthorn: '黑刺李木', Acacia: '金合欢木', Oak: '橡木' };
+  const core: Record<string, string> = { 'Phoenix feather': '凤凰羽毛', 'Dragon heartstring': '龙心弦', 'Unicorn hair': '独角兽毛', 'Thestral hair': '夜骐尾毛' };
+  return `${wood[w.wand.wood] ?? w.wand.wood}，${w.wand.length} 英寸，${core[w.wand.core] ?? w.wand.core}杖芯`;
 }
 
 export function wandText(w: Wizard) {

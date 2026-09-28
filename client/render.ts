@@ -79,8 +79,28 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   flareHost.add(flare);
   scene.add(flareHost);
 
-  // post-processing
-  const composer = new EffectComposer(renderer);
+  // clouds: soft billboards (CC0 cloud texture from pmndrs/assets) drifting over the Highlands
+  const cloudTex = new THREE.TextureLoader().load('/textures/cloud.webp');
+  cloudTex.colorSpace = THREE.SRGBColorSpace;
+  const clouds = new THREE.Group();
+  const cloudMats: THREE.SpriteMaterial[] = [];
+  for (let i = 0; i < 46; i++) {
+    const cx = (Math.random() - 0.5) * 2400, cz = (Math.random() - 0.5) * 2400, cy = 180 + Math.random() * 140;
+    for (let k = 0; k < 4; k++) {
+      const m = new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, opacity: 0.85, rotation: Math.random() * 6.28 });
+      cloudMats.push(m);
+      const sp = new THREE.Sprite(m);
+      const sc = 90 + Math.random() * 120;
+      sp.scale.set(sc * 1.6, sc, 1);
+      sp.position.set(cx + (Math.random() - 0.5) * 140, cy + (Math.random() - 0.5) * 30, cz + (Math.random() - 0.5) * 80);
+      clouds.add(sp);
+    }
+  }
+  scene.add(clouds);
+
+  // post-processing, rendered into a multisampled HDR target (MSAA survives the composer)
+  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+  const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.45, 1.1);
   composer.addPass(bloom);
@@ -165,6 +185,11 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       moonSprite.material.opacity = 1 - dayFactor;
 
       renderer.toneMappingExposure = 0.55 + 0.35 * dayFactor;
+      // clouds drift with the wind and take the colour of the sky (golden at dusk, dark at night)
+      clouds.position.x = (performance.now() / 1000) * 3 % 2400;
+      const cc = new THREE.Color(1, 1, 1).lerp(skyDusk, dusk * 0.7).multiplyScalar(0.25 + 0.75 * dayFactor).multiply(tint);
+      if (weather !== 'clear') cc.multiplyScalar(0.7);
+      for (const m of cloudMats) { m.color.copy(cc); m.opacity = weather === 'clear' ? 0.75 : 0.95; }
       scene.background = dayFactor > 0.02 ? null : tmp;
       bloom.strength = (0.45 + 0.5 * (1 - dayFactor)) * look.glow;
       (grade.uniforms.tint.value as THREE.Color).copy(tint).lerp(new THREE.Color(1, 1, 1), 0.35);
