@@ -1,4 +1,4 @@
-import type { CreatureKind, Element, House, ItemMod, ItemSlot } from '../shared/constants.js';
+import type { CreatureKind, Element, House, ItemMod, ItemSlot, JinxKind } from '../shared/constants.js';
 import type { Node } from '../runes/parser.js';
 import type { Env } from '../runes/interp.js';
 import type { Aura, AuraKind } from './auras.js';
@@ -30,7 +30,18 @@ export interface Item {
   forgedByName: string;
   createdAt: number;
   unique?: 'elder_wand' | 'diadem' | 'firebolt';
+  /** A hostile parcel (negative enchantments and/or a jinx in its lore, sent to someone else). */
+  cursed?: boolean;
+  /** Sticky-equipped: cannot be unequipped or destroyed until boundUntil (or Finite Incantatem on yourself). */
+  bound?: boolean;
+  boundUntil?: number;
+  /** The sender is hidden (armory omits forgedBy/forgedByName) until the recipient casts Revelio. */
+  anon?: boolean;
+  /** The jinx the parcel carried when it arrived (kernel-chosen strength). */
+  jinx?: Jinx;
 }
+
+export interface Jinx { kind: JinxKind; mag: number; seconds: number }
 
 export interface WizardStatus {
   shield: number; shieldUntil: number;
@@ -41,7 +52,35 @@ export interface WizardStatus {
   patronusUntil: number;
   stunnedUntil: number;
   jailedUntil: number;
+  /** Langlock / Bat-Bogey: cannot cast, speak publicly or use items (≤ SILENCE_MAX_S at a time). */
+  silencedUntil: number;
+  /** New silences before this are dropped (so there is always a window to cast in). */
+  silenceCdUntil: number;
+  /** Which jinx the current silence belongs to (a Bat-Bogey's silence is part of that one hex). */
+  silenceBy: 'langlock' | 'bats' | null;
+  /** Who sent it (World.jinxBites: the silence rests while the PvP rules would not let them harm you). Never shown. */
+  silenceSrc?: string | null;
 }
+
+/** One message in the private Owl Post between a player and their own agent. */
+export interface OwlMsg {
+  id: number;
+  from: 'player' | 'agent';
+  text: string;
+  t: number;
+  /** An agent's question: the player answers with one of the options before expiresAt. */
+  ask?: { options: string[]; expiresAt: number };
+  answered?: boolean;
+  /** The chosen option, or '(expired)'. */
+  answer?: string;
+  /** For a player's answer: the id of the question it answers. */
+  re?: number;
+  /** A player's owl: this many older owls from the player were dropped unread just before it (the owlbox was full). */
+  lost?: number;
+}
+
+/** What the agent last did (not persisted; `at` is world time). */
+export interface AgentSeen { client: string; tool: string; at: number }
 
 export interface Wizard {
   id: string;
@@ -98,6 +137,27 @@ export interface Wizard {
   auras: Aura[];
   /** Per-wizard cooldown for phoenix tears. */
   tearsAt: number;
+  /** Hostile parcels sent: recipient id -> world time (pruned on write). */
+  hexLog: Record<string, number>;
+  /** Hostile parcels received in the last HEX_WINDOW_S (world times). */
+  hexWindow: number[];
+  /** No hostile parcel is accepted before this (set by Finite Incantatem). */
+  respiteUntil: number;
+  /** Private Owl Post with this wizard's own agent (persisted, ≤ OWLBOX_MAX). */
+  owlbox: OwlMsg[];
+  owlSeq: number;
+  /** The last player owl id the agent has consumed (listen). */
+  agentReadUpTo: number;
+  /** The agent's goal note, shown on the player's HUD. */
+  agentGoal: string | null;
+  /** Not persisted: the player paused their agent (MCP actions refused). */
+  agentPaused: boolean;
+  /** Not persisted: the agent's last MCP call. */
+  agentSeen: AgentSeen | null;
+  /** Not persisted: who set `goal` (a player's WASD cancels either; pausing the agent cancels the agent's). */
+  goalBy?: 'agent' | 'player' | null;
+  /** Not persisted: world time the player last steered (WASD, a click walk, reaching its end); PLAYER_GRACE_S. */
+  steerAt?: number;
 }
 
 export interface CreatureDef {
@@ -176,7 +236,8 @@ export interface Pending {
   incantation: string;
 }
 
-export type EventType = 'system' | 'chat' | 'combat' | 'creature' | 'achievement' | 'decree' | 'term' | 'level' | 'egg' | 'azkaban' | 'elder' | 'forge' | 'cast';
+export type EventType = 'system' | 'chat' | 'combat' | 'creature' | 'achievement' | 'decree' | 'term' | 'level' | 'egg' | 'azkaban' | 'elder' | 'forge' | 'cast'
+  | 'owl' | 'ask' | 'curse';
 
 export interface WorldEvent {
   id: number;
@@ -187,8 +248,16 @@ export interface WorldEvent {
   zh?: string;
   /** Private events are delivered only to this wizard id. */
   to?: string;
+  /** Server-internal: registry ids of the wizards involved. Never put on the wire (World.wireEvent). */
   who?: string[];
+  /** Owl Post: who wrote it — the player or their agent. */
+  from?: 'player' | 'agent';
+  /** Owl Post: the owlbox message this event carries (id), its options if it is a question, and what it answers. */
+  owl?: { id: number; options?: string[]; expiresAt?: number; re?: number };
 }
+
+/** A WorldEvent as it may be sent to a browser: no `who`. */
+export type WireEvent = Omit<WorldEvent, 'who'>;
 
 export interface Fx {
   k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal';

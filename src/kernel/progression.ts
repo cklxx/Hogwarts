@@ -1,4 +1,7 @@
-import { ITEM_MODS, MAX_YEAR, type ItemMod } from '../shared/constants.js';
+import {
+  HEX_HP_FLOOR_FRAC, HEX_MALICE_TAX, HP_FLOOR, HP_FLOOR_FRAC, ITEM_MODS, MANA_FLOOR, MANA_FLOOR_FRAC, MANAREGEN_FLOOR_FRAC, MAX_YEAR,
+  MOVE_SLOW_FLOOR, NEG_LIMITS, POWER_FLOOR, SPEED_FLOOR, WARD_MAX, WARD_MIN, type ItemMod,
+} from '../shared/constants.js';
 import { CORE_BONUS } from '../lore/wands.js';
 import type { Rulebook } from './rulebook.js';
 import type { Item, Wizard } from './types.js';
@@ -37,19 +40,57 @@ export interface Derived {
   readonly ward: number;
 }
 
-/** Uncached reference implementation (the cache below is tested against it). */
+// ------------------------------------------------------------------ stat floors (docs/AGENT_LINK.md §B.7)
+// Pure functions of derived()'s own inputs, so the cache below needs no new key. Each mirrors a Lean
+// definition in formal/lean/Hogwarts.lean (hp_floor, mana_floor, manaregen_floor, speed_floor,
+// power_pos, ward_bounded, move_floor, hex_dot_floor) and is compared through formal/vectors.json.
+// With non-negative enchantments none of them ever binds: they only matter for cursed items.
+
+/** Max health of a year before items and curses. */
+export const yearBaseHp = (year: number) => 100 + 15 * (year - 1);
+/** maxHp ≥ max(40, 60% of the year's base). */
+export const hpFloor = (year: number) => Math.max(HP_FLOOR, Math.floor(yearBaseHp(year) * HP_FLOOR_FRAC));
+/** maxMana ≥ max(20, 50% of the year's base mana). */
+export const manaFloor = (baseMana: number) => Math.max(MANA_FLOOR, Math.floor(baseMana * MANA_FLOOR_FRAC));
+/** manaRegen ≥ 50% of the rulebook's rate (never a drain). */
+export const manaRegenFloor = (ruleRegen: number) => ruleRegen * MANAREGEN_FLOOR_FRAC;
+/** Movement multiplier from speed enchantments (percent): ≥ 0.5. */
+export const speedMultFor = (speedPct: number) => Math.max(SPEED_FLOOR, 1 + speedPct / 100);
+/** Damage multiplier from power bonuses (percent): ≥ 0.25, so damage can never turn into healing. */
+export const powerFor = (powerPct: number) => Math.max(POWER_FLOOR, 1 + powerPct / 100);
+/** Damage reduction from ward (percent): within [-0.25, 0.5]. */
+export const wardFor = (wardPct: number) => Math.min(WARD_MAX, Math.max(WARD_MIN, wardPct / 100));
+/** Slow from chill and Jelly-Legs together: you always keep at least a quarter of your speed. */
+export const moveSlow = (chill: number, jelly: number) => Math.max(MOVE_SLOW_FLOOR, 1 - chill - jelly);
+/** A jinx's damage over time never takes you below max(1, 25% of max health): hexes harass, they never knock out. */
+export const hexHpFloor = (maxHp: number) => Math.max(1, Math.floor(maxHp * HEX_HP_FLOOR_FRAC));
+/** Health after `dmg` of jinx damage: never below the floor (nor below what you already had, if you were under it). */
+export const hexDotHp = (hp: number, maxHp: number, dmg: number) => Math.max(Math.min(hp, hexHpFloor(maxHp)), hp - Math.max(0, dmg));
+/**
+ * One jinx tick after every multiplier (rules, the victim's ward): never more than the jinx's own rate for
+ * the tick (JINX_DEFAULTS mag × dt), so a cursed negative ward or a decree cannot make a jinx outgrow its
+ * table (Lean: hex_tick_capped); a positive ward still softens it.
+ */
+export const hexTickDmg = (rate: number, scaled: number) => Math.max(0, Math.min(rate, scaled));
+
+/**
+ * Uncached reference implementation (the cache below is tested against it). The unicorn's curse is the
+ * only aura read here: jinxes (jelly, dance, boils, bats, silence) act live where they apply, so the
+ * cache key below needs nothing new. Any future stat-changing aura must join that key.
+ */
 export function derivedUncached(w: Wizard, rb: Rulebook): Derived {
   const core = CORE_BONUS[w.wand.core] ?? {};
   const elder = equippedItems(w).some((i) => i.unique === 'elder_wand');
+  const baseMana = rb.magic.baseMaxMana + rb.magic.manaPerYear * (w.year - 1);
   return {
     // a unicorn's curse: a half-life (auras are pruned every tick, so presence means active)
-    maxHp: Math.round((100 + 15 * (w.year - 1) + mod(w, 'maxHp')) * ((w.auras ?? []).some((a) => a.k === 'cursed') ? 0.7 : 1)),
-    maxMana: rb.magic.baseMaxMana + rb.magic.manaPerYear * (w.year - 1) + mod(w, 'maxMana'),
-    manaRegen: rb.magic.manaRegen + mod(w, 'manaRegen') + (core.regen ?? 0),
-    speedMult: 1 + mod(w, 'speed') / 100,
-    power: 1 + (mod(w, 'power') + (core.power ?? 0) + (elder ? 25 : 0)) / 100,
+    maxHp: Math.max(hpFloor(w.year), Math.round((yearBaseHp(w.year) + mod(w, 'maxHp')) * ((w.auras ?? []).some((a) => a.k === 'cursed') ? 0.7 : 1))),
+    maxMana: Math.max(manaFloor(baseMana), baseMana + mod(w, 'maxMana')),
+    manaRegen: Math.max(manaRegenFloor(rb.magic.manaRegen), rb.magic.manaRegen + mod(w, 'manaRegen') + (core.regen ?? 0)),
+    speedMult: speedMultFor(mod(w, 'speed')),
+    power: powerFor(mod(w, 'power') + (core.power ?? 0) + (elder ? 25 : 0)),
     care: 1 + (core.care ?? 0) / 100,
-    ward: Math.min(0.5, mod(w, 'ward') / 100),
+    ward: wardFor(mod(w, 'ward')),
   };
 }
 
@@ -110,17 +151,24 @@ export const MOD_LIMITS: Record<ItemMod, { max: number; pts: number; doc: string
 };
 export const itemBudget = (forgerYear: number) => 6 + 4 * forgerYear;
 
-export function itemPoints(mods: Partial<Record<ItemMod, number>>, charmNodes = 0): { points: number; errors: string[] } {
+/**
+ * Enchantment points of a set of mods. Negative values are allowed only on a parcel for someone else
+ * (`allowNeg`), down to NEG_LIMITS, and cost the same per point as positive ones (|v| × price).
+ */
+export function itemPoints(mods: Partial<Record<ItemMod, number>>, charmNodes = 0, allowNeg = false): { points: number; errors: string[] } {
   const errors: string[] = [];
   let points = 0;
   for (const [k, v] of Object.entries(mods)) {
     if (!(ITEM_MODS as readonly string[]).includes(k)) { errors.push(`unknown mod '${k}' (valid: ${ITEM_MODS.join(', ')})`); continue; }
     const lim = MOD_LIMITS[k as ItemMod];
-    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) { errors.push(`${k} must be a non-negative number`); continue; }
+    if (typeof v !== 'number' || !Number.isFinite(v) || (v < 0 && !allowNeg)) { errors.push(`${k} must be a non-negative number`); continue; }
     if (v > lim.max) errors.push(`${k} ${v} exceeds the cap of ${lim.max}`);
-    points += v * lim.pts;
+    if (v < NEG_LIMITS[k as ItemMod]) errors.push(`${k} ${v} is below the floor of ${NEG_LIMITS[k as ItemMod]}`);
+    points += Math.abs(v) * lim.pts;
   }
   points += charmNodes / 4;
   return { points: Math.round(points * 100) / 100, errors };
 }
 export const itemPrice = (points: number) => Math.max(5, Math.ceil(points * 3));
+/** What a hostile parcel costs its sender: the item's price plus the malice tax (Lean: hex_cost_pos). */
+export const hexPrice = (points: number) => itemPrice(points) + HEX_MALICE_TAX;

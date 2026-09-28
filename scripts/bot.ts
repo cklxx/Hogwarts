@@ -23,7 +23,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 if (!token) {
   const e = await call('enroll', { name });
   if (!e.ok) throw new Error(String(e.data));
-  console.log(`Enrolled ${e.data.welcome} Token: ${e.data.token}\nWatch it: ${e.data.play}`);
+  // never print the key (docs/AGENT_LINK.md); the play link carries it, so only the base URL is shown
+  console.log(`Enrolled ${e.data.welcome} (${e.data.registry}). Watch it at ${url.origin}/`);
 }
 const forged = await call('forge_spell', {
   name: 'Finisher', incantation: 'Finite Vita!', slot: 6,

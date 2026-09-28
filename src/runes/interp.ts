@@ -159,7 +159,7 @@ export class Interp {
   show(v: Value, budget = 120): string { return display(v, this.host.refName?.bind(this.host), budget); }
 
   private num(v: Value, at: Node): number {
-    if (typeof v !== 'number' || !Number.isFinite(v)) throw new RuneError(`expected a number, got ${display(v)}`, at.line, at.col);
+    if (typeof v !== 'number' || !Number.isFinite(v)) throw new RuneError(`expected a number, got ${this.show(v)}`, at.line, at.col);
     return v;
   }
 

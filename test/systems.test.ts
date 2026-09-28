@@ -148,6 +148,21 @@ describe('the healing school', () => {
     expect(w.afflicted(a.id)).toBe(false);
   });
 
+  it('afflicted() and cleanse know every debuff there is, jinxes included, from AURA_DEFS', () => {
+    const w = mk();
+    const a = join(w, 'Jinxed');
+    setYear(w, a, 2);
+    for (const k of ['jelly', 'dance', 'boils', 'bats'] as const) {
+      w.applyAura(a.id, k, 10, 1, null);
+      expect(w.afflicted(a.id), k).toBe(true);
+      expect(w.cast(a.id, 'Finite Incantatem').ok).toBe(true);
+      expect(w.afflicted(a.id), k).toBe(false);
+      w.now += 1; // global cooldown
+    }
+    w.applyAura(a.id, 'regen', 10, 1, null);
+    expect(w.afflicted(a.id)).toBe(false);
+  });
+
   it('Rennervate revives a stunned wizard where they fell', () => {
     const w = mk();
     const a = join(w, 'Medic', 'hufflepuff');

@@ -27,11 +27,18 @@
  * `login` tool with a token of another realm, the front door first moves the session there: it opens
  * a session under the same id in the token's realm (replaying the client's `initialize`), routes the
  * session there from then on, and closes the old one. The client notices nothing.
+ *
+ * MCP `pair`: pairing codes minted in realm K read "K-ABC-DEF" (docs/AGENT_LINK.md §A.2). A `pair` call
+ * whose code names another realm moves the session there first, through the same hook as `login`, so the
+ * code is redeemed (and its failures counted) by the realm that minted it. The move only sticks if the
+ * code is accepted: the old session is kept until the answer is in, and a refused code (mistyped, expired,
+ * throttled) moves the session back, still bound to the wizard it had.
  */
 import { fork, type ChildProcess } from 'node:child_process';
 import { Agent, createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { parsePairCode } from '../kernel/identity.js';
 
 export interface RealmStats { players: number; wizards: number; clients: number; mcp: number }
 
@@ -104,6 +111,20 @@ export function loginToken(msg: unknown): string | null {
     if (x && x.method === 'tools/call' && x.params?.name === 'login' && typeof x.params.arguments?.token === 'string') return x.params.arguments.token.trim();
   }
   return null;
+}
+/** The realm the first `pair` tool call in a JSON-RPC message (or batch) names by its code prefix ("2-ABC-DEF"), if any. */
+export function pairRealm(msg: unknown): number | null {
+  for (const m of Array.isArray(msg) ? msg : [msg]) {
+    const x = m as { method?: unknown; params?: { name?: unknown; arguments?: { code?: unknown } } } | null;
+    if (x && x.method === 'tools/call' && x.params?.name === 'pair' && typeof x.params.arguments?.code === 'string') return parsePairCode(x.params.arguments.code)?.realm ?? null;
+  }
+  return null;
+}
+/** The realm a `login` (by its token) or a `pair` (by its code) in this message belongs to: where the session must live. */
+export function targetRealm(msg: unknown): number | null {
+  const tok = loginToken(msg);
+  if (tok !== null) return realmOf(tok) ?? 0;
+  return pairRealm(msg);
 }
 const isInitialize = (msg: unknown) => !!msg && typeof msg === 'object' && (msg as { method?: unknown }).method === 'initialize';
 
@@ -232,8 +253,8 @@ async function runPrimary() {
     up.end(body ?? undefined);
   });
 
-  /** Move MCP session `sid` from realm `from` to realm `to` (see the header comment). */
-  const rehome = async (sid: string, from: Realm, to: Realm, req: IncomingMessage) => {
+  /** Move MCP session `sid` from realm `from` to realm `to` (see the header comment); `keepOld`: leave the old session open. */
+  const rehome = async (sid: string, from: Realm, to: Realm, req: IncomingMessage, keepOld = false) => {
     const init = inits.get(sid);
     if (!init || !to.port) return false;
     const pv = req.headers['mcp-protocol-version'];
@@ -247,8 +268,39 @@ async function runPrimary() {
       return false;
     }
     homes.set(sid, to.id);
-    if (from.port) call(from, 'DELETE', { ...version, 'mcp-session-id': sid }, null).catch(() => {});
+    if (from.port && !keepOld) call(from, 'DELETE', { ...version, 'mcp-session-id': sid }, null).catch(() => {});
     return true;
+  };
+  const closeIn = (r: Realm, sid: string, req: IncomingMessage) => {
+    const pv = req.headers['mcp-protocol-version'];
+    if (r.port) call(r, 'DELETE', { ...(typeof pv === 'string' ? { 'mcp-protocol-version': pv } : {}), 'mcp-session-id': sid }, null).catch(() => {});
+  };
+
+  /**
+   * A `pair` in session `sid`, just moved from realm `from` to realm `to` (its old session still open):
+   * forward it, read the whole answer, and keep the move only if the code was accepted. A refusal (a tool
+   * result with isError) moves the session back to `from`, where it is still bound as before.
+   */
+  const forwardPair = (req: IncomingMessage, res: ServerResponse, from: Realm, to: Realm, sid: string, body: Buffer) => {
+    const up = request({
+      host: '127.0.0.1', port: to.port, method: 'POST', path: req.url, agent,
+      headers: { ...strip(req.headers), 'content-length': String(body.length), 'x-forwarded-for': req.socket.remoteAddress ?? '', 'x-hogwarts-realm': String(to.id) },
+    }, (ur) => {
+      const chunks: Buffer[] = [];
+      ur.on('data', (c: Buffer) => chunks.push(c));
+      ur.on('end', () => {
+        const answer = Buffer.concat(chunks);
+        const refused = (ur.statusCode ?? 502) !== 200 || /"isError"\s*:\s*true/.test(answer.toString('utf8'));
+        if (refused) { homes.set(sid, from.id); closeIn(to, sid, req); } else closeIn(from, sid, req);
+        const headers = strip(ur.headers) as Record<string, string | string[]>;
+        delete headers['content-length'];
+        res.writeHead(ur.statusCode ?? 502, { ...headers, 'content-length': String(answer.length) });
+        res.end(answer);
+      });
+      ur.on('error', () => { homes.set(sid, from.id); closeIn(to, sid, req); if (!res.headersSent) json(res, 502, { error: `realm ${to.id}: answer lost` }); else res.destroy(); });
+    });
+    up.on('error', (e) => { homes.set(sid, from.id); closeIn(to, sid, req); if (!res.headersSent) json(res, 502, { error: `realm ${to.id}: ${e.message}` }); else res.destroy(); });
+    up.end(body);
   };
 
   const readAll = async (req: IncomingMessage, max: number) => {
@@ -271,11 +323,14 @@ async function runPrimary() {
     const body = await readAll(req, 1_000_000);
     if (!body) return json(res, 413, { jsonrpc: '2.0', error: { code: -32000, message: 'body too large' }, id: null });
     let msg: unknown;
-    if (!sid || body.includes('"login"')) { try { msg = JSON.parse(body.toString('utf8')); } catch { /* the realm answers that */ } }
+    if (!sid || body.includes('"login"') || body.includes('"pair"')) { try { msg = JSON.parse(body.toString('utf8')); } catch { /* the realm answers that */ } }
     if (sid && known) {
-      const tok = loginToken(msg);
-      const from = realms[choose(req, url)], to = tok !== null ? realms[realmOf(tok) ?? 0] : undefined;
-      if (from && to && to !== from) await rehome(sid, from, to, req);
+      const target = targetRealm(msg);
+      const from = realms[choose(req, url)], to = target !== null ? realms[target] : undefined;
+      if (from && to && to !== from) {
+        const pairing = loginToken(msg) === null; // the target realm came from a pairing code, not a key
+        if (await rehome(sid, from, to, req, pairing) && pairing) return forwardPair(req, res, from, to, sid, body);
+      }
     }
     forward(req, res, realms[choose(req, url)], body, !sid && isInitialize(msg) ? (status, h) => {
       const id = h['mcp-session-id'];

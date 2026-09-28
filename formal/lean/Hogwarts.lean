@@ -162,7 +162,321 @@ theorem fold_injective (x y s : W) (h : x ^^^ s = y ^^^ s) : x = y := by
   have := congrArg (· ^^^ s) h
   simpa [BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero] using this
 
+/-! ## Owl Post agent link (docs/AGENT_LINK.md §A.5, §B.8)
+
+Constants shared with src/shared/constants.ts (each is printed into `vectors` and compared). Stats use
+the integer units the TypeScript computes exactly: health and mana in points, percentages as integers
+(speed, power, ward, slow), mana regeneration in tenths of a point per second. Enchantments are
+integers and may be negative (a cursed item). -/
+
+def PAIR_ALPHABET_LEN : Nat := 31
+def PAIR_LEN : Nat := 6
+def PAIR_TTL_S : Nat := 180
+def PAIR_FAIL_PER_IP_PER_MIN : Nat := 10
+def PAIR_FAIL_PER_REALM_PER_MIN : Nat := 30
+def LOGIN_FAIL_PER_IP_PER_MIN : Nat := 20
+def HP_FLOOR : Int := 40
+def HP_FLOOR_PCT : Int := 60
+def MANA_FLOOR : Int := 20
+def MANA_FLOOR_PCT : Int := 50
+def MANAREGEN_FLOOR_PCT : Int := 50
+def SPEED_FLOOR_PCT : Int := 50
+def MOVE_SLOW_FLOOR_PCT : Int := 25
+def POWER_FLOOR_PCT : Int := 25
+def WARD_MIN_PCT : Int := -25
+def WARD_MAX_PCT : Int := 50
+def HEX_HP_FLOOR_PCT : Nat := 25
+def HEX_MALICE_TAX : Nat := 3
+def CURSED_ITEM_BIND_S : Nat := 300
+def HEX_MIN_YEAR : Nat := 2
+def HEX_PAIR_COOLDOWN_S : Nat := 300
+def VICTIM_HEX_CAP : Nat := 3
+def VICTIM_CURSED_ITEMS_MAX : Nat := 2
+def VICTIM_BOUND_CAP : Nat := 1
+def VICTIM_HEX_PER_10MIN : Nat := 3
+def HEX_WINDOW_S : Nat := 600
+def HEX_RESPITE_S : Nat := 60
+def SILENCE_MAX_S : Nat := 5
+def SILENCE_COOLDOWN_S : Nat := 20
+def FORGE_FAIL_PER_MIN : Nat := 12
+def OWLBOX_MAX : Nat := 50
+def OWL_MAX_CHARS : Nat := 400
+def OWL_PER_MIN : Nat := 30
+def ASK_TTL_S : Nat := 45
+def LISTEN_MAX_S : Nat := 45
+def PLAYER_GRACE_S : Nat := 2
+/-- NEG_LIMITS: maxHp, maxMana, manaRegen, speed, power, ward. -/
+def NEG_LIMITS : List (String × Int) :=
+  [("maxHp", -30), ("maxMana", -30), ("manaRegen", -3), ("speed", -20), ("power", -15), ("ward", -20)]
+/-- JINX_DEFAULTS: (kind, magnitude in tenths, seconds). -/
+def JINX_DEFAULTS : List (String × Nat × Nat) :=
+  [("jelly", 4, 20), ("dance", 10, 20), ("boils", 30, 12), ("bats", 30, 5), ("langlock", 10, 5)]
+
+/-! ### Pairing codes: brute force is hopeless (§A.5) -/
+
+/-- PAIR_SPACE = 31^6. -/
+def pairSpace : Nat := PAIR_ALPHABET_LEN ^ PAIR_LEN
+theorem pair_space_val : pairSpace = 887503681 := rfl
+
+/-- How many codes in [0, S) a list of guesses hits (the codes it contains). -/
+def hits : Nat → List Nat → Nat
+  | 0, _ => 0
+  | S + 1, g => hits S g + (if g.contains S then 1 else 0)
+
+theorem filter_lt_succ (g : List Nat) (S : Nat) :
+    (g.filter (fun x => decide (x < S + 1))).length = (g.filter (fun x => decide (x < S))).length + g.count S := by
+  induction g with
+  | nil => simp
+  | cons x xs ih =>
+    simp only [List.filter_cons, List.count_cons]
+    by_cases h1 : x < S
+    · have h2 : x < S + 1 := by omega
+      have h3 : (x == S) = false := by simp; omega
+      simp [h1, h2, h3, ih]; omega
+    · by_cases h4 : x = S
+      · subst h4; simp [ih]; omega
+      · have h5 : ¬ x < S + 1 := by omega
+        have h3 : (x == S) = false := by simp; omega
+        simp [h1, h5, h3, ih]
+
+theorem hits_le (S : Nat) (g : List Nat) : hits S g ≤ (g.filter (fun x => decide (x < S))).length := by
+  induction S with
+  | zero => simp [hits]
+  | succ S ih =>
+    unfold hits
+    rw [filter_lt_succ]
+    by_cases h : S ∈ g
+    · have : 0 < g.count S := List.count_pos_iff.mpr h
+      simp [h]; omega
+    · simp [h]; omega
+
+/-- A list of guesses can hit at most as many codes as it has guesses. -/
+theorem guesses_hit_at_most (S : Nat) (g : List Nat) : hits S g ≤ g.length :=
+  Nat.le_trans (hits_le S g) (List.length_filter_le _ _)
+
+/-- pair_guess_bound: in one window a realm checks at most `cap` wrong guesses (World.redeemPairCode
+    refuses every attempt beyond PAIR_FAIL_PER_REALM_PER_MIN failures a minute), and those guesses cover
+    at most `cap` of the pairSpace codes. So, summed over the `live` codes (each uniformly random), the
+    expected number of codes guessed in a window is at most cap × live / pairSpace:
+    live · hits ≤ cap · live, with hits counted out of pairSpace. -/
+theorem pair_guess_bound (g : List Nat) (cap live : Nat) (hg : g.length ≤ cap) :
+    live * hits pairSpace g ≤ cap * live := by
+  have := Nat.le_trans (guesses_hit_at_most pairSpace g) hg
+  rw [Nat.mul_comm cap live]
+  exact Nat.mul_le_mul_left live this
+
+/-- Over a code's whole life (PAIR_TTL_S = 3 windows of PAIR_FAIL_PER_REALM_PER_MIN guesses) the chance of
+    guessing it is below one in a million. -/
+theorem pair_lifetime_odds : PAIR_FAIL_PER_REALM_PER_MIN * (PAIR_TTL_S / 60) * 1000000 < pairSpace := by
+  rw [pair_space_val]; decide
+
+/-- The failures a realm counts in a window, given each source's count (World.redeemPairCode refuses a
+    source at PAIR_FAIL_PER_IP_PER_MIN before counting, so no source adds more than that). -/
+def realmFails : List Nat → Nat
+  | [] => 0
+  | f :: fs => f + realmFails fs
+theorem realm_fails_le (cap : Nat) : ∀ fs : List Nat, (∀ f ∈ fs, f ≤ cap) → realmFails fs ≤ fs.length * cap
+  | [], _ => by simp [realmFails]
+  | f :: fs, h => by
+    have h1 := h f (by simp)
+    have h2 := realm_fails_le cap fs (fun x hx => h x (by simp [hx]))
+    simp only [realmFails, List.length_cons, Nat.succ_mul]; omega
+/-- realm_lock_needs_sources: filling the realm's window (which refuses everyone, the right code
+    included) takes failures from at least 3 sources; one address alone never locks a realm. -/
+theorem realm_lock_needs_sources (fs : List Nat) (h : ∀ f ∈ fs, f ≤ PAIR_FAIL_PER_IP_PER_MIN)
+    (full : PAIR_FAIL_PER_REALM_PER_MIN ≤ realmFails fs) : 3 ≤ fs.length := by
+  have := realm_fails_le PAIR_FAIL_PER_IP_PER_MIN fs h
+  unfold PAIR_FAIL_PER_REALM_PER_MIN PAIR_FAIL_PER_IP_PER_MIN at *; omega
+
+/-! ### derived() floors (progression.ts, §B.7): a curse scales you down, never out -/
+
+/-- progression.ts `yearBaseHp`. -/
+def yearBaseHp (year : Nat) : Int := 100 + 15 * ((year : Int) - 1)
+/-- progression.ts `hpFloor`: max(40, 60% of the year's base). -/
+def hpFloor (year : Nat) : Int := max HP_FLOOR (yearBaseHp year * HP_FLOOR_PCT / 100)
+/-- derivedUncached maxHp (without the unicorn's curse). -/
+def maxHpOf (year : Nat) (mods : Int) : Int := max (hpFloor year) (yearBaseHp year + mods)
+
+theorem hp_floor (y : Nat) (m : Int) : HP_FLOOR ≤ maxHpOf y m ∧ yearBaseHp y * HP_FLOOR_PCT / 100 ≤ maxHpOf y m := by
+  unfold maxHpOf hpFloor; omega
+
+/-- progression.ts `manaFloor` and derivedUncached maxMana (`base` = the year's base mana). -/
+def manaFloor (base : Int) : Int := max MANA_FLOOR (base * MANA_FLOOR_PCT / 100)
+def maxManaOf (base mods : Int) : Int := max (manaFloor base) (base + mods)
+
+theorem mana_floor (b m : Int) : MANA_FLOOR ≤ maxManaOf b m ∧ b * MANA_FLOOR_PCT / 100 ≤ maxManaOf b m := by
+  unfold maxManaOf manaFloor; omega
+
+/-- derivedUncached manaRegen, in tenths: max(50% of the rule, rule + item + wand core). -/
+def manaRegenOf (rule mods core : Int) : Int := max (rule * MANAREGEN_FLOOR_PCT / 100) (rule + mods + core)
+
+theorem manaregen_floor (r m c : Int) : r * MANAREGEN_FLOOR_PCT / 100 ≤ manaRegenOf r m c := by
+  unfold manaRegenOf; omega
+
+/-- The rulebook keeps magic.manaRegen ≥ 1 per second, so mana never drains (CastTxn.ManaNeverNegative's Regen). -/
+theorem manaregen_pos (r m c : Int) (hr : 10 ≤ r) : 0 < manaRegenOf r m c := by
+  unfold manaRegenOf MANAREGEN_FLOOR_PCT; omega
+
+/-- progression.ts `speedMultFor`, in percent. -/
+def speedPct (mods : Int) : Int := max SPEED_FLOOR_PCT (100 + mods)
+theorem speed_floor (m : Int) : SPEED_FLOOR_PCT ≤ speedPct m := by unfold speedPct; omega
+
+/-- progression.ts `moveSlow`, in percent: chill and Jelly-Legs together. -/
+def moveSlowPct (chill jelly : Int) : Int := max MOVE_SLOW_FLOOR_PCT (100 - chill - jelly)
+theorem move_floor (c j : Int) : MOVE_SLOW_FLOOR_PCT ≤ moveSlowPct c j := by unfold moveSlowPct; omega
+/-- You can always move: speed × slow > 0 whatever you wear and whatever is on you. -/
+theorem always_moves (m c j : Int) : 0 < speedPct m * moveSlowPct c j :=
+  Int.mul_pos (by have := speed_floor m; unfold SPEED_FLOOR_PCT at this; omega)
+              (by have := move_floor c j; unfold MOVE_SLOW_FLOOR_PCT at this; omega)
+
+/-- progression.ts `powerFor`, in percent. -/
+def powerPct (p : Int) : Int := max POWER_FLOOR_PCT (100 + p)
+theorem power_pos (p : Int) : 0 < powerPct p := by unfold powerPct POWER_FLOOR_PCT; omega
+/-- ⇒ damage is never healing. -/
+theorem damage_nonneg (a p : Int) (ha : 0 ≤ a) : 0 ≤ a * powerPct p := Int.mul_nonneg ha (Int.le_of_lt (power_pos p))
+
+/-- progression.ts `wardFor`, in percent. -/
+def wardPct (w : Int) : Int := min WARD_MAX_PCT (max WARD_MIN_PCT w)
+theorem ward_bounded (w : Int) : WARD_MIN_PCT ≤ wardPct w ∧ wardPct w ≤ WARD_MAX_PCT := by
+  unfold wardPct WARD_MIN_PCT WARD_MAX_PCT; omega
+/-- Damage taken is scaled by (100 − ward)% ∈ [50%, 125%]: a ward never heals, a cursed ward at most adds a quarter. -/
+theorem ward_scale (w : Int) : 50 ≤ 100 - wardPct w ∧ 100 - wardPct w ≤ 125 := by
+  have := ward_bounded w; unfold WARD_MIN_PCT WARD_MAX_PCT at this; omega
+
+/-! ### Jinx damage over time never knocks anyone out (§B.3) -/
+
+/-- progression.ts `hexHpFloor`: max(1, 25% of max health). -/
+def hexFloor (maxHp : Nat) : Nat := max 1 (maxHp * HEX_HP_FLOOR_PCT / 100)
+/-- progression.ts `hexDotHp`: health after `d` jinx damage. -/
+def hexDot (hp maxHp d : Nat) : Nat := max (min hp (hexFloor maxHp)) (hp - d)
+
+theorem hex_dot_floor (hp maxHp d : Nat) (h : hexFloor maxHp ≤ hp) : hexFloor maxHp ≤ hexDot hp maxHp d := by
+  unfold hexDot; omega
+theorem hex_dot_never_stuns (hp maxHp d : Nat) (h : 1 ≤ hp) : 1 ≤ hexDot hp maxHp d := by
+  unfold hexDot hexFloor; omega
+theorem hex_dot_le (hp maxHp d : Nat) : hexDot hp maxHp d ≤ hp := by unfold hexDot; omega
+/-- Any number of jinx ticks, of any size, keep a wizard above the floor. -/
+theorem hex_dots_floor (maxHp : Nat) : ∀ (ds : List Nat) (hp : Nat), hexFloor maxHp ≤ hp →
+    hexFloor maxHp ≤ ds.foldl (fun h d => hexDot h maxHp d) hp
+  | [], _, h => h
+  | d :: ds, hp, h => hex_dots_floor maxHp ds _ (hex_dot_floor hp maxHp d h)
+
+/-- progression.ts `hexTickDmg`: one jinx tick after every multiplier (rules, the victim's ward), capped
+    at the jinx's own rate for the tick. -/
+def hexTick (rate scaled : Nat) : Nat := min rate scaled
+/-- hex_tick_capped: a cursed ward (or a decree) never makes a jinx outgrow its table. -/
+theorem hex_tick_capped (r s : Nat) : hexTick r s ≤ r := by unfold hexTick; omega
+/-- …while a protective ward still softens it. -/
+theorem hex_tick_softens (r s : Nat) (h : s ≤ r) : hexTick r s = s := by unfold hexTick; omega
+/-- With the worst cursed ward (the damage scaled to 125 %), the tick is still the table's rate. -/
+theorem hex_tick_worst_ward (r : Nat) : hexTick r (r * (100 - WARD_MIN_PCT).toNat / 100) = r := by
+  unfold hexTick WARD_MIN_PCT; simp; omega
+
+/-! ### What a curse costs its sender (§B.2, §B.4) -/
+
+/-- progression.ts `itemPrice` for whole points. -/
+def itemPrice (points : Nat) : Nat := max 5 (points * 3)
+/-- progression.ts `hexPrice`: the item's price plus the malice tax. -/
+def hexCost (points : Nat) : Nat := itemPrice points + HEX_MALICE_TAX
+
+theorem hex_cost_pos (p : Nat) : 8 ≤ hexCost p := by unfold hexCost itemPrice HEX_MALICE_TAX; omega
+theorem hex_cost_mono {p q : Nat} (h : p ≤ q) : hexCost p ≤ hexCost q := by unfold hexCost itemPrice; omega
+/-- Galleons are conserved: the sender loses exactly the cost (the recipient's balance is untouched). -/
+theorem sender_pays (g p : Nat) (h : hexCost p ≤ g) : (g - hexCost p) + hexCost p = g := by omega
+
+/-! ### The timing constants fit together -/
+
+/-- One sender cannot re-bind a victim before the previous binding has worn off. -/
+theorem cooldown_covers_binding : CURSED_ITEM_BIND_S ≤ HEX_PAIR_COOLDOWN_S := by decide
+/-- Silence is at most a fifth of any stretch of time: ≤ SILENCE_MAX_S, then SILENCE_COOLDOWN_S free. -/
+theorem silence_duty : SILENCE_MAX_S * 5 ≤ SILENCE_MAX_S + SILENCE_COOLDOWN_S := by decide
+/-- Questions last less than the owl rate window, so at most OWL_PER_MIN are ever open: they always fit in the owlbox. -/
+theorem open_questions_fit : ASK_TTL_S ≤ 60 ∧ OWL_PER_MIN < OWLBOX_MAX := by decide
+/-- The longest a parcel's effect lasts: any jinx of JINX_DEFAULTS, or a silence. -/
+def longestHex : Nat := (JINX_DEFAULTS.map fun (_, _, s) => s).foldl max SILENCE_MAX_S
+theorem longest_hex_val : longestHex = 20 := by decide
+/-- hexes_leave_gaps: the parcels the 10-minute window admits (from all senders together) cannot cover
+    it, so no group of senders keeps anyone jinxed without a gap — the ratio formal/tla/HexLive.tla's
+    liveness is checked under (LeavesGaps: WinCap × the longest effect < WinLen). -/
+theorem hexes_leave_gaps : VICTIM_HEX_PER_10MIN * longestHex < HEX_WINDOW_S := by decide
+/-- The player's grace is shorter than a question's life: an agent that asks first is never locked out by it. -/
+theorem grace_short : PLAYER_GRACE_S < ASK_TTL_S := by decide
+
 /-! ## Conformance vectors (compared with the TypeScript code in test/formal.test.ts) -/
+
+/-- The agent-link part of the vectors: every shared constant, and samples of each floor/cost function. -/
+def agentLinkVectors : String :=
+  let q (s : String) : String := "\"" ++ s ++ "\""
+  let arr (xs : List String) : String := "[" ++ ",".intercalate xs ++ "]"
+  let obj (xs : List (String × String)) : String := "{" ++ ",".intercalate (xs.map fun (k, v) => q k ++ ":" ++ v) ++ "}"
+  let consts := obj [
+    ("PAIR_ALPHABET_LEN", toString PAIR_ALPHABET_LEN), ("PAIR_LEN", toString PAIR_LEN), ("PAIR_SPACE", toString pairSpace),
+    ("PAIR_TTL_S", toString PAIR_TTL_S), ("PAIR_FAIL_PER_IP_PER_MIN", toString PAIR_FAIL_PER_IP_PER_MIN),
+    ("PAIR_FAIL_PER_REALM_PER_MIN", toString PAIR_FAIL_PER_REALM_PER_MIN), ("LOGIN_FAIL_PER_IP_PER_MIN", toString LOGIN_FAIL_PER_IP_PER_MIN),
+    ("HP_FLOOR", toString HP_FLOOR), ("HP_FLOOR_PCT", toString HP_FLOOR_PCT), ("MANA_FLOOR", toString MANA_FLOOR),
+    ("MANA_FLOOR_PCT", toString MANA_FLOOR_PCT), ("MANAREGEN_FLOOR_PCT", toString MANAREGEN_FLOOR_PCT),
+    ("SPEED_FLOOR_PCT", toString SPEED_FLOOR_PCT), ("MOVE_SLOW_FLOOR_PCT", toString MOVE_SLOW_FLOOR_PCT),
+    ("POWER_FLOOR_PCT", toString POWER_FLOOR_PCT), ("WARD_MIN_PCT", toString WARD_MIN_PCT), ("WARD_MAX_PCT", toString WARD_MAX_PCT),
+    ("HEX_HP_FLOOR_PCT", toString HEX_HP_FLOOR_PCT), ("HEX_MALICE_TAX", toString HEX_MALICE_TAX),
+    ("CURSED_ITEM_BIND_S", toString CURSED_ITEM_BIND_S), ("HEX_MIN_YEAR", toString HEX_MIN_YEAR),
+    ("HEX_PAIR_COOLDOWN_S", toString HEX_PAIR_COOLDOWN_S), ("VICTIM_HEX_CAP", toString VICTIM_HEX_CAP),
+    ("VICTIM_CURSED_ITEMS_MAX", toString VICTIM_CURSED_ITEMS_MAX), ("VICTIM_BOUND_CAP", toString VICTIM_BOUND_CAP),
+    ("VICTIM_HEX_PER_10MIN", toString VICTIM_HEX_PER_10MIN), ("HEX_WINDOW_S", toString HEX_WINDOW_S),
+    ("HEX_RESPITE_S", toString HEX_RESPITE_S), ("SILENCE_MAX_S", toString SILENCE_MAX_S),
+    ("SILENCE_COOLDOWN_S", toString SILENCE_COOLDOWN_S), ("FORGE_FAIL_PER_MIN", toString FORGE_FAIL_PER_MIN),
+    ("OWLBOX_MAX", toString OWLBOX_MAX), ("OWL_MAX_CHARS", toString OWL_MAX_CHARS), ("OWL_PER_MIN", toString OWL_PER_MIN),
+    ("ASK_TTL_S", toString ASK_TTL_S), ("LISTEN_MAX_S", toString LISTEN_MAX_S), ("PLAYER_GRACE_S", toString PLAYER_GRACE_S)]
+  let negs := obj (NEG_LIMITS.map fun (k, v) => (k, toString v))
+  let jinx := obj (JINX_DEFAULTS.map fun (k, m, s) => (k, s!"[{m},{s}]"))
+  let hpF := [1, 2, 3, 4, 5, 6, 7].map fun y => s!"[{y},{hpFloor y}]"
+  let maxHp := Id.run do
+    let mut out : List String := []
+    for y in [1, 2, 4, 7] do
+      for m in ([-500, -45, -30, -10, 0, 25] : List Int) do
+        out := out ++ [s!"[{y},{m},{maxHpOf y m}]"]
+    return out
+  let maxMana := Id.run do
+    let mut out : List String := []
+    for b in ([50, 100, 160, 220] : List Int) do
+      for m in ([-500, -30, -10, 0, 30] : List Int) do
+        out := out ++ [s!"[{b},{m},{maxManaOf b m}]"]
+    return out
+  let regen := Id.run do
+    let mut out : List String := []
+    for r in ([10, 70, 400] : List Int) do
+      for m in ([-500, -30, 0, 30] : List Int) do
+        for c in ([0, 15] : List Int) do
+          out := out ++ [s!"[{r},{m},{c},{manaRegenOf r m c}]"]
+    return out
+  let speed := ([-500, -60, -50, -20, 0, 25] : List Int).map fun m => s!"[{m},{speedPct m}]"
+  let power := ([-500, -80, -75, -15, 0, 8, 45] : List Int).map fun p => s!"[{p},{powerPct p}]"
+  let ward := ([-500, -25, -20, 0, 20, 70] : List Int).map fun w => s!"[{w},{wardPct w}]"
+  let slow := Id.run do
+    let mut out : List String := []
+    for c in ([0, 30, 40, 60] : List Int) do
+      for j in ([0, 40] : List Int) do
+        out := out ++ [s!"[{c},{j},{moveSlowPct c j}]"]
+    return out
+  let hexF := [1, 3, 4, 40, 100, 115, 190, 277].map fun mh => s!"[{mh},{hexFloor mh}]"
+  let hexD := Id.run do
+    let mut out : List String := []
+    for hp in [0, 1, 10, 25, 26, 60, 190] do
+      for mh in [100, 190] do
+        for d in [0, 1, 3, 50, 1000] do
+          out := out ++ [s!"[{hp},{mh},{d},{hexDot hp mh d}]"]
+    return out
+  let hexC := [0, 1, 2, 8, 14, 34].map fun p => s!"[{p},{hexCost p}]"
+  let hexT := Id.run do
+    let mut out : List String := []
+    for r in [0, 3, 30] do
+      for s in [0, 2, 3, 4, 30, 37] do
+        out := out ++ [s!"[{r},{s},{hexTick r s}]"]
+    return out
+  obj [("constants", consts), ("negLimits", negs), ("jinxDefaults", jinx), ("hpFloor", arr hpF), ("maxHp", arr maxHp),
+    ("maxMana", arr maxMana), ("manaRegen", arr regen), ("speed", arr speed), ("power", arr power), ("ward", arr ward),
+    ("moveSlow", arr slow), ("hexFloor", arr hexF), ("hexDot", arr hexD), ("hexCost", arr hexC),
+    ("hexTick", arr hexT), ("longestHex", toString longestHex)]
+
 
 def xpSamples : List Nat := (List.range 90).map (· * 50)
 
@@ -183,7 +497,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "]}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 

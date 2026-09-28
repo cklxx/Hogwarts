@@ -13,8 +13,10 @@ import { ensureNpcs } from '../kernel/npc.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
-import { createMcpServer, type McpSession } from '../mcp/server.js';
+import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
+import { FORGE_FAIL_PER_MIN, LOGIN_FAIL_PER_IP_PER_MIN } from '../shared/constants.js';
 import { SnapshotFanout } from './fanout.js';
+import { FailWindow } from './limits.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -77,6 +79,33 @@ function allowEnrol(req: IncomingMessage) {
   return true;
 }
 
+// Failed logins per client address: docs/AGENT_LINK.md §A.2. Every place a key is presented counts a wrong
+// one (MCP login, an MCP initialize with a Bearer header, the WebSocket upgrade, /api/me, /api/owls).
+const loginFails = new FailWindow(LOGIN_FAIL_PER_IP_PER_MIN);
+const LOGIN_THROTTLED = 'Too many wrong keys from your address in the last minute. Wait a minute, then try again.';
+/**
+ * Check a presented key. The key is looked up FIRST: a right key always works, however many wrong keys
+ * came from the same address (a NAT, a campus, a buggy agent on the same machine must not be able to make
+ * a browser forget its key). Only a wrong key is throttled ('throttled') or counted ('unknown').
+ */
+function checkKey(req: IncomingMessage, token: string | undefined) {
+  const w = token ? world.byToken(token) : undefined;
+  if (w) return w;
+  const ip = clientIp(req);
+  if (!loginFails.allowed(ip)) return 'throttled' as const;
+  loginFails.fail(ip);
+  return 'unknown' as const;
+}
+/** The wizard behind a request's key; otherwise answers 401 (wrong key) or 429 (too many wrong keys) and returns undefined. */
+function keyed(req: IncomingMessage, url: URL, res: ServerResponse) {
+  const w = checkKey(req, tokenOf(req, url));
+  if (w === 'throttled') { json(res, 429, { error: LOGIN_THROTTLED }); return undefined; }
+  if (w === 'unknown') { json(res, 401, { error: 'unknown token' }); return undefined; }
+  return w;
+}
+// Refused forge_item parcels per wizard (§B.1), shared by all of its MCP sessions: a new session does not reset it.
+const forgeFails = new FailWindow(FORGE_FAIL_PER_MIN);
+
 // ------------------------------------------------------------------ HTTP
 const json = (res: ServerResponse, code: number, body: unknown) => {
   res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
@@ -109,13 +138,44 @@ function serveStatic(res: ServerResponse, path: string) {
 }
 
 // MCP: one transport + one McpServer per MCP session.
-const mcpSessions = new Map<string, { transport: StreamableHTTPServerTransport; session: McpSession; seen: number }>();
+type McpEntry = { transport: StreamableHTTPServerTransport; session: McpSession; seen: number };
+const mcpSessions = new Map<string, McpEntry>();
 const MAX_MCP_SESSIONS = 500;
 const MCP_IDLE_MS = 30 * 60_000;
+function closeMcp(id: string, e: McpEntry) {
+  mcpSessions.delete(id);
+  e.session.wizardId = null;
+  e.transport.close().catch(() => {});
+}
 setInterval(() => {
   const now = Date.now();
-  for (const [id, e] of mcpSessions) if (now - e.seen > MCP_IDLE_MS) { mcpSessions.delete(id); e.transport.close().catch(() => {}); }
+  for (const [id, e] of mcpSessions) if (now - e.seen > MCP_IDLE_MS) closeMcp(id, e);
 }, 60_000);
+/** MCP sessions bound to a wizard: derived by scanning, never counted (docs/AGENT_LINK.md §A.4). */
+function sessionsOf(wid: string) {
+  let n = 0;
+  for (const e of mcpSessions.values()) if (e.session.wizardId === wid) n++;
+  return n;
+}
+/** Close code for a socket whose key was changed (it reconnects only with the new key). */
+const KEY_CHANGED = 4001;
+/**
+ * A wizard's key changed (docs/AGENT_LINK.md §A.3). A rotation is the remedy for a leaked key, so nothing
+ * that holds the old key may keep acting or learn the new one:
+ *  - every MCP session bound to the wizard is closed except `keepMcp` (the agent session that asked);
+ *  - every browser socket of the wizard is closed except `keepWs` (the browser tab that asked), and only
+ *    that socket is sent the new key ({t:'token'}). An open socket is no proof of being the owner — a
+ *    thief who had the key may hold one — so the others re-authenticate with the new key (a tab of the
+ *    same browser finds it in localStorage; after an agent's rotate_key the human gets it from the agent).
+ */
+function rotated(wid: string, token: string, keep: { keepMcp?: string; keepWs?: WebSocket } = {}) {
+  for (const [ws, id] of [...clients]) {
+    if (id !== wid) continue;
+    if (ws === keep.keepWs) { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'token', token })); }
+    else ws.close(KEY_CHANGED, 'key changed');
+  }
+  for (const [id, e] of [...mcpSessions]) if (id !== keep.keepMcp && e.session.wizardId === wid) closeMcp(id, e);
+}
 
 async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
   const sid = req.headers['mcp-session-id'] as string | undefined;
@@ -130,12 +190,18 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
       return json(res, 503, { jsonrpc: '2.0', error: { code: -32000, message: 'Too many open MCP sessions; try again later.' }, id: null });
     }
     const token = tokenOf(req, url);
-    const session: McpSession = { wizardId: token ? world.byToken(token)?.id ?? null : null, baseUrl: PUBLIC_URL, allowEnrol: () => allowEnrol(req) };
+    // A Bearer key is a login: a wrong one counts as a failed login (and the session starts unbound).
+    const keyedBy = token ? checkKey(req, token) : undefined;
+    if (keyedBy === 'throttled') return json(res, 429, { jsonrpc: '2.0', error: { code: -32000, message: LOGIN_THROTTLED }, id: null });
+    const session: McpSession = {
+      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: PUBLIC_URL, ip: clientIp(req), allowEnrol: () => allowEnrol(req),
+      loginFails, forgeFails, sessionsOf, rotated: (wid, tok, keep) => rotated(wid, tok, { keepMcp: keep }),
+    };
     if (session.wizardId) world.touch(session.wizardId);
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
       // REALMS: the front door moves a session here (MCP `login` with this realm's token) under its existing id.
       sessionIdGenerator: () => (adopt && !mcpSessions.has(adopt) ? adopt : realm.prefix + randomUUID()),
-      onsessioninitialized: (id) => { mcpSessions.set(id, { transport, session, seen: Date.now() }); },
+      onsessioninitialized: (id) => { session.id = id; mcpSessions.set(id, { transport, session, seen: Date.now() }); },
     });
     transport.onclose = () => { if (transport.sessionId) mcpSessions.delete(transport.sessionId); };
     await createMcpServer(world, session).connect(transport);
@@ -164,8 +230,21 @@ const http = createServer(async (req, res) => {
       }
     }
     if (url.pathname === '/api/me') {
-      const w = world.byToken(tokenOf(req, url) ?? '');
-      return w ? json(res, 200, { ...world.whoami(w.id), token: w.token, mcpUrl: `${PUBLIC_URL}/mcp` }) : json(res, 401, { error: 'unknown token' });
+      const w = keyed(req, url, res);
+      return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${PUBLIC_URL}/mcp` }) : undefined;
+    }
+    // The player's owls to their agent after owl id `since` (default: after what the agent has read), for a
+    // stdio bridge's channel push (docs/AGENT_LINK.md §C.4). Read-only, and not presence: polling it neither
+    // consumes owls nor keeps the wizard online. `cursor` is what to pass as `since` next time.
+    if (url.pathname === '/api/owls' && req.method === 'GET') {
+      const w = keyed(req, url, res);
+      if (!w) return;
+      const raw = url.searchParams.get('since');
+      const since = raw !== null && /^\d{1,12}$/.test(raw) ? Number(raw) : undefined;
+      // answers to confirm_with_player went to the agent as {approved}: not pushed again as the human's words
+      const all = world.owlsFor(w.id, since);
+      const owls = all.filter((m) => !isConfirmAnswer(w.owlbox, m.re));
+      return json(res, 200, { owls, cursor: all.at(-1)?.id ?? since ?? w.agentReadUpTo, read: w.agentReadUpTo });
     }
     if (url.pathname === '/api/realms') return json(res, 200, { mode: realm.mode, realms: [{ id: realm.id, up: true, ...realmStats(), restarts: 0 }] });
     if (url.pathname === '/api/leaderboard') return json(res, 200, world.leaderboard());
@@ -193,7 +272,14 @@ type ClientMsg =
   | { t: 'seals' }
   | { t: 'readpage'; tier: number }
   | { t: 'breakseal'; tier: number; words: string[] }
-  | { t: 'goto'; x: number; z: number };
+  | { t: 'goto'; x: number; z: number }
+  // Owl Post (docs/AGENT_LINK.md §C.5)
+  | { t: 'owl'; text: string }
+  | { t: 'answer'; id: number; choice: string }
+  | { t: 'paircode' }
+  | { t: 'rotate' }
+  | { t: 'pause'; on: boolean }
+  | { t: 'destroy'; item: string };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -204,13 +290,20 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
   if (!w || !m || typeof m !== 'object') return;
   const reply = (o: unknown) => ws.send(JSON.stringify(o));
   const book = () => reply({ t: 'book', armory: world.armory(wid), grimoire: grimoire(w.year, world.rules, w.seals) });
+  const items = () => reply({ t: 'items', items: world.armory(wid).items });
   try {
     switch (m.t) {
       case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
       case 'cast': reply({ t: 'cast', r: world.cast(wid, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'chat': world.say(w, String(m.text ?? '')); break;
-      case 'equip': world.equip(wid, String(m.item)); break;
-      case 'unequip': world.unequip(wid, String(m.slot)); break;
+      case 'equip': world.equip(wid, String(m.item)); items(); break;
+      case 'unequip': world.unequip(wid, String(m.slot)); items(); break;
+      case 'destroy': { const it = world.destroyItem(wid, String(m.item)); reply({ t: 'destroyed', item: it.id, name: it.name }); items(); break; }
+      case 'owl': world.owl(wid, 'player', String(m.text ?? '')); break;
+      case 'answer': world.answerAsk(wid, Number(m.id), String(m.choice ?? '')); break;
+      case 'paircode': { const c = world.mintPairCode(wid); reply({ t: 'paircode', code: c.code, expiresIn: c.expiresIn }); break; }
+      case 'rotate': rotated(wid, world.rotateToken(wid), { keepWs: ws }); break;
+      case 'pause': world.setAgentPaused(wid, m.on === true); break;
       case 'book': book(); break;
       case 'simulate': reply({ t: 'sim', r: world.simulate(wid, String(m.source ?? ''), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'forge': {
@@ -245,13 +338,15 @@ const clients = new Map<WebSocket, string>();
 http.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname !== '/ws') return socket.destroy();
-  const w = world.byToken(url.searchParams.get('token') ?? '');
-  if (!w) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy(); }
+  const w = checkKey(req, url.searchParams.get('token') ?? undefined);
+  if (w === 'throttled') { socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return socket.destroy(); }
+  if (w === 'unknown') { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy(); }
   wss.handleUpgrade(req, socket, head, (ws) => {
     clients.set(ws, w.id);
     w.connections++;
-    const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30);
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, events: recent, mcpUrl: `${PUBLIC_URL}/mcp`, token: w.token }));
+    // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
+    const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, mcpUrl: `${PUBLIC_URL}/mcp` }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
@@ -267,7 +362,7 @@ http.on('upgrade', (req, socket, head) => {
 
 // Events: encoded once, queued for the sockets connected right now, written with the next broadcast (net.ts).
 world.onEvent((e) => {
-  const msg = Buffer.from(JSON.stringify({ t: 'event', e }));
+  const msg = Buffer.from(JSON.stringify({ t: 'event', e: world.wireEvent(e) }));
   for (const [ws, wid] of clients) if (!e.to || e.to === wid) enqueue(ws, msg);
 });
 
@@ -283,13 +378,25 @@ setInterval(() => {
   broadcasts++;
   flushInputs();
   fanout.load(world.snapshot());
+  // MCP sessions per wizard for me.agent.sessions, counted once per broadcast (only if some socket needs it)
+  let agents: Map<string, number> | null = null;
+  const agentSessions = (wid: string) => {
+    if (!agents) {
+      agents = new Map();
+      for (const e of mcpSessions.values()) if (e.session.wizardId) agents.set(e.session.wizardId, (agents.get(e.session.wizardId) ?? 0) + 1);
+    }
+    return agents.get(wid) ?? 0;
+  };
   for (const [ws, wid] of clients) {
     corked(ws, () => {
       const w = world.wizards.get(wid);
       if (!w || !readyForSnapshot(ws)) return;
       const st = netState(ws);
       ws.send(st.aoi ? fanout.payloadFor(w.pos.x, w.pos.z, st.anchor) : fanout.fullPayload(), { binary: false });
-      if (meDue(ws, broadcasts)) sendMeIfChanged(ws, JSON.stringify({ t: 'me', s: world.privateState(wid) }));
+      if (meDue(ws, broadcasts)) {
+        const s = world.privateState(wid);
+        sendMeIfChanged(ws, JSON.stringify({ t: 'me', s: { ...s, agent: { ...s.agent, sessions: agentSessions(wid) } } }));
+      }
     });
   }
 }, 100);
