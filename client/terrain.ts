@@ -60,6 +60,8 @@ function freedom(x: number, z: number) {
 export const flatness = freedom;
 
 export const LAKE = { x: -110, z: 40, r: 55 };
+/** The sea plane's height: below the lowest rolling ground (about -6 m); only the southern inlet dips under it. */
+export const SEA_LEVEL = -9;
 
 /** Ground height at (x, z). */
 export function heightAt(x: number, z: number): number {

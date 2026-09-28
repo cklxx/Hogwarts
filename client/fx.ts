@@ -214,7 +214,8 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
   const smoke = new Pool(scene, 2400, false);
   let density = 1;
   const N = (n: number) => Math.max(1, Math.round(n * density));
-  const trails = new WeakMap<object, { x: number; y: number; z: number; acc: number }>();
+  const trails = new WeakMap<object, { x: number; y: number; z: number; acc: number; frame: number }>();
+  let frameNo = 0;
   const up = new THREE.Vector3(0, 1, 0);
   const smokeAcc = chimneys.map(() => Math.random());
   const cam = new THREE.Vector3();
@@ -225,13 +226,19 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
     burst(x: number, y: number, z: number, o: EmitOpts) { glow.emit(x, y, z, o, N(o.count ?? 20)); },
     puff(x: number, y: number, z: number, o: EmitOpts) { smoke.emit(x, y, z, o, N(o.count ?? 10)); },
 
-    /** A bolt's comet tail: particles laid down along the path it travelled since last frame. */
+    /**
+     * A bolt's comet tail: particles laid down along the path it travelled since last frame. Call it
+     * every frame while the thing is shown; a key skipped for a frame (hidden, then shown again
+     * somewhere else) starts a fresh tail instead of streaking across from where it was last seen.
+     */
     trail(key: object, p: THREE.Vector3, color: number, spacing = 0.16) {
       let s = trails.get(key);
-      if (!s) { s = { x: p.x, y: p.y, z: p.z, acc: 0 }; trails.set(key, s); }
+      if (!s) { s = { x: p.x, y: p.y, z: p.z, acc: 0, frame: frameNo }; trails.set(key, s); }
+      const fresh = s.frame < frameNo - 1;
+      s.frame = frameNo;
       const dx = p.x - s.x, dy = p.y - s.y, dz = p.z - s.z;
       const d = Math.hypot(dx, dy, dz);
-      if (d > 30) { s.x = p.x; s.y = p.y; s.z = p.z; return; } // teleported: restart the tail
+      if (fresh || d > 30) { s.x = p.x; s.y = p.y; s.z = p.z; s.acc = 0; return; } // teleported or reappeared: restart the tail
       const step = spacing / density;
       s.acc += d;
       const hot = new THREE.Color(color).multiplyScalar(4);
@@ -301,6 +308,7 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
       });
     },
     update(dt: number, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, day: number) {
+      frameNo++;
       api.tickSmoke(dt, camera);
       const scale = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
       glow.flush(dt, scale, 1);

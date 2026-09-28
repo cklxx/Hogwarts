@@ -140,7 +140,7 @@ function tailGeo(side: number) {
       p.setZ(i, side * (Math.max(0.17, robeRadius(y) + 0.018)) + p.getZ(i));
     }
     g.computeVertexNormals();
-    return g;
+    return knitUV(g, 'v');
   });
 }
 function robeGeo() {
@@ -205,24 +205,66 @@ function faceGeo() {
   });
 }
 
-function stripes(house: House, vertical: boolean) {
-  return once(`scarf:${house}:${vertical}`, () => {
+/**
+ * Merge static parts that move together into one geometry (one draw call instead of one per part),
+ * each part painted a flat colour through a vertex-colour attribute.
+ */
+function painted(parts: [THREE.BufferGeometry, THREE.ColorRepresentation][]) {
+  const c = new THREE.Color();
+  return mergeGeometries(parts.map(([g, col]) => {
+    const x = g.clone();
+    c.set(col);
+    const n = x.getAttribute('position').count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+    x.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    return x;
+  }))!;
+}
+/** Scale a vertex-coloured material's emissive by the vertex colour: the faint self-light meant for skin stays on the skin. */
+function emissiveByVertexColor<T extends THREE.MeshStandardMaterial>(m: T, key: string, prev?: T['onBeforeCompile']) {
+  m.onBeforeCompile = (sh, r) => {
+    prev?.call(m, sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      #ifdef USE_COLOR
+        totalEmissiveRadiance *= vColor.rgb;
+      #endif`);
+  };
+  m.customProgramCacheKey = () => key;
+  return m;
+}
+
+/**
+ * Knitwear for one house: the scarf's stripes run across u above v = KNIT_GREY, and below it is a
+ * plain grey patch for the jumper, so the jumper, tie, scarf wrap and tails share one material.
+ */
+const KNIT_GREY = 0.25;
+function knit(house: House) {
+  return once(`knit:${house}`, () => {
     const c = document.createElement('canvas');
-    c.width = vertical ? 128 : 32; c.height = vertical ? 32 : 128;
+    c.width = 128; c.height = 64;
     const g = c.getContext('2d')!;
     const [a, b] = SCARF[house];
-    const n = 10, L = vertical ? c.width : c.height;
-    for (let i = 0; i < n; i++) {
-      g.fillStyle = i % 2 ? b : a;
-      if (vertical) g.fillRect((i * L) / n, 0, L / n + 1, c.height); else g.fillRect(0, (i * L) / n, c.width, L / n + 1);
-    }
+    const n = 10, band = c.height * (1 - KNIT_GREY); // canvas rows top-down = v from 1 down
+    for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? b : a; g.fillRect((i * c.width) / n, 0, c.width / n + 1, band); }
+    g.fillStyle = '#55565e'; // the jumper
+    g.fillRect(0, band, c.width, c.height - band);
     // knitted texture
-    for (let i = 0; i < 600; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * c.width, Math.random() * c.height, 1, 2); }
+    for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * c.width, Math.random() * c.height, 1, 2); }
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.wrapS = THREE.RepeatWrapping;
     return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 });
   });
+}
+/** Move a part's UVs into the knit atlas: stripes across its own u ('u') or down its own v ('v'), or the grey patch. */
+function knitUV(g: THREE.BufferGeometry, mode: 'u' | 'v' | 'grey') {
+  const uv = g.getAttribute('uv');
+  for (let i = 0; i < uv.count; i++) {
+    const u = uv.getX(i), v = uv.getY(i);
+    if (mode === 'grey') uv.setXY(i, u, KNIT_GREY * 0.4);
+    else uv.setXY(i, mode === 'u' ? u : v, KNIT_GREY + 0.05 + (0.9 - KNIT_GREY) * (mode === 'u' ? v : u));
+  }
+  return g;
 }
 
 /** Black robe cloth with folds matching the pleats, house-coloured front edges and hem, gold piping. */
@@ -258,8 +300,8 @@ function robeTex(house: House) {
  * Cloth: double-sided, the inside shows the house lining (picked by gl_FrontFacing), and the
  * vertex shader swings the lower part by `sway` (x: sideways, z: trailing, y: flare).
  */
-function clothMaterial(house: House, map: THREE.Texture | null, sway: { value: THREE.Vector3 }) {
-  const m = new THREE.MeshStandardMaterial({ color: map ? 0xffffff : 0x1c1c22, map, roughness: 0.82, side: THREE.DoubleSide });
+function clothMaterial(house: House, map: THREE.Texture | null, sway: { value: THREE.Vector3 }, vertexColors = false) {
+  const m = new THREE.MeshStandardMaterial({ color: map || vertexColors ? 0xffffff : 0x1c1c22, map, roughness: 0.82, side: THREE.DoubleSide, vertexColors });
   const lining = new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.7);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uSway = sway;
@@ -269,10 +311,15 @@ function clothMaterial(house: House, map: THREE.Texture | null, sway: { value: T
       transformed.x += uSway.x * swayW;
       transformed.z += uSway.z * swayW;
       transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;`);
-    sh.fragmentShader = 'uniform vec3 uLining;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+    sh.fragmentShader = 'uniform vec3 uLining;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
       if (!gl_FrontFacing) diffuseColor.rgb = uLining;`);
   };
   m.customProgramCacheKey = () => 'wizard-cloth';
+  if (vertexColors) {
+    // sleeves carry the hands (skin-coloured vertices) with the faint skin self-light
+    m.emissive.setScalar(0.12);
+    emissiveByVertexColor(m, 'wizard-cloth-vc', m.onBeforeCompile);
+  }
   return m;
 }
 const NO_SWAY = { value: new THREE.Vector3() };
@@ -297,6 +344,17 @@ function shieldMat() {
   }));
 }
 
+/** m/s: the walk cycle stops quickening here (a brisk 7 m/s walk is 1.45 strides a second). */
+const GAIT_MAX = 9;
+/**
+ * m/s: faster than any walk, even at haste on a Firebolt (17.5 m/s) and with the jerk of 10 Hz
+ * snapshots (up to ~1.7x the true speed for a frame): the model is gliding to a teleported target.
+ */
+const GLIDE = 35;
+let detail: 'low' | 'high' = 'high';
+/** Wizard detail follows the graphics quality: at 'low' the scarf tails are left out (2 of 15 draw calls). */
+export function setWizardDetail(q: 'low' | 'high') { detail = q; }
+
 export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel {
   const h = hash(seed || house);
   const root = new THREE.Group();
@@ -306,76 +364,92 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   body.add(rig);
   const shadow = (m: THREE.Mesh) => { m.castShadow = true; return m; };
 
-  // a touch of emissive keeps faces readable in the shade of the hat brim
-  const skin = std(`skin${h % SKIN.length}`, { color: SKIN[h % SKIN.length], emissive: new THREE.Color(SKIN[h % SKIN.length]).multiplyScalar(0.12), roughness: 0.6 });
-  const hairMat = std(`hair${(h >>> 4) % HAIR.length}`, { color: HAIR[(h >>> 4) % HAIR.length], roughness: 0.75 });
-  const cloth = std('trousers', { color: 0x24242a, roughness: 0.9 });
-  const shoe = std('shoe', { color: 0x0e0d0c, roughness: 0.35, metalness: 0.1 });
-  const jumper = std('jumper', { color: 0x55565e, roughness: 0.95 });
-  const felt = std('felt', { color: 0x17171e, roughness: 0.9 });
-  const feltBrim = once('feltBrim', () => new THREE.MeshStandardMaterial({ color: 0x17171e, roughness: 0.9, side: THREE.DoubleSide }));
-  const band = std(`band:${house}`, { color: new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.6), roughness: 0.6 });
+  // Parts that move together are merged into one mesh (vertex-coloured where the colours differ), so a
+  // wizard is 13 draw calls at 'low' and 15 at 'high' (the scarf tails): robe, knitwear, 2 legs, head,
+  // hat, 2 arms, wand, tip, tip glow, name label, aura ring.
+  const skinI = h % SKIN.length, hairI = (h >>> 4) % HAIR.length;
   const wood = std(`wood${(h >>> 8) % WOOD.length}`, { color: WOOD[(h >>> 8) % WOOD.length], roughness: 0.55 });
+  const knitMat = knit(house);
 
-  // ---- robe: open at the front over a grey jumper, house tie, legs and shoes underneath
+  // ---- robe: open at the front over a grey jumper and a house tie, legs and shoes underneath
   const sway = { value: new THREE.Vector3() };
   const robe = shadow(new THREE.Mesh(robeGeo(), clothMaterial(house, robeTex(house), sway)));
-  const jumperMesh = new THREE.Mesh(once('jumperGeo', () => new THREE.LatheGeometry([0.24, 0.26, 0.25, 0.23, 0.25, 0.27, 0.2, 0.08].map((r, i) => new THREE.Vector2(r, 0.78 + i * 0.1)), 14)), jumper);
-  const tie = new THREE.Mesh(once('tieGeo', () => { const g = new THREE.BoxGeometry(0.055, 0.3, 0.012); g.rotateX(-0.08); g.translate(0, 1.25, -0.268); return g; }), stripes(house, false));
-  rig.add(robe, jumperMesh, tie);
+  // jumper, tie and the scarf's neck wrap: one mesh in the knit atlas
+  const torso = new THREE.Mesh(once('torsoGeo', () => {
+    const jumper = new THREE.LatheGeometry([0.24, 0.26, 0.25, 0.23, 0.25, 0.27, 0.2, 0.08].map((r, i) => new THREE.Vector2(r, 0.78 + i * 0.1)), 14);
+    const tie = new THREE.BoxGeometry(0.055, 0.3, 0.012); tie.rotateX(-0.08); tie.translate(0, 1.25, -0.268);
+    const wrap = new THREE.TorusGeometry(0.135, 0.058, 8, 20); wrap.rotateX(Math.PI / 2); wrap.scale(1, 1, 0.92); wrap.translate(0, 1.52, 0);
+    return mergeGeometries([knitUV(jumper.toNonIndexed(), 'grey'), knitUV(tie.toNonIndexed(), 'v'), knitUV(wrap.toNonIndexed(), 'u')])!;
+  }), knitMat);
+  rig.add(robe, torso);
+  const legMat = once('legMat', () => {
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    // the (darker) shoe vertices are polished leather
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n#ifdef USE_COLOR\n  if (vColor.r < 0.009) roughnessFactor = 0.35;\n#endif')
+        .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n#ifdef USE_COLOR\n  if (vColor.r < 0.009) metalnessFactor = 0.1;\n#endif');
+    };
+    m.customProgramCacheKey = () => 'wizard-legs';
+    return m;
+  });
+  const legGeo = once('legGeo', () => {
+    const shin = new THREE.CylinderGeometry(0.075, 0.065, 0.76, 8); shin.translate(0, -0.4, 0);
+    const shoe = new THREE.SphereGeometry(0.085, 10, 6); shoe.scale(0.85, 0.55, 1.5); shoe.translate(0, -0.78, -0.05);
+    return painted([[shin, 0x24242a], [shoe, 0x0e0d0c]]);
+  });
   const legs = [-1, 1].map((s) => {
-    const leg = new THREE.Group();
+    const leg = new THREE.Mesh(legGeo, legMat);
     leg.position.set(s * 0.1, 0.82, 0);
-    const shin = new THREE.Mesh(once('legGeo', () => { const g = new THREE.CylinderGeometry(0.075, 0.065, 0.76, 8); g.translate(0, -0.4, 0); return g; }), cloth);
-    const foot = new THREE.Mesh(once('shoeGeo', () => { const g = new THREE.SphereGeometry(0.085, 10, 6); g.scale(0.85, 0.55, 1.5); g.translate(0, -0.78, -0.05); return g; }), shoe);
-    leg.add(shin, foot);
     rig.add(leg);
     return leg;
   });
 
-  // ---- scarf: a wrap around the neck, one tail down the front and one over the shoulder
-  const scarfMat = stripes(house, true);
-  const wrap = new THREE.Mesh(once('wrapGeo', () => { const g = new THREE.TorusGeometry(0.135, 0.058, 8, 20); g.rotateX(Math.PI / 2); g.scale(1, 1, 0.92); return g; }), scarfMat);
-  wrap.position.y = 1.52;
-  const tailMat = stripes(house, false);
-  const tailF = new THREE.Mesh(tailGeo(-1), tailMat);
+  // ---- scarf tails: one down the front and one over the shoulder (left out at 'low')
+  const tailF = new THREE.Mesh(tailGeo(-1), knitMat);
   tailF.position.set(-0.09, 1.5, 0);
-  const tailB = new THREE.Mesh(tailGeo(1), tailMat);
+  const tailB = new THREE.Mesh(tailGeo(1), knitMat);
   tailB.position.set(0.1, 1.5, 0);
-  rig.add(wrap, tailF, tailB);
+  rig.add(tailF, tailB);
 
-  // ---- head: face, hair, and a pointed hat with a crooked tip and a house band
+  // ---- head: face, eyes, brows, mouth and hair in one mesh; a touch of emissive on the skin keeps
+  // faces readable in the shade of the hat brim
   const head = new THREE.Group();
   head.position.y = 1.5;
-  const hg = headGeo(), fg = faceGeo();
-  head.add(shadow(new THREE.Mesh(hg.face, skin)));
-  head.add(new THREE.Mesh(fg.whites, std('eyeWhite', { color: 0xf4f1ea, roughness: 0.3 })));
-  head.add(new THREE.Mesh(fg.pupils, std('pupil', { color: 0x1a120c, roughness: 0.2 })));
-  head.add(new THREE.Mesh(fg.brows, hairMat));
-  head.add(new THREE.Mesh(fg.mouth, std('mouth', { color: 0x5a2a22, roughness: 0.6 })));
-  const hair = new THREE.Mesh(once('hairGeo', () => { const g = new THREE.SphereGeometry(0.228, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62); g.rotateX(0.85); g.translate(0, 0.225, 0.014); return g; }), hairMat);
-  head.add(hair);
+  const hg = headGeo();
+  const headMat = once('headMat', () => {
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
+    m.emissive.setScalar(0.12);
+    return emissiveByVertexColor(m, 'wizard-head');
+  });
+  head.add(shadow(new THREE.Mesh(once(`headGeo:${skinI}:${hairI}`, () => {
+    const fg = faceGeo();
+    const hair = new THREE.SphereGeometry(0.228, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62); hair.rotateX(0.85); hair.translate(0, 0.225, 0.014);
+    return painted([[hg.face, SKIN[skinI]], [fg.whites, 0xf4f1ea], [fg.pupils, 0x1a120c], [fg.brows, HAIR[hairI]], [fg.mouth, 0x5a2a22], [hair, HAIR[hairI]]]);
+  }), headMat)));
+  // the hat: crown, brim and house band in one mesh
   const hat = new THREE.Group();
   hat.position.set(0, 0.37, 0.03);
   hat.rotation.set(0.24, 0, 0.06); // pushed back so the brim does not hide the face
-  hat.add(shadow(new THREE.Mesh(hatGeo(), felt)));
-  hat.add(shadow(new THREE.Mesh(brimGeo(), feltBrim)));
-  const bandMesh = new THREE.Mesh(once('bandGeo', () => { const g = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); g.translate(0, 0.032, 0); return g; }), band);
-  hat.add(bandMesh);
+  const hatMat = once('hatMat', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }));
+  hat.add(shadow(new THREE.Mesh(once(`hatGeo:${house}`, () => {
+    const band = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); band.translate(0, 0.032, 0);
+    return painted([[hatGeo(), 0x17171e], [brimGeo(), 0x17171e], [band, new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.6)]]);
+  }), hatMat)));
   head.add(hat);
   rig.add(head);
 
-  // ---- arms: bell sleeves lined in house colour; the right hand holds the wand
-  const sleeveMat = once(`sleeve:${house}`, () => clothMaterial(house, null, NO_SWAY));
-  const sleeveGeo = once('sleeveGeo', () => { const g = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 12, 1, true); g.translate(0, -0.3, 0); return g; });
-  const handGeo = hg.hand;
+  // ---- arms: bell sleeves lined in house colour, each with its hand; the right hand holds the wand
+  const sleeveMat = once(`sleeve:${house}`, () => clothMaterial(house, null, NO_SWAY, true));
+  const armGeo = once(`armGeo:${skinI}`, () => {
+    const sleeve = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 12, 1, true); sleeve.translate(0, -0.3, 0);
+    const hand = hg.hand.clone(); hand.translate(0, -0.6, 0);
+    return painted([[sleeve, 0x1c1c22], [hand, SKIN[skinI]]]);
+  });
   const arm = (s: number) => {
     const a = new THREE.Group();
     a.position.set(s * 0.29, 1.41, 0);
-    a.add(shadow(new THREE.Mesh(sleeveGeo, sleeveMat)));
-    const hand = new THREE.Mesh(handGeo, skin);
-    hand.position.y = -0.6;
-    a.add(hand);
+    a.add(shadow(new THREE.Mesh(armGeo, sleeveMat)));
     rig.add(a);
     return a;
   };
@@ -430,14 +504,19 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   }
 
   // ---- animation state
-  const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true };
+  const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '' };
   const tipColor = new THREE.Color();
   const REST_R = 0.3;
   return {
     root, body, label, shield, glow, wandTip, root2, patronus, elder, castPending: false,
     update(dt, speed, casting) {
       st.t += dt;
-      st.speed += (speed - st.speed) * (1 - Math.exp(-dt * 10));
+      if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high'; }
+      // The stride follows ground speed up to GAIT_MAX (beyond it the feet slide a little instead of the
+      // legs blurring). Anything faster than GLIDE is not walking but the model catching up after an
+      // apparition, a release from Azkaban or a knock-back: hold the standing pose through the glide.
+      const gait = speed > GLIDE ? 0 : Math.min(speed, GAIT_MAX);
+      st.speed += (gait - st.speed) * (1 - Math.exp(-dt * 10));
       const stunned = Math.abs(body.rotation.z) > 0.1;
       const w = stunned ? 0 : Math.min(1.25, st.speed / 7);
       st.phase += dt * st.speed * 1.3;

@@ -1,14 +1,19 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../src/shared/map';
-import { LAKE, flatness, surfaceAt } from './terrain';
+import { LAKE, SEA_LEVEL, flatness, surfaceAt } from './terrain';
 
 /**
- * A field of GPU-instanced grass around the player. The field is a G x G grid of square chunks;
- * each world chunk maps to a fixed slot of the instance buffer (toroidally), so walking only
+ * A field of GPU-instanced grass around the player: a G x G grid of square chunks, one small
+ * instanced mesh each. Every world chunk maps to a fixed chunk mesh (toroidally), so walking only
  * regenerates the row of chunks that scrolled into view, a few per frame. Blade placement is seeded
- * by the chunk coordinates, so a chunk always grows the same grass. Blades sit on the rendered
- * terrain (surfaceAt), skip built/flat ground (the flatness mask), the lake and its shore, and
- * sway in the vertex shader (rolling gusts + flutter), bending away from the player's feet.
+ * by the chunk coordinates, so a chunk always grows the same grass.
+ *
+ * Cost control: only the clumps that actually grow are uploaded (built/flat ground, the lake, the
+ * sea and everything beyond the inner terrain mesh cost nothing); each chunk has its own bounding
+ * sphere, so chunks off screen are frustum-culled; and a chunk away from the player draws only a
+ * prefix of its (randomly placed) clumps, thinning the field where the blades are already shrinking
+ * into the ground. Blades sit on the rendered terrain (surfaceAt) and sway in the vertex shader
+ * (rolling gusts + flutter), bending away from the player's feet.
  */
 
 /** Everything that sways (grass, tree crowns, pennants, chimney smoke) leans with the same wind. */
@@ -16,8 +21,10 @@ export const WIND = new THREE.Vector2(0.8, 0.35);
 
 interface Level { grid: number; chunk: number; perChunk: number }
 const LEVELS: Record<'low' | 'high', Level> = {
-  high: { grid: 7, chunk: 14, perChunk: 900 }, // 44,100 clumps x 4 blades
-  low: { grid: 5, chunk: 10, perChunk: 150 },  //  3,750 clumps x 4 blades
+  // up to ~18k clumps (~72k blades) drawn in an unbroken meadow, before frustum culling
+  high: { grid: 7, chunk: 14, perChunk: 640 },
+  // up to ~2.6k clumps (~10k blades)
+  low: { grid: 5, chunk: 10, perChunk: 150 },
 };
 
 /**
@@ -62,11 +69,32 @@ function clumpGeometry() {
 }
 
 const ss = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/**
+ * surfaceAt() matches what is drawn only on the inner terrain mesh, and only inside r = 300 m is that
+ * mesh alone: the coarse Highlands ring (and, far beyond it, Azkaban's rock) starts there.
+ */
+const INNER_R = 300;
 /** 0..1: how much grass grows here. */
 export function grassDensity(x: number, z: number, y: number) {
   const lake = ss(LAKE.r + 7, LAKE.r + 13, Math.hypot(x - LAKE.x, z - LAKE.z));
+  // none out on the Highlands ring or Azkaban (it would float over the coarse mesh), none under the sea
+  const inner = 1 - ss(INNER_R - 18, INNER_R - 4, Math.hypot(x, z));
+  const dry = ss(SEA_LEVEL + 0.2, SEA_LEVEL + 1, y);
   // the mask is 0 on built ground and rises over ~18 m around it: let the lawn come close to the paths
-  return ss(0.03, 0.3, flatness(x, z)) * lake * (1 - ss(10, 22, y));
+  return ss(0.03, 0.3, flatness(x, z)) * lake * inner * dry * (1 - ss(10, 22, y));
+}
+
+interface Chunk {
+  mesh: THREE.Mesh;
+  geo: THREE.InstancedBufferGeometry;
+  offs: THREE.InstancedBufferAttribute;
+  shape: THREE.InstancedBufferAttribute;
+  /** The world chunk "cx,cz" it holds (null: not filled yet). */
+  key: string | null;
+  /** Clumps that grow there (the first `kept` instances). */
+  kept: number;
+  x0: number;
+  z0: number;
 }
 
 export function createGrass(scene: THREE.Scene) {
@@ -126,82 +154,117 @@ export function createGrass(scene: THREE.Scene) {
   };
   mat.customProgramCacheKey = () => 'grass-field';
 
-  const base = clumpGeometry();
+  const group = new THREE.Group();
+  group.name = 'grass';
+  scene.add(group);
   let level = LEVELS.high;
-  let geo: THREE.InstancedBufferGeometry | null = null;
-  let offs: THREE.InstancedBufferAttribute, shape: THREE.InstancedBufferAttribute;
-  let slots: (string | null)[] = [];
-  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
-  mesh.frustumCulled = false;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  let base: THREE.BufferGeometry | null = null;
+  let chunks: Chunk[] = [];
+  /** Chunk offsets around the player's chunk, nearest first (after a teleport the grass regrows from the feet out). */
+  let order: [number, number][] = [];
   let visible = true;
 
   function build(l: Level) {
     level = l;
-    geo?.dispose();
-    geo = new THREE.InstancedBufferGeometry();
-    geo.index = base.index;
-    for (const k of ['position', 'normal', 'uv']) geo.setAttribute(k, base.getAttribute(k));
-    const n = l.grid * l.grid * l.perChunk;
-    offs = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(THREE.DynamicDrawUsage);
-    shape = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('aOffset', offs);
-    geo.setAttribute('aShape', shape);
-    geo.instanceCount = n;
-    mesh.geometry = geo;
-    slots = new Array(l.grid * l.grid).fill(null);
+    for (const c of chunks) { group.remove(c.mesh); c.geo.dispose(); }
+    base?.dispose();
+    base = clumpGeometry();
+    chunks = [];
+    for (let i = 0; i < l.grid * l.grid; i++) {
+      const geo = new THREE.InstancedBufferGeometry();
+      geo.index = base.index;
+      for (const k of ['position', 'normal', 'uv']) geo.setAttribute(k, base.getAttribute(k));
+      const offs = new THREE.InstancedBufferAttribute(new Float32Array(l.perChunk * 4), 4);
+      const shape = new THREE.InstancedBufferAttribute(new Float32Array(l.perChunk * 4), 4);
+      geo.setAttribute('aOffset', offs);
+      geo.setAttribute('aShape', shape);
+      geo.instanceCount = 0;
+      geo.boundingSphere = new THREE.Sphere(); // set by fill(): the blades live in world space
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.receiveShadow = true;
+      mesh.visible = false;
+      mesh.matrixAutoUpdate = false;
+      group.add(mesh);
+      chunks.push({ mesh, geo, offs, shape, key: null, kept: 0, x0: 0, z0: 0 });
+    }
     uniforms.uRadius.value = (l.grid / 2 - 0.5) * l.chunk;
+    const h = Math.floor(l.grid / 2);
+    order = [];
+    for (let dz = -h; dz <= h; dz++) for (let dx = -h; dx <= h; dx++) order.push([dx, dz]);
+    order.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
   }
 
-  function fill(slot: number, cx: number, cz: number) {
+  /** Grow world chunk (cx, cz) into `c`: only the clumps that grow are written, packed at the front. */
+  function fill(c: Chunk, cx: number, cz: number) {
     const { chunk, perChunk } = level;
     const rnd = mulberry32(((cx * 73856093) ^ (cz * 19349663)) >>> 0);
-    const o = offs.array as Float32Array, s = shape.array as Float32Array;
-    const start = slot * perChunk;
+    const o = c.offs.array as Float32Array, s = c.shape.array as Float32Array;
+    let n = 0, y0 = Infinity, y1 = -Infinity;
     for (let i = 0; i < perChunk; i++) {
       const x = (cx + rnd()) * chunk, z = (cz + rnd()) * chunk;
       const y = surfaceAt(x, z);
       const d = grassDensity(x, z, y);
-      const keep = rnd() < d;
-      const k = (start + i) * 4;
+      if (!(rnd() < d)) continue;
+      const k = n++ * 4;
       o[k] = x; o[k + 1] = y - 0.03; o[k + 2] = z; o[k + 3] = rnd() * Math.PI * 2;
-      s[k] = keep ? (0.28 + rnd() * 0.42) * (0.55 + 0.45 * d) : 0;
+      s[k] = (0.28 + rnd() * 0.42) * (0.55 + 0.45 * d);
       s[k + 1] = 0.8 + rnd() * 0.7;
       s[k + 2] = rnd() < 0.04 ? 2 + Math.floor(rnd() * 3) + rnd() * 0.9 : rnd(); // a few wildflowers (hue >= 2)
       s[k + 3] = rnd();
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
     }
-    offs.addUpdateRange(start * 4, perChunk * 4);
-    shape.addUpdateRange(start * 4, perChunk * 4);
-    offs.needsUpdate = shape.needsUpdate = true;
+    c.key = `${cx},${cz}`;
+    c.kept = n;
+    c.x0 = cx * chunk;
+    c.z0 = cz * chunk;
+    if (!n) return;
+    c.offs.addUpdateRange(0, n * 4);
+    c.shape.addUpdateRange(0, n * 4);
+    c.offs.needsUpdate = c.shape.needsUpdate = true;
+    // the chunk's box (blades up to 0.7 m tall, bent up to ~1 m by the wind and the player's feet)
+    const half = chunk / 2;
+    c.geo.boundingSphere!.center.set(c.x0 + half, (y0 + y1) / 2 + 0.35, c.z0 + half);
+    c.geo.boundingSphere!.radius = Math.hypot(half * Math.SQRT2 + 1, (y1 - y0) / 2 + 0.8);
   }
 
   build(level);
   return {
-    mesh,
+    group,
     setQuality(q: 'low' | 'high') { if (LEVELS[q] !== level) build(LEVELS[q]); },
-    setVisible(v: boolean) { visible = v; mesh.visible = v; },
-    /** Re-centre on `focus` (a few chunks per call) and advance the wind. */
+    setVisible(v: boolean) { visible = v; group.visible = v; },
+    /** Re-centre on `focus` (a few chunks per call), thin the far chunks and advance the wind. */
     update(t: number, focus: THREE.Vector3, budget = 3) {
       uniforms.uTime.value = t;
       uniforms.uFocus.value.copy(focus);
       if (!visible) return;
       const { grid, chunk } = level;
-      const h = Math.floor(grid / 2);
       const ccx = Math.floor(focus.x / chunk), ccz = Math.floor(focus.z / chunk);
       let done = 0;
-      const first = slots.every((x) => x === null);
-      for (let dz = -h; dz <= h; dz++)
-        for (let dx = -h; dx <= h; dx++) {
-          const cx = ccx + dx, cz = ccz + dz;
-          const slot = (((cx % grid) + grid) % grid) + grid * (((cz % grid) + grid) % grid);
-          const key = `${cx},${cz}`;
-          if (slots[slot] === key) continue;
-          if (!first && done >= budget) continue;
-          fill(slot, cx, cz);
-          slots[slot] = key;
-          done++;
+      const first = chunks.every((c) => c.key === null);
+      for (const [dx, dz] of order) {
+        const cx = ccx + dx, cz = ccz + dz;
+        const c = chunks[(((cx % grid) + grid) % grid) + grid * (((cz % grid) + grid) % grid)];
+        if (c.key === `${cx},${cz}`) continue;
+        if (!first && done >= budget) break;
+        fill(c, cx, cz);
+        done++;
+      }
+      // draw a prefix of each chunk's clumps: all of them near the player, fewer where the blades
+      // shrink toward the edge of the field, none beyond it (this also hides a chunk that scrolled
+      // out of the field and has not been regrown yet)
+      const R = uniforms.uRadius.value;
+      for (const c of chunks) {
+        let n = 0;
+        if (c.kept) {
+          const ex = Math.max(c.x0 - focus.x, 0, focus.x - c.x0 - chunk);
+          const ez = Math.max(c.z0 - focus.z, 0, focus.z - c.z0 - chunk);
+          const d = Math.hypot(ex, ez);
+          if (d < R) n = Math.ceil(c.kept * (1 - 0.75 * ss(0.35 * R, R, d)));
         }
+        c.geo.instanceCount = n;
+        c.mesh.visible = n > 0;
+      }
     },
   };
 }

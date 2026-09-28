@@ -4,7 +4,8 @@ import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
 import { tex as fileTex } from './assets';
 import { WIND, createGrass } from './grass';
-import { drape, heightAt, makeTerrain } from './terrain';
+import { setWizardDetail } from './models';
+import { SEA_LEVEL, drape, heightAt, makeTerrain } from './terrain';
 import { cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
 
 const windTime = { value: 0 };
@@ -141,19 +142,25 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   windowMat.metalness = 0.3;
   const candleMat = glowMat(0xfff1c4);
   const leaf = new THREE.MeshStandardMaterial({ color: 0x2a4a26, roughness: 1, flatShading: true });
-  // tree crowns sway in the wind (more at the top), each tree with its own phase
+  // tree crowns sway in the wind (more at the top), each tree with its own phase. The lean is worked
+  // out in world space (every crown bends downwind, whatever its instance's yaw and scale; bigger
+  // crowns move further) and carried back into the crown's own space before instancing applies.
   leaf.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = windTime;
     sh.uniforms.uWind = { value: WIND };
     sh.vertexShader = 'uniform float uTime; uniform vec2 uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       #ifdef USE_INSTANCING
-        vec3 treePos = instanceMatrix[3].xyz;
+        mat4 treeM = instanceMatrix;
       #else
-        vec3 treePos = modelMatrix[3].xyz;
+        mat4 treeM = modelMatrix;
       #endif
+      vec3 treePos = treeM[3].xyz;
+      mat3 treeB = mat3(treeM);
       float lift = clamp(position.y + 0.5, 0.0, 1.0);
       float sw = sin(uTime * 1.1 + treePos.x * 0.13 + treePos.z * 0.07) * 0.7 + sin(uTime * 2.3 + treePos.z * 0.21) * 0.3;
-      transformed.xz += uWind * (0.35 + sw) * 0.045 * lift * lift;`);
+      vec3 lean = vec3(uWind.x, 0.0, uWind.y) * (0.35 + sw) * 0.045 * lift * lift * length(treeB[0]);
+      // inverse of (rotation x scale): transpose, then divide by each axis' squared scale
+      transformed += (transpose(treeB) * lean) / vec3(dot(treeB[0], treeB[0]), dot(treeB[1], treeB[1]), dot(treeB[2], treeB[2]));`);
   };
   leaf.customProgramCacheKey = () => 'leaf-sway';
   const trunk = new THREE.MeshStandardMaterial({ color: 0x3d2b1a, roughness: 1 });
@@ -171,7 +178,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   scene.add(terrain.group);
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ color: 0x0f1f2c, roughness: 0.12, metalness: 0.35 }));
   sea.rotation.x = -Math.PI / 2;
-  sea.position.y = -9; // below the lowest rolling ground (about -6 m); only the southern inlet dips under it
+  sea.position.y = SEA_LEVEL;
   scene.add(sea);
 
   // ---- paths and courtyard (cobbles, world-scaled)
@@ -224,8 +231,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
       const isHouse = o.style === 'house';
       const isGlass = o.label === 'Greenhouse Three';
+      // plain alpha-blended glass: a `transmission` material makes three.js re-render every opaque object
+      // (castle, grass, wizards) into a transmission target on each frame the greenhouse is on screen
       const mat = isGlass
-        ? new THREE.MeshPhysicalMaterial({ color: 0xcfeede, roughness: 0.05, transmission: 0.6, transparent: true, opacity: 0.55 })
+        ? new THREE.MeshStandardMaterial({ color: 0xcfeede, roughness: 0.06, metalness: 0.15, transparent: true, opacity: 0.42 })
         : isHouse ? M.tudor : o.style === 'wood' ? M.wood : M.stone;
       const b = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(w, o.h, d), w, o.h, d, isHouse ? 5 : 4), mat));
       b.position.set(cx, o.h / 2, cz);
@@ -521,6 +530,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   }
 
   // every window: a recessed pane of leaded glass inside a stone frame, all in two draw calls
+  // (at 'low' the frames swap to a coarser arch: 216 vertices each instead of 456, over some 400 windows)
+  const frameGeos: Record<'low' | 'high', THREE.BufferGeometry> = { high: null!, low: null! };
+  let frames: THREE.InstancedMesh;
   {
     const paneGeo = new THREE.ShapeGeometry(archShape(1, 2), 8);
     const uv = paneGeo.getAttribute('uv'), pp = paneGeo.getAttribute('position');
@@ -528,9 +540,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     paneGeo.translate(0, 0, 0.07);
     const frameShape = archShape(1.38, 2.34, -0.16);
     frameShape.holes.push(archHole(1, 2));
-    const frameGeo = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 8 });
+    frameGeos.high = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 8 });
+    frameGeos.low = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 3 });
     const panes = new THREE.InstancedMesh(paneGeo, windowMat, windows.length);
-    const frames = new THREE.InstancedMesh(frameGeo, M.darkStone, windows.length);
+    frames = new THREE.InstancedMesh(frameGeos.high, M.darkStone, windows.length);
     const mm = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
     windows.forEach((w, i) => {
       mm.compose(v.set(w.x, w.y, w.z), q.setFromAxisAngle(Y, w.yaw), sc.set(w.w, w.h / 2, 1));
@@ -623,10 +636,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   const lakeMirror = lake ? (lake as Water).onBeforeRender : null;
   // the lake's mirror pass re-renders the scene: leave the grass out of it (it is far too small to see in a reflection)
   const lakeReflect: typeof lakeMirror = lakeMirror && ((...args) => {
-    const was = grass.mesh.visible;
-    grass.mesh.visible = false;
+    const was = grass.group.visible;
+    grass.group.visible = false;
     lakeMirror.apply(lake, args);
-    grass.mesh.visible = was;
+    grass.group.visible = was;
   });
   let bannerKey: House | null | undefined;
   return {
@@ -634,6 +647,8 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     nightGlow, bannerSpots, lake, chimneys,
     setQuality(q) {
       grass.setQuality(q);
+      frames.geometry = frameGeos[q];
+      setWizardDetail(q); // the wizards in the world follow the world's quality
       // the lake's mirror pass re-renders the whole scene; freeze it on weak GPUs
       if (lake && lakeReflect) (lake as Water).onBeforeRender = q === 'high' ? lakeReflect : () => {};
     },
