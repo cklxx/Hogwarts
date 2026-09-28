@@ -1,6 +1,7 @@
 import type { CreatureKind, Element, House, ItemMod, ItemSlot } from '../shared/constants.js';
 import type { Node } from '../runes/parser.js';
 import type { Env } from '../runes/interp.js';
+import type { Aura, AuraKind } from './auras.js';
 
 export interface Vec2 { x: number; z: number }
 
@@ -81,13 +82,28 @@ export interface Wizard {
   eggs: { rorCrossings: number[]; rorSide: number; inErised: boolean };
   lastDuel: Record<string, number>;
   hurtAt: number;
+  /** Id of whoever last damaged this wizard. */
+  lastHurtBy: string | null;
   /** World time this wizard was last present (persisted). */
   lastSeenAt: number;
+  /** HUD corners unlocked by the reveal charm. */
+  ui: string[];
+  /** Restricted-Section seals broken (0..4), pages collected and recent failed attempts per tier. */
+  seals: number;
+  sealPages: Record<string, number[]>;
+  sealTries: Record<string, number[]>;
+  wasMinister: boolean;
+  /** Server-driven non-player wizard. */
+  npc: boolean;
+  auras: Aura[];
+  /** Per-wizard cooldown for phoenix tears. */
+  tearsAt: number;
 }
 
 export interface CreatureDef {
   kind: CreatureKind;
   name: string;
+  faction: 'hostile' | 'benign' | 'summon';
   hp: number;
   speed: number;
   damage: number;
@@ -101,6 +117,17 @@ export interface CreatureDef {
   weak: Partial<Record<Element, number>>;
   allDamage?: number;
   nightOnly?: boolean;
+  dayOnly?: boolean;
+  flying?: boolean;
+  invulnerable?: boolean;
+  /** Chance per spawn check (every 2s) that a rare creature appears. */
+  rare?: number;
+  /** Seconds before a spawned creature leaves on its own. */
+  lifetime?: number;
+  /** Aura applied to whoever it hits. */
+  bite?: { aura: AuraKind; secs: number; mag: number };
+  /** Aura granted to wizards standing near it. */
+  grace?: { radius: number; mag: number };
   spawn: { x: number; z: number; r: number; max: number };
   lore: string;
 }
@@ -119,6 +146,10 @@ export interface Creature {
   wander: Vec2 | null;
   lastHitBy: string | null;
   damageBy: Record<string, number>;
+  auras: Aura[];
+  /** Conjured creatures: who they serve and when they vanish. */
+  owner: string | null;
+  until: number;
 }
 
 export interface Projectile {
@@ -158,7 +189,7 @@ export interface WorldEvent {
 }
 
 export interface Fx {
-  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban';
+  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal';
   x: number;
   z: number;
   r?: number;
@@ -166,6 +197,8 @@ export interface Fx {
   h?: string;
   /** damage dealt, for floating numbers */
   n?: number;
+  /** polyline x,z pairs (chain lightning) */
+  pts?: number[];
 }
 
 export interface Term { n: number; startedAt: number; endsAt: number }

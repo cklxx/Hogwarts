@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Water } from 'three/addons/objects/Water.js';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
+import { tex as fileTex } from './assets';
 import { cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
 
 export interface WorldScene {
@@ -27,7 +28,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   const leaf = new THREE.MeshStandardMaterial({ color: 0x2a4a26, roughness: 1, flatShading: true });
   const trunk = new THREE.MeshStandardMaterial({ color: 0x3d2b1a, roughness: 1 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 });
-  const rock = new THREE.MeshStandardMaterial({ color: 0x2b2b30, roughness: 1, flatShading: true });
+  const rock = M.rock;
   const marble = new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.25 });
   const add = <T extends THREE.Object3D>(o: T, shadow = true) => {
     if (shadow) o.traverse((c) => { if ((c as THREE.Mesh).isMesh) { c.castShadow = true; c.receiveShadow = true; } });
@@ -78,8 +79,8 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   road(20, -60, 40, -122, 3);
   road(-10, -5, -52, 26, 2.5);
   const courtGeo = new THREE.PlaneGeometry(50, 36);
-  courtGeo.getAttribute('uv').array.forEach((_, i, a) => { (a as Float32Array)[i] *= i % 2 ? 12 : 16; });
-  const court = new THREE.Mesh(courtGeo, M.path);
+  courtGeo.getAttribute('uv').array.forEach((_, i, a) => { (a as Float32Array)[i] *= i % 2 ? 9 : 12.5; });
+  const court = new THREE.Mesh(courtGeo, M.flagstone);
   court.rotation.x = -Math.PI / 2;
   court.position.set(0, 0.03, -22);
   court.receiveShadow = true;
@@ -143,8 +144,14 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     switch (o.style) {
       case 'water': {
         const geo = new THREE.CircleGeometry(o.r, 64);
+        const shore = new THREE.Mesh(new THREE.RingGeometry(o.r - 1, o.r + 7, 72, 1), M.sand);
+        shore.rotation.x = -Math.PI / 2;
+        shore.position.set(o.x, 0.04, o.z);
+        shore.receiveShadow = true;
+        scene.add(shore);
+        const normals = fileTex('water_normal.webp', { srgb: false, fallback: waterNormals() });
         lake = new Water(geo, {
-          textureWidth: 512, textureHeight: 512, waterNormals: waterNormals(),
+          textureWidth: 512, textureHeight: 512, waterNormals: normals,
           sunDirection: new THREE.Vector3(0.5, 0.8, 0.2), sunColor: 0xfff1d6, waterColor: 0x0c2a3a, distortionScale: 2.2, fog: true,
         });
         lake.rotation.x = -Math.PI / 2;

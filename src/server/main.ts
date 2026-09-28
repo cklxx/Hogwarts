@@ -7,6 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { warmPathfinding } from '../kernel/pathfind.js';
+import { ensureNpcs } from '../kernel/npc.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
@@ -37,6 +38,7 @@ function load(): World {
 }
 const world = load();
 warmPathfinding();
+ensureNpcs(world, Number(process.env.NPC_COUNT ?? 4));
 function save() {
   mkdirSync(dirname(DATA), { recursive: true });
   writeFileSync(DATA + '.tmp', JSON.stringify(world.serialize()));
@@ -88,7 +90,7 @@ const tokenOf = (req: IncomingMessage, url: URL) => {
   return (req.headers['x-wizard-token'] as string | undefined) ?? url.searchParams.get('token') ?? undefined;
 };
 
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon' };
+const MIME: Record<string, string> = { '.webp': 'image/webp', '.hdr': 'application/octet-stream', '.md': 'text/markdown; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon' };
 function serveStatic(res: ServerResponse, path: string) {
   if (!existsSync(DIST)) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -179,7 +181,10 @@ type ClientMsg =
   | { t: 'simulate'; source: string; x?: number; z?: number; target?: string }
   | { t: 'forge'; name: string; incantation?: string; source: string; slot?: number }
   | { t: 'unlearn'; spell: string }
-  | { t: 'hotbar'; slots: (string | null)[] };
+  | { t: 'hotbar'; slots: (string | null)[] }
+  | { t: 'seals' }
+  | { t: 'readpage'; tier: number }
+  | { t: 'breakseal'; tier: number; words: string[] };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -189,7 +194,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
   const w = world.wizards.get(wid);
   if (!w || !m || typeof m !== 'object') return;
   const reply = (o: unknown) => ws.send(JSON.stringify(o));
-  const book = () => reply({ t: 'book', armory: world.armory(wid), grimoire: grimoire(w.year, world.rules) });
+  const book = () => reply({ t: 'book', armory: world.armory(wid), grimoire: grimoire(w.year, world.rules, w.seals) });
   try {
     switch (m.t) {
       case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
@@ -206,6 +211,18 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
         break;
       }
       case 'unlearn': world.unlearn(wid, String(m.spell)); book(); break;
+      case 'seals': {
+        const tier = Math.min(4, w.seals + 1);
+        reply({ t: 'seals', section: world.restrictedSection(wid), current: world.inspectSeal(wid, tier) });
+        break;
+      }
+      case 'readpage': reply({ t: 'sealmsg', ok: true, r: world.readSealPage(wid, Number(m.tier)) }); handleClient(ws, wid, { t: 'seals' }); break;
+      case 'breakseal': {
+        const words = Array.isArray(m.words) ? m.words.slice(0, 4).map(String) : [];
+        reply({ t: 'sealmsg', ok: true, r: world.breakSeal(wid, Number(m.tier), words) });
+        handleClient(ws, wid, { t: 'seals' });
+        break;
+      }
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
     }
   } catch (e) {

@@ -4,18 +4,18 @@ import { LANDMARKS, OBSTACLES } from '../src/shared/map';
 import { createDecor, type Look } from './decor';
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
-import { makeBolt, makeCreature, makeWizard, wizardColor, type WizardModel } from './models';
+import { makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, wizardColor, type WizardModel } from './models';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
-interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; s: string; say?: string }
-interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number }
+interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string }
+interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
-interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number }
+interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
 interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
   hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number } | null)[];
-  stunned: number; jailed: number; decree: boolean; map: { name: string; registry: string; house: string; year: number; where: string; x: number; z: number }[] | null; proclamation: string;
+  stunned: number; jailed: number; decree: boolean; title: { zh: string; en: string; next: { zh: string; en: string; how: string } | null }; ui: string[]; seals: number; map: { name: string; registry: string; house: string; year: number; where: string; x: number; z: number }[] | null; proclamation: string;
 }
 interface Ev { id: number; type: string; text: string; to?: string }
 
@@ -88,8 +88,8 @@ let me: Me | null = null;
 let myHandle = '';
 let token = '';
 let ws: WebSocket | null = null;
-const wizards = new Map<string, WizardModel & { tx: number; tz: number; tf: number }>();
-const creatures = new Map<string, ReturnType<typeof makeCreature> & { tx: number; tz: number; tf: number }>();
+const wizards = new Map<string, WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh }>();
+const creatures = new Map<string, ReturnType<typeof makeCreature> & { tx: number; tz: number; tf: number; aura: THREE.Mesh }>();
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
 const effects: { obj: THREE.Object3D; t: number; life: number; update: (k: number, o: THREE.Object3D) => void }[] = [];
 let camYaw = 0, camPitch = 0.45, camDist = 14;
@@ -114,6 +114,8 @@ function connect() {
     else if (msg.t === 'cast' && !msg.r.ok) toast(`✗ ${msg.r.spell}: ${msg.r.error}`);
     else if (msg.t === 'cast' && msg.r.notes?.length) toast(msg.r.notes.join(' · '));
     else if (msg.t === 'book') renderBook(msg.armory, msg.grimoire);
+    else if (msg.t === 'seals') renderSeals(msg.section, msg.current);
+    else if (msg.t === 'sealmsg') { const r = msg.r; toast(r.runes ? `📜 Page ${r.page}/${r.of} of seal ${r.tier} copied into your notes.` : r.opened ? `📕 The seal opens! ${r.reward}` : `✗ ${r.message}`); }
     else if (msg.t === 'sim') showSim(msg.r);
     else if (msg.t === 'forged') { bookOut(`✓ Forged ${msg.name}.${msg.notes.length ? '\n' + msg.notes.join('\n') : ''}`, 'good'); }
     else if (msg.t === 'err') { if (!$('#book').hidden) bookOut(`✗ ${msg.error}`, 'bad'); else toast(`✗ ${msg.error}`); }
@@ -129,14 +131,16 @@ function apply(s: Snap) {
     seenW.add(w.h);
     let m = wizards.get(w.h);
     if (!m) {
-      m = Object.assign(makeWizard(w.ho, w.h === myHandle), { tx: w.x, tz: w.z, tf: w.f });
+      m = Object.assign(makeWizard(w.ho, w.h === myHandle), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() });
+      m.root.add(m.aura);
       m.root.position.set(w.x, 0, w.z);
       scene.add(m.root);
       wizards.set(w.h, m);
     }
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
-    const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '');
-    m.label.draw(`${w.n} · Y${w.y}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
+    const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
+    m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
+    setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
     m.glow.intensity = w.s.includes('L') ? 30 : 0;
     m.root2.visible = w.s.includes('R');
@@ -153,13 +157,17 @@ function apply(s: Snap) {
     seenC.add(c.i);
     let m = creatures.get(c.i);
     if (!m) {
-      m = Object.assign(makeCreature(c.k), { tx: c.x, tz: c.z, tf: c.f });
+      m = Object.assign(makeCreature(c.k), { tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing() });
+      m.root.add(m.aura);
       m.root.position.set(c.x, 0, c.z);
       scene.add(m.root);
       creatures.set(c.i, m);
     }
     m.tx = c.x; m.tz = c.z; m.tf = c.f;
-    m.label.draw(NAMES[c.k], '#ffdddd', c.hp / c.m);
+    const mine = c.o === myHandle;
+    const benign = c.k === 'unicorn' || c.k === 'phoenix';
+    m.label.draw(c.o ? `${NAMES[c.k]} (${mine ? 'yours' : 'conjured'})` : NAMES[c.k], mine ? '#b8ffb8' : c.o ? '#ffd9a0' : benign ? '#ffffff' : '#ffdddd', c.hp / c.m);
+    setAuraRing(m.aura, c.s + (mine ? 'g' : ''), clock);
   }
   for (const [i, m] of creatures) if (!seenC.has(i)) { puff(m.root.position.x, m.root.position.z, 0x333333); scene.remove(m.root); creatures.delete(i); }
 
@@ -177,7 +185,7 @@ function apply(s: Snap) {
   if (s.elder) elderGlint.position.set(s.elder.x, 2.6, s.elder.z);
 }
 
-const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "Devil's Snare", spider: 'Acromantula', troll: 'Mountain Troll', dementor: 'Dementor' };
+const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "Devil's Snare", spider: 'Acromantula', troll: 'Mountain Troll', dementor: 'Dementor', inferius: 'Inferius', unicorn: 'Unicorn', phoenix: 'Fawkes', serpent: 'Serpent', birds: 'Birds' };
 
 // ------------------------------------------------------------------ effects
 function addEffect(obj: THREE.Object3D, life: number, update: (k: number, o: THREE.Object3D) => void) {
@@ -216,6 +224,17 @@ function floatText(x: number, z: number, text: string, color: string) {
   addEffect(sp, 1.1, (k, o) => { o.position.y = 2.4 + k * 1.8; (o as THREE.Sprite).material.opacity = 1 - k * k; if (k >= 1) tex.dispose(); });
 }
 
+/** A jagged bolt through the given x,z points (at chest height, or from the sky when `sky` > 0). */
+function lightning(pts: number[], color: number, sky = 0) {
+  const v: THREE.Vector3[] = [];
+  for (let i = 0; i + 1 < pts.length; i += 2) v.push(new THREE.Vector3(pts[i], i === 0 && sky ? sky : 1.3, pts[i + 1]));
+  const jag: THREE.Vector3[] = [];
+  for (let i = 0; i + 1 < v.length; i++) for (let k = 0; k < 6; k++) jag.push(v[i].clone().lerp(v[i + 1], k / 6).add(new THREE.Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6)));
+  jag.push(v[v.length - 1]);
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(jag), new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(4), transparent: true }));
+  addEffect(line, 0.35, (k, o) => { ((o as THREE.Line).material as THREE.LineBasicMaterial).opacity = 1 - k; });
+}
+
 function spawnFx(f: Fx) {
   const col = f.e ? ELEMENT_COLORS[f.e] : 0xffffff;
   switch (f.k) {
@@ -231,6 +250,11 @@ function spawnFx(f: Fx) {
     case 'willow': ring(f.x, f.z, 0x6b4a2b, 2, 8, 0.4, 1.5); break;
     case 'cast': break;
     case 'azkaban': column(f.x, f.z, 0x000000, 1.5); break;
+    case 'chain': if (f.pts) lightning(f.pts, col); break;
+    case 'storm': ring(f.x, f.z, 0x9fb8ff, f.r ?? 6, (f.r ?? 6) * 0.2, 1.5, 0.3); column(f.x, f.z, 0x5a6aff, 1.5); break;
+    case 'stormhit': ring(f.x, f.z, col, 0.5, f.r ?? 6, 0.7); for (let i = 0; i < 4; i++) lightning([f.x + (Math.random() - 0.5) * (f.r ?? 6), f.z + (Math.random() - 0.5) * (f.r ?? 6), f.x, f.z], col, 40); break;
+    case 'reveal': ring(f.x, f.z, 0xffe9a0, 0.3, 3, 0.8, 1.2); break;
+    case 'seal': column(f.x, f.z, 0xd4af37, 2); ring(f.x, f.z, 0xd4af37, 0.5, 5, 1.5); break;
   }
   if (f.k === 'cast' && f.h) {
     const w = wizards.get(f.h);
@@ -258,11 +282,28 @@ function toast(text: string) { feed({ id: 0, type: 'system', text, to: 'me' }, f
 
 function hud() {
   if (!me || !snap) return;
-  $('#me').innerHTML = `<div class="house" style="color:${wizardColor(me.house)}">${esc(me.name)} · ${me.house}</div>
-    <div>Year ${me.year} · ⭐ ${me.reputation} reputation · 🪙 ${me.galleons} Galleons</div>${me.decree ? '<div style="color:#9fd3ff">⚖️ Minister for Magic — you hold an unspent decree (MCP: decree)</div>' : ''}`;
+  const has = (k: string) => me!.ui.includes(k);
+  // top-left: always your title and name; Revelio reveals your own measure
+  $('#me').innerHTML = `<div class="house" style="color:${wizardColor(me.house)}"><span class="title">${esc(me.title.zh)} ${esc(me.title.en)}</span> ${esc(me.name)} · ${me.house}</div>` +
+    (has('revelio')
+      ? `<div>Year ${me.year} · ⭐ ${me.reputation} reputation · 🪙 ${me.galleons} Galleons · 📕 ${me.seals}/4 seals</div>${me.title.next ? `<div class="hint">Next: ${esc(me.title.next.zh)} ${esc(me.title.next.en)} — ${esc(me.title.next.how)}</div>` : ''}`
+      : '<div class="locked">✨ Cast <b>Revelio</b> to see your own measure</div>') +
+    (me.decree ? '<div style="color:#9fd3ff">⚖️ Minister for Magic — you hold an unspent decree (MCP: decree)</div>' : '');
+  // top-right: Tempus
   const h = snap.hour;
   const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
-  $('#clock').innerHTML = `${snap.night ? '🌙' : '☀️'} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${snap.weather}<br/>Term ${snap.term.n} ends in ${fmtT(snap.term.left)}<br/><i style="opacity:.8">"${esc(me.proclamation)}"</i>`;
+  $('#clock').innerHTML = has('tempus')
+    ? `${snap.night ? '🌙' : '☀️'} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${snap.weather}<br/>Term ${snap.term.n} ends in ${fmtT(snap.term.left)}<br/><i style="opacity:.8">"${esc(me.proclamation)}"</i>`
+    : `<span class="locked">🕰️ Cast <b>Tempus</b> to know the hour</span><br/><i style="opacity:.8">"${esc(me.proclamation)}"</i>`;
+  // bottom-right: Homenum Revelio
+  const pres = $('#presence');
+  if (has('homenum')) {
+    const my = wizards.get(myHandle);
+    const near = snap.w.filter((x) => x.h !== myHandle && my && Math.hypot(x.x - my.root.position.x, x.z - my.root.position.z) < 60)
+      .map((x) => ({ x, d: Math.hypot(x.x - my!.root.position.x, x.z - my!.root.position.z), a: Math.atan2(x.x - my!.root.position.x, -(x.z - my!.root.position.z)) }))
+      .sort((a, b) => a.d - b.d).slice(0, 6);
+    pres.innerHTML = '<b>Homenum Revelio</b>' + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${a - camYaw}rad)">↑</span> <span style="color:${wizardColor(x.ho)}">[${esc(x.t)}] ${esc(x.n)}</span> ${Math.round(d)}m${x.s.includes('X') ? ' 💫' : ''}</div>`).join('') : '<div class="hint">No one within 60m.</div>');
+  } else pres.innerHTML = '<span class="locked">👁️ Year 3: cast <b>Homenum Revelio</b> to sense who is near</span>';
   bar('.hp', me.hp, me.maxHp, `${me.hp} / ${me.maxHp}`);
   bar('.mana', me.mana, me.maxMana, `${me.mana} / ${me.maxMana} mana`);
   bar('.xp', me.xpNext ? me.xp : 1, me.xpNext ?? 1, '');
@@ -296,6 +337,14 @@ function drawMinimap() {
   const g = c.getContext('2d')!;
   const my = wizards.get(myHandle);
   if (!my || !snap) return;
+  if (!me?.ui.includes('point-me')) {
+    // bottom-left stays dark until the Four-Point Spell
+    g.clearRect(0, 0, 220, 220);
+    g.fillStyle = 'rgba(10,10,20,.7)'; g.beginPath(); g.arc(110, 110, 108, 0, 7); g.fill();
+    g.fillStyle = '#d4af37'; g.font = 'italic 15px Georgia'; g.textAlign = 'center';
+    g.fillText('Year 2: cast', 110, 100); g.fillText('Point Me', 110, 122); g.textAlign = 'left';
+    return;
+  }
   const cx = my.root.position.x, cz = my.root.position.z, S = 1.1;
   g.clearRect(0, 0, 220, 220);
   g.save();
@@ -399,6 +448,22 @@ $('#sp-forge').onclick = () => {
   const slot = Number($<HTMLSelectElement>('#sp-slot').value) || undefined;
   send({ t: 'forge', name: $<HTMLInputElement>('#sp-name').value, incantation: $<HTMLInputElement>('#sp-inc').value || undefined, source: $<HTMLTextAreaElement>('#sp-src').value, slot });
 };
+$('#sp-cast').onclick = () => { if (bookSel) send({ t: 'cast', key: bookSel, x: aim.x, z: aim.z, target: aimTarget ?? undefined }); };
+
+// ------------------------------------------------------------------ the Restricted Section (seals)
+let sealTier = 1;
+function toggleSeals() { const s = $('#seals'); s.hidden = !s.hidden; if (!s.hidden) send({ t: 'seals' }); }
+type SealInfo = { tier: number; name: string; requiresYear: number; inputWords: number; reward: string; state: string; pages: { page: number; where: string; collected: boolean }[] };
+function renderSeals(section: { progress: string; seals: SealInfo[]; codex: string[] }, current: { tier: number; name: string; inputWords: number; pagesCollected: string; runes: string; broken: boolean }) {
+  sealTier = current.tier;
+  $('#seal-list').innerHTML = section.seals.map((x) => `<div class="${x.state === 'broken' ? 'broken' : ''}"><b>${esc(x.name)}</b><br/>${esc(x.state)} · year ${x.requiresYear} · ${x.inputWords} word(s)<br/><i>${esc(x.reward)}</i><br/>${x.pages.map((p) => `${p.collected ? '📜' : '▫️'} ${esc(p.where)}`).join('<br/>')}</div>`).join('');
+  $('#seal-title').textContent = `${current.name} — ${current.pagesCollected} pages${current.broken ? ' (broken)' : ''}`;
+  $('#seal-runes').textContent = current.runes;
+  $('#seal-codex').textContent = section.codex.join('\n');
+}
+$('#seal-read').onclick = () => send({ t: 'readpage', tier: sealTier });
+$('#seal-break').onclick = () => send({ t: 'breakseal', tier: sealTier, words: $<HTMLInputElement>('#seal-words').value.split(/[\s,]+/).filter(Boolean) });
+
 $('#sp-forget').onclick = () => { const n = $<HTMLInputElement>('#sp-name').value; if (n) send({ t: 'unlearn', spell: n }); };
 
 // ------------------------------------------------------------------ input
@@ -416,10 +481,12 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
+  if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'Enter') { chat.focus(); e.preventDefault(); return; }
   if (e.key === 'Tab') { e.preventDefault(); showBoard(); return; }
   if (e.key === 'Escape') {
     if (!$('#book').hidden) { $('#book').hidden = true; return; }
+    if (!$('#seals').hidden) { $('#seals').hidden = true; return; }
     $('#menu').hidden = !$('#menu').hidden; $('#board').hidden = true; return;
   }
   if (/^[1-6]$/.test(e.key)) { selected = Number(e.key) - 1; castSelected(); return; }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { tex as fileTex } from './assets';
 
 /**
  * Every texture in the game is painted at startup on a <canvas> — no image assets.
@@ -272,13 +273,28 @@ export function makeMaterials() {
   const cob = cobbles();
   const grassTex = grass();
   grassTex.repeat.set(90, 90);
+  // Open-source PBR sets where we have them (procedural textures stay as fallbacks and for the rest).
+  const stoneSet = () => ({
+    map: fileTex('stone_color.webp', { fallback: st.map }),
+    normalMap: fileTex('stone_normal.webp', { srgb: false }),
+    roughnessMap: fileTex('stone_rough.webp', { srgb: false }),
+    aoMap: fileTex('stone_ao.webp', { srgb: false }),
+  });
+  const grassFile = fileTex('grass_color.webp', { fallback: grassTex, repeat: 110 });
+  const woodSet = { map: fileTex('wood_color.webp', { fallback: wood() }), bumpMap: fileTex('wood_bump.webp', { srgb: false }), roughnessMap: fileTex('wood_rough.webp', { srgb: false }) };
+  const flag = stoneSet();
+  for (const t of Object.values(flag)) t.repeat.set(0.5, 0.5);
   return {
-    stone: new THREE.MeshStandardMaterial({ map: st.map, bumpMap: st.bump, bumpScale: 2.5, roughness: 0.92 }),
-    darkStone: new THREE.MeshStandardMaterial({ map: dark.map, bumpMap: dark.bump, bumpScale: 2.5, roughness: 0.95 }),
+    stone: new THREE.MeshStandardMaterial({ ...stoneSet(), normalScale: new THREE.Vector2(1.2, 1.2), aoMapIntensity: 0.8 }),
+    darkStone: new THREE.MeshStandardMaterial({ ...stoneSet(), color: 0x8f8a84, normalScale: new THREE.Vector2(1.2, 1.2) }),
     roof: new THREE.MeshStandardMaterial({ map: slate(), roughness: 0.6, metalness: 0.1 }),
-    grass: new THREE.MeshStandardMaterial({ map: grassTex, vertexColors: true, roughness: 1 }),
-    path: new THREE.MeshStandardMaterial({ map: cob.map, bumpMap: cob.bump, bumpScale: 3, roughness: 0.95 }),
-    wood: new THREE.MeshStandardMaterial({ map: wood(), roughness: 0.85 }),
+    grass: new THREE.MeshStandardMaterial({ map: grassFile, vertexColors: true, roughness: 1 }),
+    path: new THREE.MeshStandardMaterial({ map: fileTex('gravel_color.webp', { fallback: cob.map }), bumpMap: cob.bump, bumpScale: 1.5, roughness: 0.95 }),
+    flagstone: new THREE.MeshStandardMaterial({ ...flag, color: 0xb8b0a4, roughness: 0.85 }),
+    wood: new THREE.MeshStandardMaterial({ ...woodSet, bumpScale: 1.5 }),
     tudor: new THREE.MeshStandardMaterial({ map: tudor(), roughness: 0.9, emissive: 0x000000 }),
+    rock: new THREE.MeshStandardMaterial({ map: fileTex('rock_color.webp'), roughness: 0.95 }),
+    sand: new THREE.MeshStandardMaterial({ map: fileTex('sand_color.webp', { repeat: 30 }), roughness: 1 }),
+    moss: new THREE.MeshStandardMaterial({ map: fileTex('moss_color.webp'), roughness: 1 }),
   };
 }

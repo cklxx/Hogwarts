@@ -1,4 +1,4 @@
-import type { EffectPrimitive, Element } from '../shared/constants.js';
+import { SUMMON_KINDS, SUMMON_YEAR, UI_CHARMS, type EffectPrimitive, type Element, type SummonKind, type UiCharm } from '../shared/constants.js';
 import { inZone, ZONES } from '../shared/map.js';
 import { analyze } from '../runes/checker.js';
 import { Env, Interp, type RuneHost, type Value, display, isRef, isVec, ref, vec } from '../runes/interp.js';
@@ -42,7 +42,7 @@ export interface CastReport {
  */
 export function execute(world: World, w: Wizard, program: Node[], ctx: CastContext, env0?: Env): CastReport {
   const rb = world.rules;
-  const caps: Caps = capsFor(ctx.free ? 7 : w.year);
+  const caps: Caps = ctx.free ? capsFor(7, 0) : capsFor(w.year, w.seals);
   const plan: Planned[] = [];
   const pendings: Pending[] = [];
   const notes: string[] = [];
@@ -84,7 +84,11 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
     rand: () => world.rand(),
     query: (name, args, at) => {
       switch (name) {
-        case 'enemies': return world.around(w.pos, args[0] as number, (e) => world.canHarm(w.id, e.id), w.id).map((e) => ref(e.id));
+        // benign creatures are never 'enemies' (so area spells don't curse you by accident); target them explicitly if you must
+        case 'enemies': return world.around(w.pos, args[0] as number, (e) => world.canHarm(w.id, e.id) && !world.isBenign(e.id), w.id).map((e) => ref(e.id));
+        case 'fallen': return world.fallen(w.pos, args[0] as number, w.id).map((x) => ref(x.id));
+        case 'summons': return [...world.creatures.values()].filter((c) => c.owner === w.id).map((c) => ref(c.id));
+        case 'afflicted': return world.afflicted((args[0] as { id: string }).id);
         case 'allies': return world.around(w.pos, args[0] as number, (e) => world.wizards.get(e.id)?.house === w.house, w.id).map((e) => ref(e.id));
         case 'creatures': return world.around(w.pos, args[0] as number, (e) => world.creatures.has(e.id), w.id).map((e) => ref(e.id));
         case 'wizards': return world.around(w.pos, args[0] as number, (e) => world.wizards.has(e.id), w.id).map((e) => ref(e.id));
@@ -188,9 +192,67 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
           const secs = Math.min(caps.lightSecs, Math.max(1, (args[0] as number) ?? 30));
           return push({}, 'lumos', () => { w.st.lightUntil = world.now + secs; });
         }
+        case 'reveal': {
+          const key = String(args[0]) as UiCharm;
+          if (!(key in UI_CHARMS)) throw new RuneError(`reveal what? one of :${Object.keys(UI_CHARMS).join(' :')}`, at.line, at.col);
+          if (!ctx.free && UI_CHARMS[key] > w.year) throw new RuneError(`:${key} is year-${UI_CHARMS[key]} magic`, at.line, at.col);
+          return push({}, `reveal ${key}`, () => world.reveal(w, key));
+        }
+        case 'chain': {
+          const t = harmable(args[0], at, caps.boltRange);
+          if (!world.canHarm(w.id, t.id)) throw new RuneError(`you cannot harm ${t.name} here`, at.line, at.col);
+          const power = clampNote('chain power', Math.max(0, args[1] as number), caps.chainPower);
+          const element = ((args[2] as Element) ?? 'lightning') as Element;
+          return push({ power }, `chain ${t.name} ${fmt(power)} ${element}`, () => world.chain(w, t.id, power, element, caps.chainJumps, tagsFor(ctx)));
+        }
+        case 'storm': {
+          const to = posOf(args[0], at);
+          if (dist(to, w.pos) > caps.stormRange) throw new RuneError(`the storm must gather within ${caps.stormRange}m`, at.line, at.col);
+          const radius = clampNote('storm radius', Math.max(1, args[1] as number), caps.stormRadius);
+          const power = clampNote('storm power', Math.max(0, args[2] as number), caps.stormPower);
+          const element = ((args[3] as Element) ?? 'lightning') as Element;
+          return push({ power, radius }, `storm r${fmt(radius)} ${fmt(power)} ${element}`, () => world.storm(w, to, radius, power, element, tagsFor(ctx)));
+        }
         case 'say': {
           const text = show(args[0]);
           return push({}, `say "${text}"`, () => world.say(w, text, 'spell'));
+        }
+        case 'regen': {
+          const t = wizardArg(args[0], at, caps.supportRange);
+          const rate = clampNote('regen rate', Math.max(0, args[1] as number), caps.regenRate);
+          const secs = clampNote('regen secs', Math.max(0, args[2] as number), caps.regenSecs);
+          return push({ rate, secs }, `regen ${t.name} ${fmt(rate)}/s for ${fmt(secs)}s`, () => world.regen(w, t, rate, secs));
+        }
+        case 'cleanse': {
+          const id = (args[0] as { id: string }).id;
+          const t = world.wizards.get(id) ?? world.creatures.get(id);
+          const mineOrWizard = t && ('house' in t ? world.isActive(t) : t.owner === w.id);
+          if (!t || !mineOrWizard) throw new RuneError('cleanse a wizard in play or one of your own summons', at.line, at.col);
+          if (dist(t.pos, w.pos) > caps.supportRange) throw new RuneError(`out of range (${caps.supportRange}m)`, at.line, at.col);
+          return push({}, `cleanse ${world.entity(id)!.name}`, () => world.cleanse(w, t));
+        }
+        case 'revive': {
+          const t = world.wizards.get((args[0] as { id: string }).id);
+          if (!t || !t.st.stunnedUntil || t.st.jailedUntil || !world.online(t)) throw new RuneError('revive needs a stunned wizard', at.line, at.col);
+          if (dist(t.pos, w.pos) > caps.reviveRange) throw new RuneError(`too far to revive (${caps.reviveRange}m)`, at.line, at.col);
+          return push({}, `revive ${t.name}`, () => world.revive(w, t));
+        }
+        case 'mend': {
+          const radius = clampNote('mend radius', Math.max(0, args[0] as number), caps.mendRadius);
+          const amount = clampNote('mend amount', Math.max(0, args[1] as number), caps.mendAmount);
+          return push({ amount, radius }, `mend r${fmt(radius)} ${fmt(amount)}`, () => world.mend(w, radius, amount));
+        }
+        case 'summon': {
+          const kind = String(args[0]) as SummonKind;
+          if (!(SUMMON_KINDS as readonly string[]).includes(kind)) throw new RuneError(`summon what? one of :${SUMMON_KINDS.join(' :')}`, at.line, at.col);
+          if (!ctx.free && SUMMON_YEAR[kind] > w.year) throw new RuneError(`:${kind} is year-${SUMMON_YEAR[kind]} conjuration`, at.line, at.col);
+          if (rb.magic.maxSummons < 1) throw new RuneError('conjuration is forbidden by Ministry decree (maxSummons = 0)', at.line, at.col);
+          const secs = clampNote('summon secs', Math.max(1, (args[1] as number) ?? 20), caps.summonSecs);
+          return push({ base: kind === 'serpent' ? 30 : 40, secs }, `summon ${kind} for ${fmt(secs)}s`, () => world.summon(w, kind, secs));
+        }
+        default: {
+          const never: never = name;
+          throw new RuneError(`unimplemented effect ${never}`, at.line, at.col);
         }
       }
     },

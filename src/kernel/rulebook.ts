@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, type CreatureKind, type EffectPrimitive, type Element } from '../shared/constants.js';
+import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, type EffectPrimitive, type Element, type WildKind } from '../shared/constants.js';
 
 /**
  * The Rulebook is ALL the policy of the world. The kernel is pure mechanism and reads every tunable
@@ -20,7 +20,7 @@ const elementMultipliers = z
   .describe('Global damage multiplier per element');
 
 const creatureToggles = z
-  .object(Object.fromEntries(CREATURE_KINDS.map((k) => [k, z.boolean().default(true)])) as Record<CreatureKind, z.ZodDefault<z.ZodBoolean>>)
+  .object(Object.fromEntries(CREATURE_KINDS.map((k) => [k, z.boolean().default(true)])) as Record<WildKind, z.ZodDefault<z.ZodBoolean>>)
   .prefault({})
   .describe('Which creatures may spawn');
 
@@ -49,6 +49,7 @@ export const RulebookSchema = z.object({
       healingMultiplier: num(0, 4, 1, 'Global healing multiplier'),
       elementMultipliers,
       respawnSeconds: num(1, 30, 5, 'Seconds a stunned wizard waits in the Hospital Wing'),
+      elementStatuses: z.boolean().default(true).describe('Fire sets things burning, ice chills them'),
       safeZones: z.array(z.enum(['great_hall', 'courtyard', 'hogsmeade', 'greenhouses'])).max(4).default(['great_hall']).describe('Zones where nobody can be harmed'),
     })
     .prefault({}),
@@ -64,6 +65,7 @@ export const RulebookSchema = z.object({
       unforgivablesBanned: z.boolean().default(true).describe('Casting an Unforgivable Curse earns a stay in Azkaban'),
       nodesPerYear: num(10, 80, 25, 'Extra spell complexity (AST nodes) per year; base 40'),
       gasPerYear: num(20, 400, 60, 'Extra runtime gas per year; base 150'),
+      maxSummons: num(0, 4, 1, 'Conjured creatures a wizard may keep at once (a new one dismisses the oldest)'),
     })
     .prefault({}),
   progression: z

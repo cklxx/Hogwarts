@@ -6,13 +6,13 @@ import { CURRICULUM } from '../lore/spells.js';
 import { PRIMS, SPECIAL_DOCS, capsFor } from '../runes/primitives.js';
 
 /** The spell-language manual, generated from the same tables the interpreter uses. */
-export function grimoire(year: number, rb: Rulebook): string {
-  const caps = capsFor(year);
+export function grimoire(year: number, rb: Rulebook, seals = 0): string {
+  const caps = capsFor(year, seals);
   const sig = (p: (typeof PRIMS)[number]) => `(${[p.name, ...p.args.map((a) => (a.optional ? `${a.name}?` : a.name)), ...(p.variadic ? ['...'] : [])].join(' ')})`;
   const section = (kind: 'pure' | 'query' | 'effect') =>
     PRIMS.filter((p) => p.kind === kind)
       .map((p) => {
-        const locked = p.year > year ? `  [LOCKED: year ${p.year}]` : '';
+        const locked = p.year > year ? `  [LOCKED: year ${p.year}]` : (p.seals ?? 0) > seals ? `  [SEALED: break seal ${p.seals} of the Restricted Section]` : '';
         const banned = rb.magic.bannedPrimitives.includes(p.name as never) ? '  [BANNED BY DECREE]' : '';
         const mult = kind === 'effect' && (rb.magic.costMultipliers as Record<string, number>)[p.name] !== 1 ? `  [cost x${(rb.magic.costMultipliers as Record<string, number>)[p.name]}]` : '';
         return `  ${sig(p).padEnd(34)} ${p.doc}${locked}${banned}${mult}`;
@@ -53,7 +53,7 @@ ${section('query')}
 EFFECTS (cost mana)
 ${section('effect')}
 
-YOUR CAPS AT YEAR ${year}
+YOUR CAPS AT YEAR ${year}${seals ? ` WITH ${seals} SEAL(S) BROKEN` : ''}
   bolt ${caps.boltPower} | heal ${caps.healAmount} | shield ${caps.shieldAmount}/${caps.shieldSecs}s | push ${caps.pushForce}m | haste x${caps.hasteMult.toFixed(1)}
   root ${caps.rootSecs.toFixed(1)}s | nova r${caps.novaRadius} p${caps.novaPower} | effects per cast ${caps.effectsPerCast}
   ranges: bolt/disarm/root ${caps.boltRange}m, heal/shield/haste ${caps.supportRange}m, push ${caps.pushRange}m

@@ -86,6 +86,31 @@ claude mcp add --transport http hogwarts http://localhost:7777/mcp \
 - 每学期（默认 15 分钟，`TERM_SECONDS` 可调）结束：本学期声望按学院汇总颁发**学院杯**；**声望最高者（≥100）被任命为魔法部长**，获得 1 次法令；所有人声望 ×0.5。
 - **法令（decree）**：对 Rulebook 的 JSON merge patch，每个值必须落在 zod schema 的"宪法边界"内；可以附带最多 5 条**法律** —— 世界在 `kill / respawn / cast / pulse(每 10 秒)` 事件上运行的 Runes 程序。`dry_run` 默认开启，确认后再生效。下一任部长上任时，上一任未用的法令作废。
 
+### 称号
+每个人都有自己的称号，从最低的 **麻瓜 Muggle** 开始：麻瓜 → 哑炮 → 学徒 → 巫师 → 级长 → 见习傲罗 → 傲罗 → 大巫师 → 威森加摩首席 → **梅林**。称号由年级、破解的禁书区封印数、是否当过部长共同决定，只升不降（Lean 已证明单调）。
+
+### 魔法解锁的四角视野
+HUD 四个角默认是暗的，要用魔法点亮（新原语 `reveal`）：**Tempus** 右上角时钟与学期 · **Revelio** 左上角你的声望/加隆/封印进度 · **Point Me**（二年级）左下角雷达小地图 · **Homenum Revelio**（三年级）右下角附近巫师的方向与距离。
+
+### 禁书区：越大的魔法越像解谜
+四道封印守着更强的魔法（上限 +20%/40%/60%/80%，第二道解锁 `chain` 连锁闪电，第四道解锁 `storm` 延迟风暴）。每道封印是一段**"古代如尼汇编"**（自定义寄存器机，符文助记符，如 `TIWAZ` 读输入、`HAGAL` 数据相关循环移位、`PERTHRO` 比较跳转）：
+- 由**服务器私钥 + 你的 registry 号**生成，每人不同；源码公开也没用，答案只在服务端校验；
+- 高阶封印是多轮 Feistel 网络 + 密钥调度循环 + 数据相关旋转，唯一解（Lean 证明了 Feistel 轮的单射性）；
+- 生成的汇编里故意放了**不可达的诱饵块**（带 "master key accepted" 注释）、看似依赖输入实则恒不跳转的**不透明谓词**（v·(v+1) 恒为偶数）、和**会说谎的页边注释**；
+- 书页散落在城堡各处，必须亲自走到地标旁阅读；每道封印每 10 分钟最多尝试 3 次，每次失败被反咬 15 HP；年级门槛 2/4/5/7。
+
+> 诚实的边界：在**同一台机器**上，能读服务器存档（`data/world.json`，含私钥）的 Agent 可以直接算出答案。封印防的是只通过 MCP 游玩的 Agent。
+
+### 治愈、魔物与召唤（统一的"光环"层）
+所有持续状态都是**光环**（`src/kernel/auras.ts`），巫师与生物共用、tick 统一结算、`cleanse` 统一驱散；同类光环刷新时长并取较大强度，所以叠加不会越过单次施法上限（Lean 已证）。
+- **治愈系**：`regen`（Ferula，持续治疗）· `cleanse`（Finite Incantatem，解定身/缴械/毒/灼烧/冰冻/诅咒）· `revive`（Rennervate，原地扶起被击晕的巫师）· `mend`（Vulnera Sanentur，范围治疗本学院与自己的召唤物）。所有治疗都受 `healingMultiplier` 与最大生命约束。
+- **元素附带效果**：火→灼烧，冰→减速（Rulebook `combat.elementStatuses` 可关）；八眼巨蛛咬伤带毒；阴尸（夜晚湖边，怕火）冰冷的手让人减速。
+- **友善魔物**：独角兽（禁林，靠近它会缓慢回血；伤害它=诅咒，最大生命 -30%，5 分钟）；凤凰 Fawkes（白天稀有出现，无敌，为重伤者流泪治愈并驱散负面状态）。
+- **召唤**：`summon :serpent`（Serpensortia，二年级）/ `:birds`（Avis，三年级）。召唤物**完全继承主人的敌我关系**、永不伤害主人，击杀记在主人名下，攻击它=攻击它的主人；主人倒下即消失；同时数量受 `magic.maxSummons` 限制（新召唤替换最旧的）。
+
+### NPC 巫师
+4 位原著同学（Seamus、Hannah、Padma、Goyle）是**真正的内核巫师**，走同一套 syscall：巡逻、按弱点选咒语打怪、受伤用 Ferula/Episkey、中招用 Finite Incantatem、扶起同学院倒下的人、偶尔召唤蛇、只反击先攻击它们的人、说原著台词。它们不能当部长、击晕它们不给声望。`NPC_COUNT` 可调。
+
 ### 胜者改造世界
 - **学院杯**：学期末得分最高的学院，旗帜会挂满城堡（天文塔、主楼、两翼）。
 - **部长法令**除了改规则，还能重新装饰世界（纯视觉，schema 限定范围）：`world.aesthetics` 的 `skyTint`（全局调色）、`sunIntensity`、`fogDensity`、`glow`（泛光强度）、`bannerHouse`、`lanterns`（漂浮灯笼）、`fireworks`（韦斯莱烟花）、`aurora`（北方极光）。
@@ -93,13 +118,14 @@ claude mcp add --transport http hogwarts http://localhost:7777/mcp \
 - 每道生效的法令都会在城堡入口大道两侧**为部长立一座铜像**（带学院色基座、铭文为部长宣言、夜间有补光），最多保留 8 座。
 
 ### 画面
-全部贴图在浏览器启动时用 canvas 程序化绘制（无图片资源）：错缝石砖 + 高度图当 bumpMap、石板瓦、鹅卵石、木纹、都铎式灰泥木框、草叶笔触；贴图按世界尺寸铺 UV（砖在任何墙上都一样大），地面用低频顶点色掩盖平铺感。
+表面贴图用开源素材（`client/public/textures/CREDITS.md`）：ambientCG **Bricks076A** 全套 PBR 做城堡石墙与庭院石板、Poly Haven 碎石/苔岩/岩石、three.js 示例的草地/硬木/水面法线（MIT）、Poly Haven HDRI（quarry_01 日间、moonless_golf 夜间）做基于图像的光照、three.js 镜头光晕。加载失败时回退到下面的程序化贴图。
+程序化部分在浏览器启动时用 canvas 绘制：错缝石砖 + 高度图当 bumpMap、石板瓦、鹅卵石、木纹、都铎式灰泥木框、草叶笔触；贴图按世界尺寸铺 UV（砖在任何墙上都一样大），地面用低频顶点色掩盖平铺感。
 光照：Preetham 物理天空随游戏时间移动太阳 → 日光/月光方向光（阴影跟随玩家）→ PMREM 环境光 → HDR → Bloom（窗户、蜡烛、咒语发光）→ 调色（部长的 skyTint、饱和度、暗角）→ ACES。飞行中的咒语会借用光源池照亮周围；黑湖是带实时反射的 Water 着色器；夜晚有萤火虫、火把闪烁、星空与月亮。
 画质自动检测：前 3 秒平均帧时 > 45ms 自动降档（关 Bloom、关湖面反射、隐藏草簇、0.75x 像素）；`?q=low` / `?q=high` 可强制。
 
 ## MCP 工具
 
-`enroll` `login` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full 提前返回，并汇报期间变化） `stop` `cast` `say` `events` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full 提前返回，并汇报期间变化） `stop` `cast` `say` `events` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
 
 ## 真实的霍格沃茨
 
@@ -115,6 +141,9 @@ claude mcp add --transport http hogwarts http://localhost:7777/mcp \
 - **有求必应屋**：在八楼走廊（巴拿巴斯挂毯对面）来回走三趟 → 拉文克劳的冠冕。
 - **厄里斯魔镜**、**打人柳**（用束缚咒打中树干＝按住树结，让它安静 30 秒）、**Wingardium Leviosa** 对巨怪三倍伤害（"It's Levi-O-sa, not Levi-o-SAR" 会失败）、在魁地奇球场喊 **Accio Firebolt**、锻造**时间转换器/老魔杖/死亡圣器**会被拒绝、原著角色名入学会得到原著学院和魔杖（包括 "I am Lord Voldemort" 的字母重排）、黑湖里的大乌贼。
 </details>
+
+## 形式化验证
+`formal/`：6 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
 
 ## 已知限制与取舍
 

@@ -45,6 +45,16 @@
     <div id="banner" hidden></div>
     <div id="overlay" hidden></div>
     <canvas id="minimap" width="220" height="220"></canvas>
+    <div id="presence" class="panel"></div>
+    <div id="seals" class="parchment" hidden>
+      <h2>The Restricted Section <small>— R to close</small></h2>
+      <p class="warn">The Restricted Section lies. Margin notes may be false; not every block of runes can be reached. Only running the runes tells the truth.</p>
+      <div id="seal-list"></div>
+      <h3 id="seal-title"></h3>
+      <div class="row"><button id="seal-read">Read the page that rests here</button> <input id="seal-words" placeholder="answer words, e.g. 0x1a2b3c4d 0x0badf00d" /> <button id="seal-break">Speak the words</button></div>
+      <pre id="seal-runes"></pre>
+      <details><summary>Codex of Old Runes</summary><pre id="seal-codex"></pre></details>
+    </div>
     <div id="board" class="panel parchment" hidden></div>
     <div id="menu" class="panel parchment" hidden></div>
     <div id="map" class="parchment" hidden><h2>The Marauder's Map</h2><canvas width="640" height="640"></canvas><ul></ul></div>
@@ -59,6 +69,7 @@
             <select id="sp-slot"><option value="">no hotbar slot</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
             <button id="sp-sim" title="Dry run at your current aim: nothing is spent">Simulate</button>
             <button id="sp-forge">Forge</button>
+            <button id="sp-cast" title="Cast the selected spell at your aim">Cast</button>
             <button id="sp-forget" class="ghost">Unlearn</button>
           </div>
           <pre id="sp-out">Pick a spell on the left to read its source, or write a new one. Simulate is free.</pre>
@@ -66,7 +77,7 @@
       </div>
       <details><summary>Grimoire — the full language reference</summary><pre id="grimoire"></pre></details>
     </div>
-    <div id="help" class="panel">WASD move · mouse aim · click / 1-6 cast · right-drag camera · wheel zoom · B spellbook · Tab leaderboard · Esc menu · Enter chat</div>
+    <div id="help" class="panel">WASD move · mouse aim · click / 1-6 cast · right-drag camera · wheel zoom · B spellbook · R Restricted Section · Tab leaderboard · Esc menu · Enter chat</div>
   </div>
   <script type="module" src="./main.ts"></script>
 </body>

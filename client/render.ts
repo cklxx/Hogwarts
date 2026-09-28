@@ -6,6 +6,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
+import { loadEnvironments } from './assets';
 import { glowSprite } from './textures';
 
 export interface Looks { skyTint: string; sunIntensity: number; fogDensity: number; glow: number }
@@ -29,8 +31,11 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 5000);
   scene.fog = new THREE.FogExp2(0x9fb8d9, 0.003);
 
+  // image-based lighting: a neutral room until the Poly Haven HDRIs arrive, then day/night maps
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const env: { day: THREE.Texture | null; night: THREE.Texture | null } = { day: null, night: null };
+  loadEnvironments(renderer, (day, night) => { env.day = day; env.night = night; });
 
   const sky = new Sky();
   sky.scale.setScalar(4000);
@@ -64,6 +69,15 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowSprite('rgba(235,240,255,1)', 'rgba(150,170,255,0)'), fog: false, depthWrite: false, transparent: true }));
   moonSprite.scale.setScalar(160);
   scene.add(moonSprite);
+
+  // lens flare on the sun (three.js example flare textures)
+  const flareHost = new THREE.PointLight(0xffffff, 0, 1);
+  const flare = new Lensflare();
+  const tl = new THREE.TextureLoader();
+  flare.addElement(new LensflareElement(tl.load('/textures/lensflare0.png'), 520, 0, new THREE.Color(1, 0.95, 0.85)));
+  for (const [size, d] of [[60, 0.55], [80, 0.7], [120, 0.9], [70, 1.0]]) flare.addElement(new LensflareElement(tl.load('/textures/lensflare3.png'), size, d));
+  flareHost.add(flare);
+  scene.add(flareHost);
 
   // post-processing
   const composer = new EffectComposer(renderer);
@@ -130,7 +144,10 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       moon.intensity = 0.8 * (1 - dayFactor) * look.sunIntensity;
       hemi.intensity = (0.3 + 0.45 * dayFactor) * (weather === 'clear' ? 1 : 0.8);
       hemi.color.copy(tint).multiplyScalar(0.8).lerp(new THREE.Color(0xcfe3ff), 0.5);
-      scene.environmentIntensity = 0.12 + 0.55 * dayFactor;
+      if (env.day && env.night) scene.environment = dayFactor > 0.3 ? env.day : env.night;
+      scene.environmentIntensity = env.day ? (dayFactor > 0.3 ? 0.35 + 0.45 * dayFactor : 0.6) : 0.12 + 0.55 * dayFactor;
+      flareHost.position.copy(camera.position).addScaledVector(sunDir, 1500);
+      flare.visible = dayFactor > 0.4 && weather === 'clear';
 
       tmp.copy(skyNight).lerp(skyDay, dayFactor).lerp(skyDusk, dusk * 0.6).multiply(tint);
       if (weather === 'rain') tmp.multiplyScalar(0.6);

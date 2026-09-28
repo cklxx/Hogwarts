@@ -1,20 +1,24 @@
 import { randomBytes } from 'node:crypto';
-import { CREATURE_KINDS, HOUSES, ITEM_SLOTS, type Element, type House, type ItemMod, type ItemSlot } from '../shared/constants.js';
+import { CREATURE_KINDS, HOUSES, ITEM_SLOTS, UI_CHARMS, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm } from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, inZone, mulberry32, type ZoneId } from '../shared/map.js';
 import { canonFor, ollivander } from '../lore/wands.js';
 import { CURRICULUM, isLeviosa, isLeviosar, unforgivable } from '../lore/spells.js';
 import { analyze } from '../runes/checker.js';
 import type { Node } from '../runes/parser.js';
 import { CREATURES } from './creatures.js';
+import { type AuraKind, addAura, auraMag, hasAura, live, withoutDebuffs } from './auras.js';
+import { SEAL_REWARDS, SEAL_TIERS, CODEX, disassemble, generateSeal, parseWord, runSeal, type Seal } from './seals.js';
+import { TITLES, titleIndex } from '../lore/titles.js';
 import { type CastReport, execute } from './magic.js';
 import { dist, resolve, solidAt } from './physics.js';
 import { findPath } from './pathfind.js';
+import { thinkNpcs } from './npc.js';
 import {
-  MAX_ITEMS, derived, gasLimit, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
+  MAX_ITEMS, derived, gasLimit, stealAmount, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
 } from './progression.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
 import type {
-  Creature, DecreeRecord, EventType, Fx, Item, Pending, Projectile, Spell, Term, Vec2, Wizard, WorldEvent,
+  Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Pending, Projectile, Spell, Term, Vec2, Wizard, WorldEvent,
 } from './types.js';
 
 export const TICK = 0.05;
@@ -41,7 +45,7 @@ export interface Statue { name: string; house: House; term: number; inscription:
 
 export interface EntityView { id: string; name: string; pos: Vec2; hp: number; maxHp: number; kind: 'wizard' | 'creature' }
 
-export interface WorldOptions { seed?: number; rules?: Rulebook }
+export interface WorldOptions { seed?: number; rules?: Rulebook; secret?: string }
 
 export class World {
   rules: Rulebook;
@@ -64,10 +68,15 @@ export class World {
   private willowCd = 0;
   private pulseCd = 10;
   private lawDepth = 0;
+  /** Server secret that seeds every seal. Never leaves the server (it is in the save file, so keep that private). */
+  secret: string;
+  private storms: { at: number; x: number; z: number; r: number; power: number; element: Element; owner: string; tags: string[] }[] = [];
+  private sealCache = new Map<string, Seal>();
 
   constructor(opts: WorldOptions = {}) {
     this.rng = mulberry32(opts.seed ?? (Date.now() & 0xffffffff));
     this.rules = opts.rules ?? defaultRulebook();
+    this.secret = opts.secret ?? process.env.HOGWARTS_SECRET ?? randomBytes(32).toString('hex');
     this.term = { n: 1, startedAt: 0, endsAt: this.rules.terms.lengthSeconds };
   }
 
@@ -140,18 +149,141 @@ export class World {
     return out.sort((a, b) => dist(a.pos, p) - dist(b.pos, p)).slice(0, limit);
   }
 
+  /**
+   * The single definition of hostility (modelled in formal/tla/Hostility.tla).
+   *  - nobody harms themselves, the stunned, the offline, the invulnerable, or anyone in a safe zone
+   *  - a summon harms exactly what its owner may harm, never its owner or the owner's other summons
+   *  - wild hostile creatures fight wizards and summons; benign creatures fight no one
+   *  - harming someone's summon counts as attacking them (same PvP/house rules)
+   */
   canHarm(srcId: string | null, dstId: string): boolean {
     if (srcId === dstId) return false;
     const dst = this.entity(dstId);
     if (!dst || dst.hp <= 0) return false;
     const dw = this.wizards.get(dstId);
     if (dw && !this.isActive(dw)) return false;
+    const dc = this.creatures.get(dstId);
+    if (dc && CREATURES[dc.kind].invulnerable) return false;
     if (this.inSafe(dst.pos)) return false;
     if (!srcId) return true;
+    const sc = this.creatures.get(srcId);
+    if (sc?.owner) {
+      if (dstId === sc.owner || dc?.owner === sc.owner) return false;
+      return this.canHarm(sc.owner, dstId);
+    }
+    if (sc) {
+      if (CREATURES[sc.kind].faction !== 'hostile') return false;
+      return dc ? !!dc.owner : true;
+    }
     const sw = this.wizards.get(srcId);
     if (sw && this.inSafe(sw.pos)) return false;
-    if (sw && dw) return this.rules.combat.pvp && (sw.house !== dw.house || this.rules.combat.friendlyFire);
+    const pvp = (a: Wizard, b: Wizard) => this.rules.combat.pvp && (a.house !== b.house || this.rules.combat.friendlyFire);
+    if (dc?.owner) {
+      if (dc.owner === srcId) return false;
+      const ow = this.wizards.get(dc.owner);
+      return sw && ow ? pvp(sw, ow) : true;
+    }
+    if (sw && dw) return pvp(sw, dw);
     return true;
+  }
+
+  /** Stunned wizards within r (they are not "in play", so `around` never returns them). */
+  fallen(p: Vec2, r: number, exclude?: string) {
+    return [...this.wizards.values()]
+      .filter((w) => w.id !== exclude && w.st.stunnedUntil > 0 && !w.st.jailedUntil && this.online(w) && dist(w.pos, p) <= Math.min(40, r))
+      .sort((a, b) => dist(a.pos, p) - dist(b.pos, p)).slice(0, 8);
+  }
+
+  afflicted(id: string) {
+    const w = this.wizards.get(id);
+    const c = this.creatures.get(id);
+    const auras = w?.auras ?? c?.auras ?? [];
+    if (auras.some((a) => a.until > this.now && ['poison', 'burn', 'chill', 'cursed'].includes(a.k))) return true;
+    if (w) return w.st.rootedUntil > this.now || w.st.disarmedUntil > this.now;
+    return !!c && c.rootedUntil > this.now;
+  }
+
+  isBenign(id: string) { const c = this.creatures.get(id); return !!c && CREATURES[c.kind].faction === 'benign'; }
+  /** Who gets the credit (and the blame) for an attack: a summon's owner, otherwise the attacker. */
+  credit(srcId: string | null) { const c = srcId ? this.creatures.get(srcId) : undefined; return c?.owner ?? srcId; }
+
+  // ------------------------------------------------------------------ auras
+  applyAura(id: string, k: AuraKind, secs: number, mag: number, src: string | null) {
+    const e = this.wizards.get(id) ?? this.creatures.get(id);
+    if (!e || secs <= 0) return;
+    e.auras = addAura(e.auras, { k, until: this.now + secs, mag, src });
+  }
+
+  private stepAuras(dt: number) {
+    const hm = this.rules.combat.healingMultiplier;
+    for (const e of [...this.wizards.values(), ...this.creatures.values()]) {
+      if (!e.auras.length) continue;
+      e.auras = live(e.auras, this.now);
+      const isW = 'house' in e;
+      if (isW && !this.isActive(e as Wizard)) continue;
+      for (const a of e.auras) {
+        if (a.k === 'regen' || a.k === 'grace') {
+          const max = isW ? derived(e as Wizard, this.rules).maxHp : (e as Creature).maxHp;
+          e.hp = Math.min(max, e.hp + a.mag * hm * dt);
+        } else if (a.k === 'poison' || a.k === 'burn') {
+          this.damage(a.src, e.id, a.mag * dt, a.k === 'burn' ? 'fire' : 'arcane', [], { dot: true });
+          if (!this.wizards.has(e.id) && !this.creatures.has(e.id)) break;
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ healing school & conjuration
+  cleanse(src: Wizard, t: Wizard | Creature) {
+    t.auras = withoutDebuffs(t.auras);
+    if ('st' in t) { t.st.rootedUntil = 0; t.st.disarmedUntil = 0; } else t.rootedUntil = 0;
+    this.fx({ k: 'heal', x: t.pos.x, z: t.pos.z, h: 'handle' in t ? t.handle : undefined });
+  }
+
+  regen(src: Wizard, t: Wizard, rate: number, secs: number) {
+    this.applyAura(t.id, 'regen', secs, rate * derived(src, this.rules).care, src.id);
+    this.fx({ k: 'heal', x: t.pos.x, z: t.pos.z, h: t.handle });
+  }
+
+  /** Heal every ally in a circle: your house, yourself, and your summons. */
+  mend(src: Wizard, radius: number, amount: number) {
+    const amt = amount * this.rules.combat.healingMultiplier * derived(src, this.rules).care;
+    this.fx({ k: 'nova', x: src.pos.x, z: src.pos.z, r: radius, e: 'light' });
+    for (const w of this.wizards.values()) {
+      if (!this.isActive(w) || dist(w.pos, src.pos) > radius || w.house !== src.house) continue;
+      w.hp = Math.min(derived(w, this.rules).maxHp, w.hp + amt);
+      this.fx({ k: 'heal', x: w.pos.x, z: w.pos.z, h: w.handle });
+    }
+    for (const c of this.creatures.values()) if (c.owner === src.id && dist(c.pos, src.pos) <= radius) c.hp = Math.min(c.maxHp, c.hp + amt);
+  }
+
+  /** Rennervate: a stunned wizard gets up where they fell, at 30% health. */
+  revive(src: Wizard, t: Wizard) {
+    t.st.stunnedUntil = 0;
+    t.hp = derived(t, this.rules).maxHp * 0.3;
+    t.auras = [];
+    this.fx({ k: 'levelup', x: t.pos.x, z: t.pos.z, h: t.handle });
+    this.emit('combat', `${src.name} revived ${t.name} — Rennervate!`, { who: [src.id, t.id] });
+  }
+
+  summon(owner: Wizard, kind: SummonKind, secs: number) {
+    const max = this.rules.magic.maxSummons;
+    const mine = [...this.creatures.values()].filter((c) => c.owner === owner.id).sort((a, b) => a.until - b.until);
+    while (mine.length >= max && mine.length) this.dismiss(mine.shift()!);
+    const def = CREATURES[kind];
+    const pos = { x: owner.pos.x + Math.sin(owner.facing) * 1.5, z: owner.pos.z - Math.cos(owner.facing) * 1.5 };
+    resolve(pos, def.radius);
+    const c: Creature = {
+      id: this.nid('s'), kind, pos, home: { ...pos }, hp: def.hp, maxHp: def.hp, facing: owner.facing, target: null, attackCd: 0.5,
+      rootedUntil: 0, wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: owner.id, until: this.now + secs,
+    };
+    this.creatures.set(c.id, c);
+    this.fx({ k: 'apparate', x: pos.x, z: pos.z });
+  }
+
+  private dismiss(c: Creature) {
+    this.creatures.delete(c.id);
+    this.fx({ k: 'apparate', x: c.pos.x, z: c.pos.z });
   }
 
   // ------------------------------------------------------------------ enrolment
@@ -188,7 +320,8 @@ export class World {
       input: { dx: 0, dz: 0 }, goal: null, route: [], spells: [], hotbar: [null, null, null, null, null, null], items: [], equipped: {},
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
-      marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastSeenAt: this.now,
+      marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
+      ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false, auras: [], tearsAt: 0,
     };
     this.grantCurriculum(w);
     w.mana = derived(w, this.rules).maxMana;
@@ -221,7 +354,7 @@ export class World {
     const name = spec.name.trim();
     if (name.length < 1 || name.length > 40) throw new Error('Spell names must be 1-40 characters.');
     const incantation = (spec.incantation ?? `${name}!`).trim().slice(0, 60);
-    const a = analyze(spec.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives });
+    const a = analyze(spec.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals });
     const existing = w.spells.find((s) => s.name.toLowerCase() === name.toLowerCase());
     if (existing?.builtin) throw new Error(`"${existing.name}" is part of the standard curriculum; pick another name.`);
     const custom = w.spells.filter((s) => !s.builtin && s !== existing).length;
@@ -290,7 +423,7 @@ export class World {
     }
     let program: Node[];
     try {
-      program = analyze(spell.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives }).program;
+      program = analyze(spell.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals }).program;
     } catch (e) {
       return { ...fail((e as Error).message), spell: spell.name };
     }
@@ -314,7 +447,7 @@ export class World {
     const w = this.need(wid);
     let a;
     try {
-      a = analyze(source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives });
+      a = analyze(source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals });
     } catch (e) {
       return { ok: false, spell: '(draft)', mana: 0, effects: [], notes: [], gas: 0, error: (e as Error).message };
     }
@@ -367,6 +500,126 @@ export class World {
     for (const e of this.around(w.pos, radius, (e) => this.canHarm(w.id, e.id), w.id, 32)) this.damage(w.id, e.id, power, element, tags);
   }
 
+  reveal(w: Wizard, key: UiCharm) {
+    this.fx({ k: 'reveal', x: w.pos.x, z: w.pos.z, h: w.handle });
+    if (w.ui.includes(key)) return;
+    w.ui.push(key);
+    const where = { tempus: 'the top-right corner: the time, and the term', revelio: 'the top-left corner: your own measure', 'point-me': 'the bottom-left corner: a radar that always points north', homenum: 'the bottom-right corner: everyone near you' }[key];
+    this.emit('egg', `✨ A new sense settles into ${where}.`, { to: w.id });
+  }
+
+  /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last. */
+  chain(w: Wizard, first: string, power: number, element: Element, jumps: number, tags: string[]) {
+    const hit = new Set<string>();
+    const pts: number[] = [w.pos.x, w.pos.z];
+    let cur = first;
+    let p = power;
+    for (let i = 0; i <= jumps && cur; i++) {
+      const e = this.entity(cur);
+      if (!e) break;
+      hit.add(cur);
+      pts.push(e.pos.x, e.pos.z);
+      this.damage(w.id, cur, p, element, tags);
+      p *= 0.7;
+      const from = { ...e.pos };
+      cur = this.around(from, 8, (x) => !hit.has(x.id) && this.canHarm(w.id, x.id), w.id, 1)[0]?.id ?? '';
+    }
+    this.fx({ k: 'chain', x: w.pos.x, z: w.pos.z, e: element, pts });
+  }
+
+  storm(w: Wizard, at: Vec2, radius: number, power: number, element: Element, tags: string[]) {
+    this.fx({ k: 'storm', x: at.x, z: at.z, r: radius, e: element });
+    this.storms.push({ at: this.now + 1.5, x: at.x, z: at.z, r: radius, power, element, owner: w.id, tags });
+  }
+
+  title(w: Wizard) {
+    const i = titleIndex({ year: w.year, xp: w.xp, seals: w.seals, wasMinister: w.wasMinister });
+    return { index: i, ...TITLES[i], next: TITLES[i + 1] ? { zh: TITLES[i + 1].zh, en: TITLES[i + 1].en, how: TITLES[i + 1].how } : null };
+  }
+
+  // ------------------------------------------------------------------ the Restricted Section
+  private seal(w: Wizard, tier: number): Seal {
+    const k = `${w.id}|${tier}`;
+    let s = this.sealCache.get(k);
+    if (!s) { s = generateSeal(this.secret, w.id, tier); this.sealCache.set(k, s); }
+    return s;
+  }
+
+  restrictedSection(wid: string) {
+    const w = this.need(wid);
+    return {
+      warning: 'The Restricted Section lies. Margin notes may be false; not every block of runes can be reached. Only running the runes tells the truth.',
+      progress: `${w.seals}/4 seals broken`,
+      seals: SEAL_TIERS.map((t) => {
+        const have = w.sealPages[t.tier] ?? [];
+        return {
+          tier: t.tier, name: t.name, requiresYear: t.year, inputWords: t.words, reward: SEAL_REWARDS[t.tier],
+          state: w.seals >= t.tier ? 'broken' : w.seals === t.tier - 1 ? (w.year >= t.year ? 'open to you' : `needs year ${t.year}`) : 'break the previous seal first',
+          pages: t.pages.map((lm, i) => ({ page: i + 1, where: LANDMARKS.find((l) => l.id === lm)?.name ?? lm, collected: have.includes(i) })),
+        };
+      }),
+      codex: Object.values(CODEX),
+      howTo: 'Stand within 10m of the landmark where a page rests and read it (read_seal_page). With every page, study the runes (inspect_seal), then speak the input words (break_seal). The seal accepts exactly one answer. Three failed attempts per seal every 10 minutes; each failure bites.',
+    };
+  }
+
+  readSealPage(wid: string, tier: number) {
+    const w = this.need(wid);
+    const t = SEAL_TIERS[tier - 1];
+    if (!t) throw new Error('There are four seals.');
+    if (w.seals >= tier) throw new Error('That seal is already broken.');
+    const have = (w.sealPages[tier] ??= []);
+    const idx = t.pages.findIndex((lm, i) => {
+      const l = LANDMARKS.find((x) => x.id === lm)!;
+      return !have.includes(i) && dist(l, w.pos) <= 10;
+    });
+    if (idx < 0) {
+      const missing = t.pages.map((lm, i) => (have.includes(i) ? null : LANDMARKS.find((x) => x.id === lm)?.name)).filter(Boolean);
+      throw new Error(missing.length ? `No page of this seal is here. Missing pages rest at: ${missing.join(', ')}.` : 'You already hold every page of this seal.');
+    }
+    have.push(idx);
+    have.sort((a, b) => a - b);
+    this.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
+    const s = this.seal(w, tier);
+    const [from, to] = s.pages[idx];
+    return { tier, page: idx + 1, of: t.pages.length, runes: disassemble(s.code, from, to) };
+  }
+
+  inspectSeal(wid: string, tier: number) {
+    const w = this.need(wid);
+    const t = SEAL_TIERS[tier - 1];
+    if (!t) throw new Error('There are four seals.');
+    const s = this.seal(w, tier);
+    const have = w.sealPages[tier] ?? [];
+    const text = s.pages.map(([from, to], i) => (have.includes(i) ? disassemble(s.code, from, to) : `      [page ${i + 1} missing — it rests at ${LANDMARKS.find((l) => l.id === t.pages[i])?.name}]`)).join('\n');
+    return { tier, name: t.name, inputWords: t.words, pagesCollected: `${have.length}/${t.pages.length}`, runes: text, broken: w.seals >= tier };
+  }
+
+  breakSeal(wid: string, tier: number, input: (string | number)[]) {
+    const w = this.need(wid);
+    const t = SEAL_TIERS[tier - 1];
+    if (!t) throw new Error('There are four seals.');
+    if (w.seals >= tier) throw new Error('That seal is already broken.');
+    if (w.seals !== tier - 1) throw new Error('The seals must be broken in order.');
+    if (w.year < t.year) throw new Error(`The ${t.name} will not even speak to a wizard below year ${t.year}.`);
+    if ((w.sealPages[tier] ?? []).length < t.pages.length) throw new Error('You have not read every page of this seal.');
+    const tries = (w.sealTries[tier] ?? []).filter((x) => this.now - x < 600);
+    if (tries.length >= 3) throw new Error(`The seal is still smouldering from your last attempts. Wait ${Math.ceil(600 - (this.now - tries[0]))}s.`);
+    const words = input.map(parseWord);
+    if (words.length !== t.words || words.some((x) => x === null)) throw new Error(`This seal takes exactly ${t.words} 32-bit word(s), e.g. "0x1a2b3c4d".`);
+    if (runSeal(this.seal(w, tier).code, words as number[])) {
+      w.seals = tier;
+      w.sealTries[tier] = [];
+      this.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
+      this.emit('achievement', `📕 ${w.name} broke ${t.name}! (${SEAL_REWARDS[tier]})`, { who: [w.id] });
+      this.addRep(w, 25 * tier);
+      return { opened: true, reward: SEAL_REWARDS[tier], title: this.title(w).zh };
+    }
+    w.sealTries[tier] = [...tries, this.now];
+    this.damage(null, w.id, 15, 'arcane');
+    return { opened: false, message: 'SOWILO. The seal holds, and bites (-15 HP).', attemptsLeft: 2 - tries.length };
+  }
+
   apparate(w: Wizard, to: Vec2) {
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
     w.pos = { ...to };
@@ -383,14 +636,25 @@ export class World {
     this.chatEggs(w, t, via);
   }
 
-  damage(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean } = {}): number {
+  damage(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean } = {}): number {
     if (!this.canHarm(srcId, dstId)) return 0;
     const rb = this.rules;
     let a = amount * rb.combat.damageMultiplier * (rb.combat.elementMultipliers[element] ?? 1);
+    const by = this.credit(srcId);
     const sw = srcId ? this.wizards.get(srcId) : undefined;
-    if (sw) a *= derived(sw, rb).power;
+    if (sw && !opts.dot) a *= derived(sw, rb).power;
+    // elemental side effects (not from damage-over-time itself, so they never chain)
+    if (rb.combat.elementStatuses && !opts.dot && a > 0) {
+      if (element === 'fire') this.applyAura(dstId, 'burn', 3, Math.min(6, 1 + amount * 0.1), by);
+      if (element === 'ice') this.applyAura(dstId, 'chill', 2, 0.3, by);
+    }
     const c = this.creatures.get(dstId);
     if (c) {
+      if (c.kind === 'unicorn' && by && this.wizards.has(by)) {
+        const bw = this.wizards.get(by)!;
+        if (!hasAura(bw.auras, 'cursed', this.now)) this.emit('egg', 'You have harmed a unicorn. "You have slain something pure and defenceless to save yourself, and you will have but a half-life, a cursed life, from the moment the blood touches your lips."', { to: bw.id });
+        this.applyAura(bw.id, 'cursed', 300, 1, null);
+      }
       const def = CREATURES[c.kind];
       a *= def.weak[element] ?? 1;
       if (def.allDamage && !opts.patronus) a *= def.allDamage;
@@ -399,12 +663,13 @@ export class World {
         if (sw) this.achieve(sw, 'leviosa');
       }
       c.hp -= a;
-      if (sw) {
-        c.lastHitBy = sw.id;
-        c.damageBy[sw.id] = (c.damageBy[sw.id] ?? 0) + a;
-        if (!c.target) c.target = sw.id;
+      const bw = by ? this.wizards.get(by) : undefined;
+      if (bw) {
+        c.lastHitBy = bw.id;
+        c.damageBy[bw.id] = (c.damageBy[bw.id] ?? 0) + a;
       }
-      this.fx({ k: 'hit', x: c.pos.x, z: c.pos.z, e: element, n: Math.round(a) });
+      if (srcId && !c.target && !opts.dot) c.target = srcId;
+      if (!opts.dot) this.fx({ k: 'hit', x: c.pos.x, z: c.pos.z, e: element, n: Math.round(a) });
       if (c.hp <= 0) this.slay(c);
       return a;
     }
@@ -418,8 +683,9 @@ export class World {
     }
     w.hp -= a;
     w.hurtAt = this.now;
-    this.fx({ k: 'hit', x: w.pos.x, z: w.pos.z, e: element, h: w.handle, n: Math.round(a) });
-    if (w.hp <= 0) this.stun(w, srcId);
+    w.lastHurtBy = by;
+    if (!opts.dot) this.fx({ k: 'hit', x: w.pos.x, z: w.pos.z, e: element, h: w.handle, n: Math.round(a) });
+    if (w.hp <= 0) this.stun(w, this.wizards.has(by ?? '') ? by : srcId);
     return a;
   }
 
@@ -434,15 +700,15 @@ export class World {
       kw.stats.stuns++;
       const last = kw.lastDuel[w.id] ?? -1e9;
       let gain = 0;
-      const fresh = this.now - w.createdAt < FRESH_SECONDS;
+      const fresh = this.now - w.createdAt < FRESH_SECONDS || w.npc;
       if (this.now - last > 60 && !fresh) {
-        const steal = (w.reputation * this.rules.progression.duelRepStealPct) / 100;
+        const steal = stealAmount(w.reputation, this.rules.progression.duelRepStealPct);
         w.reputation -= steal;
         gain = this.rules.progression.duelRepBase + steal;
         this.addRep(kw, gain);
       }
       kw.lastDuel[w.id] = this.now;
-      const why = fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
+      const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
       this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation)` : why}.`, { who: [kw.id, w.id] });
       this.achieve(kw, 'first_blood');
       if (this.flags.elderWandHolder === w.id) this.transferElderWand(w, kw, 'defeated');
@@ -456,6 +722,7 @@ export class World {
   private slay(c: Creature) {
     this.creatures.delete(c.id);
     const def = CREATURES[c.kind];
+    if (c.owner) { this.emit('creature', `Your ${def.name} is gone.`, { to: c.owner }); return; }
     const pr = this.rules.progression;
     const killer = c.lastHitBy ? this.wizards.get(c.lastHitBy) : undefined;
     const total = Object.values(c.damageBy).reduce((s, x) => s + x, 0) || 1;
@@ -529,7 +796,7 @@ export class World {
     if (!(ITEM_SLOTS as readonly string[]).includes(spec.slot)) throw new Error(`slot must be one of ${ITEM_SLOTS.join(', ')}`);
     let charm: Item['charm'];
     if (spec.charm) {
-      const a = analyze(spec.charm, { year: forger.year, maxNodes: maxNodes(forger.year, this.rules), banned: this.rules.magic.bannedPrimitives });
+      const a = analyze(spec.charm, { year: forger.year, maxNodes: maxNodes(forger.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: forger.seals });
       charm = { source: spec.charm, nodes: a.nodes };
     }
     const mods = { ...(spec.mods ?? {}) };
@@ -724,10 +991,11 @@ export class World {
     const winner = points[best] > 0 ? best : null;
     this.houseCups.push({ term: this.term.n, winner, points });
     for (const w of this.wizards.values()) w.decreeCharges = 0;
-    const top = [...this.wizards.values()].sort((a, b) => b.reputation - a.reputation)[0];
+    const top = [...this.wizards.values()].filter((w) => !w.npc).sort((a, b) => b.reputation - a.reputation)[0];
     const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
     if (top && top.reputation >= this.rules.terms.ministerMinReputation) {
       top.decreeCharges = 1;
+      top.wasMinister = true;
       this.flags.ministerId = top.id;
       top.titles.push(`Minister for Magic (term ${this.term.n})`);
       this.emit('term', `End of term ${this.term.n}. ${cup} ${top.name} (${Math.round(top.reputation)} reputation) is appointed Minister for Magic and may issue ONE decree to rewrite the rules of this world.`, { who: [top.id] });
@@ -748,6 +1016,7 @@ export class World {
   // ------------------------------------------------------------------ the tick
   tick(dt = TICK) {
     this.now += dt;
+    thinkNpcs(this);
     const rb = this.rules;
     // 1. delayed spell blocks
     if (this.pending.length) {
@@ -787,7 +1056,16 @@ export class World {
       this.moveWizard(w, dt, true);
       this.placeEggs(w);
     }
-    // 3. projectiles
+    // 3. auras (regeneration, poison, burning), storms breaking, then projectiles
+    this.stepAuras(dt);
+    if (this.storms.length) {
+      const due = this.storms.filter((s) => s.at <= this.now);
+      this.storms = this.storms.filter((s) => s.at > this.now);
+      for (const s of due) {
+        this.fx({ k: 'stormhit', x: s.x, z: s.z, r: s.r, e: s.element });
+        for (const e of this.around(s, s.r, (e) => this.canHarm(s.owner, e.id), s.owner, 32)) this.damage(s.owner, e.id, s.power, s.element, s.tags);
+      }
+    }
     this.stepProjectiles(dt);
     // 4. creatures, willow, spawns
     this.stepCreatures(dt);
@@ -818,7 +1096,7 @@ export class World {
     if (Math.hypot(dx, dz) < 0.01) return;
     const d = derived(w, this.rules);
     const haste = w.st.hasteUntil > this.now ? w.st.hasteMult : 1;
-    const speed = this.rules.physics.moveSpeed * d.speedMult * haste;
+    const speed = this.rules.physics.moveSpeed * d.speedMult * haste * (1 - auraMag(w.auras, 'chill', this.now));
     const before = { ...w.pos };
     w.pos.x += dx * speed * dt;
     w.pos.z += dz * speed * dt;
@@ -902,9 +1180,14 @@ export class World {
 
   private stepCreatures(dt: number) {
     const sm = this.rules.creatures.statMultiplier;
-    for (const c of this.creatures.values()) {
+    for (const c of [...this.creatures.values()]) {
       const def = CREATURES[c.kind];
       c.attackCd -= dt;
+      if (c.until && this.now >= c.until) { this.dismiss(c); continue; }
+      const speed = def.speed * (1 - auraMag(c.auras, 'chill', this.now));
+      const rooted = c.rootedUntil > this.now;
+      if (def.faction === 'summon') { this.stepSummon(c, def, speed, rooted, dt); continue; }
+      if (def.faction === 'benign') { this.stepBenign(c, def, speed, dt); continue; }
       if (c.kind === 'dementor') {
         const guard = [...this.wizards.values()].find((w) => this.isActive(w) && w.st.patronusUntil > this.now && dist(w.pos, c.pos) < 10);
         if (guard) {
@@ -916,37 +1199,81 @@ export class World {
           continue;
         }
       }
-      let t = c.target ? this.wizards.get(c.target) : undefined;
-      if (t && (!this.isActive(t) || this.inSafe(t.pos) || dist(t.pos, c.home) > 45 || dist(t.pos, c.pos) > def.aggro * 2.5)) { t = undefined; c.target = null; }
+      // hostile: keep a valid target (a wizard or someone's summon), else take the nearest in reach
+      let t = c.target ? this.entity(c.target) : undefined;
+      if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, c.home) > 45 || dist(t.pos, c.pos) > def.aggro * 2.5)) { t = undefined; c.target = null; }
       if (!t) {
-        let best: Wizard | undefined;
-        let bd = def.aggro;
-        for (const w of this.wizards.values()) {
-          if (!this.isActive(w) || this.inSafe(w.pos)) continue;
-          const d = dist(w.pos, c.pos);
-          if (d < bd) { bd = d; best = w; }
-        }
-        if (best) { t = best; c.target = best.id; }
+        t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id), c.id, 1)[0];
+        if (t) c.target = t.id;
       }
-      const rooted = c.rootedUntil > this.now;
       if (t) {
         const d = dist(t.pos, c.pos);
         c.facing = Math.atan2(t.pos.x - c.pos.x, -(t.pos.z - c.pos.z));
-        if (d > def.range * 0.8 && def.speed > 0 && !rooted) this.stepToward(c, t.pos, def.speed, dt);
-        if (d <= def.range && c.attackCd <= 0) {
-          c.attackCd = def.cooldown;
-          this.damage(c.id, t.id, def.damage * sm, 'arcane');
-          if (c.kind === 'snare') t.st.rootedUntil = Math.max(t.st.rootedUntil, this.now + 1);
-          if (c.kind === 'dementor') t.mana = Math.max(0, t.mana - 10);
-        }
-      } else if (def.speed > 0 && !rooted) {
-        if (dist(c.pos, c.home) > 8) this.stepToward(c, c.home, def.speed * 0.6, dt);
-        else {
-          if (!c.wander || dist(c.wander, c.pos) < 0.5 || this.rng() < 0.005) c.wander = { x: c.home.x + (this.rng() - 0.5) * 12, z: c.home.z + (this.rng() - 0.5) * 12 };
-          this.stepToward(c, c.wander, def.speed * 0.3, dt);
+        if (d > def.range * 0.8 && speed > 0 && !rooted) this.stepToward(c, t.pos, speed, dt);
+        if (d <= def.range && c.attackCd <= 0) this.strike(c, def, t.id, sm);
+      } else if (speed > 0 && !rooted) this.wander(c, speed, dt);
+    }
+  }
+
+  private strike(c: Creature, def: CreatureDef, target: string, sm: number) {
+    c.attackCd = def.cooldown;
+    const dealt = this.damage(c.id, target, def.damage * (c.owner ? 1 : sm), 'arcane');
+    if (dealt <= 0) return;
+    const w = this.wizards.get(target);
+    if (def.bite) this.applyAura(target, def.bite.aura, def.bite.secs, def.bite.mag, c.id);
+    if (c.kind === 'snare' && w) w.st.rootedUntil = Math.max(w.st.rootedUntil, this.now + 1);
+    if (c.kind === 'dementor' && w) w.mana = Math.max(0, w.mana - 10);
+  }
+
+  private wander(c: Creature, speed: number, dt: number) {
+    if (dist(c.pos, c.home) > 8) this.stepToward(c, c.home, speed * 0.6, dt);
+    else {
+      if (!c.wander || dist(c.wander, c.pos) < 0.5 || this.rng() < 0.005) c.wander = { x: c.home.x + (this.rng() - 0.5) * 12, z: c.home.z + (this.rng() - 0.5) * 12 };
+      this.stepToward(c, c.wander, speed * 0.3, dt);
+    }
+  }
+
+  /** A conjured creature: fights what its owner may harm, near its owner, and vanishes with them. */
+  private stepSummon(c: Creature, def: CreatureDef, speed: number, rooted: boolean, dt: number) {
+    const o = c.owner ? this.wizards.get(c.owner) : undefined;
+    if (!o || !this.isActive(o)) { this.dismiss(c); return; }
+    let t = c.target ? this.entity(c.target) : undefined;
+    if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, o.pos) > 18)) { t = undefined; c.target = null; }
+    if (!t) {
+      t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id) && !this.isBenign(e.id) && dist(e.pos, o.pos) < 16, c.id, 1)[0];
+      if (t) c.target = t.id;
+    }
+    if (t) {
+      const d = dist(t.pos, c.pos);
+      c.facing = Math.atan2(t.pos.x - c.pos.x, -(t.pos.z - c.pos.z));
+      if (d > def.range * 0.8 && !rooted) this.stepToward(c, t.pos, speed, dt);
+      if (d <= def.range && c.attackCd <= 0) this.strike(c, def, t.id, 1);
+    } else if (dist(c.pos, o.pos) > 3 && !rooted) this.stepToward(c, o.pos, speed, dt);
+  }
+
+  /** Unicorns heal whoever stands near and shy away from them; the phoenix weeps over the badly hurt. */
+  private stepBenign(c: Creature, def: CreatureDef, speed: number, dt: number) {
+    const near = [...this.wizards.values()].filter((w) => this.isActive(w) && dist(w.pos, c.pos) < Math.max(def.aggro, def.grace?.radius ?? 0));
+    if (def.grace) for (const w of near) if (dist(w.pos, c.pos) <= def.grace.radius) this.applyAura(w.id, 'grace', 1.5, def.grace.mag, c.id);
+    if (c.kind === 'phoenix') {
+      for (const w of near) {
+        const max = derived(w, this.rules).maxHp;
+        if (w.hp < max * 0.5 && this.now >= w.tearsAt) {
+          w.tearsAt = this.now + 60;
+          w.hp = Math.min(max, w.hp + max * 0.6 * this.rules.combat.healingMultiplier);
+          this.cleanse(w, w);
+          this.fx({ k: 'heal', x: w.pos.x, z: w.pos.z, h: w.handle });
+          this.emit('egg', 'Fawkes lands beside you and weeps. Phoenix tears close your wounds.', { to: w.id });
         }
       }
+      this.wander(c, speed, dt);
+      return;
     }
+    const close = near.find((w) => dist(w.pos, c.pos) < 5);
+    if (close) {
+      const away = { x: c.pos.x + (c.pos.x - close.pos.x) * 2, z: c.pos.z + (c.pos.z - close.pos.z) * 2 };
+      this.stepToward(c, away, speed, dt);
+    } else this.wander(c, speed, dt);
   }
 
   private stepToward(c: Creature, to: Vec2, speed: number, dt: number) {
@@ -956,9 +1283,9 @@ export class World {
     c.pos.x += (dx / l) * s;
     c.pos.z += (dz / l) * s;
     c.facing = Math.atan2(dx, -dz);
-    if (c.kind !== 'dementor') resolve(c.pos, CREATURES[c.kind].radius);
-    // creatures never wander into safe zones
-    if (this.inSafe(c.pos)) { c.pos.x -= (dx / l) * s; c.pos.z -= (dz / l) * s; }
+    if (!CREATURES[c.kind].flying) resolve(c.pos, CREATURES[c.kind].radius);
+    // wild creatures never wander into safe zones
+    if (!c.owner && this.inSafe(c.pos)) { c.pos.x -= (dx / l) * s; c.pos.z -= (dz / l) * s; }
   }
 
   private spawnCreatures() {
@@ -967,23 +1294,29 @@ export class World {
     for (const kind of CREATURE_KINDS) {
       const def = CREATURES[kind];
       const alive = [...this.creatures.values()].filter((c) => c.kind === kind);
-      if (!rc.enabled[kind] || (def.nightOnly && !night)) {
+      const outOfHours = (def.nightOnly && !night) || (def.dayOnly && night);
+      if (!rc.enabled[kind] || outOfHours) {
         for (const c of alive) if (!c.target || !rc.enabled[kind]) this.creatures.delete(c.id);
         continue;
       }
       const max = Math.round(def.spawn.max * rc.spawnMultiplier);
       if (alive.length >= max) continue;
+      if (def.rare && this.rng() > def.rare) continue;
       for (let tries = 0; tries < 12; tries++) {
         const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * def.spawn.r;
         const p = { x: def.spawn.x + Math.cos(a) * r, z: def.spawn.z + Math.sin(a) * r };
         const q = { ...p };
         resolve(q, def.radius);
-        if (kind !== 'dementor' && dist(p, q) > 0.01) continue;
-        if (this.inSafe(p) || this.zoneIds(p).includes('great_hall') || this.zoneIds(p).includes('courtyard')) continue;
-        if ([...this.wizards.values()].some((w) => this.isActive(w) && dist(w.pos, p) < 8)) continue;
-        const hp = def.hp * rc.statMultiplier;
-        const c: Creature = { id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0, wander: null, lastHitBy: null, damageBy: {} };
+        if (!def.flying && dist(p, q) > 0.01) continue;
+        if (this.inSafe(p) || this.zoneIds(p).includes('great_hall') || (def.faction === 'hostile' && this.zoneIds(p).includes('courtyard'))) continue;
+        if (def.faction === 'hostile' && [...this.wizards.values()].some((w) => this.isActive(w) && dist(w.pos, p) < 8)) continue;
+        const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
+        const c: Creature = {
+          id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,
+          wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: def.lifetime ? this.now + def.lifetime : 0,
+        };
         this.creatures.set(c.id, c);
+        if (kind === 'phoenix') this.emit('creature', 'A phoenix sings somewhere over the grounds. Fawkes has come.');
         break;
       }
     }
@@ -1095,11 +1428,14 @@ export class World {
     const r = Math.min(80, radius);
     const wizards = [...this.wizards.values()].filter((x) => x !== w && this.online(x) && dist(x.pos, w.pos) <= r).map((x) => ({
       handle: x.handle, name: x.name, house: x.house, year: x.year, hp: Math.round(x.hp), dist: round(dist(x.pos, w.pos)), x: round(x.pos.x), z: round(x.pos.z),
+      title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
       elderWand: this.flags.elderWandHolder === x.id || undefined,
     })).sort((a, b) => a.dist - b.dist);
     const creatures = [...this.creatures.values()].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
-      id: c.id, kind: c.kind, name: CREATURES[c.kind].name, hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
+      id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
+      canHarm: this.canHarm(w.id, c.id), auras: live(c.auras, this.now).map((a) => a.k),
+      hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
     })).sort((a, b) => a.dist - b.dist).slice(0, 20);
     const landmarks = LANDMARKS.map((l) => ({ id: l.id, name: l.name, dist: round(dist(l, w.pos)), x: l.x, z: l.z })).sort((a, b) => a.dist - b.dist).slice(0, 5);
@@ -1119,7 +1455,7 @@ export class World {
       term: { n: this.term.n, secondsLeft: Math.max(0, Math.round(this.term.endsAt - this.now)) },
       housePoints: Object.fromEntries(Object.entries(points).map(([k, v]) => [k, Math.round(v)])),
       top: [...this.wizards.values()].sort((a, b) => b.reputation - a.reputation).slice(0, 10).map((w, i) => ({
-        rank: i + 1, name: w.name, house: w.house, year: w.year, reputation: Math.round(w.reputation), online: this.online(w),
+        rank: i + 1, name: w.name, title: this.title(w).zh, house: w.house, year: w.year, reputation: Math.round(w.reputation), online: this.online(w), npc: w.npc || undefined,
       })),
       minister: m ? { name: m.name, decreeUnspent: m.decreeCharges > 0 } : null,
       ministerRule: `At the end of each term the highest-reputation wizard (min ${this.rules.terms.ministerMinReputation}) becomes Minister for Magic and may issue one decree.`,
@@ -1132,7 +1468,7 @@ export class World {
     const w = this.need(wid);
     const d = derived(w, this.rules);
     return {
-      name: w.name, registry: w.id, handle: w.handle, house: w.house, wand: wandText(w),
+      name: w.name, title: this.title(w), registry: w.id, handle: w.handle, house: w.house, wand: wandText(w),
       year: w.year, yearTitle: `Year ${w.year}`, xp: Math.round(w.xp), xpForNextYear: XP_FOR_YEAR[w.year + 1] ?? null,
       reputation: Math.round(w.reputation), reputationThisTerm: Math.round(w.termReputation), galleons: w.galleons,
       hp: Math.round(w.hp), maxHp: d.maxHp, mana: Math.round(w.mana), maxMana: d.maxMana, manaRegen: d.manaRegen,
@@ -1141,6 +1477,9 @@ export class World {
         spellComplexity: maxNodes(w.year, this.rules), gas: gasLimit(w.year, this.rules), originalSpells: `${w.spells.filter((s) => !s.builtin).length}/${spellbookSize(w.year)}`,
         itemBudget: itemBudget(w.year), bannedPrimitives: this.rules.magic.bannedPrimitives,
       },
+      sealsBroken: w.seals, uiUnlocked: w.ui, uiCharms: UI_CHARMS,
+      auras: live(w.auras, this.now).map((a) => ({ aura: a.k, secondsLeft: round(a.until - this.now), magnitude: round(a.mag) })),
+      summons: [...this.creatures.values()].filter((c) => c.owner === w.id).map((c) => ({ id: c.id, kind: c.kind, hp: Math.round(c.hp), secondsLeft: round(c.until - this.now) })),
       state: w.st.jailedUntil ? 'in Azkaban' : w.st.stunnedUntil ? 'stunned (Hospital Wing)' : this.online(w) ? 'in the world' : 'offline',
       where: this.placeName(w.pos), x: round(w.pos.x), z: round(w.pos.z),
       decreeCharges: w.decreeCharges, achievements: w.achievements.map((a) => ACHIEVEMENTS[a]?.name ?? a), titles: w.titles, stats: w.stats,
@@ -1175,12 +1514,17 @@ export class World {
       if (w.st.jailedUntil) s += 'J';
       if (this.flags.elderWandHolder === w.id) s += 'E';
       if (w.decreeCharges) s += 'M';
-      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, s, say: w.say?.text };
+      if (w.npc) s += 'N';
+      s += auraFlags(w.auras, this.now);
+      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text };
     });
     return {
       t: round(this.now), hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather, term: { n: this.term.n, left: Math.max(0, Math.round(this.term.endsAt - this.now)) },
       w: ws,
-      c: [...this.creatures.values()].map((c) => ({ i: c.id, k: c.kind, x: round(c.pos.x), z: round(c.pos.z), f: round(c.facing), hp: Math.round(c.hp), m: Math.round(c.maxHp) })),
+      c: [...this.creatures.values()].map((c) => ({
+        i: c.id, k: c.kind, x: round(c.pos.x), z: round(c.pos.z), f: round(c.facing), hp: Math.round(c.hp), m: Math.round(c.maxHp),
+        o: c.owner ? this.wizards.get(c.owner)?.handle : undefined, s: auraFlags(c.auras, this.now) + (c.rootedUntil > this.now ? 'R' : ''),
+      })),
       p: [...this.projectiles.values()].map((p) => ({ i: p.id, k: p.kind, x: round(p.pos.x), z: round(p.pos.z), e: p.element })),
       fx: this.drainFx(),
       elder: this.flags.elderWandHolder ? null : TOMB,
@@ -1209,6 +1553,9 @@ export class World {
       stunned: w.st.stunnedUntil ? Math.max(0, round(w.st.stunnedUntil - this.now)) : 0,
       jailed: w.st.jailedUntil ? Math.max(0, round(w.st.jailedUntil - this.now)) : 0,
       decree: w.decreeCharges > 0,
+      title: this.title(w),
+      ui: w.ui,
+      seals: w.seals,
       map: this.marauderMap(wid),
       proclamation: this.rules.proclamation,
     };
@@ -1223,13 +1570,13 @@ export class World {
   // ------------------------------------------------------------------ persistence
   serialize() {
     return {
-      version: 1, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
+      version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null })),
     };
   }
 
   static restore(data: ReturnType<World['serialize']>, seed?: number): World {
-    const w = new World({ seed, rules: applyPatch(defaultRulebook(), data.rules).ok ? (applyPatch(defaultRulebook(), data.rules) as { rulebook: Rulebook }).rulebook : defaultRulebook() });
+    const w = new World({ seed, secret: data.secret, rules: applyPatch(defaultRulebook(), data.rules).ok ? (applyPatch(defaultRulebook(), data.rules) as { rulebook: Rulebook }).rulebook : defaultRulebook() });
     w.now = data.now;
     w.term = data.term;
     w.houseCups = data.houseCups ?? [];
@@ -1237,7 +1584,9 @@ export class World {
     w.flags = { ...w.flags, ...data.flags, statues: data.flags?.statues ?? [] };
     w.seq = data.seq ?? 0;
     for (const x of data.wizards) {
-      const wz: Wizard = { ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } };
+      // fields added after v0.3 may be missing from older saves
+      const later: Partial<Wizard> = { auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false };
+      const wz: Wizard = { ...later, ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } };
       if (wz.hp <= 0) {
         // stunned at save time: finish the trip to the Hospital Wing
         const d = derived(wz, w.rules);
@@ -1249,6 +1598,12 @@ export class World {
     }
     return w;
   }
+}
+
+/** Compact aura letters for clients: g heal-over-time, v venom, f burning, i chilled, c cursed. */
+function auraFlags(list: { k: string; until: number }[], now: number) {
+  const on = (k: string) => list.some((a) => a.k === k && a.until > now);
+  return (on('regen') || on('grace') ? 'g' : '') + (on('poison') ? 'v' : '') + (on('burn') ? 'f' : '') + (on('chill') ? 'i' : '') + (on('cursed') ? 'c' : '');
 }
 
 function blankStatus(): Wizard['st'] {

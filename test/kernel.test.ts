@@ -17,7 +17,7 @@ function run(world: World, secs: number) {
   for (let t = 0; t < secs; t += 0.05) world.tick(0.05);
 }
 function addCreature(world: World, kind: Creature['kind'], x: number, z: number): Creature {
-  const c: Creature = { id: `c_test_${kind}_${x}`, kind, pos: { x, z }, home: { x, z }, hp: 1000, maxHp: 1000, facing: 0, target: null, attackCd: 99, rootedUntil: 0, wander: null, lastHitBy: null, damageBy: {} };
+  const c: Creature = { id: `c_test_${kind}_${x}`, kind, pos: { x, z }, home: { x, z }, hp: 1000, maxHp: 1000, facing: 0, target: null, attackCd: 99, rootedUntil: 0, wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: 0 };
   world.creatures.set(c.id, c);
   return c;
 }
@@ -43,7 +43,8 @@ describe('enrolment', () => {
     const w = mkWorld();
     const a = join(w, 'Alice');
     expect(a.spells.map((s) => s.name)).toContain('Stupefy');
-    expect(a.hotbar.filter(Boolean).length).toBe(5);
+    expect(a.hotbar.filter(Boolean).length).toBe(6);
+    expect(a.spells.map((s) => s.name)).toEqual(expect.arrayContaining(['Tempus', 'Revelio']));
   });
 });
 
@@ -327,9 +328,13 @@ describe('world simulation', () => {
   it('spawns creatures that hunt wizards, and stays stable over time', () => {
     const w = new World({ seed: 7 });
     const a = join(w, 'Alice');
-    a.pos = { x: 150, z: 15 };
-    run(w, 30);
+    a.pos = { x: 60, z: 60 };
+    run(w, 10);
     expect(w.creatures.size).toBeGreaterThan(5);
+    // step within reach of the nearest spider: it must come for us
+    const spider = [...w.creatures.values()].find((c) => c.kind === 'spider')!;
+    a.pos = { x: spider.pos.x + 12, z: spider.pos.z };
+    run(w, 10);
     expect(a.stats.stunned + (a.hp < 100 ? 1 : 0)).toBeGreaterThan(0);
   });
 

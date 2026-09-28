@@ -16,3 +16,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  formal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install TLA+ tools and Lean
+        run: |
+          curl -sSL -o /tmp/tla2tools.jar https://github.com/tlaplus/tlaplus/releases/latest/download/tla2tools.jar
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.33.0
+      - name: Model-check TLA+ specs and check Lean proofs
+        run: TLA2TOOLS=/tmp/tla2tools.jar LEAN=$HOME/.elan/bin/lean formal/run.sh
+      - name: Conformance vectors are up to date
+        run: git diff --exit-code formal/vectors.json

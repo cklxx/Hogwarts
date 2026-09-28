@@ -91,7 +91,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   }, async () => {
     const w = session.wizardId ? world.wizards.get(session.wizardId) : undefined;
     if (w) world.touch(w.id);
-    return out(grimoire(w?.year ?? 1, world.rules));
+    return out(grimoire(w?.year ?? 1, world.rules, w?.seals ?? 0));
   });
 
   server.registerTool('forge_spell', {
@@ -288,6 +288,31 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     return dry ? { ok: true, DRY_RUN: 'nothing changed yet — call again with dry_run:false to enact', wouldChange: r.changes } : { ok: true, enacted: r.changes };
   }));
 
+  server.registerTool('restricted_section', {
+    title: 'The Restricted Section',
+    description: 'The four seals that guard the greatest magic: what each gives, where their pages rest, and the codex of Old Runes. Bigger magic is locked behind harder seals.',
+    annotations: { readOnlyHint: true },
+  }, me((wid) => world.restrictedSection(wid)));
+
+  server.registerTool('read_seal_page', {
+    title: 'Read a page of a seal',
+    description: 'Collect a page of a seal. You must be standing within 10m of the landmark where that page rests.',
+    inputSchema: { tier: z.number().int().min(1).max(4) },
+  }, me((wid, a: { tier: number }) => world.readSealPage(wid, a.tier)));
+
+  server.registerTool('inspect_seal', {
+    title: 'Study a seal',
+    description: 'The Old Runes of a seal, as far as the pages you hold reveal them.',
+    inputSchema: { tier: z.number().int().min(1).max(4) },
+    annotations: { readOnlyHint: true },
+  }, me((wid, a: { tier: number }) => world.inspectSeal(wid, a.tier)));
+
+  server.registerTool('break_seal', {
+    title: 'Speak the words to a seal',
+    description: 'Attempt to break a seal with its input words (32-bit, e.g. "0x1a2b3c4d"). Exactly one answer opens it. 3 attempts per 10 minutes; every failure bites.',
+    inputSchema: { tier: z.number().int().min(1).max(4), words: z.array(z.union([z.string(), z.number()])).min(1).max(4) },
+  }, me((wid, a: { tier: number; words: (string | number)[] }) => world.breakSeal(wid, a.tier, a.words)));
+
   server.registerTool('marauders_map', {
     title: "The Marauder's Map",
     description: 'An old piece of parchment.',
@@ -308,7 +333,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   // ---------------------------------------------------------------- resources
   server.registerResource('grimoire', 'hogwarts://grimoire', { title: 'Runes grimoire', mimeType: 'text/plain' }, async (uri) => {
     const w = session.wizardId ? world.wizards.get(session.wizardId) : undefined;
-    return { contents: [{ uri: uri.href, text: grimoire(w?.year ?? 1, world.rules) }] };
+    return { contents: [{ uri: uri.href, text: grimoire(w?.year ?? 1, world.rules, w?.seals ?? 0) }] };
   });
   server.registerResource('rulebook', 'hogwarts://rulebook', { title: 'Current Rulebook', mimeType: 'application/json' }, async (uri) => ({
     contents: [{ uri: uri.href, text: JSON.stringify(world.rules, null, 2) }],

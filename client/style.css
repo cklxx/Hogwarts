@@ -64,3 +64,18 @@ input, select { font: inherit; padding: 5px 7px; border-radius: 5px; border: 1px
 #sp-out.bad { color: #9b0000; } #sp-out.good { color: #1d5b1d; }
 button.ghost { background: transparent; color: #7f0909; }
 @media (max-width: 800px) { #book .cols { grid-template-columns: 1fr; } }
+
+#presence { position: fixed; right: 10px; bottom: 12px; width: min(260px, 30vw); font-size: 13px; }
+#presence .arrow { display: inline-block; width: 1em; text-align: center; color: #d4af37; }
+.locked { color: #c9b27a; font-style: italic; opacity: .9; }
+.hint { font-size: 12px; opacity: .75; }
+#me .title { color: #d4af37; font-weight: normal; }
+#seals { position: fixed; inset: 5vh 6vw; padding: 12px 18px; overflow: auto; z-index: 6; }
+#seals h2 { margin: 0 0 6px; } #seals h2 small { font-weight: normal; font-size: 13px; opacity: .7; }
+#seals .warn { font-style: italic; color: #7f0909; }
+#seal-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+#seal-list > div { border: 1px solid #8b6b3d; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+#seal-list .broken { background: rgba(212,175,55,.25); }
+#seal-runes, #seal-codex { background: #1b1510; color: #e8d9a8; padding: 10px; border-radius: 6px; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow: auto; max-height: 48vh; }
+#seals .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; } #seal-words { flex: 1; min-width: 200px; }
+@media (max-width: 800px) { #presence { display: none; } }

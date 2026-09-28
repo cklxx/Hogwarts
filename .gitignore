@@ -2,3 +2,6 @@ node_modules
 dist
 data/*.json
 .DS_Store
+formal/tla/states
+formal/tla/*_TTrace_*.tla
+formal/tla/*_TTrace_*.bin

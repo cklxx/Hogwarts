@@ -189,6 +189,120 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
       label.sprite.position.y = 4.6;
       break;
     }
+    case 'inferius': {
+      const pale = lam(0xb9c2ae, { roughness: 0.9 });
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.1, 4, 8), pale);
+      body.position.y = 1.1;
+      body.rotation.x = 0.25;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), pale);
+      head.position.set(0, 1.9, -0.25);
+      const eyes = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9fe8ff).multiplyScalar(3) }));
+      eyes.position.set(0, 1.93, -0.45);
+      const arms: THREE.Mesh[] = [-0.3, 0.3].map((x) => {
+        const a = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.9, 5), pale);
+        a.position.set(x, 1.45, -0.45);
+        a.rotation.x = -1.3;
+        return a;
+      });
+      root.add(body, head, eyes, ...arms);
+      anim = (t) => { arms.forEach((a, i) => { a.rotation.x = -1.3 + Math.sin(t * 3 + i) * 0.2; }); body.rotation.z = Math.sin(t * 1.5) * 0.08; };
+      label.sprite.position.y = 2.7;
+      break;
+    }
+    case 'unicorn': {
+      const white = lam(0xf6f6ff, { roughness: 0.4, emissive: 0x303040 });
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 1.3, 6, 10), white);
+      body.rotation.x = Math.PI / 2;
+      body.position.y = 1.35;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 0.9, 8), white);
+      neck.position.set(0, 1.9, -0.8);
+      neck.rotation.x = 0.6;
+      const head = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.45, 4, 8), white);
+      head.position.set(0, 2.25, -1.15);
+      head.rotation.x = 1.2;
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.6, 8), new THREE.MeshStandardMaterial({ color: 0xffe9a0, metalness: 0.9, roughness: 0.2, emissive: 0xffd060, emissiveIntensity: 2 }));
+      horn.position.set(0, 2.55, -1.3);
+      horn.rotation.x = -0.5;
+      const legs: THREE.Mesh[] = [];
+      for (const [x, z] of [[-0.25, -0.55], [0.25, -0.55], [-0.25, 0.55], [0.25, 0.55]]) {
+        const l = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 1.1, 6), white);
+        l.position.set(x, 0.55, z);
+        legs.push(l);
+      }
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: 0xeef4ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      halo.scale.setScalar(5);
+      halo.position.y = 1.4;
+      root.add(body, neck, head, horn, halo, ...legs);
+      anim = (t) => { legs.forEach((l, i) => { l.rotation.x = Math.sin(t * 6 + i * Math.PI / 2) * 0.35; }); halo.material.opacity = 0.35 + 0.15 * Math.sin(t * 2); };
+      label.sprite.position.y = 3.1;
+      break;
+    }
+    case 'phoenix': {
+      const fire = new THREE.MeshStandardMaterial({ color: 0xc8261a, emissive: 0xff5a1a, emissiveIntensity: 2.5, roughness: 0.4 });
+      const gold = new THREE.MeshStandardMaterial({ color: 0xffc040, emissive: 0xffa020, emissiveIntensity: 3 });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 10), fire);
+      body.scale.set(1, 0.8, 1.6);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), fire);
+      head.position.set(0, 0.25, -0.55);
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 6), gold);
+      beak.position.set(0, 0.22, -0.75);
+      beak.rotation.x = -Math.PI / 2;
+      const wingGeo = new THREE.PlaneGeometry(1.4, 0.6);
+      wingGeo.translate(0.7, 0, 0);
+      const wl = new THREE.Mesh(wingGeo, new THREE.MeshStandardMaterial({ color: 0xe0401a, emissive: 0xff6a20, emissiveIntensity: 2, side: THREE.DoubleSide }));
+      const wr = wl.clone();
+      wr.scale.x = -1;
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.4, 6), gold);
+      tail.position.set(0, -0.05, 0.9);
+      tail.rotation.x = Math.PI / 2 + 0.2;
+      const g = new THREE.Group();
+      g.add(body, head, beak, wl, wr, tail);
+      g.position.y = 3.2;
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: 0xffa040, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.scale.setScalar(4);
+      g.add(glow);
+      root.add(g);
+      anim = (t) => { wl.rotation.z = Math.sin(t * 7) * 0.7; wr.rotation.z = -wl.rotation.z; g.position.y = 3.2 + Math.sin(t * 2) * 0.4; };
+      label.sprite.position.y = 4.4;
+      break;
+    }
+    case 'serpent': {
+      const scale = lam(0x2d6b2d, { roughness: 0.35 });
+      const segs: THREE.Mesh[] = [];
+      for (let i = 0; i < 9; i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.2 - i * 0.012, 8, 6), scale);
+        m.position.set(0, 0.2, i * 0.3);
+        segs.push(m);
+      }
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), scale);
+      head.scale.set(1, 0.7, 1.4);
+      head.position.set(0, 0.35, -0.3);
+      root.add(head, ...segs);
+      anim = (t) => { segs.forEach((m, i) => { m.position.x = Math.sin(t * 6 - i * 0.7) * 0.25; }); head.position.x = Math.sin(t * 6 + 0.7) * 0.2; };
+      label.sprite.position.y = 1.3;
+      break;
+    }
+    case 'birds': {
+      const birds: THREE.Group[] = [];
+      const feather = lam(0xf0e6c8, { roughness: 0.6 });
+      for (let i = 0; i < 6; i++) {
+        const b = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.35, 6), feather);
+        body.rotation.x = Math.PI / 2;
+        const w = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.12), new THREE.MeshStandardMaterial({ color: 0xf0e6c8, side: THREE.DoubleSide }));
+        b.add(body, w);
+        birds.push(b);
+        root.add(b);
+      }
+      anim = (t) => birds.forEach((b, i) => {
+        const a = t * 3 + (i * Math.PI * 2) / birds.length;
+        b.position.set(Math.cos(a) * 0.8, 1.6 + Math.sin(t * 5 + i) * 0.3, Math.sin(a) * 0.8);
+        b.rotation.y = -a;
+        (b.children[1] as THREE.Mesh).rotation.x = Math.sin(t * 20 + i) * 0.8;
+      });
+      label.sprite.position.y = 2.6;
+      break;
+    }
     case 'dementor': {
       const robe = new THREE.Mesh(new THREE.ConeGeometry(0.8, 3, 8, 1, true), new THREE.MeshStandardMaterial({ color: 0x0a0a0c, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
       robe.position.y = 2.5;
@@ -203,6 +317,39 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
   }
   root.add(label.sprite);
   return { root, label, anim };
+}
+
+let _glow: THREE.Texture | null = null;
+function glowTex() {
+  if (_glow) return _glow;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  rg.addColorStop(0, 'rgba(255,255,255,1)');
+  rg.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = rg;
+  g.fillRect(0, 0, 64, 64);
+  _glow = new THREE.CanvasTexture(c);
+  return _glow;
+}
+
+/** A ring at the feet that shows the strongest aura: heal (green), venom, fire, frost, curse. */
+export function makeAuraRing() {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 28), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.08;
+  m.visible = false;
+  return m;
+}
+const AURA_COLORS: [string, number][] = [['c', 0x9b3cff], ['f', 0xff7a1a], ['v', 0x6cff3c], ['i', 0x8fe3ff], ['g', 0x7dffb0]];
+export function setAuraRing(ring: THREE.Mesh, flags: string, t: number) {
+  const hit = AURA_COLORS.find(([f]) => flags.includes(f));
+  ring.visible = !!hit;
+  if (hit) {
+    (ring.material as THREE.MeshBasicMaterial).color.setHex(hit[1]).multiplyScalar(2);
+    ring.scale.setScalar(1 + 0.08 * Math.sin(t * 6));
+  }
 }
 
 export function makeBolt(kind: string, e: Element): THREE.Object3D {

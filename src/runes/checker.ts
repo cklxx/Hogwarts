@@ -7,10 +7,11 @@ export interface Analysis {
   primitives: string[];
   effects: string[];
   minYear: number;
+  minSeals: number;
   usesAfter: boolean;
 }
 
-export interface CheckLimits { year: number; maxNodes: number; banned?: readonly string[] }
+export interface CheckLimits { year: number; maxNodes: number; banned?: readonly string[]; seals?: number }
 
 const SPECIAL = new Set<string>(SPECIAL_FORMS);
 
@@ -19,6 +20,7 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
   const program = parse(source);
   let nodes = 0;
   let minYear = 1;
+  let minSeals = 0;
   let usesAfter = false;
   const prims = new Set<string>();
 
@@ -94,6 +96,7 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
     }
     prims.add(name);
     minYear = Math.max(minYear, p.year);
+    minSeals = Math.max(minSeals, p.seals ?? 0);
     rest.forEach((r) => walk(r, scope));
   };
 
@@ -107,9 +110,13 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
       const blockers = primitives.filter((p) => PRIM_BY_NAME.get(p)!.year > limits.year);
       throw new RuneError(`this spell needs year ${minYear} magic (${usesAfter && limits.year < 2 ? 'after, ' : ''}${blockers.join(', ')}); you are year ${limits.year}`);
     }
+    if (minSeals > (limits.seals ?? 0)) {
+      const blockers = primitives.filter((p) => (PRIM_BY_NAME.get(p)!.seals ?? 0) > (limits.seals ?? 0));
+      throw new RuneError(`${blockers.join(', ')} lies behind seal ${minSeals} of the Restricted Section; you have broken ${limits.seals ?? 0}`);
+    }
     if (nodes > limits.maxNodes) throw new RuneError(`spell too complex: ${nodes} nodes > your limit ${limits.maxNodes}`);
     const banned = effects.filter((e) => limits.banned?.includes(e));
     if (banned.length) throw new RuneError(`banned by Ministry decree: ${banned.join(', ')}`);
   }
-  return { program, nodes, primitives, effects, minYear, usesAfter };
+  return { program, nodes, primitives, effects, minYear, minSeals, usesAfter };
 }
