@@ -1,9 +1,111 @@
 import * as THREE from 'three';
 import { Water } from 'three/addons/objects/Water.js';
+import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
 import { tex as fileTex } from './assets';
+import { createGrass } from './grass';
 import { drape, heightAt, makeTerrain } from './terrain';
 import { cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
+
+/** Everything that sways (grass, tree crowns, pennants) reads the same wind. */
+export const WIND = new THREE.Vector2(0.8, 0.35);
+const windTime = { value: 0 };
+
+/** A pointed (Gothic) arch, `w` wide and `h` tall, standing on y = 0. */
+function archShape(w: number, h: number, y0 = 0) {
+  const s = new THREE.Shape();
+  const hw = w / 2, spring = y0 + h - w * 0.85;
+  s.moveTo(-hw, y0);
+  s.lineTo(hw, y0);
+  s.lineTo(hw, spring);
+  s.quadraticCurveTo(hw * 0.98, spring + w * 0.62, 0, y0 + h);
+  s.quadraticCurveTo(-hw * 0.98, spring + w * 0.62, -hw, spring);
+  s.lineTo(-hw, y0);
+  return s;
+}
+function archHole(w: number, h: number, lift = 0) {
+  const p = new THREE.Path();
+  const hw = w / 2, spring = h - w * 0.85;
+  p.moveTo(-hw, lift);
+  p.lineTo(-hw, lift + spring);
+  p.quadraticCurveTo(-hw * 0.98, lift + spring + w * 0.62, 0, lift + h);
+  p.quadraticCurveTo(hw * 0.98, lift + spring + w * 0.62, hw, lift + spring);
+  p.lineTo(hw, lift);
+  p.lineTo(-hw, lift);
+  return p;
+}
+/** Leaded glass: amber quarries between lead cames, a mullion and a transom. Used as map and emissiveMap. */
+function leadedTexture() {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#16110a';
+  g.fillRect(0, 0, 64, 128);
+  for (let y = 0; y < 128; y += 8)
+    for (let x = 0; x < 64; x += 8) {
+      const k = 0.75 + Math.random() * 0.25;
+      g.fillStyle = `rgb(${Math.round(255 * k)},${Math.round(205 * k)},${Math.round(120 * k)})`;
+      g.beginPath(); g.moveTo(x + 4, y + 0.5); g.lineTo(x + 7.5, y + 4); g.lineTo(x + 4, y + 7.5); g.lineTo(x + 0.5, y + 4); g.fill();
+    }
+  g.fillStyle = '#16110a';
+  g.fillRect(29, 0, 6, 128);   // mullion
+  g.fillRect(0, 74, 64, 5);    // transom
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+/** A clock face: cream dial, Roman numerals, minute ticks, a gold bezel. */
+function clockTexture() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#b8912e'; g.beginPath(); g.arc(128, 128, 128, 0, 7); g.fill();
+  g.fillStyle = '#f3ead2'; g.beginPath(); g.arc(128, 128, 116, 0, 7); g.fill();
+  g.strokeStyle = '#2a2014'; g.lineWidth = 2;
+  g.beginPath(); g.arc(128, 128, 104, 0, 7); g.stroke();
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2, r0 = i % 5 ? 98 : 90;
+    g.lineWidth = i % 5 ? 2 : 4;
+    g.beginPath(); g.moveTo(128 + Math.sin(a) * r0, 128 - Math.cos(a) * r0); g.lineTo(128 + Math.sin(a) * 104, 128 - Math.cos(a) * 104); g.stroke();
+  }
+  g.fillStyle = '#2a2014'; g.font = 'bold 22px Georgia'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  ['XII', 'I', 'II', 'III', 'IIII', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'].forEach((n, i) => {
+    const a = (i / 12) * Math.PI * 2;
+    g.fillText(n, 128 + Math.sin(a) * 74, 128 - Math.cos(a) * 74);
+  });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+/** A gable roof over a rectangle (ridge along z): two slate slopes with world-scaled UVs, and the two gable triangles. */
+function gableRoof(x0: number, x1: number, z0: number, z1: number, y: number, rise: number) {
+  const cx = (x0 + x1) / 2, run = (x1 - x0) / 2, slope = Math.hypot(run, rise);
+  const T = 3; // metres per slate texture tile
+  const slopes = new THREE.BufferGeometry();
+  const top = y + rise;
+  slopes.setAttribute('position', new THREE.Float32BufferAttribute([
+    x0, y, z1, cx, top, z1, cx, top, z0, x0, y, z1, cx, top, z0, x0, y, z0,
+    x1, y, z0, cx, top, z0, cx, top, z1, x1, y, z0, cx, top, z1, x1, y, z1,
+  ], 3));
+  const L = (z1 - z0) / T, H = slope / T;
+  slopes.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, H, L, H, 0, 0, L, H, L, 0, 0, 0, 0, H, L, H, 0, 0, L, H, L, 0], 2));
+  slopes.computeVertexNormals();
+  const gables = new THREE.BufferGeometry();
+  gables.setAttribute('position', new THREE.Float32BufferAttribute([x0, y, z1, x1, y, z1, cx, top, z1, x1, y, z0, x0, y, z0, cx, top, z0], 3));
+  gables.setAttribute('uv', new THREE.Float32BufferAttribute([x0 / 4, y / 4, x1 / 4, y / 4, cx / 4, top / 4, x1 / 4, y / 4, x0 / 4, y / 4, cx / 4, top / 4], 2));
+  gables.computeVertexNormals();
+  return { slopes, gables };
+}
+/** A pennant: a long tapering triangle along +x from the pole, subdivided so it can ripple. */
+function pennantGeometry() {
+  const g = new THREE.PlaneGeometry(1, 1, 10, 1);
+  g.translate(0.5, 0, 0);
+  const p = g.getAttribute('position');
+  for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) * (1 - p.getX(i) * 0.92));
+  g.computeVertexNormals();
+  return g;
+}
 
 export interface WorldScene {
   /** The terrain mesh, for aiming. */
@@ -13,7 +115,13 @@ export interface WorldScene {
   /** Points where house banners hang: position + facing yaw. */
   bannerSpots: { x: number; y: number; z: number; yaw: number }[];
   lake: Water | null;
-  tick(t: number, dt: number, willowAngry: boolean, sunDir: THREE.Vector3): void;
+  /** Chimney tops (Hogsmeade, Hagrid's hut) for the smoke particles. */
+  chimneys: THREE.Vector3[];
+  /**
+   * Per-frame animation. `env.hour` drives the Clock Tower hands, `env.banner` the pennant colour,
+   * `env.focus` (the player) re-centres the grass and hides the Great Hall roof from inside.
+   */
+  tick(t: number, dt: number, willowAngry: boolean, sunDir: THREE.Vector3, env?: { hour?: number; banner?: House | null; focus?: THREE.Vector3 }): void;
   setQuality(q: 'low' | 'high'): void;
 }
 
@@ -26,9 +134,30 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     nightGlow.push(m);
     return m;
   };
+  const leadTex = leadedTexture();
   const windowMat = glowMat(0xffc46b);
+  windowMat.color.set(0x5a5a66);
+  windowMat.map = leadTex;
+  windowMat.emissiveMap = leadTex;
+  windowMat.roughness = 0.2;
+  windowMat.metalness = 0.3;
   const candleMat = glowMat(0xfff1c4);
   const leaf = new THREE.MeshStandardMaterial({ color: 0x2a4a26, roughness: 1, flatShading: true });
+  // tree crowns sway in the wind (more at the top), each tree with its own phase
+  leaf.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = windTime;
+    sh.uniforms.uWind = { value: WIND };
+    sh.vertexShader = 'uniform float uTime; uniform vec2 uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec3 treePos = instanceMatrix[3].xyz;
+      #else
+        vec3 treePos = modelMatrix[3].xyz;
+      #endif
+      float lift = clamp(position.y + 0.5, 0.0, 1.0);
+      float sw = sin(uTime * 1.1 + treePos.x * 0.13 + treePos.z * 0.07) * 0.7 + sin(uTime * 2.3 + treePos.z * 0.21) * 0.3;
+      transformed.xz += uWind * (0.35 + sw) * 0.045 * lift * lift;`);
+  };
+  leaf.customProgramCacheKey = () => 'leaf-sway';
   const trunk = new THREE.MeshStandardMaterial({ color: 0x3d2b1a, roughness: 1 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 });
   const rock = M.rock;
@@ -83,6 +212,12 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   const bannerSpots: WorldScene['bannerSpots'] = [];
   let lake: Water | null = null;
   const trees: Obstacle[] = [];
+  const chimneys: THREE.Vector3[] = [];
+  /** Arch windows to instance: sill centre, outward yaw, width, height. */
+  const windows: { x: number; y: number; z: number; yaw: number; w: number; h: number }[] = [];
+  /** Pennants: pole top and length. */
+  const pennants: { x: number; y: number; z: number; len: number }[] = [];
+  const clockFaces: { x: number; y: number; z: number; r: number; yaw: number }[] = [];
 
   for (const o of OBSTACLES) {
     if (o.style === 'tree') { trees.push(o); continue; }
@@ -104,6 +239,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         if (isHouse && !isGlass) {
           const chimney = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(1.2, 4, 1.2), 1.2, 4, 1.2, 2), M.darkStone));
           chimney.position.set(o.x1 - 2, o.h + 2.5, o.z0 + 2);
+          chimneys.push(new THREE.Vector3(o.x1 - 2, o.h + 4.6, o.z0 + 2));
         }
       } else if (o.h > 15) {
         // battlements
@@ -115,15 +251,34 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         for (let i = 0; i <= n; i++) for (const zz of [o.z0, o.z1]) { m4.setPosition(o.x0 + (i * w) / Math.max(1, n), o.h + 0.8, zz); merlons.setMatrixAt(k++, m4); }
         merlons.castShadow = true;
         scene.add(merlons);
-        // arched glowing windows on the south face
-        const win = new THREE.PlaneGeometry(0.9, 1.8);
+        // merlons on the short sides too
+        const nd = Math.floor(d / 3);
+        const side = new THREE.InstancedMesh(merlon, M.darkStone, (nd + 1) * 2);
+        k = 0;
+        for (let i = 0; i <= nd; i++) for (const xx of [o.x0, o.x1]) { m4.setPosition(xx, o.h + 0.8, o.z0 + (i * d) / Math.max(1, nd)); side.setMatrixAt(k++, m4); }
+        side.castShadow = true;
+        scene.add(side);
+        // pointed-arch glowing windows on every face (banners hang in the top row of the south face)
         for (let i = 1; i < n; i += 2)
-          for (let y = 4; y < o.h - 2; y += 5) {
-            const m = new THREE.Mesh(win, windowMat);
-            m.position.set(o.x0 + (i * w) / n, y, o.z1 + 0.06);
-            scene.add(m);
+          for (let y = 3; y < o.h - 3; y += 5) {
+            const x = o.x0 + (i * w) / n;
+            const underBanner = y > o.h - 9 && (Math.abs(x - cx + w * 0.25) < 1.8 || Math.abs(x - cx - w * 0.25) < 1.8);
+            if (!underBanner) windows.push({ x, y, z: o.z1, yaw: 0, w: 1.1, h: 2.4 });
+            windows.push({ x, y, z: o.z0, yaw: Math.PI, w: 1.1, h: 2.4 });
+          }
+        const nz = Math.floor(d / 6);
+        for (let i = 1; i < nz; i++)
+          for (let y = 3; y < o.h - 3; y += 5) {
+            const z = o.z0 + (i * d) / nz;
+            windows.push({ x: o.x1, y, z, yaw: Math.PI / 2, w: 1.1, h: 2.4 }, { x: o.x0, y, z, yaw: -Math.PI / 2, w: 1.1, h: 2.4 });
           }
         bannerSpots.push({ x: cx - w * 0.25, y: o.h - 3, z: o.z1 + 0.12, yaw: 0 }, { x: cx + w * 0.25, y: o.h - 3, z: o.z1 + 0.12, yaw: 0 });
+      } else if (o.h === 14 && d > 20) {
+        // the Great Hall's long walls: tall lancet windows seen from outside and in
+        const west = o.x0 < 0;
+        const face = west ? o.x0 : o.x1, inner = west ? o.x1 : o.x0, out = west ? -1 : 1;
+        for (let z = o.z0 + 4; z < o.z1 - 2; z += 4.6)
+          windows.push({ x: face, y: 3.5, z, yaw: (out * Math.PI) / 2, w: 1.7, h: 7.5 }, { x: inner, y: 3.5, z, yaw: (-out * Math.PI) / 2, w: 1.7, h: 7.5 });
       }
       continue;
     }
@@ -164,11 +319,19 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         roof.position.set(o.x, o.h + o.r * 1.4, o.z);
         const spire = add(new THREE.Mesh(new THREE.ConeGeometry(0.12, 2.5, 6), gold), false);
         spire.position.set(o.x, o.h + o.r * 2.8 + 1, o.z);
-        for (let y = 6; y < o.h; y += 7) {
-          const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.8), windowMat);
-          m.position.set(o.x, y, o.z + o.r + 0.06);
-          scene.add(m);
-        }
+        pennants.push({ x: o.x, y: o.h + o.r * 2.8 + 3.2, z: o.z, len: 2.6 + o.r * 0.45 });
+        // a string course of dark stone under the eaves: a crisp line in the silhouette
+        const course = add(new THREE.Mesh(new THREE.TorusGeometry(o.r * 1.04, 0.32, 5, 28), M.darkStone));
+        course.rotation.x = Math.PI / 2;
+        course.position.set(o.x, o.h - 0.4, o.z);
+        const isClock = o.label === 'Clock Tower';
+        for (let y = 5; y < o.h - 3; y += 7)
+          for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+            if (isClock && y > o.h - 11 && (a === 0 || a === -Math.PI / 2)) continue; // the clock faces go here
+            if (o.h > 30 && a === 0 && y > o.h - 14) continue; // the banner
+            windows.push({ x: o.x + Math.sin(a) * o.r, y, z: o.z + Math.cos(a) * o.r, yaw: a, w: 1, h: 2.2 });
+          }
+        if (isClock) for (const a of [0, -Math.PI / 2]) clockFaces.push({ x: o.x, y: o.h - 5.5, z: o.z, r: o.r, yaw: a });
         if (o.h > 30) bannerSpots.push({ x: o.x, y: o.h - 6, z: o.z + o.r + 0.2, yaw: 0 });
         break;
       }
@@ -208,6 +371,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         const lamp = new THREE.PointLight(0xffb060, 6, 14, 1.6);
         lamp.position.set(o.x, 2.5, o.z + o.r + 0.8);
         scene.add(lamp);
+        const ch = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(1.1, o.h * 0.62, 1.1), 1.1, o.h * 0.62, 1.1, 2), M.darkStone));
+        ch.position.set(o.x + o.r * 0.5, o.h * 0.74, o.z - o.r * 0.25);
+        chimneys.push(new THREE.Vector3(o.x + o.r * 0.5, o.h * 1.05 + 0.15, o.z - o.r * 0.25));
         break;
       }
       case 'hoop': {
@@ -230,6 +396,155 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       }
     }
   }
+
+  // ---- castle detail: the Great Hall's roof, buttresses, turrets, pennants, clock faces, arched windows
+  const Y = new THREE.Vector3(0, 1, 0);
+  // the Great Hall: a steep slate roof between stone gables, a flèche on the ridge, a rose window over the door.
+  // Its ceiling is bewitched to look like the sky, so the roof is hidden while you are inside.
+  const hallRoof = new THREE.Group();
+  {
+    const { slopes, gables } = gableRoof(-13.8, 13.8, -72.6, -39.4, 14, 10);
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 33.2), M.darkStone);
+    ridge.position.set(0, 24, -56);
+    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 3, 8), M.darkStone);
+    lantern.position.set(0, 25, -56);
+    const fleche = new THREE.Mesh(new THREE.ConeGeometry(1.25, 8, 8), M.roof);
+    fleche.position.set(0, 30.5, -56);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 1.6, 6), gold);
+    tip.position.set(0, 35.2, -56);
+    const rose = new THREE.Mesh(new THREE.CircleGeometry(2.3, 32), windowMat);
+    rose.position.set(0, 18.4, -39.32);
+    const roseRim = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.28, 6, 32), M.darkStone);
+    roseRim.position.copy(rose.position);
+    hallRoof.add(new THREE.Mesh(slopes, M.roof), new THREE.Mesh(gables, M.stone), ridge, lantern, fleche, tip, rose, roseRim);
+    add(hallRoof);
+    pennants.push({ x: 0, y: 37, z: -56, len: 3.2 });
+    // a lintel over the doors turns the full-height slot into a doorway
+    const lintel = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(6.2, 5, 1), 6.2, 5, 1, 4), M.stone));
+    lintel.position.set(0, 11.5, -40.5);
+    const doorArch = add(new THREE.Mesh(new THREE.ExtrudeGeometry((() => { const sh = archShape(8, 10.2, -0.2); sh.holes.push(archHole(6, 9)); return sh; })(), { depth: 0.4, bevelEnabled: false, curveSegments: 10 }), M.darkStone));
+    doorArch.position.set(0, 0, -40);
+    // buttresses with pinnacles along both long walls
+    const butGeo = worldUV(new THREE.BoxGeometry(0.7, 13.2, 0.9), 0.7, 13.2, 0.9, 4);
+    const pinGeo = new THREE.ConeGeometry(0.42, 3.4, 6);
+    const zs = Array.from({ length: 7 }, (_, i) => -70.3 + i * 4.6);
+    const butI = new THREE.InstancedMesh(butGeo, M.stone, zs.length * 2);
+    const pinI = new THREE.InstancedMesh(pinGeo, M.darkStone, zs.length * 2);
+    const mm = new THREE.Matrix4();
+    zs.forEach((z, i) => [-1, 1].forEach((sx, j) => {
+      butI.setMatrixAt(i * 2 + j, mm.makeTranslation(sx * 13.35, 6.6, z));
+      pinI.setMatrixAt(i * 2 + j, mm.makeTranslation(sx * 13.35, 14.9, z));
+    }));
+    butI.castShadow = pinI.castShadow = true;
+    butI.receiveShadow = true;
+    scene.add(butI, pinI);
+  }
+  // corner turrets on the keep and where the wings meet the Great Hall, each with a pennant
+  const turret = (x: number, z: number, H: number, r = 1.9) => {
+    const g = new THREE.Group();
+    const corbel = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.3, 3.2, 16), M.darkStone);
+    corbel.position.y = H - 4.6;
+    const shaft = new THREE.Mesh(cylUV(new THREE.CylinderGeometry(r, r, 7, 16, 1, true), r, 7, 4), M.stone);
+    shaft.position.y = H;
+    const cap = new THREE.Mesh(new THREE.TorusGeometry(r * 1.03, 0.2, 4, 18), M.darkStone);
+    cap.rotation.x = Math.PI / 2;
+    cap.position.y = H + 3.5;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.32, r * 3.4, 16), M.roof);
+    roof.position.y = H + 3.5 + r * 1.7;
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.08, 1.4, 6), gold);
+    fin.position.y = H + 3.5 + r * 3.4 + 0.5;
+    g.add(corbel, shaft, cap, roof, fin);
+    g.position.set(x, 0, z);
+    add(g);
+    pennants.push({ x, y: H + 3.5 + r * 3.4 + 2, z, len: 2.4 });
+    const yaw = Math.atan2(x, z + 88);
+    windows.push({ x: x + Math.sin(yaw) * r, y: H - 1.2, z: z + Math.cos(yaw) * r, yaw, w: 0.7, h: 1.5 });
+  };
+  for (const sx of [-1, 1]) { turret(sx * 30, -72, 26); turret(sx * 30, -112, 26); turret(sx * 13, -64, 18, 1.6); }
+
+  // Clock Tower faces: a stone stage with a cream dial whose hands show the in-game hour
+  const hourHands: THREE.Object3D[] = [], minuteHands: THREE.Object3D[] = [];
+  {
+    const dialTex = clockTexture();
+    const dial = new THREE.MeshStandardMaterial({ map: dialTex, emissiveMap: dialTex, emissive: 0x9a7a4a, roughness: 0.5 });
+    nightGlow.push(dial);
+    const iron = new THREE.MeshStandardMaterial({ color: 0x15110d, metalness: 0.6, roughness: 0.4 });
+    const hourGeo = new THREE.BoxGeometry(0.18, 1.35, 0.06); hourGeo.translate(0, 0.5, 0);
+    const minGeo = new THREE.BoxGeometry(0.11, 1.95, 0.06); minGeo.translate(0, 0.78, 0);
+    for (const c of clockFaces) {
+      const g = new THREE.Group();
+      g.position.set(c.x, c.y, c.z);
+      g.rotation.y = c.yaw;
+      const stage = new THREE.Mesh(worldUV(new THREE.BoxGeometry(5.6, 5.6, 1.5), 5.6, 5.6, 1.5, 4), M.stone);
+      stage.position.z = c.r - 0.35;
+      const ledge = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.45, 2), M.darkStone);
+      ledge.position.set(0, 3, c.r - 0.3);
+      const hood = new THREE.Mesh(new THREE.ConeGeometry(4.3, 2.2, 4, 1), M.roof);
+      hood.rotation.y = Math.PI / 4;
+      hood.scale.set(1, 1, 0.35);
+      hood.position.set(0, 4.3, c.r - 0.3);
+      const face = new THREE.Mesh(new THREE.CircleGeometry(2.35, 48), dial);
+      face.position.z = c.r + 0.41;
+      const h = new THREE.Mesh(hourGeo, iron), m = new THREE.Mesh(minGeo, iron);
+      h.position.z = c.r + 0.46;
+      m.position.z = c.r + 0.52;
+      hourHands.push(h);
+      minuteHands.push(m);
+      g.add(stage, ledge, hood, face, h, m);
+      add(g);
+    }
+  }
+
+  // pennants: one instanced mesh; the colour follows the House Cup banner, the cloth ripples downwind
+  const penMat = new THREE.MeshStandardMaterial({ color: 0x6a36a8, side: THREE.DoubleSide, roughness: 0.8 });
+  penMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = windTime;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec3 pp = instanceMatrix[3].xyz;
+      #else
+        vec3 pp = vec3(0.0);
+      #endif
+      transformed.z += sin(uTime * 6.5 - position.x * 5.0 + pp.x * 0.3 + pp.z * 0.2) * 0.14 * position.x;
+      transformed.y += cos(uTime * 4.1 - position.x * 3.0 + pp.z) * 0.04 * position.x;`);
+  };
+  penMat.customProgramCacheKey = () => 'pennant';
+  const pens = new THREE.InstancedMesh(pennantGeometry(), penMat, pennants.length);
+  {
+    const q = new THREE.Quaternion().setFromAxisAngle(Y, Math.atan2(-WIND.y, WIND.x));
+    const mm = new THREE.Matrix4();
+    pennants.forEach((p, i) => pens.setMatrixAt(i, mm.compose(new THREE.Vector3(p.x, p.y - p.len * 0.17, p.z), q, new THREE.Vector3(p.len, p.len * 0.34, p.len))));
+    pens.castShadow = true;
+    scene.add(pens);
+    // thin poles
+    const poleI = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 5), gold, pennants.length);
+    pennants.forEach((p, i) => poleI.setMatrixAt(i, mm.compose(new THREE.Vector3(p.x, p.y - p.len * 0.35, p.z), new THREE.Quaternion(), new THREE.Vector3(1, p.len * 0.8, 1))));
+    scene.add(poleI);
+  }
+
+  // every window: a recessed pane of leaded glass inside a stone frame, all in two draw calls
+  {
+    const paneGeo = new THREE.ShapeGeometry(archShape(1, 2), 8);
+    const uv = paneGeo.getAttribute('uv'), pp = paneGeo.getAttribute('position');
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, pp.getX(i) + 0.5, pp.getY(i) / 2);
+    paneGeo.translate(0, 0, 0.07);
+    const frameShape = archShape(1.38, 2.34, -0.16);
+    frameShape.holes.push(archHole(1, 2));
+    const frameGeo = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 8 });
+    const panes = new THREE.InstancedMesh(paneGeo, windowMat, windows.length);
+    const frames = new THREE.InstancedMesh(frameGeo, M.darkStone, windows.length);
+    const mm = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    windows.forEach((w, i) => {
+      mm.compose(v.set(w.x, w.y, w.z), q.setFromAxisAngle(Y, w.yaw), sc.set(w.w, w.h / 2, 1));
+      panes.setMatrixAt(i, mm);
+      frames.setMatrixAt(i, mm);
+    });
+    frames.receiveShadow = true;
+    scene.add(panes, frames);
+  }
+
+  // wind-blown grass (and a few wildflowers) around the player; replaces the old static tufts
+  const grass = createGrass(scene);
 
   // ---- the Forbidden Forest: instanced, with per-tree colour jitter
   const trunkI = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.5, 1, 6), trunk, trees.length);
@@ -254,43 +569,6 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   trunkI.castShadow = crownI.castShadow = true;
   crownI.receiveShadow = true;
   scene.add(trunkI, crownI);
-
-  // ---- grass tufts and wildflowers scattered on the grounds (instanced crossed quads)
-  const tuftTex = (() => {
-    const c = document.createElement('canvas');
-    c.width = c.height = 64;
-    const g = c.getContext('2d')!;
-    for (let i = 0; i < 26; i++) {
-      g.strokeStyle = `hsl(${95 + Math.random() * 25},45%,${28 + Math.random() * 18}%)`;
-      g.lineWidth = 2;
-      const x = 16 + Math.random() * 32;
-      g.beginPath(); g.moveTo(x, 64); g.quadraticCurveTo(x + (Math.random() - 0.5) * 10, 40, x + (Math.random() - 0.5) * 20, 10 + Math.random() * 20); g.stroke();
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  })();
-  const tuftMat = new THREE.MeshStandardMaterial({ map: tuftTex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 });
-  const tuftGeo = new THREE.PlaneGeometry(1.2, 0.8);
-  tuftGeo.translate(0, 0.4, 0);
-  const TUFTS = 5000;
-  const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, TUFTS);
-  const tr = mulberry32(11);
-  for (let i = 0; i < TUFTS; i++) {
-    let x = 0, z = 0;
-    for (let tries = 0; tries < 6; tries++) {
-      x = (tr() - 0.5) * 420; z = (tr() - 0.5) * 420;
-      const inCastle = x > -70 && x < 70 && z > -125 && z < -5;
-      const inLake = Math.hypot(x + 110, z - 40) < 57;
-      const onRoad = Math.abs(x) < 4 && z > -40 && z < 150;
-      if (!inCastle && !inLake && !onRoad) break;
-    }
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), tr() * Math.PI);
-    const s = 0.6 + tr() * 0.9;
-    m4.compose(new THREE.Vector3(x, heightAt(x, z), z), q, new THREE.Vector3(s, s, s));
-    tufts.setMatrixAt(i, m4);
-  }
-  scene.add(tufts);
 
   // ---- the Great Hall: floating candles (with glow sprites) and house tables
   const candleGlow = new THREE.SpriteMaterial({ map: glowSprite('rgba(255,220,150,1)', 'rgba(255,180,80,0)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
@@ -344,16 +622,38 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   const squid = scene.getObjectByName('squid');
   const arms = scene.getObjectByName('willow')?.getObjectByName('arms');
 
-  const lakeReflect = lake ? (lake as Water).onBeforeRender : null;
+  const lakeMirror = lake ? (lake as Water).onBeforeRender : null;
+  // the lake's mirror pass re-renders the scene: leave the grass out of it (it is far too small to see in a reflection)
+  const lakeReflect: typeof lakeMirror = lakeMirror && ((...args) => {
+    const was = grass.mesh.visible;
+    grass.mesh.visible = false;
+    lakeMirror.apply(lake, args);
+    grass.mesh.visible = was;
+  });
+  let bannerKey: House | null | undefined;
   return {
     ground: terrain.ground,
-    nightGlow, bannerSpots, lake,
+    nightGlow, bannerSpots, lake, chimneys,
     setQuality(q) {
-      tufts.visible = q === 'high';
+      grass.setQuality(q);
       // the lake's mirror pass re-renders the whole scene; freeze it on weak GPUs
       if (lake && lakeReflect) (lake as Water).onBeforeRender = q === 'high' ? lakeReflect : () => {};
     },
-    tick(t, dt, willowAngry, sunDir) {
+    tick(t, dt, willowAngry, sunDir, env = {}) {
+      windTime.value = t;
+      if (env.focus) {
+        grass.update(t, env.focus);
+        const f = env.focus;
+        hallRoof.visible = !(f.x > -13.5 && f.x < 13.5 && f.z > -72.5 && f.z < -39.5);
+      }
+      if (env.hour !== undefined) {
+        for (const m of hourHands) m.rotation.z = -((env.hour % 12) / 12) * Math.PI * 2;
+        for (const m of minuteHands) m.rotation.z = -(env.hour % 1) * Math.PI * 2;
+      }
+      if (env.banner !== undefined && env.banner !== bannerKey) {
+        bannerKey = env.banner;
+        penMat.color.set(env.banner ? HOUSE_COLORS[env.banner] : 0x6a36a8);
+      }
       if (squid) { squid.rotation.y = t * 0.2; squid.position.y = Math.sin(t) * 0.4 - 0.6; }
       if (arms) arms.rotation.y += willowAngry ? 0.25 : 0.004;
       candles.forEach((c, i) => { c.position.y += Math.sin(t * 1.3 + i) * 0.003; });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 
 /** A canvas sprite used for name tags, hp bars and speech bubbles. */
@@ -50,6 +51,7 @@ export class Label {
 
 export interface WizardModel {
   root: THREE.Group;
+  /** Facing (rotation.y) and the stunned pose (rotation.z / position.y) are set from outside. */
   body: THREE.Group;
   label: Label;
   shield: THREE.Mesh;
@@ -58,52 +60,362 @@ export interface WizardModel {
   root2: THREE.Mesh;
   patronus: THREE.Mesh;
   elder: THREE.Mesh;
+  /** Set when a 'cast' fx for this wizard arrives; pass it to update() and clear it. */
+  castPending: boolean;
+  /**
+   * Animate: walk cycle scaled by ground speed (m/s), and the wand-arm cast gesture when `casting`
+   * is true. Returns true on the frame the wand is thrust forward (the moment to flash the tip).
+   */
+  update(dt: number, speed: number, casting: boolean): boolean;
 }
 
-export function makeWizard(house: House, isMe: boolean): WizardModel {
+// ---- wizard parts: geometry and materials are built once and shared by every wizard
+const SCARF: Record<House, [string, string]> = {
+  Gryffindor: ['#7f0909', '#e3a81d'],
+  Hufflepuff: ['#e8b92c', '#26211d'],
+  Ravenclaw: ['#1b2f6e', '#a8834e'],
+  Slytherin: ['#1a4a2a', '#b9bec4'],
+};
+const SKIN = [0xf2cba8, 0xe6b48c, 0xc98f66, 0x9a6444, 0x6e4530, 0xf6dcc4];
+const HAIR = [0x2b1a10, 0x4a2c17, 0x7a4a22, 0xa8561f, 0xd8b56a, 0x141414, 0x6b6b6b];
+const WOOD = [0x4a2e19, 0x6b4526, 0x2d1d12, 0x8a6a45, 0x3a2418];
+
+const cache = new Map<string, unknown>();
+function once<T>(key: string, make: () => T): T {
+  if (!cache.has(key)) cache.set(key, make());
+  return cache.get(key) as T;
+}
+const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; };
+const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const ease = (t: number) => t * t * (3 - 2 * t);
+
+/**
+ * A surface of revolution from rings listed top to bottom. Each ring has its own centre, radius and
+ * angular span, so the same builder makes an open-fronted robe (the span leaves a gap at the front,
+ * -z) and a hat whose tip bends backwards.
+ */
+function rings(list: { x?: number; y: number; z?: number; r: number; gap?: number; pleat?: number }[], segs: number) {
+  const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+  const top = list[0].y, bottom = list[list.length - 1].y;
+  list.forEach((ring, j) => {
+    const gap = ring.gap ?? 0;
+    for (let i = 0; i <= segs; i++) {
+      const u = i / segs;
+      const phi = Math.PI + gap / 2 + u * (Math.PI * 2 - gap);
+      const r = ring.r * (1 + Math.cos(u * Math.PI * 2 * 7) * (ring.pleat ?? 0));
+      pos.push((ring.x ?? 0) + Math.sin(phi) * r, ring.y, (ring.z ?? 0) + Math.cos(phi) * r);
+      uv.push(u, (ring.y - bottom) / Math.max(1e-6, top - bottom));
+    }
+    if (j < list.length - 1)
+      for (let i = 0; i < segs; i++) {
+        const a = j * (segs + 1) + i, b = a + segs + 1;
+        idx.push(a, b, a + 1, b, b + 1, a + 1);
+      }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+const ROBE_TOP = 1.56;
+const ROBE: [number, number][] = [[0.1, 1.56], [0.2, 1.51], [0.28, 1.45], [0.31, 1.36], [0.3, 1.2], [0.27, 1.02], [0.29, 0.84], [0.34, 0.62], [0.41, 0.42], [0.49, 0.22], [0.57, 0.04]];
+function robeRadius(y: number) {
+  for (let i = 0; i + 1 < ROBE.length; i++) {
+    const [r0, y0] = ROBE[i], [r1, y1] = ROBE[i + 1];
+    if (y <= y0 && y >= y1) return r0 + ((y0 - y) / (y0 - y1)) * (r1 - r0);
+  }
+  return ROBE[ROBE.length - 1][0];
+}
+/** A scarf tail draped over the robe, down the chest (side -1) or the back (+1), hung from the neck axis. */
+function tailGeo(side: number) {
+  return once(`tailGeo${side}`, () => {
+    const g = new THREE.BoxGeometry(0.11, side < 0 ? 0.46 : 0.4, 0.028, 1, 8, 1);
+    g.translate(0, side < 0 ? -0.23 : -0.2, 0);
+    const p = g.getAttribute('position');
+    for (let i = 0; i < p.count; i++) {
+      const y = 1.5 + p.getY(i);
+      p.setZ(i, side * (Math.max(0.17, robeRadius(y) + 0.018)) + p.getZ(i));
+    }
+    g.computeVertexNormals();
+    return g;
+  });
+}
+function robeGeo() {
+  return once('robeGeo', () => {
+    const prof = ROBE;
+    return rings(prof.map(([r, y]) => {
+      const low = smooth(0.95, 0.04, y); // the robe opens wider toward the hem
+      return { r, y, gap: 0.5 + 0.35 * smooth(1.25, 1.56, y) + 0.45 * low, pleat: 0.045 * low };
+    }), 30);
+  });
+}
+function hatGeo() {
+  return once('hatGeo', () => {
+    const H = 0.68, R = 0.225, n = 12;
+    const list = [];
+    for (let j = 0; j <= n; j++) {
+      const t = 1 - j / n; // top first
+      list.push({ y: H * t - 0.12 * t ** 4, z: 0.26 * t ** 2.6, x: -0.03 * t ** 3, r: Math.max(0.004, R * (1 - t) ** 0.9 * (1 + 0.07 * Math.sin(t * 11) * t)) });
+    }
+    return rings(list, 16);
+  });
+}
+function brimGeo() {
+  return once('brimGeo', () => {
+    const g = new THREE.RingGeometry(0.17, 0.42, 28, 3);
+    g.rotateX(-Math.PI / 2);
+    const p = g.getAttribute('position');
+    for (let i = 0; i < p.count; i++) {
+      const r = Math.hypot(p.getX(i), p.getZ(i));
+      const a = Math.atan2(p.getX(i), p.getZ(i));
+      p.setY(i, -0.035 * ((r - 0.17) / 0.25) ** 2 * (0.7 + 0.3 * Math.cos(a * 2)));
+    }
+    g.computeVertexNormals();
+    return g;
+  });
+}
+function headGeo() {
+  return once('headGeo', () => {
+    // a slightly oversized head (stylised proportions read better from the game camera)
+    const head = new THREE.SphereGeometry(0.215, 22, 16);
+    head.scale(1, 1.06, 0.98);
+    head.translate(0, 0.21, 0);
+    const nose = new THREE.SphereGeometry(0.034, 8, 6);
+    nose.scale(0.85, 1, 1.15);
+    nose.translate(0, 0.19, -0.212);
+    const ears = [-1, 1].map((s) => { const e = new THREE.SphereGeometry(0.05, 8, 6); e.scale(0.45, 1, 0.8); e.translate(s * 0.21, 0.2, 0.01); return e; });
+    const neck = new THREE.CylinderGeometry(0.07, 0.08, 0.14, 10);
+    neck.translate(0, 0.03, 0);
+    const hands = new THREE.SphereGeometry(0.062, 10, 8);
+    return { face: mergeGeometries([head, nose, ...ears, neck])!, hand: hands };
+  });
+}
+function faceGeo() {
+  return once('faceGeo', () => {
+    const whites = [-1, 1].map((s) => { const e = new THREE.SphereGeometry(0.04, 10, 8); e.scale(0.9, 1, 0.5); e.translate(s * 0.078, 0.228, -0.188); return e; });
+    const pupils = [-1, 1].map((s) => { const e = new THREE.SphereGeometry(0.022, 8, 6); e.scale(1, 1.1, 0.6); e.translate(s * 0.076, 0.224, -0.205); return e; });
+    const brows = [-1, 1].map((s) => { const b = new THREE.BoxGeometry(0.075, 0.016, 0.02); b.rotateZ(s * -0.14); b.translate(s * 0.078, 0.284, -0.19); return b; });
+    const mouth = new THREE.TorusGeometry(0.035, 0.008, 4, 10, Math.PI * 0.8);
+    mouth.rotateZ(Math.PI * 1.1);
+    mouth.translate(0, 0.13, -0.204);
+    return { whites: mergeGeometries(whites)!, pupils: mergeGeometries(pupils)!, brows: mergeGeometries(brows)!, mouth };
+  });
+}
+
+function stripes(house: House, vertical: boolean) {
+  return once(`scarf:${house}:${vertical}`, () => {
+    const c = document.createElement('canvas');
+    c.width = vertical ? 128 : 32; c.height = vertical ? 32 : 128;
+    const g = c.getContext('2d')!;
+    const [a, b] = SCARF[house];
+    const n = 10, L = vertical ? c.width : c.height;
+    for (let i = 0; i < n; i++) {
+      g.fillStyle = i % 2 ? b : a;
+      if (vertical) g.fillRect((i * L) / n, 0, L / n + 1, c.height); else g.fillRect(0, (i * L) / n, c.width, L / n + 1);
+    }
+    // knitted texture
+    for (let i = 0; i < 600; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * c.width, Math.random() * c.height, 1, 2); }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 });
+  });
+}
+
+/** Black robe cloth with folds matching the pleats, house-coloured front edges and hem, gold piping. */
+function robeTex(house: House) {
+  return once(`robeTex:${house}`, () => {
+    const S = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    for (let x = 0; x < S; x++) {
+      const k = 0.78 + 0.22 * Math.cos((x / S) * Math.PI * 2 * 7);
+      const v = Math.round(26 * k);
+      g.fillStyle = `rgb(${v},${v},${v + 6})`;
+      g.fillRect(x, 0, 1, S);
+    }
+    for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`; g.fillRect(Math.random() * S, Math.random() * S, 1, 3); }
+    const hc = '#' + new THREE.Color(HOUSE_COLORS[house]).getHexString();
+    g.fillStyle = hc;
+    g.fillRect(0, 0, S * 0.045, S);
+    g.fillRect(S * 0.955, 0, S * 0.045, S);
+    g.fillRect(0, S * 0.93, S, S * 0.07);
+    g.fillStyle = '#c9a23a';
+    g.fillRect(S * 0.045, 0, 2, S * 0.93);
+    g.fillRect(S * 0.955 - 2, 0, 2, S * 0.93);
+    g.fillRect(0, S * 0.93 - 2, S, 2);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  });
+}
+
+/**
+ * Cloth: double-sided, the inside shows the house lining (picked by gl_FrontFacing), and the
+ * vertex shader swings the lower part by `sway` (x: sideways, z: trailing, y: flare).
+ */
+function clothMaterial(house: House, map: THREE.Texture | null, sway: { value: THREE.Vector3 }) {
+  const m = new THREE.MeshStandardMaterial({ color: map ? 0xffffff : 0x1c1c22, map, roughness: 0.82, side: THREE.DoubleSide });
+  const lining = new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.7);
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uSway = sway;
+    sh.uniforms.uLining = { value: lining };
+    sh.vertexShader = 'uniform vec3 uSway;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float swayW = pow(clamp(1.0 - position.y / ${(ROBE_TOP - 0.2).toFixed(2)}, 0.0, 1.0), 1.6);
+      transformed.x += uSway.x * swayW;
+      transformed.z += uSway.z * swayW;
+      transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;`);
+    sh.fragmentShader = 'uniform vec3 uLining;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      if (!gl_FrontFacing) diffuseColor.rgb = uLining;`);
+  };
+  m.customProgramCacheKey = () => 'wizard-cloth';
+  return m;
+}
+const NO_SWAY = { value: new THREE.Vector3() };
+
+const std = (key: string, p: THREE.MeshStandardMaterialParameters) => once(`mat:${key}`, () => new THREE.MeshStandardMaterial(p));
+
+let _shieldMat: THREE.ShaderMaterial | null = null;
+const shieldUniforms = { uTime: { value: 0 } };
+function shieldMat() {
+  return (_shieldMat ??= new THREE.ShaderMaterial({
+    uniforms: { ...shieldUniforms, uColor: { value: new THREE.Color(0x9fd3ff) } },
+    vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vP;
+      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz; vP = position; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float uTime; uniform vec3 uColor; varying vec3 vN; varying vec3 vV; varying vec3 vP;
+      void main(){
+        float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+        float bands = smoothstep(0.85, 1.0, sin(vP.y * 16.0 - uTime * 4.0)) * 0.5;
+        float hex = smoothstep(0.92, 1.0, abs(sin(atan(vP.z, vP.x) * 9.0 + vP.y * 3.0))) * 0.25;
+        gl_FragColor = vec4(uColor * (0.08 + f * 1.8 + (bands + hex) * (0.3 + f)), 1.0);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+}
+
+export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel {
+  const h = hash(seed || house);
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 10), new THREE.MeshStandardMaterial({ color: 0x1a1a22 }));
-  robe.position.y = 0.8;
-  body.add(robe);
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 12), new THREE.MeshStandardMaterial({ color: HOUSE_COLORS[house] }));
-  scarf.rotation.x = Math.PI / 2;
-  scarf.position.y = 1.5;
-  body.add(scarf);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshStandardMaterial({ color: 0xf0c9a0 }));
-  head.position.y = 1.75;
-  body.add(head);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.7, 10), new THREE.MeshStandardMaterial({ color: 0x15151c }));
-  hat.position.y = 2.2;
-  hat.rotation.z = 0.12;
-  body.add(hat);
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.03, 14), hat.material);
-  brim.position.y = 1.92;
-  body.add(brim);
-  const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.55, 5), new THREE.MeshStandardMaterial({ color: 0x4a2e19 }));
-  wand.position.set(0.35, 1.25, -0.3);
-  wand.rotation.x = -1.1;
-  body.add(wand);
-  const wandTip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  wandTip.position.set(0.35, 1.37, -0.55);
-  body.add(wandTip);
-  const shield = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), new THREE.MeshBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.18, depthWrite: false }));
-  shield.position.y = 1;
+  const rig = new THREE.Group();
+  body.add(rig);
+  const shadow = (m: THREE.Mesh) => { m.castShadow = true; return m; };
+
+  // a touch of emissive keeps faces readable in the shade of the hat brim
+  const skin = std(`skin${h % SKIN.length}`, { color: SKIN[h % SKIN.length], emissive: new THREE.Color(SKIN[h % SKIN.length]).multiplyScalar(0.12), roughness: 0.6 });
+  const hairMat = std(`hair${(h >>> 4) % HAIR.length}`, { color: HAIR[(h >>> 4) % HAIR.length], roughness: 0.75 });
+  const cloth = std('trousers', { color: 0x24242a, roughness: 0.9 });
+  const shoe = std('shoe', { color: 0x0e0d0c, roughness: 0.35, metalness: 0.1 });
+  const jumper = std('jumper', { color: 0x55565e, roughness: 0.95 });
+  const felt = std('felt', { color: 0x17171e, roughness: 0.9 });
+  const feltBrim = once('feltBrim', () => new THREE.MeshStandardMaterial({ color: 0x17171e, roughness: 0.9, side: THREE.DoubleSide }));
+  const band = std(`band:${house}`, { color: new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.6), roughness: 0.6 });
+  const wood = std(`wood${(h >>> 8) % WOOD.length}`, { color: WOOD[(h >>> 8) % WOOD.length], roughness: 0.55 });
+
+  // ---- robe: open at the front over a grey jumper, house tie, legs and shoes underneath
+  const sway = { value: new THREE.Vector3() };
+  const robe = shadow(new THREE.Mesh(robeGeo(), clothMaterial(house, robeTex(house), sway)));
+  const jumperMesh = new THREE.Mesh(once('jumperGeo', () => new THREE.LatheGeometry([0.24, 0.26, 0.25, 0.23, 0.25, 0.27, 0.2, 0.08].map((r, i) => new THREE.Vector2(r, 0.78 + i * 0.1)), 14)), jumper);
+  const tie = new THREE.Mesh(once('tieGeo', () => { const g = new THREE.BoxGeometry(0.055, 0.3, 0.012); g.rotateX(-0.08); g.translate(0, 1.25, -0.268); return g; }), stripes(house, false));
+  rig.add(robe, jumperMesh, tie);
+  const legs = [-1, 1].map((s) => {
+    const leg = new THREE.Group();
+    leg.position.set(s * 0.1, 0.82, 0);
+    const shin = new THREE.Mesh(once('legGeo', () => { const g = new THREE.CylinderGeometry(0.075, 0.065, 0.76, 8); g.translate(0, -0.4, 0); return g; }), cloth);
+    const foot = new THREE.Mesh(once('shoeGeo', () => { const g = new THREE.SphereGeometry(0.085, 10, 6); g.scale(0.85, 0.55, 1.5); g.translate(0, -0.78, -0.05); return g; }), shoe);
+    leg.add(shin, foot);
+    rig.add(leg);
+    return leg;
+  });
+
+  // ---- scarf: a wrap around the neck, one tail down the front and one over the shoulder
+  const scarfMat = stripes(house, true);
+  const wrap = new THREE.Mesh(once('wrapGeo', () => { const g = new THREE.TorusGeometry(0.135, 0.058, 8, 20); g.rotateX(Math.PI / 2); g.scale(1, 1, 0.92); return g; }), scarfMat);
+  wrap.position.y = 1.52;
+  const tailMat = stripes(house, false);
+  const tailF = new THREE.Mesh(tailGeo(-1), tailMat);
+  tailF.position.set(-0.09, 1.5, 0);
+  const tailB = new THREE.Mesh(tailGeo(1), tailMat);
+  tailB.position.set(0.1, 1.5, 0);
+  rig.add(wrap, tailF, tailB);
+
+  // ---- head: face, hair, and a pointed hat with a crooked tip and a house band
+  const head = new THREE.Group();
+  head.position.y = 1.5;
+  const hg = headGeo(), fg = faceGeo();
+  head.add(shadow(new THREE.Mesh(hg.face, skin)));
+  head.add(new THREE.Mesh(fg.whites, std('eyeWhite', { color: 0xf4f1ea, roughness: 0.3 })));
+  head.add(new THREE.Mesh(fg.pupils, std('pupil', { color: 0x1a120c, roughness: 0.2 })));
+  head.add(new THREE.Mesh(fg.brows, hairMat));
+  head.add(new THREE.Mesh(fg.mouth, std('mouth', { color: 0x5a2a22, roughness: 0.6 })));
+  const hair = new THREE.Mesh(once('hairGeo', () => { const g = new THREE.SphereGeometry(0.228, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62); g.rotateX(0.85); g.translate(0, 0.225, 0.014); return g; }), hairMat);
+  head.add(hair);
+  const hat = new THREE.Group();
+  hat.position.set(0, 0.37, 0.03);
+  hat.rotation.set(0.24, 0, 0.06); // pushed back so the brim does not hide the face
+  hat.add(shadow(new THREE.Mesh(hatGeo(), felt)));
+  hat.add(shadow(new THREE.Mesh(brimGeo(), feltBrim)));
+  const bandMesh = new THREE.Mesh(once('bandGeo', () => { const g = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); g.translate(0, 0.032, 0); return g; }), band);
+  hat.add(bandMesh);
+  head.add(hat);
+  rig.add(head);
+
+  // ---- arms: bell sleeves lined in house colour; the right hand holds the wand
+  const sleeveMat = once(`sleeve:${house}`, () => clothMaterial(house, null, NO_SWAY));
+  const sleeveGeo = once('sleeveGeo', () => { const g = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 12, 1, true); g.translate(0, -0.3, 0); return g; });
+  const handGeo = hg.hand;
+  const arm = (s: number) => {
+    const a = new THREE.Group();
+    a.position.set(s * 0.29, 1.41, 0);
+    a.add(shadow(new THREE.Mesh(sleeveGeo, sleeveMat)));
+    const hand = new THREE.Mesh(handGeo, skin);
+    hand.position.y = -0.6;
+    a.add(hand);
+    rig.add(a);
+    return a;
+  };
+  const armL = arm(-1), armR = arm(1);
+  const wand = new THREE.Group();
+  wand.position.set(0, -0.6, -0.02);
+  wand.rotation.x = -(Math.PI - 1.0); // about 57° off the forearm, so it points ahead from a lowered arm
+  armR.add(wand);
+  wand.add(new THREE.Mesh(once('wandGeo', () => {
+    const shaft = new THREE.CylinderGeometry(0.007, 0.014, 0.4, 6); shaft.translate(0, 0.2, 0);
+    const grip = new THREE.CylinderGeometry(0.02, 0.018, 0.11, 8); grip.translate(0, 0.01, 0);
+    const knob = new THREE.SphereGeometry(0.024, 8, 6); knob.translate(0, -0.05, 0);
+    return mergeGeometries([shaft, grip, knob])!;
+  }), wood));
+  const wandTip = new THREE.Mesh(once('tipGeo', () => new THREE.SphereGeometry(0.022, 8, 6)), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  wandTip.position.y = 0.41;
+  wand.add(wandTip);
+  const tipGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  tipGlow.scale.setScalar(0.16);
+  wandTip.add(tipGlow);
+  const glow = new THREE.PointLight(0xfff2c0, 0, 14);
+  wandTip.add(glow);
+
+  // ---- magic that shows on the wizard
+  const shield = new THREE.Mesh(once('shieldGeo', () => new THREE.SphereGeometry(1.25, 28, 18)), shieldMat());
+  shield.position.y = 1.05;
   shield.visible = false;
   root.add(shield);
-  const glow = new THREE.PointLight(0xfff2c0, 0, 14);
-  glow.position.set(0.35, 1.5, -0.6);
-  body.add(glow);
-  const root2 = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.12, 6, 16), new THREE.MeshBasicMaterial({ color: 0x9fe8ff }));
+  const root2 = new THREE.Mesh(once('rootGeo', () => new THREE.TorusGeometry(0.7, 0.07, 6, 28)), once('rootMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9fe8ff).multiplyScalar(2.5) })));
   root2.rotation.x = Math.PI / 2;
   root2.position.y = 0.2;
   root2.visible = false;
   root.add(root2);
-  const patronus = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), new THREE.MeshBasicMaterial({ color: 0xdfefff, transparent: true, opacity: 0.8 }));
+  const patronus = new THREE.Mesh(once('patronusGeo', () => new THREE.SphereGeometry(0.3, 14, 10)), once('patronusMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0xdfefff).multiplyScalar(3), transparent: true, opacity: 0.9 })));
+  const pHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: 0xbcdcff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  pHalo.scale.setScalar(2.6);
+  patronus.add(pHalo);
   patronus.visible = false;
   root.add(patronus);
-  const elder = new THREE.Mesh(new THREE.OctahedronGeometry(0.18), new THREE.MeshBasicMaterial({ color: 0xe0c3ff }));
+  const elder = new THREE.Mesh(once('elderGeo', () => new THREE.OctahedronGeometry(0.18)), once('elderMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0xe0c3ff).multiplyScalar(2) })));
   elder.position.y = 2.9;
   elder.visible = false;
   root.add(elder);
@@ -111,13 +423,70 @@ export function makeWizard(house: House, isMe: boolean): WizardModel {
   label.sprite.position.y = 3.1;
   root.add(label.sprite);
   if (isMe) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.72, 24), new THREE.MeshBasicMaterial({ color: 0xd4af37, side: THREE.DoubleSide }));
+    const ring = new THREE.Mesh(once('meRing', () => new THREE.RingGeometry(0.62, 0.72, 32)), once('meRingMat', () => new THREE.MeshBasicMaterial({ color: 0xd4af37, side: THREE.DoubleSide })));
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.05;
     root.add(ring);
   }
-  root.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
-  return { root, body, label, shield, glow, wandTip, root2, patronus, elder };
+
+  // ---- animation state
+  const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true };
+  const tipColor = new THREE.Color();
+  const REST_R = 0.3;
+  return {
+    root, body, label, shield, glow, wandTip, root2, patronus, elder, castPending: false,
+    update(dt, speed, casting) {
+      st.t += dt;
+      st.speed += (speed - st.speed) * (1 - Math.exp(-dt * 10));
+      const stunned = Math.abs(body.rotation.z) > 0.1;
+      const w = stunned ? 0 : Math.min(1.25, st.speed / 7);
+      st.phase += dt * st.speed * 1.3;
+      const s = Math.sin(st.phase), c = Math.cos(st.phase);
+      const breathe = Math.sin(st.t * 2.1);
+      // body: bob twice per stride, lean into the walk, twist the shoulders against the legs
+      rig.position.y = Math.abs(c) * 0.075 * w + breathe * 0.004;
+      rig.rotation.x = -0.13 * w;
+      rig.rotation.y = s * 0.07 * w;
+      rig.rotation.z = s * 0.025 * w;
+      legs[0].rotation.x = s * 0.6 * w;
+      legs[1].rotation.x = -s * 0.6 * w;
+      head.rotation.y = -rig.rotation.y * 0.7 + Math.sin(st.t * 0.37) * 0.18 * (1 - Math.min(1, w * 2));
+      head.rotation.x = 0.1 * w + breathe * 0.01;
+      // arms swing opposite to the legs; the wand arm swings less and stays ready
+      armL.rotation.set(-s * 0.65 * w + 0.06, 0, -0.12 - 0.06 * w + breathe * 0.01);
+      let rx = REST_R + s * 0.3 * w, rz = 0.1 + 0.04 * w;
+      if (casting) { st.cast = 0; st.flashed = false; }
+      let flare = 0, fire = false;
+      if (st.cast >= 0) {
+        const g = (st.cast += dt);
+        let a: number;
+        if (g < 0.12) a = REST_R + (2.3 - REST_R) * ease(g / 0.12);          // raise the wand high
+        else if (g < 0.24) a = 2.3 + (0.95 - 2.3) * ease((g - 0.12) / 0.12);  // strike forward
+        else a = 0.95 + (REST_R - 0.95) * ease(Math.min(1, (g - 0.24) / 0.36)); // recover
+        const wt = g < 0.5 ? 1 : Math.max(0, 1 - (g - 0.5) / 0.1);
+        rx = rx * (1 - wt) + a * wt;
+        rz = rz * (1 - wt) + 0.25 * wt;
+        flare = Math.max(0, 1 - Math.abs(g - 0.22) / 0.14);
+        if (!st.flashed && g >= 0.2) { st.flashed = true; fire = true; }
+        if (g > 0.6) st.cast = -1;
+      }
+      armR.rotation.set(rx, 0, rz);
+      if (stunned) { armL.rotation.set(0.2, 0, -0.9); armR.rotation.set(0.2, 0, 0.9); legs[0].rotation.x = 0.2; legs[1].rotation.x = -0.1; }
+      // the robe trails and flares, the scarf tails fly back
+      sway.value.set(-s * 0.05 * w, 0.14 * w + 0.012 * breathe, (0.03 + 0.02 * Math.abs(s)) * w);
+      tailF.rotation.set(0.03 * Math.abs(s) * w, 0, 0.04 * s * w);
+      tailB.rotation.set(-w * (0.35 + 0.12 * Math.sin(st.phase * 2 + 1)), 0, 0.05 * s * w);
+      // wand tip: follows whatever colour the snapshot gave it, blazes during the cast
+      tipColor.copy((wandTip.material as THREE.MeshBasicMaterial).color);
+      const lumos = glow.intensity > 0 ? 1 : 0;
+      tipGlow.material.color.copy(tipColor).multiplyScalar(0.5 + 3 * flare + 1.5 * lumos);
+      tipGlow.scale.setScalar(0.16 + 0.9 * flare + 0.5 * lumos);
+      if (shield.visible) { shield.scale.setScalar(1 + 0.02 * Math.sin(st.t * 5)); shieldUniforms.uTime.value = performance.now() / 1000; }
+      if (root2.visible) root2.rotation.z += dt * 2;
+      if (elder.visible) { elder.rotation.y += dt * 2; elder.position.y = 2.9 + Math.sin(st.t * 2) * 0.08; }
+      return fire;
+    },
+  };
 }
 
 /** House colour lifted toward white so it reads on dark backgrounds. */
@@ -352,13 +721,25 @@ export function setAuraRing(ring: THREE.Mesh, flags: string, t: number) {
   }
 }
 
+export const boltColor = (kind: string, e: Element) => (kind === 'disarm' ? 0xff3b3b : kind === 'root' ? 0x9fe8ff : ELEMENT_COLORS[e]);
+
+/** A spell in flight: a white-hot core inside two element-coloured glows (the trail is GPU particles, see fx.ts). */
 export function makeBolt(kind: string, e: Element): THREE.Object3D {
-  const color = kind === 'disarm' ? 0xff3b3b : kind === 'root' ? 0x9fe8ff : ELEMENT_COLORS[e];
+  const color = boltColor(kind, e);
   const g = new THREE.Group();
   // HDR colours (> 1) so the bloom pass makes spells glow
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(6) }));
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
-  g.add(core, halo);
+  const core = new THREE.Mesh(once('boltCore', () => new THREE.SphereGeometry(0.13, 10, 8)), once('boltCoreMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(8) })));
+  const inner = new THREE.Sprite(once(`boltIn:${color}`, () => new THREE.SpriteMaterial({ map: glowTex(), color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.3).multiplyScalar(5), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  inner.scale.setScalar(1.0);
+  const outer = new THREE.Sprite(once(`boltOut:${color}`, () => new THREE.SpriteMaterial({ map: glowTex(), color: new THREE.Color(color).multiplyScalar(1.6), transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })));
+  outer.scale.setScalar(2.4);
+  g.add(core, inner, outer);
+  if (kind === 'root') {
+    const ring = new THREE.Mesh(once('boltRing', () => new THREE.TorusGeometry(0.42, 0.04, 6, 24)), once('boltRingMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9fe8ff).multiplyScalar(3) })));
+    ring.name = 'spin';
+    g.add(ring);
+  }
   g.position.y = 1.3;
+  g.userData.color = color;
   return g;
 }

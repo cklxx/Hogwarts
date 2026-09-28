@@ -192,19 +192,23 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       for (const m of cloudMats) { m.color.copy(cc); m.opacity = weather === 'clear' ? 0.75 : 0.95; }
       scene.background = dayFactor > 0.02 ? null : tmp;
       bloom.strength = (0.45 + 0.5 * (1 - dayFactor)) * look.glow;
+      // the daylit HDR sky is far above 1: keep it out of the bloom so the horizon does not wash out
+      bloom.threshold = 1.1 + 3.4 * dayFactor * dayFactor;
       (grade.uniforms.tint.value as THREE.Color).copy(tint).lerp(new THREE.Color(1, 1, 1), 0.35);
     },
-    setBoltLights(bolts: { x: number; z: number; color: number }[]) {
+    setBoltLights(bolts: { x: number; y?: number; z: number; color: number }[]) {
       boltLights.forEach((l, i) => {
         const b = bolts[i];
         l.intensity = b ? 18 : 0;
-        if (b) { l.position.set(b.x, 1.5, b.z); l.color.setHex(b.color); }
+        if (b) { l.position.set(b.x, b.y ?? 1.5, b.z); l.color.setHex(b.color); }
       });
     },
     /** Low quality: 1x pixels, smaller shadow map, no bloom pass. Used on weak GPUs (auto-detected) or ?q=low. */
     setQuality(q: 'low' | 'high') {
       const low = q === 'low';
-      renderer.setPixelRatio(low ? 0.75 : Math.min(2, devicePixelRatio));
+      const ratio = low ? 0.75 : Math.min(2, devicePixelRatio);
+      renderer.setPixelRatio(ratio);
+      composer.setPixelRatio(ratio); // the HDR target is what is really rendered; scale it too
       sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
       sun.shadow.map?.dispose();
       sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
