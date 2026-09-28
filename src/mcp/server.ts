@@ -7,7 +7,7 @@ import type { World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from './grimoire.js';
 
-export interface McpSession { wizardId: string | null; baseUrl: string }
+export interface McpSession { wizardId: string | null; baseUrl: string; allowEnrol?: () => boolean }
 
 type Content = { content: { type: 'text'; text: string }[]; isError?: boolean };
 const out = (v: unknown): Content => ({ content: [{ type: 'text', text: typeof v === 'string' ? v : JSON.stringify(v, null, 2) }] });
@@ -43,6 +43,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     description: 'Create a new wizard and bind this session to it. The Sorting Hat and Ollivander do the rest. Returns a secret token — keep it; it is how you log in from the 3D client or another agent.',
     inputSchema: { name: z.string().min(2).max(24), house_preference: z.string().optional().describe('Gryffindor | Hufflepuff | Ravenclaw | Slytherin | "not Slytherin"') },
   }, async ({ name, house_preference }) => {
+    if (session.allowEnrol && !session.allowEnrol()) return fail('The Sorting Hat needs a rest: too many enrolments from your address. Try again in a few minutes.');
     try {
       const { wizard, sorting } = world.enroll(name, house_preference);
       session.wizardId = wizard.id;

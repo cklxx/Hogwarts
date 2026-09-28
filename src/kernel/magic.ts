@@ -50,6 +50,11 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
     if (asked > cap) notes.push(`${what} ${fmt(asked)} clamped to your cap ${fmt(cap)}`);
     return Math.min(asked, cap);
   };
+  const refName = (id: string) => {
+    const wz = world.wizards.get(id);
+    return wz ? `@${wz.name}` : `#${id}`;
+  };
+  const show = (v: Value) => display(v, refName, 120);
   const posOf = (v: Value, at: Node): Vec2 => {
     if (isVec(v)) return { x: v.x, z: v.z };
     if (isRef(v)) {
@@ -57,24 +62,25 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
       if (!e) throw new RuneError(`${v.id} is gone`, at.line, at.col);
       return { ...e.pos };
     }
-    throw new RuneError(`expected an entity or point, got ${display(v)}`, at.line, at.col);
+    throw new RuneError(`expected an entity or point, got ${show(v)}`, at.line, at.col);
   };
   const wizardArg = (v: Value, at: Node, range: number) => {
     const id = (v as { id: string }).id;
     const t = world.wizards.get(id);
-    if (!t || !world.isActive(t)) throw new RuneError(`${display(v)} is not a wizard in play`, at.line, at.col);
+    if (!t || !world.isActive(t)) throw new RuneError(`${show(v)} is not a wizard in play`, at.line, at.col);
     if (dist(t.pos, w.pos) > range) throw new RuneError(`${t.name} is out of range (${dist(t.pos, w.pos).toFixed(1)}m > ${range}m)`, at.line, at.col);
     return t;
   };
   const harmable = (v: Value, at: Node, range: number) => {
     const id = (v as { id: string }).id;
     const e = world.entity(id);
-    if (!e) throw new RuneError(`${display(v)} is gone`, at.line, at.col);
+    if (!e) throw new RuneError(`${show(v)} is gone`, at.line, at.col);
     if (dist(e.pos, w.pos) > range) throw new RuneError(`target out of range (${dist(e.pos, w.pos).toFixed(1)}m > ${range}m)`, at.line, at.col);
     return e;
   };
 
   const host: RuneHost = {
+    refName,
     rand: () => world.rand(),
     query: (name, args, at) => {
       switch (name) {
@@ -183,14 +189,15 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
           return push({}, 'lumos', () => { w.st.lightUntil = world.now + secs; });
         }
         case 'say': {
-          const text = display(args[0]).slice(0, 120);
+          const text = show(args[0]);
           return push({}, `say "${text}"`, () => world.say(w, text, 'spell'));
         }
       }
     },
     schedule: (delay, body, env, at) => {
+      if (ctx.free) throw new RuneError('laws cannot schedule (after ...) blocks', at.line, at.col);
+      if (ctx.depth) throw new RuneError('a delayed block cannot schedule another (after ...)', at.line, at.col);
       if (pendings.length >= caps.afterPerCast) throw new RuneError(`too many (after ...) blocks (max ${caps.afterPerCast})`, at.line, at.col);
-      if ((ctx.depth ?? 0) >= 2) throw new RuneError('(after ...) nested too deep', at.line, at.col);
       const d = Math.min(caps.afterDelay, Math.max(0.05, delay));
       if (delay > caps.afterDelay) notes.push(`after ${fmt(delay)}s clamped to ${caps.afterDelay}s`);
       pendings.push({ at: world.now + d, casterId: w.id, body, env, depth: (ctx.depth ?? 0) + 1, spellName: ctx.spellName, incantation: ctx.incantation });
@@ -214,7 +221,7 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
     return report;
   }
   report.gas = interp.gasUsed;
-  const total = ctx.free ? 0 : round(rb.magic.castOverhead * (ctx.depth ? 0 : 1) + plan.reduce((s, p) => s + p.cost, 0));
+  const total = ctx.free ? 0 : round(rb.magic.castOverhead + plan.reduce((s, p) => s + p.cost, 0));
   report.mana = total;
   report.effects = plan.map((p) => `${p.desc} (${fmt(round(p.cost))} mana)`);
   if (pendings.length) report.effects.push(`${pendings.length} delayed block(s)`);

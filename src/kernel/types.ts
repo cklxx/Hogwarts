@@ -81,6 +81,8 @@ export interface Wizard {
   eggs: { rorCrossings: number[]; rorSide: number; inErised: boolean };
   lastDuel: Record<string, number>;
   hurtAt: number;
+  /** World time this wizard was last present (persisted). */
+  lastSeenAt: number;
 }
 
 export interface CreatureDef {

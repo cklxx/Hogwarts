@@ -28,17 +28,33 @@ export interface RuneHost {
   effect(name: EffectPrimitive, args: Value[], at: Node): void;
   schedule(delay: number, body: Node[], env: Env, at: Node): void;
   rand(): number;
+  /** How an entity prints in text. */
+  refName?(id: string): string;
 }
 
 export const truthy = (v: Value) => !(v === null || v === false || v === 0 || (Array.isArray(v) && v.length === 0));
 
-export function display(v: Value): string {
-  if (v === null) return 'nil';
-  if (Array.isArray(v)) return '[' + v.map(display).join(' ') + ']';
-  if (isRef(v)) return `#${v.id}`;
-  if (isVec(v)) return `(${v.x.toFixed(1)}, ${v.z.toFixed(1)})`;
-  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(2);
-  return String(v);
+/**
+ * Render a value as text. Output is capped at `budget` characters and stops walking as soon as the
+ * budget is spent, so deeply nested lists cannot turn `str`/`say` into an unmetered CPU bomb.
+ * `refName` lets the host decide how entities print (wizards must never print their registry id).
+ */
+export function display(v: Value, refName: (id: string) => string = (id) => `#${id}`, budget = 200): string {
+  let out = '';
+  const walk = (x: Value) => {
+    if (out.length >= budget) return;
+    if (x === null) out += 'nil';
+    else if (Array.isArray(x)) {
+      out += '[';
+      for (let i = 0; i < x.length && out.length < budget; i++) { if (i) out += ' '; walk(x[i]); }
+      out += ']';
+    } else if (isRef(x)) out += refName(x.id);
+    else if (isVec(x)) out += `(${x.x.toFixed(1)}, ${x.z.toFixed(1)})`;
+    else if (typeof x === 'number') out += Number.isInteger(x) ? String(x) : x.toFixed(2);
+    else out += String(x).slice(0, budget);
+  };
+  walk(v);
+  return out.length > budget ? out.slice(0, budget - 1) + '…' : out;
 }
 
 export class Interp {
@@ -107,7 +123,7 @@ export class Interp {
       }
       case 'each': {
         const xs = this.eval(rest[1], env);
-        if (!Array.isArray(xs)) throw new RuneError(`each needs a list, got ${display(xs)}`, rest[1].line, rest[1].col);
+        if (!Array.isArray(xs)) throw new RuneError(`each needs a list, got ${this.show(xs)}`, rest[1].line, rest[1].col);
         let v: Value = null;
         for (const x of xs.slice(0, 16)) {
           const inner = env.child();
@@ -140,13 +156,15 @@ export class Interp {
     return this.pure(p.name, args, n);
   }
 
+  show(v: Value, budget = 120): string { return display(v, this.host.refName?.bind(this.host), budget); }
+
   private num(v: Value, at: Node): number {
     if (typeof v !== 'number' || !Number.isFinite(v)) throw new RuneError(`expected a number, got ${display(v)}`, at.line, at.col);
     return v;
   }
 
   private coerce(v: Value, type: ArgType, at: Node, what: string): Value {
-    const bad = () => new RuneError(`${what}: expected ${type}, got ${display(v)} from ${show(at)}`, at.line, at.col);
+    const bad = () => new RuneError(`${what}: expected ${type}, got ${this.show(v)} from ${show(at)}`, at.line, at.col);
     switch (type) {
       case 'num': if (typeof v !== 'number' || !Number.isFinite(v)) throw bad(); return v;
       case 'ent': if (!isRef(v)) throw bad(); return v;
@@ -184,7 +202,11 @@ export class Interp {
       case 'first': return (a[0] as Value[])[0] ?? null;
       case 'nth': return (a[0] as Value[])[Math.floor(n[1])] ?? null;
       case 'vec': return vec(n[0], n[1]);
-      case 'str': { const s = a.map(display).join(''); return s.slice(0, 200); }
+      case 'str': {
+        let s = '';
+        for (const x of a) { if (s.length >= 200) break; s += this.show(x, 200 - s.length); }
+        return s.slice(0, 200);
+      }
       case 'rand': return this.host.rand();
     }
     throw new RuneError(`no such word '${name}'`, at.line, at.col);

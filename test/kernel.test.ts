@@ -143,6 +143,7 @@ describe('duels, progression and reputation', () => {
     a.pos = { x: 60, z: 60 };
     b.pos = { x: 60, z: 66 };
     b.reputation = 100;
+    b.createdAt = -1000; // not a fresh enrolee
     b.hp = 5;
     w.cast(a.id, 'Stupefy', { target: b.handle });
     run(w, 1);
@@ -358,5 +359,93 @@ describe('pathfinding', () => {
     w.setGoal(a.id, { x: 40, z: -150 });
     run(w, 40);
     expect(Math.hypot(a.pos.x - 40, a.pos.z + 150)).toBeLessThan(1);
+  });
+});
+
+describe('review regressions', () => {
+  it('printing huge nested lists is bounded (no CPU bomb)', () => {
+    const w = mkWorld();
+    const a = join(w, 'Bomber');
+    a.year = 7;
+    const src = ['(let v0 (list 1 2 3 4))', ...Array.from({ length: 13 }, (_, i) => `(let v${i + 1} (list v${i} v${i} v${i} v${i}))`), '(say v13)'].join('\n');
+    const t0 = performance.now();
+    const r = w.simulate(a.id, src);
+    expect(performance.now() - t0).toBeLessThan(200);
+    expect(r.ok).toBe(true);
+    expect(r.effects[0].length).toBeLessThan(200);
+  });
+
+  it('spells never print registry numbers', () => {
+    const w = mkWorld();
+    const a = join(w, 'Snoop');
+    const b = join(w, 'Target');
+    b.pos = { x: a.pos.x + 2, z: a.pos.z };
+    const r = w.simulate(a.id, '(say (str (first (wizards 30)) (wizards 30)))');
+    expect(r.effects.join()).toContain('@Target');
+    expect(r.effects.join()).not.toMatch(/wz_/);
+  });
+
+  it('a delayed block cannot schedule more delayed blocks', () => {
+    const w = mkWorld();
+    const a = join(w, 'Chainer');
+    a.year = 2;
+    w.forgeSpell(a.id, { name: 'Chain', source: '(repeat 3 (after 0 (repeat 3 (after 0 (say i)))))' });
+    expect(w.cast(a.id, 'Chain').ok).toBe(true);
+    run(w, 0.2);
+    expect(w.events.filter((e) => e.type === 'chat' && e.text.startsWith('Chainer: ')).length).toBe(0);
+  });
+
+  it('delayed blocks do not fire while disarmed', () => {
+    const w = mkWorld();
+    const a = join(w, 'Echo');
+    a.year = 2;
+    w.forgeSpell(a.id, { name: 'Later', source: '(after 1 (say "still here"))' });
+    w.cast(a.id, 'Later');
+    a.st.disarmedUntil = w.now + 2;
+    run(w, 1.5);
+    expect(w.events.some((e) => e.text.endsWith('still here'))).toBe(false);
+  });
+
+  it('laws may not use (after ...)', () => {
+    const w = mkWorld();
+    const a = join(w, 'Minister');
+    a.reputation = 500;
+    w.forceEndTerm();
+    const r = w.decree(a.id, { laws: [{ name: 'Sneaky', on: 'pulse', source: '(after 1 (shield self 40 8))' }] }, undefined, false);
+    expect(r.ok).toBe(false);
+  });
+
+  it('stunning a brand-new wizard earns nothing', () => {
+    const w = mkWorld();
+    const a = join(w, 'Farmer', 'gryffindor');
+    const alt = join(w, 'Alt', 'slytherin');
+    a.pos = { x: 60, z: 60 };
+    alt.pos = { x: 60, z: 62 };
+    alt.hp = 1;
+    w.damage(a.id, alt.id, 10, 'arcane');
+    expect(alt.st.stunnedUntil).toBeGreaterThan(0);
+    expect(a.reputation).toBe(0);
+  });
+
+  it('restores a wizard stunned at save time as healthy', () => {
+    const w = mkWorld();
+    const a = join(w, 'Napper');
+    a.pos = { x: 60, z: 60 };
+    w.damage(null, a.id, 999, 'arcane');
+    const w2 = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    const b = w2.wizards.get(a.id)!;
+    expect(b.hp).toBeGreaterThan(0);
+    expect(b.st.stunnedUntil).toBe(0);
+  });
+
+  it('the Elder Wand still returns to the tomb after a restart', () => {
+    const w = mkWorld();
+    const a = join(w, 'Holder');
+    a.pos = { x: -52, z: 31 };
+    w.tick(0.05);
+    expect(w.flags.elderWandHolder).toBe(a.id);
+    const w2 = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    run(w2, 610);
+    expect(w2.flags.elderWandHolder).toBeNull();
   });
 });

@@ -54,6 +54,21 @@ setInterval(() => {
 }, 1000 * TICK);
 setInterval(save, 30_000);
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => { save(); console.log('\n[hogwarts] saved. Mischief managed.'); process.exit(0); });
+// One bad request must never take the castle down: log, persist, keep running.
+process.on('uncaughtException', (e) => { console.error('[hogwarts] uncaught:', e); try { save(); } catch { /* ignore */ } });
+process.on('unhandledRejection', (e) => { console.error('[hogwarts] unhandled rejection:', e); });
+
+// Enrolment rate limit per client address (stops scripted throwaway wizards).
+const enrolLog = new Map<string, number[]>();
+function allowEnrol(req: IncomingMessage) {
+  const ip = req.socket.remoteAddress ?? '?';
+  const now = Date.now();
+  const recent = (enrolLog.get(ip) ?? []).filter((t) => now - t < 10 * 60_000);
+  if (recent.length >= 5) return false;
+  recent.push(now);
+  enrolLog.set(ip, recent);
+  return true;
+}
 
 // ------------------------------------------------------------------ HTTP
 const json = (res: ServerResponse, code: number, body: unknown) => {
@@ -87,7 +102,13 @@ function serveStatic(res: ServerResponse, path: string) {
 }
 
 // MCP: one transport + one McpServer per MCP session.
-const mcpSessions = new Map<string, { transport: StreamableHTTPServerTransport; session: McpSession }>();
+const mcpSessions = new Map<string, { transport: StreamableHTTPServerTransport; session: McpSession; seen: number }>();
+const MAX_MCP_SESSIONS = 500;
+const MCP_IDLE_MS = 30 * 60_000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, e] of mcpSessions) if (now - e.seen > MCP_IDLE_MS) { mcpSessions.delete(id); e.transport.close().catch(() => {}); }
+}, 60_000);
 
 async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
   const sid = req.headers['mcp-session-id'] as string | undefined;
@@ -97,17 +118,21 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (req.method !== 'POST' || !isInitializeRequest(body)) {
       return json(res, 400, { jsonrpc: '2.0', error: { code: -32000, message: 'No valid MCP session. Start with initialize.' }, id: null });
     }
+    if (mcpSessions.size >= MAX_MCP_SESSIONS) {
+      return json(res, 503, { jsonrpc: '2.0', error: { code: -32000, message: 'Too many open MCP sessions; try again later.' }, id: null });
+    }
     const token = tokenOf(req, url);
-    const session: McpSession = { wizardId: token ? world.byToken(token)?.id ?? null : null, baseUrl: PUBLIC_URL };
+    const session: McpSession = { wizardId: token ? world.byToken(token)?.id ?? null : null, baseUrl: PUBLIC_URL, allowEnrol: () => allowEnrol(req) };
     if (session.wizardId) world.touch(session.wizardId);
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (id) => { mcpSessions.set(id, { transport, session }); },
+      onsessioninitialized: (id) => { mcpSessions.set(id, { transport, session, seen: Date.now() }); },
     });
     transport.onclose = () => { if (transport.sessionId) mcpSessions.delete(transport.sessionId); };
     await createMcpServer(world, session).connect(transport);
-    entry = { transport, session };
+    entry = { transport, session, seen: Date.now() };
   }
+  entry.seen = Date.now();
   await entry.transport.handleRequest(req, res, body);
 }
 
@@ -120,6 +145,7 @@ const http = createServer(async (req, res) => {
     }
     if (url.pathname === '/mcp') return await handleMcp(req, res, url);
     if (url.pathname === '/api/enroll' && req.method === 'POST') {
+      if (!allowEnrol(req)) return json(res, 429, { error: 'The Sorting Hat needs a rest: too many enrolments from here. Try again in a few minutes.' });
       const b = (await readBody(req)) as { name?: string; house?: string } | undefined;
       try {
         const { wizard, sorting } = world.enroll(String(b?.name ?? ''), b?.house);
@@ -187,7 +213,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
   }
 }
 
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 const clients = new Map<WebSocket, string>();
 http.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://x');
@@ -204,6 +230,7 @@ http.on('upgrade', (req, socket, head) => {
       try { m = JSON.parse(String(raw)); } catch { return; }
       handleClient(ws, w.id, m);
     });
+    ws.on('error', () => ws.terminate());
     ws.on('close', () => { clients.delete(ws); w.connections = Math.max(0, w.connections - 1); world.setInput(w.id, 0, 0); });
   });
 });

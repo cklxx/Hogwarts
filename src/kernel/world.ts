@@ -19,6 +19,8 @@ import type {
 
 export const TICK = 0.05;
 const ONLINE_GRACE = 300;
+/** Stunning a wizard enrolled less than this long ago earns no reputation (stops throwaway-alt farming). */
+export const FRESH_SECONDS = 600;
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
 
@@ -60,7 +62,6 @@ export class World {
   private willowCd = 0;
   private pulseCd = 10;
   private lawDepth = 0;
-  private lastActive = new Map<string, number>();
 
   constructor(opts: WorldOptions = {}) {
     this.rng = mulberry32(opts.seed ?? (Date.now() & 0xffffffff));
@@ -185,7 +186,7 @@ export class World {
       input: { dx: 0, dz: 0 }, goal: null, route: [], spells: [], hotbar: [null, null, null, null, null, null], items: [], equipped: {},
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
-      marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9,
+      marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastSeenAt: this.now,
     };
     this.grantCurriculum(w);
     w.mana = derived(w, this.rules).maxMana;
@@ -431,14 +432,16 @@ export class World {
       kw.stats.stuns++;
       const last = kw.lastDuel[w.id] ?? -1e9;
       let gain = 0;
-      if (this.now - last > 60) {
+      const fresh = this.now - w.createdAt < FRESH_SECONDS;
+      if (this.now - last > 60 && !fresh) {
         const steal = (w.reputation * this.rules.progression.duelRepStealPct) / 100;
         w.reputation -= steal;
         gain = this.rules.progression.duelRepBase + steal;
         this.addRep(kw, gain);
       }
       kw.lastDuel[w.id] = this.now;
-      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation)` : ' (no reputation: rematch too soon)'}.`, { who: [kw.id, w.id] });
+      const why = fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
+      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation)` : why}.`, { who: [kw.id, w.id] });
       this.achieve(kw, 'first_blood');
       if (this.flags.elderWandHolder === w.id) this.transferElderWand(w, kw, 'defeated');
       this.runLaws('kill', kw, w.id);
@@ -664,7 +667,9 @@ export class World {
     const lawErrors: string[] = [];
     if (Array.isArray(laws)) {
       laws.forEach((l, i) => {
-        try { analyze(String(l?.source ?? ''), { year: 7, maxNodes: 120 }); }
+        try {
+          if (analyze(String(l?.source ?? ''), { year: 7, maxNodes: 120 }).usesAfter) throw new Error('laws cannot use (after ...)');
+        }
         catch (e) { lawErrors.push(`laws[${i}] (${l?.name}): ${(e as Error).message}`); }
       });
     }
@@ -745,7 +750,7 @@ export class World {
       this.pending = this.pending.filter((p) => p.at > this.now);
       for (const p of due) {
         const w = this.wizards.get(p.casterId);
-        if (!w || !this.isActive(w)) continue;
+        if (!w || !this.isActive(w) || w.st.disarmedUntil > this.now) continue;
         execute(this, w, p.body, { target: null, aim: this.defaultAim(w), spellName: p.spellName, incantation: p.incantation, depth: p.depth }, p.env.child());
       }
     }
@@ -766,7 +771,7 @@ export class World {
         this.runLaws('respawn', w);
       }
       if (!this.online(w)) continue;
-      this.lastActive.set(w.id, this.now);
+      w.lastSeenAt = this.now;
       if (!this.isActive(w)) {
         if (w.st.jailedUntil) this.moveWizard(w, dt, false);
         continue;
@@ -995,7 +1000,7 @@ export class World {
     const hid = this.flags.elderWandHolder;
     if (!hid) return;
     const h = this.wizards.get(hid);
-    const last = this.lastActive.get(hid) ?? this.now;
+    const last = h?.lastSeenAt ?? -Infinity;
     if (!h || (!this.online(h) && this.now - last > 600)) {
       if (h) {
         h.items = h.items.filter((i) => i.unique !== 'elder_wand');
@@ -1218,7 +1223,17 @@ export class World {
     w.decrees = data.decrees ?? [];
     w.flags = { ...w.flags, ...data.flags };
     w.seq = data.seq ?? 0;
-    for (const x of data.wizards) w.wizards.set(x.id, { ...x, route: [], lastMcpAt: -1e9, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } });
+    for (const x of data.wizards) {
+      const wz: Wizard = { ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now, st: { ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0 } };
+      if (wz.hp <= 0) {
+        // stunned at save time: finish the trip to the Hospital Wing
+        const d = derived(wz, w.rules);
+        wz.hp = d.maxHp;
+        wz.mana = d.maxMana;
+        wz.pos = { ...SPAWN };
+      }
+      w.wizards.set(x.id, wz);
+    }
     return w;
   }
 }
