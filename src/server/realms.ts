@@ -15,8 +15,18 @@
  *     primary, accepts handed-over WebSocket sockets, and trusts X-Forwarded-For from the primary.
  *
  * Routing: ?realm=N wins; else an MCP session id or token prefix "r<N>." names the realm (unprefixed
- * tokens predate realms and live in realm 0); enrolment and new MCP sessions without a token go to the
- * realm with the fewest players online; anything else (static files, public APIs) to realm 0.
+ * tokens predate realms and live in realm 0); enrolment goes to the realm with the fewest players
+ * online; else the routing cookie (below) names the realm; new MCP sessions without a token go to the
+ * realm with the fewest players; anything else (static files, public APIs) to realm 0.
+ *
+ * Routing cookie: a successful /api/enroll or /api/me answer carries `Set-Cookie: hogwarts_realm=K`
+ * (K = the realm that answered), so the browser's later tokenless requests — the in-game board's
+ * /api/leaderboard, /api/rules, /api/history — reach the player's own realm, not realm 0.
+ *
+ * MCP `login`: a session opened without a token lives in the realm it was sent to. When it calls the
+ * `login` tool with a token of another realm, the front door first moves the session there: it opens
+ * a session under the same id in the token's realm (replaying the client's `initialize`), routes the
+ * session there from then on, and closes the old one. The client notices nothing.
  */
 import { fork, type ChildProcess } from 'node:child_process';
 import { Agent, createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -69,7 +79,33 @@ export function clientIp(req: IncomingMessage) {
 interface Realm { id: number; proc: ChildProcess | null; port: number; stats: RealmStats | null; restarts: number; joins: number }
 
 const HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'trailer']);
-const strip = (h: Record<string, unknown>) => Object.fromEntries(Object.entries(h).filter(([k, v]) => !HOP.has(k.toLowerCase()) && v !== undefined));
+/** Hop-by-hop headers never cross the proxy; nor do x-hogwarts-* headers from outside (they are the front door's). */
+const strip = (h: Record<string, unknown>) => Object.fromEntries(Object.entries(h).filter(([k, v]) => !HOP.has(k.toLowerCase()) && !/^x-hogwarts-/i.test(k) && v !== undefined));
+
+/** Header on the front door's replayed `initialize`: open the session under this (existing) id. */
+const ADOPT = 'x-hogwarts-adopt-session';
+const SESSION_ID = /^r\d{1,4}\.[0-9a-f-]{36}$/;
+/** In a realm process: the session id the front door asks this `initialize` to adopt, if any. */
+export function adoptedSessionId(req: IncomingMessage): string | null {
+  const v = realm.mode === 'worker' ? req.headers[ADOPT] : undefined;
+  return typeof v === 'string' && SESSION_ID.test(v) ? v : null;
+}
+
+export const realmCookie = (id: number) => `hogwarts_realm=${id}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly`;
+export function cookieRealm(cookie: string | undefined): number | null {
+  const m = cookie ? /(?:^|;\s*)hogwarts_realm=(\d{1,4})(?:;|$)/.exec(cookie) : null;
+  return m ? Number(m[1]) : null;
+}
+
+/** The token of the first `login` tool call in a JSON-RPC message (or batch), if any. */
+export function loginToken(msg: unknown): string | null {
+  for (const m of Array.isArray(msg) ? msg : [msg]) {
+    const x = m as { method?: unknown; params?: { name?: unknown; arguments?: { token?: unknown } } } | null;
+    if (x && x.method === 'tools/call' && x.params?.name === 'login' && typeof x.params.arguments?.token === 'string') return x.params.arguments.token.trim();
+  }
+  return null;
+}
+const isInitialize = (msg: unknown) => !!msg && typeof msg === 'object' && (msg as { method?: unknown }).method === 'initialize';
 
 function tokenOf(req: IncomingMessage, url: URL) {
   const h = req.headers.authorization;
@@ -116,14 +152,27 @@ async function runPrimary() {
     r.joins++;
     return r.id;
   };
+  // MCP sessions moved to another realm by `login` (session id → realm), and the `initialize` request
+  // that opened each session (replayed when one moves). Forgotten after 30 idle minutes, like sessions.
+  const homes = new Map<string, number>();
+  const inits = new Map<string, { body: Buffer; seen: number }>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, e] of inits) if (now - e.seen > 30 * 60_000) { inits.delete(id); homes.delete(id); }
+  }, 60_000).unref();
+
   const choose = (req: IncomingMessage, url: URL): number => {
     const q = url.searchParams.get('realm');
     if (q !== null && /^\d+$/.test(q)) return Number(q);
-    const sid = realmOf(req.headers['mcp-session-id'] as string | undefined);
-    if (sid !== null) return sid;
+    const sid = req.headers['mcp-session-id'] as string | undefined;
+    const home = sid ? homes.get(sid) ?? realmOf(sid) : null;
+    if (home !== null) return home;
     const tok = tokenOf(req, url);
     if (tok) return realmOf(tok) ?? 0;
-    if ((url.pathname === '/api/enroll' || url.pathname === '/mcp') && req.method === 'POST') return leastLoaded();
+    if (url.pathname === '/api/enroll' && req.method === 'POST') return leastLoaded();
+    const c = cookieRealm(req.headers.cookie);
+    if (c !== null && c < REALMS) return c;
+    if (url.pathname === '/mcp' && req.method === 'POST') return leastLoaded();
     return 0;
   };
   const list = () => ({
@@ -147,24 +196,105 @@ async function runPrimary() {
   };
 
   const agent = new Agent({ keepAlive: true, maxSockets: 512 });
+  /** Proxy one request to realm r (its body streamed, or `body` if the front door has read it already). */
+  const forward = (req: IncomingMessage, res: ServerResponse, r: Realm | undefined, body?: Buffer, answered?: (status: number, headers: IncomingMessage['headers']) => void) => {
+    if (!r) return json(res, 404, { error: `There are ${REALMS} realms (0-${REALMS - 1}).` });
+    if (!r.port) return json(res, 503, { error: `Realm ${r.id} is starting; try again in a moment.` });
+    const path = new URL(req.url ?? '/', 'http://x').pathname;
+    // The player's own realm just answered who they are: remember it for their tokenless requests.
+    const sticky = path === '/api/me' || (path === '/api/enroll' && req.method === 'POST');
+    const up = request({
+      host: '127.0.0.1', port: r.port, method: req.method, path: req.url, agent,
+      headers: { ...strip(req.headers), ...(body ? { 'content-length': String(body.length) } : {}), 'x-forwarded-for': req.socket.remoteAddress ?? '', 'x-hogwarts-realm': String(r.id) },
+    }, (ur) => {
+      const status = ur.statusCode ?? 502;
+      const headers = strip(ur.headers) as Record<string, string | string[]>;
+      if (sticky && status === 200) headers['set-cookie'] = [...([] as string[]).concat(headers['set-cookie'] ?? []), realmCookie(r.id)];
+      answered?.(status, ur.headers);
+      res.writeHead(status, headers);
+      ur.pipe(res);
+    });
+    up.on('error', (e) => { if (!res.headersSent) json(res, 502, { error: `realm ${r.id}: ${e.message}` }); else res.destroy(); });
+    res.on('close', () => { if (!res.writableFinished) up.destroy(); });
+    if (body) up.end(body);
+    else req.pipe(up);
+  };
+
+  /** A request of the front door's own to a realm's /mcp; resolves with the status and headers. */
+  const call = (r: Realm, method: string, headers: Record<string, string>, body: Buffer | null) => new Promise<{ status: number; headers: IncomingMessage['headers'] }>((ok, fail) => {
+    const up = request({ host: '127.0.0.1', port: r.port, method, path: '/mcp', agent, timeout: 10_000, headers: { ...headers, ...(body ? { 'content-length': String(body.length) } : {}) } }, (ur) => {
+      ur.resume(); // e.g. the answer to a replayed initialize: not the client's business
+      ur.on('end', () => ok({ status: ur.statusCode ?? 502, headers: ur.headers }));
+      ur.on('error', fail);
+    });
+    up.on('timeout', () => up.destroy(new Error('timeout')));
+    up.on('error', fail);
+    up.end(body ?? undefined);
+  });
+
+  /** Move MCP session `sid` from realm `from` to realm `to` (see the header comment). */
+  const rehome = async (sid: string, from: Realm, to: Realm, req: IncomingMessage) => {
+    const init = inits.get(sid);
+    if (!init || !to.port) return false;
+    const pv = req.headers['mcp-protocol-version'];
+    const version: Record<string, string> = typeof pv === 'string' ? { 'mcp-protocol-version': pv } : {};
+    const base = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-forwarded-for': req.socket.remoteAddress ?? '' };
+    try {
+      const opened = await call(to, 'POST', { ...base, [ADOPT]: sid }, init.body);
+      if (opened.status !== 200 || opened.headers['mcp-session-id'] !== sid) return false;
+      await call(to, 'POST', { ...base, ...version, 'mcp-session-id': sid }, Buffer.from('{"jsonrpc":"2.0","method":"notifications/initialized"}'));
+    } catch {
+      return false;
+    }
+    homes.set(sid, to.id);
+    if (from.port) call(from, 'DELETE', { ...version, 'mcp-session-id': sid }, null).catch(() => {});
+    return true;
+  };
+
+  const readAll = async (req: IncomingMessage, max: number) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const c of req) { size += (c as Buffer).length; if (size > max) return null; chunks.push(c as Buffer); }
+    return Buffer.concat(chunks);
+  };
+
+  /** /mcp is proxied like everything else, but the front door keeps each `initialize` and watches for `login`. */
+  const mcp = async (req: IncomingMessage, res: ServerResponse, url: URL) => {
+    const sid = req.headers['mcp-session-id'] as string | undefined;
+    const known = sid ? inits.get(sid) : undefined;
+    if (known) known.seen = Date.now();
+    if (req.method !== 'POST') {
+      const r = realms[choose(req, url)];
+      if (req.method === 'DELETE' && sid) { inits.delete(sid); homes.delete(sid); }
+      return forward(req, res, r);
+    }
+    const body = await readAll(req, 1_000_000);
+    if (!body) return json(res, 413, { jsonrpc: '2.0', error: { code: -32000, message: 'body too large' }, id: null });
+    let msg: unknown;
+    if (!sid || body.includes('"login"')) { try { msg = JSON.parse(body.toString('utf8')); } catch { /* the realm answers that */ } }
+    if (sid && known) {
+      const tok = loginToken(msg);
+      const from = realms[choose(req, url)], to = tok !== null ? realms[realmOf(tok) ?? 0] : undefined;
+      if (from && to && to !== from) await rehome(sid, from, to, req);
+    }
+    forward(req, res, realms[choose(req, url)], body, !sid && isInitialize(msg) ? (status, h) => {
+      const id = h['mcp-session-id'];
+      if (status !== 200 || typeof id !== 'string') return;
+      inits.set(id, { body, seen: Date.now() });
+      if (inits.size > 20_000) { const oldest = inits.keys().next().value!; inits.delete(oldest); homes.delete(oldest); }
+    } : undefined);
+  };
+
   const front = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
     if (url.pathname === '/api/realms') return json(res, 200, list());
     if (url.pathname === '/api/enroll' && req.method === 'POST' && !allowEnrol(req.socket.remoteAddress ?? '?'))
       return json(res, 429, { error: 'The Sorting Hat needs a rest: too many enrolments from here. Try again in a few minutes.' });
-    const r = realms[choose(req, url)];
-    if (!r) return json(res, 404, { error: `There are ${REALMS} realms (0-${REALMS - 1}).` });
-    if (!r.port) return json(res, 503, { error: `Realm ${r.id} is starting; try again in a moment.` });
-    const up = request({
-      host: '127.0.0.1', port: r.port, method: req.method, path: req.url, agent,
-      headers: { ...strip(req.headers), 'x-forwarded-for': req.socket.remoteAddress ?? '', 'x-hogwarts-realm': String(r.id) },
-    }, (ur) => {
-      res.writeHead(ur.statusCode ?? 502, strip(ur.headers) as Record<string, string>);
-      ur.pipe(res);
-    });
-    up.on('error', (e) => { if (!res.headersSent) json(res, 502, { error: `realm ${r.id}: ${e.message}` }); else res.destroy(); });
-    res.on('close', () => { if (!res.writableFinished) up.destroy(); });
-    req.pipe(up);
+    if (url.pathname === '/mcp') {
+      mcp(req, res, url).catch((e) => { if (!res.headersSent) json(res, 502, { error: String(e) }); else res.destroy(); });
+      return;
+    }
+    forward(req, res, realms[choose(req, url)]);
   });
   front.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
     const url = new URL(req.url ?? '/', 'http://x');

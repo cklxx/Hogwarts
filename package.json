@@ -12,7 +12,6 @@
     "start": "tsx src/server/main.ts",
     "mcp:stdio": "tsx src/mcp/stdio-bridge.ts",
     "bot": "tsx scripts/bot.ts",
-    "bench": "tsx scripts/bench.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

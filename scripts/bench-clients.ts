@@ -1,12 +1,12 @@
 /**
  * Load-generating WebSocket clients for scripts/bench.ts (runs inside a worker thread).
- * Each client behaves like a browser: input at 20 Hz (random walk), a cast every ~1 s, and it
+ * Each client behaves like a browser: input at job.inputHz (default 20 Hz; a browser sends one per animation frame while it walks and turns), random walk, a cast every ~1 s, and it
  * counts what the server sends it without parsing the (large) snapshots.
  */
 import { parentPort, workerData } from 'node:worker_threads';
 import WebSocket from 'ws';
 
-interface Job { url: string; tokens: string[]; offset: number; seed: number }
+interface Job { url: string; tokens: string[]; offset: number; seed: number; inputHz?: number; aoi?: boolean }
 const job = workerData as Job;
 
 let s = job.seed >>> 0;
@@ -37,7 +37,7 @@ async function connectAll() {
     c.dx = Math.cos(a); c.dz = Math.sin(a); c.f = a;
     clients.push(c);
     pending.push(new Promise<void>((ok) => {
-      const ws = new WebSocket(`${job.url}/ws?token=${encodeURIComponent(job.tokens[i])}`, { perMessageDeflate: false, skipUTF8Validation: true });
+      const ws = new WebSocket(`${job.url}/ws?token=${encodeURIComponent(job.tokens[i])}${job.aoi === false ? '' : '&aoi=1'}`, { perMessageDeflate: false, skipUTF8Validation: true });
       c.ws = ws;
       ws.on('open', () => { c.open = true; ok(); });
       ws.on('message', (d: Buffer) => onMessage(c, d));
@@ -52,13 +52,17 @@ async function connectAll() {
 let tickNo = 0;
 let timer: NodeJS.Timeout | null = null;
 function drive() {
+  let owed = 0; // inputs per client due this 50 ms step (inputHz / 20, carried over when fractional)
   timer = setInterval(() => {
     tickNo++;
+    owed += (job.inputHz ?? 20) / 20;
+    const burst = Math.floor(owed);
+    owed -= burst;
     for (const c of clients) {
       if (!c.open) continue;
       if ((tickNo + c.i * 13) % 60 === 0) { const a = rnd() * Math.PI * 2; c.dx = Math.cos(a); c.dz = Math.sin(a); c.f = a; }
-      c.ws.send(JSON.stringify({ t: 'input', dx: c.dx, dz: c.dz, f: c.f }));
-      st.inputs++;
+      for (let j = 0; j < burst; j++) c.ws.send(JSON.stringify({ t: 'input', dx: c.dx, dz: c.dz, f: c.f + j * 0.01 }));
+      st.inputs += burst;
       if ((tickNo + c.i * 7) % 20 === 0) {
         c.castAt.push(performance.now());
         c.ws.send(JSON.stringify({ t: 'cast', key: '1', x: (rnd() - 0.5) * 400, z: (rnd() - 0.5) * 400 }));

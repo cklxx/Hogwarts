@@ -1,5 +1,5 @@
 // First: with REALMS=N this process becomes the front door for N realm processes and never gets past this import.
-import { clientIp, realm, realmWorker } from './realms.js';
+import { adoptedSessionId, clientIp, realm, realmWorker } from './realms.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -15,7 +15,7 @@ import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, type McpSession } from '../mcp/server.js';
 import { SnapshotFanout } from './fanout.js';
-import { allowMessage, corked, enqueue, meDue, readyForSnapshot, sendMeIfChanged } from './net.js';
+import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = Number(process.env.PORT ?? 7777);
@@ -57,7 +57,7 @@ setInterval(() => {
   const t = performance.now();
   acc += Math.min(1, (t - last) / 1000);
   last = t;
-  while (acc >= TICK) { world.tick(TICK); acc -= TICK; }
+  while (acc >= TICK) { flushInputs(); world.tick(TICK); acc -= TICK; } // flush: inputs merged over the rate limit (net.ts)
 }, 1000 * TICK);
 setInterval(save, 30_000);
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => { save(); console.log('\n[hogwarts] saved. Mischief managed.'); process.exit(0); });
@@ -125,6 +125,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (req.method !== 'POST' || !isInitializeRequest(body)) {
       return json(res, 400, { jsonrpc: '2.0', error: { code: -32000, message: 'No valid MCP session. Start with initialize.' }, id: null });
     }
+    const adopt = adoptedSessionId(req);
     if (mcpSessions.size >= MAX_MCP_SESSIONS) {
       return json(res, 503, { jsonrpc: '2.0', error: { code: -32000, message: 'Too many open MCP sessions; try again later.' }, id: null });
     }
@@ -132,7 +133,8 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
     const session: McpSession = { wizardId: token ? world.byToken(token)?.id ?? null : null, baseUrl: PUBLIC_URL, allowEnrol: () => allowEnrol(req) };
     if (session.wizardId) world.touch(session.wizardId);
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => realm.prefix + randomUUID(),
+      // REALMS: the front door moves a session here (MCP `login` with this realm's token) under its existing id.
+      sessionIdGenerator: () => (adopt && !mcpSessions.has(adopt) ? adopt : realm.prefix + randomUUID()),
       onsessioninitialized: (id) => { mcpSessions.set(id, { transport, session, seen: Date.now() }); },
     });
     transport.onclose = () => { if (transport.sessionId) mcpSessions.delete(transport.sessionId); };
@@ -248,14 +250,16 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30);
     ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, events: recent, mcpUrl: `${PUBLIC_URL}/mcp`, token: w.token }));
+    // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
+    // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
+    netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
     ws.on('message', (raw) => {
       let m: ClientMsg;
       try { m = JSON.parse(String(raw)); } catch { return; }
-      if (!allowMessage(ws, m)) return; // per-socket rate limits (net.ts)
-      handleClient(ws, w.id, m);
+      admit(ws, m, (x) => handleClient(ws, w.id, x as ClientMsg)); // per-socket rate limits (net.ts)
     });
     ws.on('error', () => ws.terminate());
-    ws.on('close', () => { clients.delete(ws); w.connections = Math.max(0, w.connections - 1); world.setInput(w.id, 0, 0); });
+    ws.on('close', () => { forget(ws); clients.delete(ws); w.connections = Math.max(0, w.connections - 1); world.setInput(w.id, 0, 0); });
   });
 });
 
@@ -265,21 +269,24 @@ world.onEvent((e) => {
   for (const [ws, wid] of clients) if (!e.to || e.to === wid) enqueue(ws, msg);
 });
 
-// Snapshots: built once per broadcast; each client gets the entities within AOI_RADIUS metres of it
-// (0 = everything), shared by every client in the same AOI cell (fanout.ts). The private 'me' state
-// goes out at most 5 Hz and only when it changed; slow sockets skip snapshots; each socket gets its
-// events + snapshot + 'me' in one write (net.ts).
-const fanout = new SnapshotFanout(Number(process.env.AOI_RADIUS ?? 140), Number(process.env.AOI_CELL ?? 16));
+// Snapshots: built and serialised once per broadcast (fanout.ts). Clients with AOI get the entities
+// within AOI_RADIUS metres of them (0 = AOI off), shared by every client anchored to the same cell;
+// the others share one full snapshot. The private 'me' state goes out at most 5 Hz and only when it
+// changed; slow sockets skip snapshots; each socket gets its events + snapshot + 'me' in one write (net.ts).
+const fanout = new SnapshotFanout(Number(process.env.AOI_RADIUS ?? 140), Number(process.env.AOI_CELL ?? 16), Number(process.env.AOI_MARGIN ?? 10));
+const AOI_ALL = process.env.AOI_ALL === '1';
 let broadcasts = 0;
 setInterval(() => {
   if (!clients.size) { world.drainFx(); return; }
   broadcasts++;
+  flushInputs();
   fanout.load(world.snapshot());
   for (const [ws, wid] of clients) {
     corked(ws, () => {
       const w = world.wizards.get(wid);
       if (!w || !readyForSnapshot(ws)) return;
-      ws.send(fanout.payloadFor(w.pos.x, w.pos.z), { binary: false });
+      const st = netState(ws);
+      ws.send(st.aoi ? fanout.payloadFor(w.pos.x, w.pos.z, st.anchor) : fanout.fullPayload(), { binary: false });
       if (meDue(ws, broadcasts)) sendMeIfChanged(ws, JSON.stringify({ t: 'me', s: world.privateState(wid) }));
     });
   }

@@ -3,7 +3,9 @@
  *
  *   npx tsx scripts/bench.ts kernel [--n=100,500,1000,2000] [--secs=30] [--warm=10]
  *   npx tsx scripts/bench.ts net    [--k=50,200,500] [--secs=15] [--warm=5] [--layout=spread|crowd] [--port=7900] [--realms=1]
+ *                                   [--input-hz=20] [--aoi=1|0] [--env=K=V,...]
  *   npx tsx scripts/bench.ts trace  [--n=150] [--secs=30]          # determinism fingerprint (same number = same behaviour)
+ *   npx tsx scripts/bench.ts churn  [--n=300] [--secs=120] [--observers=5] [--aoi=0,140/0,140/10]   # AOI enter/leave per client
  *   npx tsx scripts/bench.ts all
  * Common: --out=results.json (append machine-readable results), --label=before|after
  *
@@ -11,8 +13,10 @@
  *   heading every 3 s) and casts Stupefy about once a second: at the nearest hostile creature within 30 m,
  *   otherwise at a random point. creatures.spawnMultiplier = 3, 4 NPCs. Reports ms per tick.
  * net: builds a save file with K wizards, spawns the real server (src/server/main.ts) with the
- *   bench probe preloaded, connects K WebSocket clients (input at 20 Hz, a cast every second) from worker
- *   threads, and reports server event-loop delay, tick/broadcast callback times, CPU, bytes per client.
+ *   bench probe preloaded, connects K WebSocket clients (input at --input-hz, default 20 Hz; a cast every
+ *   second; asking for AOI snapshots unless --aoi=0) from worker threads, and reports server event-loop
+ *   delay, tick/broadcast callback times, CPU, bytes per client.
+ * churn: how many entity models an AOI client creates and removes as it walks (see churn()).
  * trace: runs the kernel scenario and hashes the full observable state after every tick (snapshots,
  *   private states, cast reports, events). Used to show that optimisations did not change behaviour.
  */
@@ -27,6 +31,7 @@ import { ensureNpcs } from '../src/kernel/npc.js';
 import { CREATURES } from '../src/kernel/creatures.js';
 import { resolve as unstick } from '../src/kernel/physics.js';
 import { World } from '../src/kernel/world.js';
+import { SnapshotFanout } from '../src/server/fanout.js';
 import { mulberry32, SPAWN, WORLD_HALF } from '../src/shared/map.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -167,6 +172,56 @@ function trace(n: number, secs: number) {
   return row;
 }
 
+// ------------------------------------------------------------------ AOI churn
+/**
+ * What an area of interest costs the client: the kernel scenario with N wizards, and `observers` of
+ * them watched like browsers (a snapshot every 2 ticks through SnapshotFanout, as main.ts sends it).
+ * Counts, per observer, the models a client would create and remove, and splits the removals into
+ * "really gone" (died / logged off) and "left my area" (still in the world), plus "flicker": removed and
+ * back within 3 s.
+ */
+function churn(n: number, secs: number, radius: number, margin: number, observers: number) {
+  const s = scenario(n, 5150 + n);
+  const f = new SnapshotFanout(radius, 16, margin);
+  const watch = s.ids.slice(0, observers).map((id) => ({ id, anchor: { cell: -1 }, w: new Set<string>(), c: new Set<string>(), gone: new Map<string, number>(), dist: 0, last: null as null | { x: number; z: number } }));
+  const z = () => ({ wIn: 0, wOut: 0, wLeft: 0, cIn: 0, cOut: 0, cLeft: 0, flicker: 0, bytes: 0, snaps: 0, dist: 0 });
+  const tot = z();
+  for (let i = 0; i < secs * 20; i++) {
+    act(s, plan(s));
+    s.world.tick();
+    s.t++;
+    if (i % 2) continue;
+    const snap = s.world.snapshot();
+    f.load(snap);
+    const online = new Set(snap.w.map((x) => x.h)), alive = new Set(snap.c.map((x) => x.i));
+    for (const o of watch) {
+      const me = s.world.wizards.get(o.id)!;
+      if (o.last) o.dist += Math.hypot(me.pos.x - o.last.x, me.pos.z - o.last.z);
+      o.last = { ...me.pos };
+      const buf = f.payloadFor(me.pos.x, me.pos.z, o.anchor);
+      tot.bytes += buf.length; tot.snaps++;
+      if (i < 20) { const m = JSON.parse(buf.toString()).s; o.w = new Set(m.w.map((x: { h: string }) => x.h)); o.c = new Set(m.c.map((x: { i: string }) => x.i)); continue; } // the first second fills the scene
+      const m = JSON.parse(buf.toString()).s as { w: { h: string }[]; c: { i: string }[] };
+      const w = new Set(m.w.map((x) => x.h)), c = new Set(m.c.map((x) => x.i));
+      for (const h of w) if (!o.w.has(h)) { tot.wIn++; const g = o.gone.get('w' + h); if (g !== undefined && s.t - g <= 60) tot.flicker++; }
+      for (const h of o.w) if (!w.has(h)) { tot.wOut++; if (online.has(h)) tot.wLeft++; o.gone.set('w' + h, s.t); }
+      for (const id of c) if (!o.c.has(id)) { tot.cIn++; const g = o.gone.get('c' + id); if (g !== undefined && s.t - g <= 60) tot.flicker++; }
+      for (const id of o.c) if (!c.has(id)) { tot.cOut++; if (alive.has(id)) tot.cLeft++; o.gone.set('c' + id, s.t); }
+      o.w = w; o.c = c;
+    }
+  }
+  tot.dist = watch.reduce((a, o) => a + o.dist, 0);
+  const per = (v: number) => v / observers;
+  const row = {
+    n, secs, radius, observers, margin: f.margin, guaranteed: f.guaranteed,
+    wizardsCreated: per(tot.wIn), wizardsRemoved: per(tot.wOut), wizardsLeftArea: per(tot.wLeft),
+    creaturesCreated: per(tot.cIn), creaturesRemoved: per(tot.cOut), creaturesLeftArea: per(tot.cLeft),
+    flicker: per(tot.flicker), metresWalked: per(tot.dist), snapKB: tot.snaps ? tot.bytes / tot.snaps / 1024 : 0,
+  };
+  record('churn', row);
+  return row;
+}
+
 // ------------------------------------------------------------------ network benchmark
 const realmPath = (base: string, i: number) => (i === 0 ? base : base.replace(/(\.json)?$/, `.r${i}.json`));
 
@@ -181,7 +236,7 @@ async function waitHttp(url: string, ms: number) {
 
 function probeCmd(dir: string, gen: number, cmd: string) { writeFileSync(join(dir, 'ctl.json'), JSON.stringify({ gen, cmd })); }
 
-interface NetOpts { k: number; secs: number; warm: number; port: number; realms: number; layout: 'spread' | 'crowd'; workers: number; env: Record<string, string> }
+interface NetOpts { k: number; secs: number; warm: number; port: number; realms: number; layout: 'spread' | 'crowd'; workers: number; env: Record<string, string>; inputHz: number; aoi: boolean }
 
 async function netBench(o: NetOpts) {
   const dir = mkdtempSync(join(process.env.BENCH_TMP ?? tmpdir(), 'hogbench-'));
@@ -232,7 +287,7 @@ async function netBench(o: NetOpts) {
     for (let i = 0; i < W; i++) {
       const slice = tokens.slice(i * per, (i + 1) * per);
       if (!slice.length) continue;
-      workers.push(new Worker(new URL('./bench-clients.ts', import.meta.url), { workerData: { url: `ws://127.0.0.1:${o.port}`, tokens: slice, offset: i * per, seed: 31 * i + 7 } }));
+      workers.push(new Worker(new URL('./bench-clients.ts', import.meta.url), { workerData: { url: `ws://127.0.0.1:${o.port}`, tokens: slice, offset: i * per, seed: 31 * i + 7, inputHz: o.inputHz, aoi: o.aoi } }));
     }
     const conn = await Promise.all(workers.map((w) => ask(w, 'connect', 'connected')));
     const open = conn.reduce((s, c) => s + c.open, 0);
@@ -261,7 +316,7 @@ async function netBench(o: NetOpts) {
     const primary = probes.find((p) => p.role === 'primary');
     const worst = (f: (p: any) => number) => Math.max(0, ...servers.map(f));
     const row = {
-      k: o.k, realms: R, layout: o.layout, secs: o.secs, connected: open, stillOpen,
+      k: o.k, realms: R, layout: o.layout, secs: o.secs, inputHz: o.inputHz, aoi: o.aoi, connected: open, stillOpen, inputsPerClientPerSec: (agg.inputs ?? 0) / wall / o.k,
       bytesPerClientPerSec: agg.bytes / wall / o.k, snapBytesAvg: agg.snaps ? agg.snapBytes / agg.snaps : 0,
       snapsPerClientPerSec: agg.snaps / wall / o.k, mePerClientPerSec: agg.mes / wall / o.k, eventsPerClientPerSec: agg.events / wall / o.k,
       castRttP50: pct(agg.rtt, 50), castRttP95: pct(agg.rtt, 95), castRttP99: pct(agg.rtt, 99), castReplies: agg.castReplies, castsSent: agg.casts,
@@ -308,18 +363,31 @@ async function main() {
     const r = trace(Number(opt('n', mode === 'trace' ? '150' : '150')), Number(opt('secs', '30')));
     console.log(`## trace: n=${r.n} secs=${r.secs} → fingerprint ${r.hash} (wizards ${r.wizards}, creatures ${r.creatures}, events ${r.events})\n`);
   }
+  if (mode === 'churn') {
+    const n = Number(opt('n', '300')), secs = Number(opt('secs', '120')), obs = Number(opt('observers', '5'));
+    console.log(`## AOI churn: ${n} wizards (kernel scenario), ${obs} observers, ${secs}s; per observer\n`);
+    console.log('| AOI radius / margin (everything within) | snap KB | walked m | wizard models created | removed | …of them still in the world | creature models created | removed | …of them still alive ("puff") | flicker (back within 3 s) |');
+    console.log('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+    for (const spec of opt('aoi', '0,140/0,140/10').split(',')) {
+      const [r, m] = spec.split('/').map(Number);
+      const x = churn(n, secs, r, m ?? 10, obs);
+      console.log(`| ${r ? `${r} / ${x.margin} (${x.guaranteed} m)` : 'off'} | ${f1(x.snapKB)} | ${f1(x.metresWalked)} | ${f1(x.wizardsCreated)} | ${f1(x.wizardsRemoved)} | ${f1(x.wizardsLeftArea)} | ${f1(x.creaturesCreated)} | ${f1(x.creaturesRemoved)} | ${f1(x.creaturesLeftArea)} | ${f1(x.flicker)} |`);
+    }
+    console.log();
+  }
   if (mode === 'net' || mode === 'all') {
     const secs = Number(opt(mode === 'all' ? 'netsecs' : 'secs', '15')), warm = Number(opt(mode === 'all' ? 'netwarm' : 'warm', '5'));
     const layouts = opt('layout', 'spread').split(',') as ('spread' | 'crowd')[];
     const realms = Number(opt('realms', '1'));
     const extraEnv = Object.fromEntries(opt('env', '').split(',').filter(Boolean).map((kv) => kv.split('=') as [string, string]));
-    console.log(`## net: ${secs}s measured after ${warm}s warm-up; clients send input at 20 Hz and cast every second${realms > 1 ? `; REALMS=${realms}` : ''}\n`);
-    console.log('| clients | layout | realms | loop p50 ms | loop p99 ms | loop max ms | world.tick p50 / p95 ms | 50 ms timer p95 | bcast p50 ms | bcast p95 ms | snapshot ms | server CPU % | KB/s per client | snap KB | me/s | ev/s | cast RTT p50 | cast RTT p99 | open |');
-    console.log('|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+    const inputHz = Number(opt('input-hz', '20')), aoi = opt('aoi', '1') !== '0';
+    console.log(`## net: ${secs}s measured after ${warm}s warm-up; clients send input at ${inputHz} Hz and cast every second; ${aoi ? 'clients ask for AOI snapshots' : 'clients get full snapshots (as the shipped browser client)'}${realms > 1 ? `; REALMS=${realms}` : ''}\n`);
+    console.log('| clients | layout | realms | loop p50 ms | loop p99 ms | loop max ms | world.tick p50 / p95 ms | 50 ms timer p95 | bcast p50 ms | bcast p95 ms | snapshot ms | server CPU % | KB/s per client | snap KB | me/s | ev/s | cast RTT p50 | cast RTT p99 | cast replies % | input/s per client | open |');
+    console.log('|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
     let port = Number(opt('port', '7900'));
     for (const layout of layouts) for (const k of nums(opt('k', '50,200,500'))) {
-      const r = await netBench({ k, secs, warm, port: port++, realms, layout, workers: Number(opt('workers', '2')), env: extraEnv });
-      console.log(`| ${k} | ${layout} | ${realms} | ${f1(r.eventLoopP50)} | ${f1(r.eventLoopP99)} | ${f1(r.eventLoopMax)} | ${f1(r.worldTickP50)} / ${f1(r.worldTickP95)} | ${f1(r.tickP95)} | ${f1(r.broadcastP50)} | ${f1(r.broadcastP95)} | ${f1(r.snapshotMean)} | ${f1(r.serverCpuPct)}${r.primaryCpuPct ? ` (+${f1(r.primaryCpuPct)} primary)` : ''} | ${f1(r.bytesPerClientPerSec / 1024)} | ${f1(r.snapBytesAvg / 1024)} | ${f1(r.mePerClientPerSec)} | ${f1(r.eventsPerClientPerSec)} | ${f1(r.castRttP50)} | ${f1(r.castRttP99)} | ${r.stillOpen}/${r.connected} |`);
+      const r = await netBench({ k, secs, warm, port: port++, realms, layout, workers: Number(opt('workers', '2')), env: extraEnv, inputHz, aoi });
+      console.log(`| ${k} | ${layout} | ${realms} | ${f1(r.eventLoopP50)} | ${f1(r.eventLoopP99)} | ${f1(r.eventLoopMax)} | ${f1(r.worldTickP50)} / ${f1(r.worldTickP95)} | ${f1(r.tickP95)} | ${f1(r.broadcastP50)} | ${f1(r.broadcastP95)} | ${f1(r.snapshotMean)} | ${f1(r.serverCpuPct)}${r.primaryCpuPct ? ` (+${f1(r.primaryCpuPct)} primary)` : ''} | ${f1(r.bytesPerClientPerSec / 1024)} | ${f1(r.snapBytesAvg / 1024)} | ${f1(r.mePerClientPerSec)} | ${f1(r.eventsPerClientPerSec)} | ${f1(r.castRttP50)} | ${f1(r.castRttP99)} | ${f1(r.castsSent ? (100 * r.castReplies) / r.castsSent : 0)} | ${f1(r.inputsPerClientPerSec)} | ${r.stillOpen}/${r.connected} |`);
       if (port > 7949) port = Number(opt('port', '7900'));
     }
     console.log();

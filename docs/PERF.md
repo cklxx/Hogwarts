@@ -1,8 +1,9 @@
 # Performance: one world, many clients, many cores
 
 This page records what was measured, on what, and how, before and after the performance pass
-(branch `wf/perf`, base commit `9b159fa`). Every number comes from `scripts/bench.ts`; you can re-run
-all of them (see [Reproduce](#reproduce)).
+(branch `wf/perf`, base commit `9b159fa`), and in the review fix pass after it (`wf/perf-fix`,
+[below](#fix-pass-frame-rate-input-full-snapshots-aoi-churn)). Every number comes from
+`scripts/bench.ts`; you can re-run all of them (see [Reproduce](#reproduce)).
 
 ## Summary
 
@@ -14,9 +15,18 @@ all of them (see [Reproduce](#reproduce)).
 | Server, 500 WebSocket clients spread over the map: event-loop delay p99 | 2 275 ms (overloaded) | **22.8 ms** |
 | … cast round trip p50 / p99 | 1 065 / 2 202 ms | **1.9 / 21.7 ms** |
 | … snapshots actually delivered per client per second (target 10) | 0.47 | **9.95** |
-| … bytes per client at the full 10 Hz | ~1.39 MB/s (139 KB x 10) | **275 KB/s** |
-| … server CPU (one core = 100 %) | 96 % (saturated) | 69 % |
+| … bytes per client at the full 10 Hz, today's browser client (full snapshots) | ~1.39 MB/s (139 KB x 10) | **~0.98 MB/s** (98 KB x 10) ¹ |
+| … bytes per client, a client that asks for area-of-interest snapshots (`aoi=1`) | — | **~275 KB/s** ¹ |
+| … server CPU (one core = 100 %) | 96 % (saturated) | 69 % ² |
+| … casts answered when clients send input at 144 Hz (a 144 Hz monitor, walking + turning) | — | **100 %** (wf/perf: 5-9 %) ³ |
 | Behaviour (determinism fingerprint, 150 and 400 wizards) | `91c02680a4fb3bb0`, `227ed0eaa177a481` | **identical** |
+
+¹ Area-of-interest snapshots are **opt-in per socket** since the fix pass: the shipped client removes
+an entity's model without disposing it and plays a "vanish" puff whenever an entity leaves its snapshot,
+so it keeps getting the full snapshot (smaller than before: the "before" message was built per client).
+See [For the client streams](#for-the-client-streams). ² 20 Hz input, AOI clients; with full-snapshot
+clients 43-47 %. ³ The wf/perf rate limiter dropped frame-rate input and, through a shared budget, the
+casts sent between them; see the fix pass.
 
 The "before" server could not keep up with 500 clients at all: its 50 ms clock ran 7 times in 15 s
 (each run catching up 20 ticks), so the world moved at about half speed and clients got one snapshot
@@ -39,8 +49,14 @@ every two seconds. After the pass it runs every tick and every broadcast on time
   (`src/server/main.ts`) is spawned with a probe preloaded (`scripts/bench-probe.ts`, which changes
   nothing: it wraps `setInterval` callbacks, `World#tick` and `World#snapshot` with timers, and runs
   `perf_hooks.monitorEventLoopDelay`), and K WebSocket clients connect from 2 worker threads. Each
-  client sends `input` at **20 Hz** (a real browser sends at most ~4 Hz) and a `cast` every second, and
+  client sends `input` at **20 Hz** unless stated (`--input-hz`) and a `cast` every second, and
   counts what it receives without parsing snapshots. 5 s warm-up, 15 s measured.
+  *How often a real browser sends input*: on every animation frame in which its rounded
+  (dx, dz, facing) changed, plus a 4 Hz heartbeat (`client/main.ts` `sendInput`). Standing still that
+  is 4 Hz; walking while turning the camera (mouse drag, Q/E, or the controls stream's camera that
+  swings in behind you as you run) it is the display's frame rate: 60 Hz, 120-165 Hz on gaming
+  monitors, 240 Hz and more on some. (The first version of this page said "at most ~4 Hz"; that was
+  wrong — 4 Hz is only the idle heartbeat.)
   The load generator runs on the same 4 cores, so under heavy load server latency figures are
   pessimistic (the server competes with ~1-1.5 cores of client threads).
   The container was also shared with other jobs running in parallel (other agents' dev servers and
@@ -88,7 +104,8 @@ callback (snapshot + serialise + send to everyone); `snap KB` = average snapshot
 \* the server delivered only 0.47 (spread) / 2.03 (crowd) snapshots per second instead of 10; at
 the full rate those clients would need 1.39 MB/s and 0.92 MB/s.
 
-**After**
+**After** (wf/perf, where every client got AOI snapshots; since the fix pass that takes `aoi=1`, which
+the benchmark clients send — the shipped browser client does not, see the fix pass for its numbers)
 
 | clients | layout | loop p50 | loop p99 | loop max | world.tick p50 / p95 | bcast p50 | bcast p95 | server CPU % | KB/s per client | snap KB | snaps/s | me/s | cast RTT p50 | cast RTT p99 |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -105,11 +122,100 @@ past one core's capacity: that is what realms are for (below).
 
 **What area-of-interest buys** — 500 clients, spread, after the pass but with `AOI_RADIUS=0` (every
 client gets the whole snapshot, still serialised once): 99.7 KB per snapshot, **966 KB/s per client**
-(3.5x more), loop p99 49.9 ms, cast RTT p99 143 ms. The crowd layout shows the other end: when
-everyone stands within 140 m of everyone, AOI cannot cut anything (75 KB snapshots), and the savings
-come from encoding each payload once, batching writes and the 5 Hz private state.
+(3.5x more), loop p99 49.9 ms, cast RTT p99 143 ms. (Re-measured in the fix pass on a less loaded box:
+981 KB/s, loop p99 19.6 ms, CPU 47 %: one shared full snapshot costs *less* CPU than per-cell payloads,
+it just costs 3.6x the bandwidth.) The crowd layout shows the other end: when everyone stands within
+140 m of everyone, AOI cannot cut anything (75 KB snapshots), and the savings come from encoding each
+payload once, batching writes and the 5 Hz private state.
 
 **Memory**: RSS 234 MB for one world with 500 clients (spread), 277 MB with 1 000.
+
+## Fix pass: frame-rate input, full snapshots, AOI churn
+
+A review of wf/perf found four problems; all were real and are fixed on `wf/perf-fix`:
+
+1. **The rate limiter dropped normal browser input and starved casts.** Input came at frame rate (see
+   [method](#machine-and-method)) against a 40/s input budget, and every message — rejected input
+   included — first spent a shared 80/s budget, so casts and chat arriving between inputs were dropped
+   (with a "slow down" toast), and a dropped key-release left the wizard walking until the next 0.25 s
+   heartbeat. Now (`net.ts`): input never spends the shared budget; within its own budget (250/s, burst
+   300 — above common frame rates) it is applied at once as before; beyond it, it is *merged* into one
+   pending input per socket, applied before that socket's next other message and before every world
+   tick and broadcast, leaving exactly the state applying each would (last direction, last facing given,
+   walk-to goal cancelled if any of them moved — tested against applying them one by one). Both budgets
+   are checked before either is spent. `goto` (the controls stream's click-to-move, which runs A*) got
+   its own budget (10/s, burst 20; that client sends at most ~8/s).
+2. **REALMS routed tokenless requests to realm 0**, so the in-game board (`fetch('/api/leaderboard')`,
+   no token) showed realm 0's term, house points and Minister to everyone, and MCP `login` only worked
+   if the tokenless session happened to be in the token's realm. Now the front door sets a routing
+   cookie on /api/enroll and /api/me answers, and moves an MCP session to the realm of the token it
+   logs in with ([REALMS](#multi-core-realmsn)).
+3. **AOI turned the client's entity add/remove path from rare into continuous**, and the client never
+   disposes what it removes (geometries, materials, label canvas textures stay in three.js's caches and
+   on the GPU) and puffs smoke for every creature that leaves its snapshot. That needs client work
+   (below), so AOI is now **opt-in per socket** (`/ws?...&aoi=1`; `AOI_ALL=1` forces it for everyone):
+   the shipped client gets full snapshots again — nothing enters or leaves except by dying, spawning or
+   logging on/off, exactly as at `9b159fa`. And AOI got **hysteresis** (`fanout.ts`): an entity stays
+   filed under its cell, and a viewer anchored to its cell, until it is `AOI_MARGIN` (10 m) past it, so
+   wobbling across a cell edge changes nothing. The margin is carved from the inside of the area, so
+   payloads are exactly as big as before: `AOI_RADIUS` is still the cell-to-cell reach (140 m),
+   everything within 120 m is always sent, nothing beyond ~205 m.
+4. **The rate-limit error was a mixed Chinese/English string.** It is English now, like every other
+   server error; the translation belongs in `client/i18n.ts` ERRORS (controls stream, below).
+
+**Frame-rate input, A/B against wf/perf, interleaved** (500 clients, spread, AOI, cast every second;
+the box was busy with other agents' jobs — load average 5-7 on 4 cores — so compare rows pairwise):
+
+| server | input Hz | loop p99 ms | bcast p95 ms | server CPU % | KB/s per client | casts answered % | cast RTT p50 / p99 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| wf/perf | 20 | 36.8 / 37.4 | 41.1 / 42.5 | 60.0 / 60.9 | 273 / 275 | 100 / 100 | 4.5 / 4.9 · 56 / 45 |
+| wf/perf-fix | 20 | 33.1 / 34.9 | 37.9 / 40.0 | 58.8 / 56.8 | 269 / 274 | 100 / 99.9 | 4.2 / 4.4 · 149 / 50 |
+| wf/perf | 144 | 68.6 / 41.9 | 44.2 / 41.2 | 62.3 / 72.2 | 165 / 166 | **8.8 / 5.5** | **4 205 / 2 135 · 13 490 / 6 217** |
+| wf/perf-fix | 144 | 176 / 31.9 | 57.3 / 34.2 | 70.7 / 93.3 | 220 / 273 | **100 / 100** | 32 / 8.2 · 221 / 61 |
+
+(two runs each, "a / b"; the RTTs of the wf/perf 144 Hz rows are inflated — the benchmark pairs each
+reply with the oldest unanswered cast, and over 90 % were never answered — and with fewer bolts flying
+its snapshots were smaller.) At 20 Hz the fix pass costs nothing (the differences are noise).
+At 144 Hz nothing is lost any more; what remains is the price of receiving and parsing ~72 000 input
+messages a second (next table).
+
+**What input costs, and the shipped client's full snapshots** (this branch, one process, spread; load
+average 3-7 from other jobs during these runs, so latencies are pessimistic and ±10 % CPU is noise):
+
+| clients | snapshots | input Hz | loop p99 ms | bcast p95 ms | server CPU % | KB/s per client | snap KB | cast RTT p50 / p99 ms |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 500 | full | 20 | 19.6 / 33.9 | 22.8 / 43.8 | 47.0 / 43.0 | 981 / 986 | 97.7 | 2.1 / 8.9 · 3.3 / 77 |
+| 500 | full | 60 | 21.3 / 20.3 | 23.0 / 21.5 | 58.3 / 58.0 | 990 / 981 | 99.0 | 3.8 / 27.5 · 3.6 / 24.2 |
+| 500 | AOI | 60 | 59.9 | 50.2 | 63.2 | 267 | 27.1 | 10.7 / 106 |
+| 500 | AOI | 144 | 140 | 60.2 | 72.9 | 242 | 27.2 | 27.7 / 188 |
+| 300 | full | 60 | 13.1 | 22.2 | 36.6 | 613 | 61.0 | 2.4 / 30.4 |
+| 300 | AOI | 60 | 17.4 | 30.0 | 49.7 | 170 | 16.7 | 2.4 / 25.9 |
+| 200 | full | 60 | 8.51 | 10.2 | 24.2 | 426 | 42.3 | 2.0 / 7.9 |
+| 200 | AOI | 60 | 11.2 | 13.9 | 26.0 | 116 | 11.3 | 2.1 / 13.0 |
+
+Going from 20 to 60 Hz input costs 5-15 % of a core at 500 clients (20 000 more messages a second:
+~3-7 µs each for WebSocket framing, UTF-8 decoding and `JSON.parse`), 20 → 144 Hz 12-36 %. The world
+reads input once per 50 ms tick, so anything above 20 Hz changes nothing in the simulation: a client
+that sent at most one input per 50 ms (always including the final state) would cut this to the 20 Hz
+rows (see [For the client streams](#for-the-client-streams)). Full snapshot bandwidth grows with the
+realm's population: ≈ 55 KB/s + 1.85 KB/s per other player online (426 / 613 / 981 KB/s at
+200 / 300 / 500).
+
+**AOI churn** (`bench.ts churn`: the kernel scenario, 300 wizards walking and casting, 5 of them watched
+as clients for 120 s — each walked ~770 m; counts per observer):
+
+| AOI | snap KB | wizard models created / removed | …removed but still in the world | creature models created / removed | …still alive (a bogus "puff") | flicker: removed, back within 3 s |
+|---|---:|---:|---:|---:|---:|---:|
+| off (full snapshots; the shipped client) | 56.1 | 0 / 0 | 0 | 186 / 249 | 0 | 0 |
+| 140 m, no hysteresis (wf/perf) | 13.5 | 401 / 402 | 402 | 88.8 / 104 | 45.4 | 219 |
+| **140 m, margin 10 m (default)** | 13.6 | 198 / 203 | 203 | 60.4 / 76.6 | 17.0 | 45.8 |
+| 140 m, margin 20 m | 13.6 | 170 / 175 | 175 | 57.4 / 73.8 | 14.8 | 16.6 |
+
+Hysteresis halves the churn and cuts flicker by 80 % at no cost in bytes; what is left is inherent —
+a walking viewer sweeps its area across the map, taking in ~2.6 wizards per 10 m walked (at this
+density). That is why AOI waits for a client that disposes or pools what it removes (every model it
+rebuilds is ~12 geometries / ~40 KB of vertex data plus a 512x160 label canvas) and does not puff for
+entities that merely left its area.
 
 ## Multi-core: REALMS=N
 
@@ -119,7 +225,16 @@ realm that owns the request and **hands WebSocket sockets to the realm process**
 passing), so game traffic never crosses the front door. Routing is by the realm prefix `rK.` that a
 realm puts on the tokens and MCP session ids it mints; newcomers go to the realm with the fewest
 players; `?realm=K` forces one; `GET /api/realms` lists realms with player/connection counts (it also
-exists without `REALMS`, listing the single world). Each realm saves to `data/world.rK.json` (realm 0
+exists without `REALMS`, listing the single world). Requests without a token (the in-game board's
+`/api/leaderboard`, `/api/rules`, `/api/history`) follow a routing cookie `hogwarts_realm=K` that the
+front door sets on every successful `/api/enroll` and `/api/me` answer (the browser calls one of them
+at the gate, before anything else), so a player in realm 1 sees realm 1's term, house points and
+Minister. An MCP session opened without a token lives where it was sent; when it calls `login` with a
+token of another realm, the front door replays the session's `initialize` in the token's realm under
+the same session id, routes the session there from then on and closes the old one, so `login` works
+whatever realm the session started in. (Checked live with REALMS=2: a realm-1 player's board now shows
+realm 1; sessions minted by realm 0 log in as realm-1 wizards and vice versa, `whoami` included; a
+client-supplied `x-hogwarts-*` header is stripped.) Each realm saves to `data/world.rK.json` (realm 0
 keeps `data/world.json`, so an existing world becomes realm 0 and its old unprefixed tokens keep
 working). Realms that crash are restarted; SIGINT/SIGTERM stops all of them (each saves). Without
 `REALMS` none of this code runs.
@@ -142,26 +257,33 @@ locks, the front door is ~1 % CPU), so capacity scales with cores until somethin
 ### Mapping to the 64-core / 128 GB production box
 
 Assumptions (stated, not measured there): per-core speed at least that of this 2.1 GHz Xeon; realms
-scale linearly because they share nothing; real browsers send input at ~4 Hz, not the benchmark's
-20 Hz (input parsing was ~15 % of the busy time at 20 Hz); NUMA and NIC interrupt placement are left
-to the OS.
+scale linearly because they share nothing (measured above on 2 realms); NUMA and NIC interrupt
+placement are left to the OS; and — corrected in the fix pass — **every connected player sends input
+at 60 Hz all the time**. That is pessimistic for idle players (4 Hz) and optimistic for 120-240 Hz
+monitors; the first version of this estimate assumed 4 Hz, which only the idle heartbeat is. Players
+are spread over the map; a crowd in one spot costs more bytes (see the crowd rows).
 
 * **Processes**: `REALMS=56` — one realm per core, leaving ~8 cores for the front door, V8's GC and
   compiler threads, and the kernel's network stack (softirq), which at these rates is not free.
   (`REALMS=60` if the NIC work is offloaded.)
-* **Clients per realm**: ~500 spread-out clients per realm at <= 70 % of a core with p99 latency
-  ~25 ms (measured, with the heavier 20 Hz input). A world with only the kernel and no clients handles
-  5 000 wizards per core; with clients, the snapshot fan-out, not the simulation, is what fills the
-  core.
-* **CPU-bound capacity**: 56 x 500 = **~28 000 concurrent players** on one box.
-* **Memory**: ~235 MB RSS per realm at 500 clients → 56 x 0.25 GB ≈ **14 GB** of 128 GB. Plenty of room;
-  `--max-old-space-size` does not need raising.
-* **Network is the real ceiling**: spread-out players receive ~275 KB/s each (crowded ones up to
-  ~760 KB/s). 28 000 x 275 KB/s ≈ 7.7 GB/s ≈ 62 Gbit/s, more than most NICs: a 10 GbE link saturates
-  at ~4 500 such players, 25 GbE at ~11 000, 100 GbE lets the CPUs be the limit. If the box sits
-  behind 10/25 GbE, fewer realms (e.g. 16-24) already fill the link, or `AOI_RADIUS` can be lowered
-  (bandwidth scales roughly with the AOI area). A binary/delta snapshot protocol would cut it by
-  several times but needs a client change, which this pass deliberately avoided.
+* **Memory**: ~235 MB RSS per realm at 500 clients → 56 x 0.25 GB ≈ **14 GB** of 128 GB. Plenty of
+  room; `--max-old-space-size` does not need raising. Memory is never the limit.
+* **Today's browser client (full snapshots)**: CPU is not the limit (500 clients at 60 Hz input: 58 %
+  of a core); bandwidth is, because every player receives every other player of its realm:
+  ≈ 55 KB/s + 1.85 KB/s x N per client in a realm of N, i.e. ≈ R·N·(55 + 1.85·N) KB/s for the box.
+  With 56 realms that fills a 10 GbE link at ~95 players per realm (**~5 300 players**), 25 GbE at
+  ~160 per realm (**~9 000**), 100 GbE at ~330 per realm (**~18 500**, each realm ~40 % CPU). Smaller
+  realms carry more players per byte; how few players make a good world is a game-design question.
+* **A client that takes AOI snapshots (`aoi=1`)**: CPU-bound. At 60 Hz input a realm serves ~400
+  spread-out players at ~55 % of a core (measured: 300 → 50 %, 500 → 63 %, p99 latency 17-60 ms on a
+  loaded box), leaving headroom for GC and crowding; with input capped at 20 Hz by the client, ~500
+  (69 %, p99 23 ms). 56 x 400 = **~22 000 concurrent players** (~28 000 with a 20 Hz input cap). They
+  receive ~270 KB/s each: 22 000 x 270 KB/s ≈ 6 GB/s ≈ 48 Gbit/s — a 100 GbE box (or 2 x 25 GbE); a
+  single 25 GbE link carries ~11 500 of them, 10 GbE ~4 600. `AOI_RADIUS` trades bytes for view
+  distance (bandwidth scales roughly with the area).
+* A binary/delta snapshot protocol would cut bandwidth by several times in both cases, and one input
+  message per tick would cut the per-message cost; both need the client, which this stream does not
+  own.
 
 ## What changed
 
@@ -193,29 +315,69 @@ Kernel (`src/kernel`), behaviour-preserving — the fingerprints above are byte-
 
 Server (`src/server`):
 
-* **Area-of-interest snapshots** (`fanout.ts`): the snapshot is built once per broadcast; each entry is
-  serialised and UTF-8 encoded once and filed by 16 m cell; each grid row is one buffer with byte
-  offsets, so a client's payload (all cells within `AOI_RADIUS` = 140 m of its cell: everything within
-  140 m, nothing beyond ~185 m = radius + two cell diagonals) is ~4 x 19 memcpys. Payloads are shared
-  by everyone in the same cell. The JSON is exactly the old `{t:'snap', s: snapshot}` with the four arrays filtered: the client is unchanged.
+* **Snapshots built and serialised once per broadcast** (`fanout.ts`), lazily in the form someone needs:
+  one shared full snapshot (every socket that did not ask for AOI — the shipped client) and/or
+  **area-of-interest** payloads for sockets that connected with `aoi=1`: each entry is serialised and
+  UTF-8 encoded once and filed by 16 m cell; each grid row is one buffer with byte offsets, so a
+  client's payload (all cells within `AOI_RADIUS` = 140 m of its anchor cell) is ~4 x 19 memcpys, shared
+  by everyone anchored to the same cell. Hysteresis: entities and viewers keep their cell until
+  `AOI_MARGIN` = 10 m past it, so everything within 120 m is always sent and nothing beyond ~205 m.
+  The JSON is exactly the old `{t:'snap', s: snapshot}` with the four arrays filtered — but an AOI
+  client sees entities leave and re-enter as it travels, which is why AOI is opt-in (fix pass).
 * **Private state** at most 5 Hz (sockets alternate broadcasts) and only when it changed.
 * **Batched writes**: world events are queued for exactly the sockets connected when they happened and
   written, in order, with the next snapshot; each socket's events + snapshot + `me` go out in one
   corked write. The tick never writes to sockets. (Events arrive up to 100 ms later than before.)
 * **Back-pressure**: a socket with more than 1 MB queued skips snapshots (they are idempotent state);
   one with more than 16 MB queued is dropped (`WS_SLOW_BYTES`, `WS_DEAD_BYTES`).
-* **Rate limits** per socket, token buckets per message kind (input 40/s, cast 10/s, chat 1/s burst 5,
-  the expensive ones — simulate, forge, book, seals — 2-4/s, any other type 30/s, 80/s overall), applied around `handleClient`, which is unchanged.
-* **REALMS=N** as above; `/api/realms`.
+* **Rate limits** per socket (`net.ts` `admit()`, around `handleClient`, which is unchanged): token
+  buckets per message kind — cast 10/s (burst 15), chat 1/s (burst 5), goto 10/s, the expensive ones
+  (simulate, forge, book, seals, …) 2-4/s, any other type 30/s — plus 80/s for all of them together,
+  both checked before either is spent; over budget the message is dropped and the sender told (in
+  English) at most once a second. **Movement input is never dropped**: 250/s (burst 300) are applied
+  at once, more are merged into one pending input applied before the socket's next message and before
+  every tick and broadcast (same end state as applying each), and input never touches the shared budget.
+* **REALMS=N** as above; `/api/realms`, routing cookie, MCP `login` across realms.
 
 ## Known remaining costs
 
 * `save()` still serialises the whole world synchronously every 30 s: ~23 ms for 2 000 wizards (4.5 MB).
-* Per-client bandwidth (above) is the binding limit on a big box; the protocol is unchanged JSON.
-* Input messages are parsed individually (at the benchmark's 20 Hz x 500 clients that is ~15 % of the
-  busy time); real clients send far fewer.
+* Per-client bandwidth (above) is the binding limit on a big box; the protocol is unchanged JSON, and
+  the shipped client still takes full snapshots.
+* Input messages are parsed individually: ~3-7 µs each, so a frame-rate client costs the server
+  5-15 % of a core per 500 players at 60 Hz and up to a third of a core at 144 Hz, for nothing the
+  20 Hz simulation can use. The fix is on the client (below).
 * One world's snapshot fan-out is single-threaded; beyond ~500-700 clients in *one* world, split into
   realms (or, future work, encode payloads in worker threads).
+
+## Configuration
+
+| variable | default | meaning |
+|---|---|---|
+| `REALMS` | unset | `N` > 1: N realm processes behind one front door on `PORT` (above) |
+| `AOI_RADIUS` | 140 | area-of-interest reach in metres (cell to cell); 0 turns AOI off for everyone |
+| `AOI_MARGIN` | 10 | hysteresis margin in metres (≤ radius/4); everything within radius − 2·margin is always sent |
+| `AOI_CELL` | 16 | AOI grid cell in metres |
+| `AOI_ALL` | unset | `1`: AOI snapshots for every client, not only those connecting with `aoi=1` |
+| `WS_SLOW_BYTES` / `WS_DEAD_BYTES` | 1 MB / 16 MB | skip snapshots / drop the socket when this much is queued |
+| `HOGWARTS_VERIFY_SPATIAL` | unset | `1`: cross-check every spatial query against a full scan (debugging) |
+
+## For the client streams
+
+Things this stream cannot do from the server, in the order they pay off:
+
+1. **Enable AOI for browsers** (3.6x less bandwidth): in `client/main.ts` `apply()`, when a wizard,
+   creature or bolt is missing from a snapshot, dispose its geometries, materials and textures
+   (including the label's `CanvasTexture`) — or keep a pool and hide/reuse models; puff only for a real
+   death (e.g. a creature that vanished within ~100 m, inside the guaranteed 120 m; beyond that it
+   merely left the area). Then add `&aoi=1` to the `/ws` URL in `connect()`. (The dispose half is worth
+   doing anyway: today every death or logout leaks one model's GPU buffers.)
+2. **Send at most one `input` per 50 ms** (the world tick), always including the final state (e.g.
+   send immediately if 50 ms have passed since the last one, else schedule one for when they have).
+   Nothing in the simulation changes; the server saves 5-35 % of a core per 500 players.
+3. `client/i18n.ts` ERRORS: `[/^Slow down: too many messages/, () => '慢一点——消息发得太快了']`.
+4. Optional: `/api/leaderboard?token=…` — no longer needed for REALMS (the routing cookie does it), but
+   harmless and explicit.
 
 ## Reproduce
 
@@ -223,8 +385,11 @@ Server (`src/server`):
 npx tsx scripts/bench.ts kernel --n=100,500,1000,2000,5000       # --secs=30 --warm=10 by default
 npx tsx scripts/bench.ts trace --n=150 --secs=30                   # prints the fingerprint
 npx tsx scripts/bench.ts net --k=50,200,500 --layout=spread,crowd --secs=15 --warm=5 --port=7900
-npx tsx scripts/bench.ts net --k=500 --env=AOI_RADIUS=0            # AOI off
+npx tsx scripts/bench.ts net --k=500 --env=AOI_RADIUS=0            # AOI off for everyone
 npx tsx scripts/bench.ts net --k=400 --realms=2                    # REALMS mode
+npx tsx scripts/bench.ts net --k=500 --input-hz=144                # frame-rate input (fix pass)
+npx tsx scripts/bench.ts net --k=500 --aoi=0 --input-hz=60         # the shipped client: full snapshots
+npx tsx scripts/bench.ts churn --n=300 --secs=120 --aoi=0,140/0,140/10,140/20   # AOI enter/leave per client
 # --out=results.jsonl appends machine-readable rows; BENCH_NODE_FLAGS="--cpu-prof" profiles the server.
 ```
 
