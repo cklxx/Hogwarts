@@ -7,6 +7,7 @@ import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { heightAt } from './terrain';
 import { makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, wizardColor, type WizardModel } from './models';
+import { createControls } from './controls';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string }
@@ -16,7 +17,7 @@ interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: str
 interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
-  hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number } | null)[];
+  hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self' } | null)[];
   stunned: number; jailed: number; decree: boolean; title: { zh: string; en: string; next: { zh: string; en: string; how: string } | null }; ui: string[]; seals: number; map: { name: string; registry: string; house: string; year: number; where: string; x: number; z: number }[] | null; proclamation: string;
 }
 interface Ev { id: number; type: string; text: string; zh?: string; to?: string }
@@ -95,12 +96,6 @@ const creatures = new Map<string, ReturnType<typeof makeCreature> & { tx: number
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
 const effects: { obj: THREE.Object3D; t: number; life: number; update: (k: number, o: THREE.Object3D) => void }[] = [];
 let camYaw = 0, camPitch = 0.45, camDist = 14;
-const keys = new Set<string>();
-const mouse = new THREE.Vector2(0, 0);
-let mouseIn = false;
-let aim = new THREE.Vector3();
-let aimTarget: string | null = null;
-let selected = 0;
 let clock = 0;
 
 // ------------------------------------------------------------------ network
@@ -113,14 +108,18 @@ function connect() {
     else if (msg.t === 'snap') apply(msg.s);
     else if (msg.t === 'me') me = msg.s;
     else if (msg.t === 'event') feed(msg.e, true);
-    else if (msg.t === 'cast' && !msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
-    else if (msg.t === 'cast' && msg.r.notes?.length) toast(msg.r.notes.join(' · '));
-    else if (msg.t === 'book') renderBook(msg.armory, msg.grimoire);
-    else if (msg.t === 'seals') renderSeals(msg.section, msg.current);
+    else if (msg.t === 'cast') {
+      ctl.onCast(msg.r);
+      if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
+      else if (msg.r.notes?.length) toast(msg.r.notes.join(' · '));
+    }
+    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); }
+    else if (msg.t === 'seals') { ctl.onSeals(msg.section); renderSeals(msg.section, msg.current); }
+    else if (msg.t === 'goto') ctl.onGoto(msg.goal);
     else if (msg.t === 'sealmsg') { const r = msg.r; toast(r.runes ? L(`📜 第 ${r.tier} 道封印的第 ${r.page}/${r.of} 页已抄进你的笔记。`, `📜 Page ${r.page}/${r.of} of seal ${r.tier} copied into your notes.`) : r.opened ? L(`📕 封印打开了！`, `📕 The seal opens! ${r.reward}`) : `✗ ${L('ALGIZ 没有出现。封印纹丝不动，还反咬了你一口（-15 生命）。', r.message)}`); }
     else if (msg.t === 'sim') showSim(msg.r);
     else if (msg.t === 'forged') { bookOut(`✓ ${L('已铸造', 'Forged')} ${msg.name}.${msg.notes.length ? '\n' + msg.notes.join('\n') : ''}`, 'good'); }
-    else if (msg.t === 'err') { if (!$('#book').hidden) bookOut(`✗ ${tr(msg.error)}`, 'bad'); else toast(`✗ ${tr(msg.error)}`); }
+    else if (msg.t === 'err') { ctl.onError(); if (!$('#book').hidden) bookOut(`✗ ${tr(msg.error)}`, 'bad'); else toast(`✗ ${tr(msg.error)}`); }
   };
   ws.onclose = () => setTimeout(connect, 1500);
 }
@@ -306,7 +305,7 @@ function hud() {
     const near = snap.w.filter((x) => x.h !== myHandle && my && Math.hypot(x.x - my.root.position.x, x.z - my.root.position.z) < 60)
       .map((x) => ({ x, d: Math.hypot(x.x - my!.root.position.x, x.z - my!.root.position.z), a: Math.atan2(x.x - my!.root.position.x, -(x.z - my!.root.position.z)) }))
       .sort((a, b) => a.d - b.d).slice(0, 6);
-    pres.innerHTML = `<b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${a - camYaw}rad)">↑</span> <span style="color:${wizardColor(x.ho)}">[${esc(x.t)}] ${esc(x.n)}</span> ${Math.round(d)}m${x.s.includes('X') ? ' 💫' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`);
+    pres.innerHTML = `<b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${a + camYaw}rad)">↑</span> <span style="color:${wizardColor(x.ho)}">[${esc(x.t)}] ${esc(x.n)}</span> ${Math.round(d)}m${x.s.includes('X') ? ' 💫' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`);
   } else pres.innerHTML = L('<span class="locked">👁️ 三年级：施放 <b>人形显身</b> 感知身边的人</span>', '<span class="locked">👁️ Year 3: cast <b>Homenum Revelio</b> to sense who is near</span>');
   bar('.hp', me.hp, me.maxHp, `${me.hp} / ${me.maxHp}`);
   bar('.mana', me.mana, me.maxMana, `${me.mana} / ${me.maxMana} ${L('法力', 'mana')}`);
@@ -315,12 +314,14 @@ function hud() {
   if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => '<div><span></span><b></b><i></i></div>').join('');
   me.hotbar.forEach((s, i) => {
     const el = hb.children[i] as HTMLElement;
-    el.classList.toggle('sel', i === selected);
+    el.classList.toggle('sel', i === ctl.selected);
+    el.dataset.kind = s?.kind ?? '';
     (el.children[0] as HTMLElement).textContent = s ? spellName(s.name) : '—';
     (el.children[1] as HTMLElement).textContent = String(i + 1);
     (el.children[2] as HTMLElement).style.height = s && s.cd > 0 ? `${Math.min(100, s.cd * 40)}%` : '0';
-    el.onclick = () => { selected = i; };
+    el.onclick = () => ctl.castSlot(i);
   });
+  ctl.hud();
   const ov = $('#overlay');
   if (me.jailed) { ov.hidden = false; ov.innerHTML = L(`⛓️ 阿兹卡班<br/><small>摄魂怪会在 ${me.jailed.toFixed(0)} 秒后放你出去</small>`, `⛓️ Azkaban<br/><small>The Dementors will release you in ${me.jailed.toFixed(0)}s</small>`); }
   else if (me.stunned) { ov.hidden = false; ov.innerHTML = L(`💫 被击晕了<br/><small>庞弗雷夫人正在给你治疗…… ${me.stunned.toFixed(1)} 秒</small>`, `💫 Stunned<br/><small>Madam Pomfrey is patching you up… ${me.stunned.toFixed(1)}s</small>`); }
@@ -425,7 +426,7 @@ let bookSel: string | null = null;
 function toggleBook() {
   const b = $('#book');
   b.hidden = !b.hidden;
-  if (!b.hidden) send({ t: 'book' });
+  if (!b.hidden) { send({ t: 'book' }); ctl.notify('book'); }
 }
 function bookOut(text: string, cls = '') { const o = $('#sp-out'); o.textContent = text; o.className = cls; }
 function renderBook(armory: { spells: ArmorySpell[]; hotbar: { slot: number; spell: string | null }[] }, grimoireText: string) {
@@ -450,12 +451,12 @@ function showSim(r: { ok: boolean; mana: number; effects: string[]; notes: strin
     ? `✓ ${L(`会消耗 ${r.mana} 法力`, `Would cast for ${r.mana} mana`)} (${r.gas} gas${r.nodes ? `, ${r.nodes} nodes` : ''}).\n${r.effects.map((e) => '  • ' + e).join('\n') || L('  （无效果）', '  (no effects)')}${r.notes.length ? '\n' + r.notes.map((n) => '  ! ' + n).join('\n') : ''}`
     : `✗ ${L('失效', 'Fizzles')}: ${tr(r.error ?? '')}${r.gas ? ` (after ${r.gas} gas)` : ''}`, r.ok ? 'good' : 'bad');
 }
-$('#sp-sim').onclick = () => send({ t: 'simulate', source: $<HTMLTextAreaElement>('#sp-src').value, x: aim.x, z: aim.z, target: aimTarget ?? undefined });
+$('#sp-sim').onclick = () => send({ t: 'simulate', source: $<HTMLTextAreaElement>('#sp-src').value, x: ctl.aim.x, z: ctl.aim.z, target: ctl.targetKey() ?? undefined });
 $('#sp-forge').onclick = () => {
   const slot = Number($<HTMLSelectElement>('#sp-slot').value) || undefined;
   send({ t: 'forge', name: $<HTMLInputElement>('#sp-name').value, incantation: $<HTMLInputElement>('#sp-inc').value || undefined, source: $<HTMLTextAreaElement>('#sp-src').value, slot });
 };
-$('#sp-cast').onclick = () => { if (bookSel) send({ t: 'cast', key: bookSel, x: aim.x, z: aim.z, target: aimTarget ?? undefined }); };
+$('#sp-cast').onclick = () => { if (bookSel) ctl.castKey(bookSel); };
 
 // ------------------------------------------------------------------ the Restricted Section (seals)
 let sealTier = 1;
@@ -474,9 +475,23 @@ $('#seal-break').onclick = () => send({ t: 'breakseal', tier: sealTier, words: $
 
 $('#sp-forget').onclick = () => { const n = $<HTMLInputElement>('#sp-name').value; if (n) send({ t: 'unlearn', spell: n }); };
 
-// ------------------------------------------------------------------ input
-const raycaster = new THREE.Raycaster();
-const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+// ------------------------------------------------------------------ input (targeting, smart casting, click-to-move, camera, help, onboarding: controls.ts)
+function toggleMenu() {
+  const m = $('#menu');
+  m.hidden = !m.hidden;
+  $('#board').hidden = true;
+  if (!m.hidden) ctl.notify('menu');
+}
+const ctl = createControls({
+  canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,
+  snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast,
+  cam: {
+    get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; },
+    get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
+    get dist() { return camDist; }, set dist(v: number) { camDist = v; },
+  },
+  panels: { book: toggleBook, menu: toggleMenu },
+});
 addEventListener('keydown', (e) => {
   const chat = $<HTMLInputElement>('#chat');
   if (document.activeElement === chat) {
@@ -490,81 +505,21 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
+  if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
   if (e.key === 'Enter') { chat.focus(); e.preventDefault(); return; }
-  if (e.key === 'Tab') { e.preventDefault(); showBoard(); return; }
   if (e.key === 'Escape') {
+    // close the topmost panel, then drop the target, then open the Owl Post
     if (!$('#book').hidden) { $('#book').hidden = true; return; }
     if (!$('#seals').hidden) { $('#seals').hidden = true; return; }
-    $('#menu').hidden = !$('#menu').hidden; $('#board').hidden = true; return;
+    if (ctl.helpOpen()) { ctl.toggleHelp(false); return; }
+    if (!$('#board').hidden) { $('#board').hidden = true; return; }
+    if (!$('#menu').hidden) { $('#menu').hidden = true; return; }
+    if (ctl.clearTarget()) return;
+    toggleMenu();
+    return;
   }
-  if (/^[1-6]$/.test(e.key)) { selected = Number(e.key) - 1; castSelected(); return; }
-  keys.add(e.key.toLowerCase());
+  ctl.keydown(e);
 });
-addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
-addEventListener('blur', () => keys.clear());
-let dragging = false;
-canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-canvas.addEventListener('mousedown', (e) => {
-  if (e.button === 2) dragging = true;
-  if (e.button === 0) castSelected();
-});
-addEventListener('mouseup', (e) => { if (e.button === 2) dragging = false; });
-addEventListener('mousemove', (e) => {
-  mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  mouseIn = true;
-  const ch = $('#crosshair');
-  ch.style.left = `${e.clientX}px`;
-  ch.style.top = `${e.clientY}px`;
-  if (dragging) { camYaw -= e.movementX * 0.005; camPitch = Math.max(0.1, Math.min(1.3, camPitch + e.movementY * 0.004)); }
-});
-canvas.addEventListener('wheel', (e) => { camDist = Math.max(5, Math.min(40, camDist + e.deltaY * 0.01)); }, { passive: true });
-
-function castSelected() {
-  send({ t: 'cast', key: String(selected + 1), x: aim.x, z: aim.z, target: aimTarget ?? undefined });
-}
-
-function updateAim() {
-  if (!mouseIn) return;
-  raycaster.setFromCamera(mouse, camera);
-  const hit = new THREE.Vector3();
-  const hits = raycaster.intersectObject(world.ground, false);
-  if (hits.length) aim.copy(hits[0].point);
-  else if (raycaster.ray.intersectPlane(groundPlane, hit)) aim.copy(hit);
-  // soft lock: nearest creature or other wizard to the aim point
-  let best: string | null = null, bd = 3;
-  let bx = 0, bz = 0;
-  for (const [i, c] of creatures) { const d = Math.hypot(c.root.position.x - aim.x, c.root.position.z - aim.z); if (d < bd) { bd = d; best = i; bx = c.root.position.x; bz = c.root.position.z; } }
-  for (const [h, w] of wizards) {
-    if (h === myHandle) continue;
-    const d = Math.hypot(w.root.position.x - aim.x, w.root.position.z - aim.z);
-    if (d < bd) { bd = d; best = h; bx = w.root.position.x; bz = w.root.position.z; }
-  }
-  aimTarget = best;
-  aimRing.visible = !!best;
-  if (best) aimRing.position.set(bx, heightAt(bx, bz) + 0.1, bz);
-  $('#crosshair').classList.toggle('lock', !!best);
-}
-
-let lastInput = '';
-let inputTimer = 0;
-function sendInput(dt: number) {
-  let fx = 0, fz = 0;
-  if (keys.has('w') || keys.has('arrowup')) fz -= 1;
-  if (keys.has('s') || keys.has('arrowdown')) fz += 1;
-  if (keys.has('a') || keys.has('arrowleft')) fx -= 1;
-  if (keys.has('d') || keys.has('arrowright')) fx += 1;
-  if (keys.has('q')) camYaw += dt * 1.8;
-  if (keys.has('e')) camYaw -= dt * 1.8;
-  // camera-relative
-  const s = Math.sin(camYaw), c = Math.cos(camYaw);
-  const dx = fx * c + fz * s;
-  const dz = -fx * s + fz * c;
-  const my = wizards.get(myHandle);
-  const f = my ? Math.atan2(aim.x - my.root.position.x, -(aim.z - my.root.position.z)) : 0;
-  const key = `${dx.toFixed(2)},${dz.toFixed(2)},${f.toFixed(1)}`;
-  inputTimer -= dt;
-  if (key !== lastInput || inputTimer <= 0) { send({ t: 'input', dx, dz, f }); lastInput = key; inputTimer = 0.25; }
-}
 
 // ------------------------------------------------------------------ frame
 let prev = performance.now();
@@ -644,8 +599,7 @@ function frame() {
     .sort((a, b) => a.d - b.d);
   R.setBoltLights(lit);
 
-  updateAim();
-  sendInput(dt);
+  ctl.update(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('#banner').hidden = true; }
   R.render();
 }

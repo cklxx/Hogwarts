@@ -3,6 +3,7 @@ import { CREATURE_KINDS, HOUSES, ITEM_SLOTS, UI_CHARMS, type SummonKind, type El
 import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, inZone, mulberry32, type ZoneId } from '../shared/map.js';
 import { canonFor, ollivander } from '../lore/wands.js';
 import { zhCreature, zhHouse, zhPlace, zhSpell } from '../shared/zh.js';
+import { spellKind } from '../shared/spellkind.js';
 import { CURRICULUM, isLeviosa, isLeviosar, unforgivable } from '../lore/spells.js';
 import { analyze } from '../runes/checker.js';
 import type { Node } from '../runes/parser.js';
@@ -1550,7 +1551,7 @@ export class World {
       reputation: Math.round(w.reputation), galleons: w.galleons, hp: Math.round(w.hp), maxHp: d.maxHp, mana: Math.round(w.mana), maxMana: d.maxMana,
       hotbar: w.hotbar.map((id) => {
         const s = w.spells.find((x) => x.id === id);
-        return s ? { id: s.id, name: s.name, cd: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)) } : null;
+        return s ? { id: s.id, name: s.name, cd: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)), kind: spellKind(s.effects) } : null;
       }),
       stunned: w.st.stunnedUntil ? Math.max(0, round(w.st.stunnedUntil - this.now)) : 0,
       jailed: w.st.jailedUntil ? Math.max(0, round(w.st.jailedUntil - this.now)) : 0,
