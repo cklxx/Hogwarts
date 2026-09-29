@@ -147,7 +147,7 @@ const tokenOf = (req: IncomingMessage, url: URL) => {
   return (req.headers['x-wizard-token'] as string | undefined) ?? url.searchParams.get('token') ?? undefined;
 };
 
-const MIME: Record<string, string> = { '.webp': 'image/webp', '.hdr': 'application/octet-stream', '.md': 'text/markdown; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon' };
+const MIME: Record<string, string> = { '.webp': 'image/webp', '.hdr': 'application/octet-stream', '.md': 'text/markdown; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 function serveStatic(res: ServerResponse, path: string) {
   if (!existsSync(DIST)) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -156,7 +156,8 @@ function serveStatic(res: ServerResponse, path: string) {
   }
   let file = normalize(join(DIST, path === '/' ? 'index.html' : path));
   if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html');
-  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
+  // the fonts are large and never change under the same name: let the browser keep them
+  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream', ...(extname(file) === '.woff2' ? { 'cache-control': 'public, max-age=604800' } : {}) });
   res.end(readFileSync(file));
 }
 
