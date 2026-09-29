@@ -26,6 +26,7 @@ import { TIPS } from '../src/lore/memes';
 import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
 import * as probe from './perf';
 import { createMarket } from './market';
+import { createPanels, type FamiliarState, type UnfairState } from './panels';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
@@ -40,8 +41,10 @@ interface Me {
   /** What is hexing you (World.hexState), or null. */
   hex?: HexState | null;
   /** Your agent (World.agentState, plus the MCP session count the server may add). */
-  agent?: AgentInfo | null;
+  agent?: (AgentInfo & { familiar?: FamiliarState | null }) | null;
   agents?: { sessions?: number } | null;
+  /** 不公平，但好玩 (World.unfairState): the Dark Lord, the DA, 偷师, concentration, the lawless zone (client/panels). */
+  unfair?: UnfairState | null;
   /** While stunned: what put you down (World.knockedOutBy). */
   down?: Down | null;
 }
@@ -319,6 +322,7 @@ function connect() {
     const msg = JSON.parse(m.data);
     probe.end('parse', tp);
     probe.wsMessage(m.data.length, msg.t === 'snap');
+    if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
     if (msg.t === 'welcome') {
       myHandle = msg.handle;
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
@@ -330,7 +334,7 @@ function connect() {
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') me = msg.s;
-    else if (msg.t === 'event') feed(msg.e, true);
+    else if (msg.t === 'event') { pn.onEvent(msg.e); feed(msg.e, true); }
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
       ctl.onCast(msg.r);
@@ -354,7 +358,7 @@ function connect() {
       const text = `✗ ${tr(String(msg.error ?? ''))}`;
       if (market.onError(text)) { /* shown on the market page */ }
       else if (!$('#book').hidden) bookOut(text, 'bad');
-      else if (onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
+      else if (pn.onError(text) || onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
       else toast(text);
     }
   };
@@ -413,7 +417,7 @@ function apply(s: Snap) {
     }
     m.seen = g;
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
-    const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
+    const extra = (w.s.includes('V') ? '☠' : '') + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
     setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
@@ -685,6 +689,7 @@ function hud() {
   drawMarauder();
   linkHud();
   renderGoal();
+  pn.hud();
   trackBars();
 }
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
@@ -763,9 +768,10 @@ async function showBoard() {
   solo(b);
   b.innerHTML = `<h2>${ic('cup')}<span>${L('排行榜', 'Leaderboard')} <small>${L(`第 ${lb.term.n} 学期 · 剩余 <span class="num">${fmtT(lb.term.secondsLeft)}</span>`, `term ${lb.term.n} · <span class="num">${fmtT(lb.term.secondsLeft)}</span> left`)} · <kbd>L</kbd></small></span> <button class="x" data-close="board" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
     <p class="hp-line"><b>${L('学院分', 'House points')}:</b> ${Object.entries(lb.housePoints).map(([h, p]) => `<span>${ic(houseIcon(h))}${houseName(h)} <span class="num">${p}</span></span>`).join('')}</p>
+    ${pn.boardHtml(lb)}
     <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : '—'}<br/><small>${L('每学期结束时，声望最高（至少 100）的玩家成为魔法部长，可以颁布一道法令改写世界规则。', esc(lb.ministerRule))}</small></p>
     <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th></tr>
-    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
+    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${lb.darkLord?.name === w.name ? `${ic('darkmark')} ` : ''}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
     ${lb.loopholeFirstFoundBy ? `<p>${ic('star')} ${L('第一个发现韦斯莱漏洞的人', 'First to find the Weasley Loophole')}: <b>${esc(lb.loopholeFirstFoundBy)}</b></p>` : ''}`;
   b.hidden = false;
 }
@@ -804,7 +810,9 @@ function menuInfo(url?: string) {
       <h3>${ic('owl')}${L('连接你的 Agent', 'Connect your agent')}</h3>
       <div id="op-pair"></div>
       <div id="op-agent" class="hint"></div>
+      ${pn.menuHtml()}
     </section>
+    ${pn.menuLinks()}
     <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
     <p>${L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
@@ -1565,6 +1573,7 @@ function renderGoal() {
     year: me.year, xp: me.xp, xpNext: me.xpNext, ui: me.ui, seals: me.seals, galleons: me.galleons, reputation: me.reputation, decree: me.decree, house: me.house,
     customSpells: bookSpells.length ? bookSpells.filter((x) => !x.builtin).length : null,
     items: trunkKnown ? trunkItems.length : null,
+    ...pn.goalState(),
   });
   if (!goal) { el.hidden = true; return; }
   if (goal.key !== goalKey) {
@@ -1593,6 +1602,8 @@ $('#goal').addEventListener('click', (e) => {
     else if (a.open === 'trunk') toggleTrunk(true);
     else if (a.open === 'board') { if ($('#board').hidden) void showBoard(); }
     else if (a.open === 'owl') toggleOwl(true);
+    else if (a.open === 'exams') pn.openExams();
+    else if (a.open === 'da') pn.openDa();
   }
   b.blur();
   renderGoal();
@@ -1625,6 +1636,25 @@ const ctl = createControls({
   panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => toggleTrunk() },
   agent: agentNow,
   pair: pairNow,
+});
+// ------------------------------------------------------------------ the panels: 黑魔王, 邓布利多军, 偷师, O.W.L., 使魔, 专注力, 无规则区 (client/panels)
+/** Put a source in the spellbook's editor as a new draft (偷师's 看源码). */
+function loadDraft(name: string, source: string, note: string) {
+  loadSpell(null);
+  $<HTMLInputElement>('#sp-name').value = name;
+  $<HTMLTextAreaElement>('#sp-src').value = source;
+  bookOut(note, 'good');
+}
+const pn = createPanels({
+  send, toast, me: () => me, snap: () => snap,
+  myPos: () => wizards.get(myHandle)?.root.position ?? null,
+  camYaw: () => camYaw,
+  wizardRoot: (h) => wizards.get(h)?.root ?? null,
+  agentConnected: () => !!agentNow()?.connected,
+  spells: () => bookSpells,
+  wantSpells: () => { if (!bookSpells.length) send({ t: 'book' }); },
+  openBook: () => { if ($('#book').hidden) toggleBook(true); },
+  loadDraft, solo,
 });
 // the camera keeps out of walls, fades what hides you, x-rays you and your allies (view.ts)
 const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), cam: {
@@ -1683,6 +1713,7 @@ addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (pn.keydown(e)) return; // J 邓布利多军, K O.W.L. (client/panels)
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
@@ -1693,6 +1724,7 @@ addEventListener('keydown', (e) => {
     // close the topmost panel, then drop the target, then open the Owl Post
     if (!$('#atask').hidden) { $('#atask').hidden = true; atPending = null; return; }
     if (!$('#book').hidden) { $('#book').hidden = true; return; }
+    if (pn.closeTop()) return;
     if (!$('#owl').hidden) { toggleOwl(false); return; }
     if (!$('#trunk').hidden) { toggleTrunk(false); return; }
     if (!$('#seals').hidden) { $('#seals').hidden = true; return; }
@@ -1842,6 +1874,7 @@ function frame() {
   probe.end('fx', tp); tp = probe.begin();
 
   ctl.update(dt);
+  pn.frame(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();

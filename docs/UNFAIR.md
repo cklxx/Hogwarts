@@ -43,7 +43,7 @@ with `formal/lean/Hogwarts.lean` through `formal/vectors.json` (`unfair.constant
   tool 0 (`market_browse` and `market_spell` too — 咒语集市, README). The refusal
   text ends with `retry_after=<seconds>`.
 
-## For the client (not wired yet: the kernel exposes it)
+## For the client (drawn by `client/panels/*`: the Dark Mark and compass, the DA panel `J`, 偷师 in the spellbook, the concentration tube, the lawless vignette)
 
 Snapshot (`{ t: 'snap', s }`):
 

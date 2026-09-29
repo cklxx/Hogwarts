@@ -89,21 +89,40 @@ describe('spell templates (从模板开始)', () => {
 
 describe('the next goal (下一步)', () => {
   const base: GoalState = { year: 1, xp: 0, xpNext: 150, ui: [], seals: 0, galleons: 20, reputation: 0, decree: false, house: 'Gryffindor', customSpells: 0, items: 0 };
-  it('always names exactly one goal, walking from Revelio to Minister', () => {
+  it('always names exactly one goal, walking the three pillars from Revelio to Minister', () => {
+    const y2 = { ...base, ui: ['revelio', 'point-me'], xp: 150, year: 2, items: 1, customSpells: 1 };
+    const exams = { passed: 0, of: 6, open: 2 };
     const seq = [
       nextGoal(base)!.key,
       nextGoal({ ...base, ui: ['revelio'] })!.key,
       nextGoal({ ...base, ui: ['revelio'], xp: 60 })!.key,
       nextGoal({ ...base, ui: ['revelio'], xp: 60, items: 1 })!.key,
-      nextGoal({ ...base, ui: ['revelio'], xp: 150, year: 2, items: 1 })!.key,
-      nextGoal({ ...base, ui: ['revelio', 'point-me'], xp: 150, year: 2, items: 1 })!.key,
-      nextGoal({ ...base, ui: ['revelio', 'point-me'], xp: 150, year: 2, items: 1, customSpells: 1 })!.key,
-      nextGoal({ ...base, ui: ['revelio', 'point-me'], year: 4, items: 1, customSpells: 1, seals: 1 })!.key,
-      nextGoal({ ...base, ui: ['revelio', 'point-me'], year: 4, items: 1, customSpells: 1, seals: 1, reputation: 120 })!.key,
-      nextGoal({ ...base, ui: ['revelio', 'point-me'], year: 4, items: 1, customSpells: 1, seals: 1, reputation: 120, decree: true })!.key,
+      nextGoal({ ...base, ui: ['revelio'], xp: 60, items: 1, customSpells: 1 })!.key,
+      nextGoal({ ...base, ui: ['revelio'], xp: 150, year: 2, items: 1, customSpells: 1 })!.key,
+      nextGoal({ ...y2, exams })!.key,
+      nextGoal({ ...y2, exams: { ...exams, passed: 1 }, da: { member: false, eligible: true } })!.key,
+      nextGoal({ ...y2, exams: { ...exams, passed: 1 }, da: { member: true, eligible: false } })!.key,
+      nextGoal({ ...y2, year: 4, reputation: 120, exams: { ...exams, passed: 1 }, da: { member: false, eligible: false } })!.key,
+      nextGoal({ ...y2, year: 4, reputation: 160, darkLord: true, exams: { ...exams, passed: 1 } })!.key,
+      nextGoal({ ...y2, year: 4, reputation: 120, decree: true })!.key,
     ];
-    expect(seq).toEqual(['revelio', 'pixies', 'shop', 'year2', 'pointme', 'spell', 'pages', 'cup', 'minister', 'decree']);
+    expect(seq).toEqual(['revelio', 'pixies', 'shop', 'spell', 'year2', 'pointme', 'owl', 'da', 'cup', 'minister', 'darklord', 'decree']);
     for (const g of [nextGoal(base)!, nextGoal({ ...base, ui: ['revelio'] })!]) { expect(CJK.test(g.text)).toBe(true); expect(CJK.test(g.why)).toBe(true); }
+    // the pillars: fight, then write, then politics
+    expect([nextGoal({ ...base, ui: ['revelio'] })!.pillar, nextGoal({ ...y2, exams })!.pillar, nextGoal({ ...y2, exams: { ...exams, passed: 1 } })!.pillar]).toEqual([1, 2, 3]);
+  });
+  it('never sends you to the seals: the Restricted Section is an elective, mentioned only from year 2', () => {
+    const states: GoalState[] = [];
+    for (const year of [1, 2, 4]) for (const seals of [0, 2]) for (const rep of [0, 120]) for (const custom of [0, 1])
+      states.push({ ...base, ui: ['revelio', 'point-me'], year, seals, reputation: rep, customSpells: custom, items: 1, xp: year === 1 ? 200 : 900 });
+    for (const st of states) {
+      const g = nextGoal(st)!;
+      expect(g.act && 'open' in g.act ? g.act.open : '').not.toBe('seals');
+      if (st.year < 2) expect(`${g.text}${g.why}`).not.toMatch(/封印|禁书区/);
+    }
+    const cup = nextGoal({ ...base, ui: ['revelio', 'point-me'], year: 2, items: 1, customSpells: 1, reputation: 10 })!;
+    expect(cup.key).toBe('cup');
+    expect(cup.why).toContain('选修');
   });
   it('counts pixies from XP', () => {
     expect(nextGoal({ ...base, ui: ['revelio'], xp: 36 })!.text).toContain('3/5');

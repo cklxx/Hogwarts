@@ -11,7 +11,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { warmPathfinding } from '../kernel/pathfind.js';
 import { ensureNpcs } from '../kernel/npc.js';
-import { listExams, sitExam } from '../kernel/exams.js';
+import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { marketMessage } from '../kernel/market.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
@@ -303,6 +303,7 @@ type ClientMsg =
   // O.W.L. exams (kernel/exams.ts)
   | { t: 'exams' }
   | { t: 'sit'; id: string; source: string }
+  | { t: 'examboard'; id?: string }
   // the browser shop: a fixed preset forged into your own trunk (shop.ts)
   | { t: 'buy'; item: string; lang?: string }
   // 不公平，但好玩: Dumbledore's Army and 偷师 (README; replies { t: 'da', r } and { t: 'study', r })
@@ -361,6 +362,8 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
       case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
       case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;
+      // one exam's top 10 (the browser's O.W.L. panel; MCP exam_leaderboard)
+      case 'examboard': reply({ t: 'examboard', r: examLeaderboard(world, wid, typeof m.id === 'string' ? m.id : undefined) }); break;
       case 'buy': reply({ t: 'bought', r: buyPreset(world, wid, String(m.item ?? ''), m.lang === 'en' ? 'en' : 'zh') }); book(); break;
       case 'da': {
         const r = m.op === 'join' ? world.joinDA(wid) : m.op === 'leave' ? world.leaveDA(wid) : m.op === 'veto' ? world.vetoDecree(wid) : world.daState(wid);
