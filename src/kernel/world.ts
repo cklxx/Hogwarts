@@ -6,7 +6,7 @@ import {
   DA_JOINT_MIN, DA_JOINT_PCT, DA_JOINT_WINDOW_S, DA_MAX_MEMBERS, DA_QUORUM, DA_REP_CEILING, DA_VETO_WINDOW_S, DA_VETOES_PER_TERM, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP,
   DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT, STUDIED_KEEP, STUDY_DELAY_S, STUDY_KEEP, STUDY_MEMORY_S,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
-  CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, type CupSource, type EventId,
+  CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource, type EventId,
   type CreatureKind, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
 } from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, LAWLESS_ZONE, SPAWN, WORLD_HALF, ZONES, mulberry32, type ZoneId } from '../shared/map.js';
@@ -2190,10 +2190,11 @@ export class World {
     }
     for (const w of this.wizards.values()) {
       const before = w.reputation;
-      w.reputation *= this.rules.terms.reputationDecay;
+      // only those who played this term: the absent keep what they had (a week away no longer means starting over)
+      if (w.npc || w.lastSeenAt >= this.term.startedAt || this.online(w)) w.reputation *= this.rules.terms.reputationDecay;
       w.termReputation = 0;
       // say it: every playtester thought the halving was a bug
-      if (!w.npc && before >= 1) {
+      if (!w.npc && before >= 1 && w.reputation < before) {
         const keep = Math.round(this.rules.terms.reputationDecay * 100);
         this.emit('term', `Term over: your reputation ${Math.round(before)} → ${Math.round(w.reputation)} (${keep}% carries into the next term; the rest was this term's race).`, { to: w.id, zh: `学期结束：你的声望 ${Math.round(before)} → ${Math.round(w.reputation)}（${keep}% 带进下学期，其余是这学期的比赛）。` });
       }
@@ -2203,6 +2204,13 @@ export class World {
   }
 
   forceEndTerm() { this.endTerm(); }
+
+  /** Change the term length now (TERM_SECONDS at start-up, the save migration): the running term ends at its new length, or in a minute. */
+  setTermLength(seconds: number) {
+    const len = Math.max(120, Math.min(86400, Math.round(seconds)));
+    this.rules.terms.lengthSeconds = len;
+    this.term.endsAt = Math.max(this.now + 60, this.term.startedAt + len);
+  }
 
   // ------------------------------------------------------------------ the tick
   tick(dt = TICK) {
@@ -3772,7 +3780,7 @@ export class World {
   // ------------------------------------------------------------------ persistence
   serialize() {
     return {
-      version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
+      version: 2, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       // what each feature keeps across a restart (kernel/features.ts)
       features: Object.fromEntries(HOOKS.save.map((f) => [f.id, f.save(this)])),
       // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
@@ -3794,6 +3802,8 @@ export class World {
       chests: data.flags?.chests ?? { term: 0, opened: {} },
     };
     w.seq = data.seq ?? 0;
+    // v1 saves ran 15-minute terms by default: move them to the new default unless a decree chose the length
+    if ((data.version ?? 1) < 2 && w.rules.terms.lengthSeconds === TERM_OLD_DEFAULT_S && !w.decrees.some((d) => d.changes.some((c) => c.startsWith('terms.lengthSeconds:')))) w.setTermLength(TERM_DEFAULT_S);
     const saved = (data as { features?: Record<string, unknown> }).features ?? {};
     for (const f of HOOKS.load) f.load(w, saved[f.id], data as unknown as Record<string, unknown>); // older saves kept these at the top
     for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {
