@@ -11,7 +11,7 @@ with `formal/lean/Hogwarts.lean` through `formal/vectors.json` (`unfair.constant
 | 输赢代价不对称 steal curve | `progression.ts stealTier / stealPct / duelSteal`, `World.stun` | Lean `steal_tier_mono`, `duel_steal_cap`, `duel_steal_mono`, `duel_steal_dark`, `steal_newcomer`, `steal_normal`, `steal_dark_lord`, `duel_conserves_curve` |
 | 邓布利多军 DA | `joinDA`, `leaveDA`, `daState`, `vetoDecree`, `enactVeto`, `jointBonus` in `damage` | TLA+ `DAVeto.tla`; Lean `joint_bounded`, `joint_mono`, `veto_strict_majority` |
 | 偷师 study | `noteSpellHit` (in `damage` and `hit`), `studyable`, `studySpell`, Revelio → `revealStudies` | Lean `study_before_forgotten` |
-| 无规则区 lawless zone | `shared/map.ts LAWLESS_ZONE` (`deep_forest`), `inLawless`, `guardHostileGift`, `deliverHostile`, `slay`, `stun`, `lawlessSweep` | TLA+ `Hex.tla` / `HexLive.tla` with `lawless` |
+| 无规则区 lawless zone | `shared/map.ts LAWLESS_ZONE` (`deep_forest`), `inLawless`, `guardHostileGift`, `deliverHostile`, `slay`, `stun`, `lawlessSweep` | TLA+ `Hex.tla` (a `Lawless` flag) checked by `HexLawless.tla` |
 | 专注力 concentration | `rules.agents`, `World.spendConcentration` (called by `src/mcp/server.ts` guard), `focusState` | Lean `focus_bounded`, `spend_focus_exact` |
 
 ## Numbers
