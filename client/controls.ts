@@ -164,6 +164,15 @@ export function curseText(h: HexState | null | undefined): { hexed: boolean; hea
   };
 }
 
+/**
+ * One panel at a time: opening `el` closes every other big panel (the sheets). The small modal question
+ * (#atask) and the Marauder's Map (a state of the world, not a panel) are left alone.
+ */
+export const PANELS = ['book', 'seals', 'board', 'menu', 'owl', 'trunk', 'helppanel'];
+export function solo(el: HTMLElement) {
+  for (const id of PANELS) { const p = document.getElementById(id); if (p && p !== el) p.hidden = true; }
+}
+
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const esc =(s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const now = () => performance.now() / 1000;
@@ -717,7 +726,8 @@ export function createControls(d: ControlsDeps) {
     if (action) {
       const sp = screenOf(action.x, action.y, action.z);
       const W = d.canvas.clientWidth, H = d.canvas.clientHeight;
-      const x = sp ? Math.max(120, Math.min(W - 120, sp.x)) : W / 2;
+      const hw = Math.min(W / 2, (pr.offsetWidth || 240) / 2 + 8);
+      const x = sp ? Math.max(hw, Math.min(W - hw, sp.x)) : W / 2;
       const y = sp ? Math.max(60, Math.min(H - 190, sp.y)) : H - 190;
       pr.style.left = `${x}px`; pr.style.top = `${y}px`;
     }
@@ -744,6 +754,9 @@ export function createControls(d: ControlsDeps) {
     const tip = $('#tip');
     if (!tip.hidden && tipSlot >= 0) renderTip(tipSlot);
     tutorial.tick();
+    const full = tutorial.active();
+    const help = $('#help');
+    if (help.classList.contains('full') !== full) help.classList.toggle('full', full);
   }
 
   function renderTargetFrame() {
@@ -826,12 +839,12 @@ export function createControls(d: ControlsDeps) {
   function toggleHelp(force?: boolean) {
     const el = $('#helppanel');
     const show = force ?? el.hidden;
-    if (show) renderHelp();
+    if (show) { renderHelp(); solo(el); }
     el.hidden = !show;
   }
   function renderHelp() {
     const row = (k: string, v: string) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`;
-    $('#helppanel').innerHTML = `<h2>${L('操作说明', 'Controls')} <small>${L('—— 按 H 关闭', '— H to close')}</small></h2>
+    $('#helppanel').innerHTML = `<h2><span>${L('操作说明', 'Controls')} <small><kbd>H</kbd></small></span> <button class="x" data-close="helppanel" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
       <div class="cols"><div>
       <h3>${L('移动', 'Moving')}</h3><table>
       ${row('W A S D', L('移动（相对镜头方向）；跑动时镜头会慢慢转到你身后', 'Move (relative to the camera); the camera drifts in behind you'))}
@@ -861,7 +874,7 @@ export function createControls(d: ControlsDeps) {
       </table>
       <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom.')}</p>
       </div></div>
-      <p class="row"><button id="help-tutorial">${L('重新开始新手引导', 'Restart the tutorial')}</button> <button id="help-close">${L('关闭', 'Close')}</button></p>`;
+      <p class="row"><button id="help-tutorial" class="ghost">${L('重新开始新手引导', 'Restart the tutorial')}</button> <button id="help-close">${L('关闭', 'Close')}</button></p>`;
     $('#help-close').onclick = () => toggleHelp(false);
     $('#help-tutorial').onclick = () => { toggleHelp(false); tutorial.restart(); };
   }
@@ -914,6 +927,8 @@ export function createControls(d: ControlsDeps) {
     keydown, update, hud, castSlot, castKey, castOnSelf, clearTarget, toggleHelp,
     helpOpen: () => !$('#helppanel').hidden,
     notify: (ev: 'book' | 'menu' | 'owl') => tutorial.notify(ev),
+    /** The tutorial (or its closing word) is on screen. */
+    tutorialActive: () => tutorial.active(),
     onCast, onGoto, onError, onArmory, onSeals,
   };
 }
@@ -1001,56 +1016,63 @@ function createTutorial(t: TutorialDeps) {
       const d = Math.hypot(q.x - p.x, q.z - p.z);
       if (!best || d < best.d) best = { d, a: Math.atan2(q.x - p.x, -(q.z - p.z)) };
     }
-    if (!best) return `<div class="hint">${L('附近暂时没有小精灵，任何野生魔物都可以。', 'No pixies around right now; any wild creature will do.')}</div>`;
-    return `<div class="dir"><span class="arrow" style="transform:rotate(${best.a + t.yaw()}rad)">↑</span> ${L(`最近的小精灵在 ${Math.round(best.d)} 米外`, `Nearest pixie: ${Math.round(best.d)} m`)}</div>`;
+    if (!best) return `<span class="dir">${L('附近没有小精灵，任何野生魔物都行', 'no pixie near: any wild creature will do')}</span>`;
+    return `<span class="dir"><span class="arrow" style="transform:rotate(${(best.a + t.yaw()).toFixed(2)}rad)">↑</span>${L(`小精灵 ${Math.round(best.d)} 米`, `pixie ${Math.round(best.d)} m`)}</span>`;
   }
-  const STEPS: { title: () => string; body: () => string; live?: () => string }[] = [
+  /** One short line per step, placed beside the control it talks about (`at`); the help panel (H) has the long version. */
+  type Step = { at: 'bottom' | 'topleft' | 'topright'; line: () => string; acts?: () => string; live?: () => string };
+  const STEPS: Step[] = [
     {
-      title: () => L('走两步', 'Take a few steps'),
-      body: () => t.touch
-        ? L('按住屏幕<b>左下方</b>拖动就是摇杆；也可以<b>点一下地面</b>，你会自动走过去。', 'Hold and drag on the <b>lower left</b> to walk, or <b>tap the ground</b> to walk there.')
-        : L(`用 ${key('W')}${key('A')}${key('S')}${key('D')} 移动（方向跟着镜头），或者<b>左键点击地面</b>，自动走过去。<br/>${key('右键')} 拖动转视角，滚轮缩放。`, `Move with ${key('W')}${key('A')}${key('S')}${key('D')} (relative to the camera), or <b>left-click the ground</b> to walk there.<br/>Right-drag turns the camera; the wheel zooms.`),
+      at: 'bottom',
+      line: () => t.touch
+        ? L('按住<b>左下方</b>拖动行走，或<b>点一下地面</b>走过去', 'Drag on the <b>lower left</b> to walk, or <b>tap the ground</b>')
+        : L(`${key('W')}${key('A')}${key('S')}${key('D')} 行走，或<b>左键点地面</b>走过去 · 右键拖动转视角`, `${key('W')}${key('A')}${key('S')}${key('D')} to walk, or <b>click the ground</b> · right-drag to look`),
     },
     {
-      title: () => L('锁定目标并施法', 'Target and cast'),
-      body: () => {
+      at: 'bottom',
+      line: () => {
         const s = t.slotOf('Stupefy');
-        const k = s >= 0 ? key(String(s + 1)) : key('1');
-        return (t.touch
-          ? L(`找到一只<b>康沃尔郡小精灵</b>，<b>点它一下</b>就会锁定并施放<b>昏昏倒地 Stupefy</b>。`, `Find a <b>Cornish Pixie</b> and <b>tap it</b> to target it and cast <b>Stupefy</b>.`)
-          : L(`找到一只<b>康沃尔郡小精灵</b>（蓝色、会飞）。把鼠标移到它身上<b>左键点击</b>锁定（或按 ${key('Tab')}），再按 ${k} 施放<b>昏昏倒地 Stupefy</b>。<br/><span class="hint">没有目标时按 ${k} 也会自动瞄准前方最近的敌人。</span>`, `Find a <b>Cornish Pixie</b> (small, blue, flying). Point at it and <b>left-click</b> to target it (or press ${key('Tab')}), then press ${k} to cast <b>Stupefy</b>.<br/><span class="hint">With no target, ${k} auto-aims at the nearest foe ahead.</span>`));
+        const k = key(s >= 0 ? String(s + 1) : '1');
+        return t.touch
+          ? L('<b>点一下康沃尔郡小精灵</b>，锁定它并施放昏昏倒地', '<b>Tap a Cornish Pixie</b> to target it and cast Stupefy')
+          : L(`<b>点击</b>一只康沃尔郡小精灵（或 ${key('Tab')}），再按 ${k} 施放<b>昏昏倒地</b>`, `<b>Click</b> a Cornish Pixie (or ${key('Tab')}), then ${k} for <b>Stupefy</b>`);
       },
       live: pixieHint,
     },
     {
-      title: () => L('打开咒语书', 'Open the spellbook'),
-      body: () => L(`按 ${key('B')} 打开<b>咒语书</b>。这里每个咒语都是一段 <b>Runes</b> 程序 —— 你可以阅读课本咒语的源码、改一改、铸造成自己的咒语。`, `Press ${key('B')} to open the <b>spellbook</b>. Every spell is a <b>Runes</b> program: read the curriculum's source, tweak it, forge your own.`) + `<p><button data-act="book">📖 ${L('打开咒语书', 'Open the spellbook')}</button></p>`,
+      at: 'bottom',
+      line: () => L(`按 ${key('B')} 打开<b>咒语书</b>：每个咒语都是一段 Runes 程序`, `${key('B')} opens the <b>spellbook</b>: every spell is a Runes program`),
+      acts: () => `<button data-act="book">${L('打开', 'Open')}</button>`,
     },
     {
-      title: () => L('施放「时间显现」', 'Cast Tempus'),
-      body: () => {
+      at: 'topright',
+      line: () => {
         const s = t.slotOf('Tempus');
-        return L(`右上角的时钟还是暗的 —— HUD 的四个角要用魔法点亮。${s >= 0 ? `按 ${key(String(s + 1))}` : `在咒语书里选中「时间显现」点<b>施放</b>`} 施放<b>时间显现 Tempus</b>。`, `The clock in the top-right is dark — the HUD's corners are lit by magic. ${s >= 0 ? `Press ${key(String(s + 1))}` : 'Select Tempus in the spellbook and click <b>Cast</b>'} to cast <b>Tempus</b>.`);
+        return s >= 0
+          ? L(`右上角还暗着 —— 按 ${key(String(s + 1))} 施放<b>时间显现</b>点亮它`, `The top-right corner is dark: ${key(String(s + 1))} casts <b>Tempus</b> to light it`)
+          : L('右上角还暗着 —— 在咒语书里施放<b>时间显现</b>点亮它', 'The top-right corner is dark: cast <b>Tempus</b> from the spellbook');
       },
     },
     {
-      title: () => L('连接你的 AI Agent', 'Connect your AI agent'),
-      body: () => L(`${t.touch ? '点右边的 <b>☰</b>' : `按 ${key('Esc')}`} 打开<b>猫头鹰邮递</b>，点 <b>[生成配对码]</b>，然后对你的 Agent（例如 Claude Code）说一句：<br/><i>「连上霍格沃茨，配对码 XXX-XXX」</i><br/>它就能替你走路、施法、用代码写新咒语。<br/><span class="hint">如果锁定着目标，第一次 Esc 会先取消目标。没有 Agent？点「以后再说」。</span>`, `${t.touch ? 'Tap <b>☰</b>' : `Press ${key('Esc')}`} to open the <b>Owl Post</b>, click <b>[Get a pairing code]</b>, then tell your agent (e.g. Claude Code):<br/><i>"Connect to Hogwarts, pairing code XXX-XXX"</i><br/>It can then walk, cast and write new spells for you.<br/><span class="hint">If you have a target, the first Esc clears it. No agent? Click "Later".</span>`)
-        + `<p><button data-act="pair">🦉 ${L('生成配对码', 'Get a pairing code')}</button> <button data-act="later" class="tut-skip">${L('以后再说', 'Later')}</button></p>`,
-      live: () => { const a = t.agent(); return a?.connected ? `<div class="dir">✅ ${L(`${esc(a.client)} 已连接`, `${esc(a.client)} is connected`)}</div>` : ''; },
+      at: 'topleft',
+      line: () => L(`连接你的 AI Agent：${t.touch ? '点 <b>信封</b>' : `按 ${key('Esc')}`} 生成配对码，对它说「连上霍格沃茨，配对码 …」`, `Connect your AI agent: ${t.touch ? 'tap the <b>letter</b>' : key('Esc')} for a pairing code, then tell it "Connect to Hogwarts, pairing code …"`),
+      acts: () => `<button data-act="pair">${L('生成配对码', 'Get a code')}</button> <button data-act="later" class="ghost">${L('以后再说', 'Later')}</button>`,
+      live: () => { const a = t.agent(); return a?.connected ? `<span class="dir">✓ ${L(`${esc(a.client)} 已连接`, `${esc(a.client)} connected`)}</span>` : ''; },
     },
     {
-      title: () => L('和你的 Agent 说句话', 'Say hello to your agent'),
-      body: () => L(`按 ${key('O')} 打开<b>猫头鹰面板</b>，给你的 Agent 写一句话（只有你们俩看得见）。也可以在聊天框里以 <b>@agent</b> 开头。它回的话和提问都会出现在这里。`, `Press ${key('O')} to open the <b>Owl panel</b> and write your agent a line (only the two of you see it). A chat line starting with <b>@agent</b> works too. Its replies and questions show up there.`)
-        + `<p><button data-act="owl">🦉 ${L('打开猫头鹰面板', 'Open the Owl panel')}</button> <button data-act="later" class="tut-skip">${L('跳过这一步', 'Skip this step')}</button></p>`,
+      at: 'topleft',
+      line: () => L(`按 ${key('O')} 给你的 Agent 写一句话（只有你们俩看得见）`, `${key('O')} to write your agent a line (only the two of you see it)`),
+      acts: () => `<button data-act="owl">${L('写信', 'Write')}</button> <button data-act="later" class="ghost">${L('跳过', 'Skip')}</button>`,
     },
   ];
 
+  const X = `<button class="tut-skip" data-act="skip" title="${L('跳过新手引导', 'Skip the tutorial')}" aria-label="${L('跳过新手引导', 'Skip the tutorial')}"><svg class="ic"><use href="#i-x"/></svg></button>`;
   function render() {
     if (step < 0) {
       if (doneUntil > now()) {
-        const html = `<div class="tut-head">🎓 ${L('新手引导完成', 'Tutorial complete')}<button class="tut-skip" data-act="close">×</button></div><div class="tut-body">${L(`你已经掌握了基础。随时按 ${key('H')} 查看全部操作。祝你在霍格沃茨玩得开心！`, `You know the basics. Press ${key('H')} any time for every control. Enjoy Hogwarts!`)}</div>`;
+        const html = `<span class="tut-n">✦</span><span class="tut-line">${L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
+        el.dataset.at = 'bottom';
         el.hidden = false;
       } else el.hidden = true;
       return;
@@ -1058,10 +1080,9 @@ function createTutorial(t: TutorialDeps) {
     // the last step (talk to your agent) only appears while an agent is connected
     if (step === 5 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
-    const dots = STEPS.map((_, i) => `<i class="${i < step ? 'done' : i === step ? 'cur' : ''}"></i>`).join('');
-    const html = `<div class="tut-head"><span>${L('新手引导', 'Tutorial')} ${step + 1}/${STEPS.length} · <b>${s.title()}</b></span><button class="tut-skip" data-act="skip" title="${L('跳过教程', 'Skip the tutorial')}">${L('跳过', 'Skip')}</button></div>` +
-      `<div class="tut-body">${s.body()}</div><div class="tut-live"></div><div class="tut-dots">${dots}</div>`;
+    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
     if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
+    el.dataset.at = s.at;
     const live = el.querySelector('.tut-live') as HTMLElement;
     const lv = s.live?.() ?? '';
     if (live.innerHTML !== lv) live.innerHTML = lv;
@@ -1100,5 +1121,7 @@ function createTutorial(t: TutorialDeps) {
     else if (ev === 'owl' && step === 5) advance();
   }
   function restart() { step = 0; start = null; doneUntil = 0; save('0'); render(); }
-  return { tick, notify, restart };
+  /** Still teaching (a step, or the closing word): the full key line stays up meanwhile. */
+  const active = () => step >= 0 || doneUntil > now();
+  return { tick, notify, restart, active };
 }
