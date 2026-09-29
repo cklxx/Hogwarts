@@ -69,7 +69,7 @@ describe('学院杯 · 校园事件轮盘 · 巧克力蛙画片 over MCP and Web
 
     const r = await fetch(`${BASE}/api/enroll`, { method: 'POST', body: JSON.stringify({ name: 'Fun Ginny', house: 'Gryffindor' }) });
     const { token } = (await r.json()) as { token: string };
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const msgs: any[] = [];
     ws.on('message', (d) => msgs.push(JSON.parse(String(d))));
     await new Promise((ok, bad) => { ws.once('open', ok); ws.once('error', bad); });

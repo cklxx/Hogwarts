@@ -37,7 +37,7 @@ async function connectAll() {
     c.dx = Math.cos(a); c.dz = Math.sin(a); c.f = a;
     clients.push(c);
     pending.push(new Promise<void>((ok) => {
-      const ws = new WebSocket(`${job.url}/ws?token=${encodeURIComponent(job.tokens[i])}${job.aoi === false ? '' : '&aoi=1'}`, { perMessageDeflate: false, skipUTF8Validation: true });
+      const ws = new WebSocket(`${job.url}/ws${job.aoi === false ? '' : '?aoi=1'}`, { perMessageDeflate: false, skipUTF8Validation: true, headers: { authorization: `Bearer ${job.tokens[i]}` } });
       c.ws = ws;
       ws.on('open', () => { c.open = true; ok(); });
       ws.on('message', (d: Buffer) => onMessage(c, d));

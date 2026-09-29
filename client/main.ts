@@ -23,7 +23,7 @@ import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
 import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
-import { PAIR_TTL_S } from '../src/shared/constants';
+import { PAIR_TTL_S, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
 import { TIPS } from '../src/lore/memes';
 import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
 import * as probe from './perf';
@@ -318,8 +318,9 @@ let clock = 0;
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   // area-of-interest snapshots (what is near you, see apply); ?aoi=0 asks for the whole world instead
-  const aoi = new URLSearchParams(location.search).get('aoi') === '0' ? '' : '&aoi=1';
-  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}${aoi}`);
+  const aoi = new URLSearchParams(location.search).get('aoi') === '0' ? '' : '?aoi=1';
+  // the key rides in the subprotocol list, never in the address (src/server/key.ts)
+  ws = new WebSocket(`${proto}://${location.host}/ws${aoi}`, [WS_PROTOCOL, WS_KEY_PREFIX + token]);
   ws.onmessage = (m) => {
     const tm = probe.begin();
     onMessage(m);
