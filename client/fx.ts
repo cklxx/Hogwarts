@@ -23,7 +23,8 @@ const { Fn, vec2, vec3, vec4, float, uint, uniform, attribute, varying, If, Retu
  *   height texture), and only that window of the ring is drawn. Budget: 98 304 glow + 32 768 smoke
  *   particles at 'high' (a quarter at 'low').
  * - **WebGL 2**: the vertex shader integrates the motion analytically from the particle's age (the same
- *   drag and gravity; no ground contact), over the whole ring: 16 384 glow + 4 096 smoke.
+ *   drag and gravity; falling sparks come to rest on the ground, without the bounce), over the whole ring:
+ *   32 768 glow + 8 192 smoke at 'high', 16 384 + 4 096 at 'low'.
  *
  * Two pools: `glow` (additive, HDR colours so the bloom pass picks them up: sparks, trails, motes)
  * and `smoke` (alpha-blended, lit by the time of day: chimney smoke, dust, apparition puffs).
@@ -71,7 +72,7 @@ const tmpV = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 
 /** Particle budgets: [glow, smoke] per backend and quality. */
-export const BUDGET = { webgpu: { high: [98304, 32768], low: [24576, 8192] }, webgl: { high: [16384, 4096], low: [16384, 4096] } } as const;
+export const BUDGET = { webgpu: { high: [98304, 32768], low: [24576, 8192] }, webgl: { high: [32768, 8192], low: [16384, 4096] } } as const;
 
 /** Where a frame's particles went in the ring, and when the last of them dies. */
 interface Span { start: number; n: number; death: number }
@@ -190,11 +191,16 @@ export class Pool {
       for (const [name, off] of [['aP', 0], ['aV', 4], ['aC', 8], ['aG', 12]] as const) this.geo.setAttribute(name, new THREE.InterleavedBufferAttribute(buf, 4, off));
       p0 = attribute('aP', 'vec4'); v0 = attribute('aV', 'vec4'); cs = attribute('aC', 'vec4'); gp = attribute('aG', 'vec4');
       // the motion from the particle's age: ∫ e^{-kt} for the launch velocity under drag, gravity against the same drag
+      const { groundAt } = gpuGround();
       centre = Fn(() => {
         const age = u.time.sub(p0.w), k = max(gp.z, 0.001);
         const f = float(1).sub(exp(k.negate().mul(age))).div(k);
         const p = p0.xyz.add(v0.xyz.mul(f)).toVar();
         p.y.subAssign(gp.y.mul(age.sub(f)).div(k));
+        // falling sparks and embers come to rest on the ground (no bounce: there is no state between frames here)
+        If(gp.y.greaterThan(0.5).and(abs(p.x).lessThan(318)).and(abs(p.z).lessThan(318)), () => {
+          p.y.assign(max(p.y, groundAt(p.x, p.z).x.add(0.03)));
+        });
         return p;
       })();
     }
