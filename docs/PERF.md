@@ -5,7 +5,8 @@ This page records what was measured, on what, and how, before and after the perf
 [below](#fix-pass-frame-rate-input-full-snapshots-aoi-churn)). Every number comes from
 `scripts/bench.ts`; you can re-run all of them (see [Reproduce](#reproduce)). The browser client's own pass
 (`wf/fast`: draw calls, lights, level of detail, instancing, AOI in the client, load) is in
-[Client (browser)](#client-browser-wffast) at the end.
+[Client (browser)](#client-browser-wffast), and the move to WebGPU (`wf/webgpu`: TSL, compute, node
+post-processing, both backends measured) in [Client (browser): WebGPU](#client-browser-webgpu-wfwebgpu) at the end.
 
 ## Summary
 
@@ -616,3 +617,242 @@ npx tsx scripts/perf-client.ts --port=8820 --q=high,low --secs=8 --warm=3 --size
 ```
 For "before", check out `c7665c4`, cherry-pick `32c5bbe` (the probe hooks in `client/main.ts`), copy
 `client/perf.ts` and `scripts/perf-client.ts` from this branch, build, and run the same command.
+
+
+## Client (browser): WebGPU (wf/webgpu)
+
+The owner's ask: 「能极致的使用 webgpu 吗」. This pass moved the client to three.js's `WebGPURenderer` (r186),
+rewrote every shader in TSL, put particles and grass on compute shaders, and rebuilt post-processing as one
+node graph; then measured it on both of the new renderer's backends against `main`. Before: `main` at
+`e9ff002` (wf/view merged: `WebGLRenderer`, shader-chunk patches, `EffectComposer`), plus the capture hook the
+screenshots need. After: branch `wf/webgpu`, run twice: on WebGPU, and with `?gpu=webgl` (the same renderer's
+WebGL 2 backend, which is what a browser without WebGPU gets).
+
+### What changed
+
+* **Renderer** (`client/gpu.ts`, `client/render.ts`): `WebGPURenderer`, `await renderer.init()`; it falls back to
+  WebGL 2 by itself when there is no `navigator.gpu`, no adapter, or `init()` fails, and `?gpu=webgl` forces the
+  fallback. The `?perf=1` overlay shows the backend and why WebGPU was not used, GPU ms (timestamp queries,
+  WebGPU only), pipelines, live particles and grass sites. Automatic quality, dynamic resolution and `?capture=1`
+  work as before.
+* **All shading in TSL**, one source compiled to WGSL or GLSL (`onBeforeCompile`, `ShaderChunk` and
+  `ShaderMaterial` are gone from the client):
+  * the storybook look (`client/storybook.ts`): a lighting model (a `PhysicalLightingModel` subclass: the banded
+    light ramp, the rim light, the lining colour of cloth seen from behind), registered for
+    `MeshStandardMaterial` / `MeshPhysicalMaterial`, so every plain material in the game becomes a storybook node
+    material when the renderer converts it; the height-tinted fog is the scene's `fogNode`;
+  * wind (grass, tree crowns, pennants, banners, robes: one shared node graph, the per-object sway read from the
+    object), glamour materials (starlight, flame, ghost), ink outlines, particles, glow billboards, the painted sky,
+    clouds, stars (sized point sprites: WebGPU points are 1 px), aurora, the lake (`ReflectorNode`), and for
+    `?style=real` three.js's `SkyMesh` and `LensflareMesh`;
+  * `client/view.ts` (merged from wf/view): the occluder fade is a `maskNode` (4x4 ordered dither in the cut-outs
+    around the player and the target), the x-ray silhouette a node material drawn with depth Greater and
+    stencil Equal 1 (the scene pass has a depth-stencil target). Both checked in an isolated scene on both
+    backends; `scripts/view-audit.ts --gpu=webgpu|webgl`: **100 %** of 500 camera
+    samples see the player on both (92.8 % before the camera rig).
+* **Compute (WebGPU)**:
+  * *Particles* (`client/fx.ts`): the CPU writes only spawn records (position, velocity, colour, gravity and drag)
+    into a ring buffer; a compute pass integrates drag and gravity over **the live window only** (the span of the
+    ring that can still hold a living particle) and bounces sparks and embers off the terrain (a 257² height
+    texture); the vertex shader reads the simulated state. Budgets: **131 072** at 'high' (98 304 glow +
+    32 768 smoke), 32 768 at 'low'; the WebGL 2 fallback keeps the analytic vertex-shader path, 20 480 (sparks
+    fall through the ground there, as before). `?particles=N` overrides the budget.
+  * *Grass* (`client/grass.ts`): every frame a compute pass visits a lattice of clump sites around the camera
+    (**23 716** at 'high', 2 601 at 'low'), grows a clump where the ground's density texture says so, culls it
+    against the view frustum and thins it with distance, and appends the survivors with an atomic counter that is
+    the instance count of one **indirect draw**: the whole field is one draw call and the CPU sets four uniforms. The
+    WebGL 2 fallback keeps the CPU chunks.
+  * *GPU culling of props*: not done. Trees, candles, the far crowd and creature statues are already one or two
+    instanced draws each (wf/fast); there was nothing left to measure.
+* **Post-processing** (`client/post.ts`): a `RenderPipeline`: the scene pass (HDR, 4x MSAA at 'high', 2x at
+  'low', depth-stencil) → bloom (half resolution, bright parts only; not at 'low') → one output pass with the
+  colour grade, paper grain, vignette, tone mapping and sRGB. One full-screen pass fewer than `main`'s composer.
+* **Compile hitches** (see the next table for what each fix measured): the warm-up compiles for the post pass's
+  target with frustum culling off, then draws one frame from above the lake (shadow map, mirror and post
+  pipelines, which `compileAsync` does not build); instanced meshes use instanced attributes instead of uniform
+  buffers (three.js otherwise gives every instanced mesh with ≤1024 instances a program of its own); the sky
+  environment is one render target re-baked per phase (a new environment texture recompiled ~57 programs);
+  hidden-until-used meshes (empty grass chunks, particle pools) and the particle compute are warmed too; the
+  warm-up wizards' Lumos lights are hidden like every other wizard's.
+* **Texture uploads**: every canvas that becomes a texture (name tags, damage numbers, the procedural textures) is
+  a CPU canvas (`willReadFrequently`). Uploading a GPU-backed 2D canvas into a WebGPU texture waits for the GPU
+  to finish its queue: ~1 s per name tag on SwiftShader in a busy frame (a 0.5-0.8 s stall whenever tags
+  appeared), 1-4 ms from a CPU canvas.
+
+### How it is measured
+
+The same harness as wf/fast (`scripts/perf-client.ts`), with these differences:
+
+* **`--url=&dyn=0` now means it.** The harness split every argument at each `=`, so `--url='&dyn=0'` arrived as
+  `&dyn` and dynamic resolution stayed **on** in all of wf/fast's runs (the before/after comparisons there are
+  still like for like). Arguments are now split at the first `=`; the tables below are at a fixed 640x360.
+* **Browser flags** (all three builds): `--enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader
+  --use-angle=swiftshader --use-webgpu-adapter=swiftshader`: WebGPU on SwiftShader's Vulkan, WebGL on ANGLE's
+  SwiftShader (with the WebGPU adapter alone, this Chromium loses the WebGPU device).
+* **A quiet world** for the main tables: `--bots=0 --npcs=0` (the viewer, 80 creatures). With 60 bots casting
+  every second, SwiftShader's ~1 fps turns the harness into slow motion (the frame step is capped at 0.1 s, so every
+  effect lives ten times longer in wall time, and 100 000+ particles were alive at once on WebGPU), which measures
+  the harness more than the renderer. A busy run is at the end, with that caveat.
+* Three builds back to back, same world, 8 s per spot after 3 s, `--census` (programs compiled after the first
+  frame). New columns: backend, pipelines, GPU ms (WebGPU timestamp queries, averaged over resolved frames),
+  particles simulated and drawn, particle and grass budgets. `--dump=dir` logs what every program compiled after
+  the first frame was built for and why (it found the Lumos-light and texture-upload problems above).
+* **SwiftShader is still not a GPU**, and it is a slower WebGPU than it is a WebGL: frame rates and GPU ms here do not
+  predict a laptop. Read draw calls, triangles, programs, pipelines and compile counts as the renderer's work, and
+  compare the millisecond rows only within a row.
+
+### Summary
+
+| | main (WebGLRenderer) | **WebGPU** | WebGL 2 fallback |
+|---|---:|---:|---:|
+| Draw calls, 'high': follow / crowd / castle / lake / overview | 121 / 229 / 259 / 65 / 254 | **119 / 222 / 254 / 62 / 234** | 118 / 243 / 287 / 59 / 250 |
+| … 'low' | 103 / 190 / 160 / 32 / 167 | **102 / 176 / 155 / 31 / 162** | 98 / 190 / 155 / 30 / 162 |
+| Full-screen post draws per frame at 'high' (bloom mips, composite, output) | 14 | **13** (the bloom is added in the output pass, with the grade, grain, tone mapping and sRGB) | 13 |
+| Shader programs compiled after the first frame (5 spots, 'high' / 'low') | 0 / 0 | **0 / 0** (was 7-9 / 4-6 before the fixes below) | 0 / 0 |
+| Programs at the first frame ('high') | 121 | **179 stages, 121 pipelines** (was 225 / 149) | 160 (89 pipelines) |
+| Time to the first frame with the world ('high' / 'low') | 21.4 / 18.3 s | **21.4 / 17.6 s** | 21.3 / 17.9 s |
+| Shader warm-up before it ('high' / 'low'; SwiftShader) | 0.14 s ¹ | **20.4 / 16.7 s** | 14.6 / 6.7 s |
+| Particle budget ('high' / 'low') | 20 480 (vertex shader) | **131 072 / 32 768** (compute, live window only, ground bounce) | 20 480 / 20 480 |
+| Grass | CPU chunks (7x7 at 'high', culled per chunk) | **23 716 sites culled one by one, 1 indirect draw** ('low': 2 601) | CPU chunks |
+| fps, 'low' (SwiftShader; direction only) | 1.75-3.25 | **3.25-5.5** | 1.37-2.87 |
+| fps, 'high' | 0.75-1.75 | **0.87-1.5** | 0.75-1.37 |
+| Render submit (CPU ms/frame, 'high') | 3.3-7.5 | **6.0-9.9** | 5.5-15.2 |
+| JS heap peak | 38 MB | **92 MB** ('low': 113) | 152 MB |
+| JavaScript to download (Brotli) ² | 257 KB (one chunk, 1 040 KB raw) | **346 KB** (three 216 + game 118 + layout 10.5; 1 374 KB raw) | same build |
+
+¹ `main` compiles with `KHR_parallel_shader_compile` in the background and links on first use; its first frame
+still arrives at the same time because it waits on the gate and the snapshot. The node renderer builds its
+programs itself (node graph → WGSL/GLSL) before it can compile them, which is the CPU time in the warm-up; on
+SwiftShader the WebGPU pipeline compile is also slower than the WebGL one. ² Current `main` (`df40022`) built the
+same way; the three.js chunk (WebGPU renderer, node system, both backends) is cached separately from the game code.
+
+### Per camera spot
+
+Quiet world, 640x360, `&dyn=0`, 8 s per spot after 3 s. Each cell: `main` → **WebGPU** / WebGL 2 fallback.
+"programs" counts shader stages on WebGPU (a vertex and a fragment module per pipeline) and linked programs on
+WebGL. "particles simulated + drawn" is the live window on WebGPU and the ring drawn up to its newest particle on
+WebGL 2 (dead quads are discarded in the vertex shader).
+
+**q=high** (main → **WebGPU** / WebGL 2)
+
+| | follow | crowd | castle | lake | overview |
+|---|---:|---:|---:|---:|---:|
+| draw calls | 121 → **119** / 118 | 229 → **222** / 243 | 259 → **254** / 287 | 65 → **62** / 59 | 254 → **234** / 250 |
+| triangles (k) | 253 → **254** / 263 | 297 → **261** / 305 | 432 → **415** / 464 | 246 → **247** / 250 | 426 → **374** / 439 |
+| shader programs (WebGPU: stages) | 121 → **179** / 160 | 126 → **179** / 160 | 128 → **179** / 160 | 129 → **179** / 160 | 130 → **179** / 160 |
+| render pipelines | **121** / 89 | **121** / 89 | **121** / 89 | **121** / 89 | **121** / 89 |
+| render submit ms/frame | 3.9 → **7.5** / 8.8 | 6.3 → **9.8** / 11.0 | 7.5 → **9.9** / 15.2 | 3.3 → **6.0** / 5.5 | 7.0 → **9.9** / 12.4 |
+| JS ms/frame (all sections) | 5.8 → **10.2** / 11.4 | 8.3 → **12.8** / 14.2 | 8.8 → **11.5** / 17.0 | 4.9 → **7.4** / 7.3 | 8.1 → **11.1** / 13.6 |
+| GPU ms/frame (timestamp queries) | **314** | **353** | **339** | **199** | **398** |
+| frame p50 ms | 807 → **1011** / 960 | 900 → **1033** / 999 | 1137 → **1146** / 1293 | 588 → **683** / 755 | 1039 → **1321** / 1405 |
+| fps (SwiftShader) | 1.00 → **1.00** / 1.00 | 1.25 → **1.12** / 1.00 | 0.75 → **0.87** / 0.87 | 1.75 → **1.50** / 1.37 | 1.00 → **0.87** / 0.75 |
+| particles simulated + drawn | **20** / 4096 | **37** / 4096 | **52** / 4096 | **77** / 4096 | **93** / 4096 |
+| JS heap peak MB | 38 → **92** / 152 | 38 → **92** / 152 | 38 → **92** / 152 | 38 → **92** / 152 | 38 → **92** / 152 |
+
+**q=low** (main → **WebGPU** / WebGL 2)
+
+| | follow | crowd | castle | lake | overview |
+|---|---:|---:|---:|---:|---:|
+| draw calls | 103 → **102** / 98 | 190 → **176** / 190 | 160 → **155** / 155 | 32 → **31** / 30 | 167 → **162** / 162 |
+| triangles (k) | 219 → **218** / 225 | 222 → **220** / 229 | 234 → **232** / 240 | 163 → **162** / 171 | 226 → **223** / 243 |
+| shader programs (WebGPU: stages) | 111 → **170** / 150 | 117 → **171** / 150 | 119 → **171** / 150 | 120 → **171** / 150 | 120 → **171** / 150 |
+| render pipelines | **116** / 82 | **117** / 82 | **117** / 82 | **117** / 82 | **117** / 82 |
+| render submit ms/frame | 3.2 → **5.8** / 7.0 | 4.6 → **6.6** / 9.0 | 3.9 → **6.3** / 6.7 | 2.2 → **3.2** / 3.7 | 4.1 → **5.7** / 8.1 |
+| JS ms/frame (all sections) | 4.7 → **7.3** / 8.6 | 6.0 → **8.1** / 10.5 | 5.3 → **7.7** / 8.0 | 3.5 → **4.4** / 4.8 | 5.1 → **6.7** / 9.1 |
+| GPU ms/frame (timestamp queries) | **94** | **75** | **65** | **38** | **71** |
+| frame p50 ms | 490 → **307** / 599 | 525 → **257** / 602 | 479 → **287** / 598 | 300 → **168** / 341 | 565 → **298** / 698 |
+| fps (SwiftShader) | 2.00 → **3.25** / 1.62 | 1.87 → **3.87** / 1.62 | 2.00 → **3.50** / 1.62 | 3.25 → **5.50** / 2.87 | 1.75 → **3.25** / 1.37 |
+| particles simulated + drawn | **21** / 4096 | **61** / 4096 | **66** / 4096 | **49** / 4096 | **44** / 4096 |
+| JS heap peak MB | 36 → **113** / 111 | 36 → **113** / 111 | 36 → **113** / 111 | 36 → **113** / 111 | 36 → **113** / 111 |
+
+What the rows say:
+
+* **Draw calls** are the same or lower on WebGPU (one indirect draw for the grass, one pass fewer in post); the
+  WebGL 2 fallback draws a few more at the crowd and castle spots (the CPU grass chunks).
+* **Triangles** are lower on WebGPU where there is grass in view (it culls clump by clump, the CPU field chunk
+  by chunk).
+* **Programs** are higher on both new backends: the node renderer compiles one program per material *and* per
+  object kind (instanced or not, shadow receiver or not), and the post pipeline, bloom, mirror and compute are
+  programs of their own. All are compiled behind the loading veil (0 after the first frame).
+* **CPU per frame** (render submit, JS): the node renderer does more per draw on the CPU than `WebGLRenderer`
+  (render objects, bind groups, node updates): +2-4 ms a frame here. That is the price of the new renderer on
+  this box; on a real GPU the WebGPU backend's own submit (no GL state machine, pipelines prebuilt) should be
+  cheaper than WebGL's, which SwiftShader cannot show.
+* **fps**: WebGPU is ahead at 'low' (3.25-5.5 against 1.75-3.25), about level at 'high'; the WebGL 2 fallback is
+  a little behind `main` everywhere (the same GPU work plus the node renderer's CPU cost). GPU ms (timestamp
+  queries) are SwiftShader's: 200-400 ms at 'high', 40-95 ms at 'low'.
+
+### What was fixed by measuring (compile hitches and stalls)
+
+| Measured | Before | After |
+|---|---:|---:|
+| Programs compiled after the first frame, first WebGPU build (walking into a crowd) | 124-177 | uniform-buffer instancing off: 9-15 |
+| … frustum culling during `compileAsync`, shadow / mirror / post pipelines, one env target, 4 houses warmed | 9-15 | 7-9 |
+| … the warm-up wizards' Lumos lights (4 extra point lights: every lit shader was compiled for a light set the game never draws with, then again on the first frame) | 7-9 ('high'), 225 at the first frame | **0**, 179 at the first frame |
+| … empty grass chunks (WebGL 2), hidden particle pools and their compute, pools sized before the warm-up | 2-6 ('low') | **0** |
+| Worst stall at the crowd spot, WebGPU 'high' (name tags uploaded from GPU canvases) | 510-800 ms average render per frame over 8 s, 1 s per tag | **9.8 ms** |
+| Warm-up, WebGPU 'high' (±20 % run to run) | 24-26 s | 20-21 s |
+
+### A busy world (with the caveat)
+
+The default harness world (60 bots casting every second, 12 NPCs), 'high', same flags. On SwiftShader every
+backend runs at under 1 fps here, so the game runs in slow motion (0.1 s of game time per frame) while the bots
+keep casting in wall time: effects and particles pile up, and the slower a backend is, the more it has to draw.
+WebGPU keeps every particle its budget allows (106 000-117 000 alive, against the 20 480 the others are capped
+at), so it is also run with `?particles=16384`, the WebGL budget.
+
+| 'high', follow / crowd / castle / lake / overview | main | WebGPU | WebGPU, `?particles=16384` | WebGL 2 fallback |
+|---|---:|---:|---:|---:|
+| draw calls | 382 / 527 / 704 / 106 / 724 | 592 / 976 / 806 / 130 / 874 | **440 / 699 / 583 / 93 / 713** | 416 / 562 / 614 / 134 / 808 |
+| triangles (k) | 465 / 395 / 507 / 348 / 504 | 641 / 629 / 958 / 689 / 818 | **470 / 444 / 505 / 433 / 563** | 536 / 458 / 538 / 491 / 589 |
+| particles alive | ≤ 20 480 | 106 000-117 000 | **20 480** | 20 480 |
+| fps (SwiftShader) | 0.62-0.75 | 0.25-0.37 | **0.37-0.50** | 0.37-0.50 |
+| GPU ms/frame (timestamp queries) | - | 640-9 900 | **370-3 000** | - |
+| programs compiled after the first frame | 0 | 0 | **0-2** | 0 |
+| shader warm-up / first frame | 0.16 / 25.5 s | 113 / 114 s | **68 / 69 s** | 14 / 22 s |
+
+Read with the caveat above: with the same particle budget WebGPU draws what the WebGL 2 fallback draws and runs
+at the same frame rate, both a little behind `main` (the node renderer's CPU cost); the larger budget is what
+costs SwiftShader. The one number that looks bad for WebGPU is the warm-up under load: with the server, 60 bot
+connections and the browser on 4 cores, SwiftShader's WebGPU pipeline compiles took 68-113 s where its WebGL
+ones took 14 s (quiet: 20 s against 15 s). That is SwiftShader's compiler competing for the CPU, not something a
+GPU driver does, but it is why the WebGPU warm-up time must be re-measured on real hardware.
+
+### Screenshots
+
+`scripts/gpu-shots.ts` (a world with seven glamour wizards and 24 bots, fixed hours and weather, HUD hidden)
+shoots castle at dusk, the courtyard by day, the forest, night with the aurora, a glamour close-up, spells in
+flight, the lake and a meadow, from `main`, WebGPU and the WebGL 2 fallback: `wg-main2-*.png`, `wg-gpu2-*.png`,
+`wg-gl2-*.png` (not committed; the command is under Reproduce). The three agree in light, fog, sky, outlines, glamours, water and grass; the
+differences are live things (bots in other places, clouds drifting, more dust in the air on WebGPU, which keeps
+every particle of a burst that the old budget dropped).
+
+### Known issues and what is left
+
+* **No real GPU was measured**: this box has only SwiftShader. Frame time and GPU time on an integrated-graphics
+  laptop and a mid-range phone (`?perf=1` shows both) are still owed, and are where WebGPU's lower draw overhead
+  and the compute paths should show.
+* **Warm-up time**: 15-21 s on SwiftShader before the first frame, most of it building and compiling ~120 pipelines;
+  real GPUs compile far faster, but the node renderer's CPU-side build (~2-3 s here) remains.
+* **CPU per draw**: the node renderer's submit costs more CPU than `WebGLRenderer` for the same draws. Render bundles
+  (WebGPU) for the static batches would cut it; not done.
+* The lake is no longer darkened by shadows (the TSL water does not sample the shadow map).
+* Sparks bounce off the ground only on WebGPU (the WebGL 2 fallback has no compute; they fall through, as before).
+* The automatic switch from 'high' to 'low' rebuilds the particle pools: 2 programs compile then (once).
+* JS heap is higher (92-150 MB against 38 MB): node graphs, render objects and bind groups per object.
+* The bundle is ~89 KB larger (Brotli), all of it in the separately cached three.js chunk.
+
+### Reproduce
+
+```bash
+npx vite build
+npx tsx scripts/perf-client.ts --port=9002 --gpu=webgpu --q=high,low --secs=8 --warm=3 --size=640x360 --census \
+  --url='&dyn=0' --bots=0 --npcs=0 --label=webgpu --out=results.jsonl
+#   --gpu=webgl: the WebGL 2 fallback (?gpu=webgl)   --dump=dir: what compiled after the first frame, and why
+npx tsx scripts/gpu-shots.ts --gpu=webgpu --label=wg --out=shots        # castle-dusk, courtyard-day, forest, …
+npx tsx scripts/view-audit.ts --gpu=webgpu                              # camera audit on either backend
+# in the game: ?perf=1 · ?gpu=webgl · ?compute=0 (WebGPU without compute: the fallback paths) · ?particles=N
+```
+For "before", build `e9ff002` with this branch's `scripts/perf-client.ts` and `scripts/gpu-shots.ts`, and
+`client/capture.ts`'s hour and weather fields wired into its `render.update` (the screenshots set both); a build
+from before the WebGPU renderer ignores `?gpu=webgl`.

@@ -238,6 +238,18 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
     // kept small and dim: the bloom pass already spreads the sun, and a big flare washes out a low sun
     flare.addElement(new LensflareElement(tl.load('/textures/lensflare0.png'), 280, 0, new THREE.Color(0.6, 0.56, 0.5)));
     for (const [size, d] of [[60, 0.55], [80, 0.7], [120, 0.9], [70, 1.0]]) flare.addElement(new LensflareElement(tl.load('/textures/lensflare3.png'), size, d));
+    // The flare copies 16x16 px around the sun out of the target it is drawn into, but places and bounds that copy
+    // with the canvas viewport: the scene pass's (or the mirror's) target can differ from the canvas, and a copy past
+    // its edge is a WebGPU validation error that drops the whole frame. While it runs, the viewport is the target's.
+    const inner = flare.onBeforeRender.bind(flare);
+    flare.onBeforeRender = (r, ...rest) => {
+      const rt = (r as unknown as THREE.WebGPURenderer).getRenderTarget();
+      const gpu = r as unknown as THREE.WebGPURenderer & { getViewport(t: THREE.Vector4): THREE.Vector4 };
+      if (!rt) { inner(r, ...rest); return; }
+      const own = gpu.getViewport, pr = gpu.getPixelRatio();
+      gpu.getViewport = (t: THREE.Vector4) => t.set(0, 0, rt.width / pr, rt.height / pr);
+      try { inner(r, ...rest); } finally { gpu.getViewport = own; }
+    };
     flareHost.add(flare);
     scene.add(flareHost);
   }
