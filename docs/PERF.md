@@ -858,3 +858,22 @@ npx tsx scripts/view-audit.ts --gpu=webgpu                              # camera
 For "before", build `e9ff002` with this branch's `scripts/perf-client.ts` and `scripts/gpu-shots.ts`, and
 `client/capture.ts`'s hour and weather fields wired into its `render.update` (the screenshots set both); a build
 from before the WebGPU renderer ignores `?gpu=webgl`.
+
+## Kernel: gameplay as feature plugins (wf/plugins)
+
+决斗俱乐部、魁地奇、事件轮盘、集市和 O.W.L. 考试从 `world.ts` 里拆成了 `Feature`（`src/kernel/feature.ts`）。
+内核改为遍历预先建好的钩子表（`HOOKS`，模块加载时只建一次），不再按名字调用。开销来自每个巫师每 tick
+一次 `moveMult`，以及每发弹道一次 `bolt`（1000 人时约 1–3 千次提前返回的函数调用，约 10 µs/tick）。
+
+`npx tsx scripts/bench.ts kernel --n=100,500,1000,2000 --secs=15 --warm=5`，同一台空闲机器，`main` = `729768b`：
+
+| wizards | main mean (p50 / p95) ms | plugins mean (p50 / p95) ms | Δ mean |
+|---:|---:|---:|---:|
+| 100  | 1.03 (0.94 / 1.94) | 1.07 (1.03 / 2.15) | +4% |
+| 500  | 2.86 (2.40 / 4.71) | 3.18 (2.92 / 5.14) | +11% |
+| 1000 | 3.40 (3.00 / 6.37) | 3.47 (3.39 / 4.89) | +2% |
+| 2000 | 6.71 (6.45 / 8.73) | 6.82 (6.64 / 8.92) | +2% |
+
+500 人那一行又交替跑了 3 轮（main / plugins / main / …）：main 的 mean 为 3.14 / 3.15 / 3.22，plugins 为
+3.22 / 3.77 / 3.34。取中位数是 +6%。plugins 自己三轮之间的波动（0.55 ms）大于两个分支的差值，
+所以 +11% 按噪声处理。两边的生物、弹道、施法和成功率统计完全一致：行为没变。

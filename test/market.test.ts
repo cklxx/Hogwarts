@@ -4,6 +4,7 @@
  * never an NPC or a fresh enrolee), the Minister's ban and promotion and the DA veto that reverts them,
  * persistence (with old saves), the MCP tools and the browser's WebSocket messages.
  */
+import { FEATURE_TOOL_COST } from '../src/kernel/features.js';
 import { describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -475,7 +476,7 @@ describe('咒语集市: MCP tools and the browser', () => {
     const A = await connect(a.id), B = await connect(b.id);
     const tools = (await A.c.listTools()).tools;
     for (const n of ['market_browse', 'market_spell', 'publish_spell', 'unpublish_spell', 'copy_spell', 'fork_spell']) expect(tools.find((t) => t.name === n)?.description?.length, n).toBeGreaterThan(60);
-    expect(AGENT_TOOL_COST).toMatchObject({ publish_spell: 2, unpublish_spell: 1, copy_spell: 3, fork_spell: 3 });
+    expect(FEATURE_TOOL_COST).toMatchObject({ publish_spell: 2, unpublish_spell: 1, copy_spell: 3, fork_spell: 3 });
     expect(AGENT_TOOL_COST.market_browse).toBeUndefined();
     const pub = await A.call('publish_spell', { spell: 'Wildfire Spark', desc_zh: '烟火', desc_en: 'fireworks' });
     expect(pub.isError, pub.text).toBe(false);

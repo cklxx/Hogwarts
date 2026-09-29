@@ -2,6 +2,7 @@
  * 决斗俱乐部 in the browser (src/kernel/duelclub.ts): G joins or leaves the queue; a slip under the clock shows the
  * match on the stage (who, phase, seconds) or your place in the queue, with a compass to the Courtyard stage.
  */
+import type { ClientFeatureFactory } from '../feature';
 import { L } from '../i18n';
 import { ic } from '../ink';
 import { bearing, esc, fmtDist } from './logic';
@@ -92,3 +93,9 @@ export function createDuel(d: DuelDeps) {
     },
   };
 }
+
+/** The Duelling Club as a client feature (client/features.ts). */
+export const duelFeature: ClientFeatureFactory = (d) => ({
+  id: 'duel',
+  ...createDuel({ send: d.send, toast: d.toast, du: () => d.wire<DuSnap>('du'), nameOf: d.nameOf, myHandle: d.myHandle, myPos: d.myPos, camYaw: d.camYaw }),
+});

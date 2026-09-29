@@ -27,9 +27,19 @@ import {
   MARKET_BAN_NEWS, MARKET_BANNED_CAST, MARKET_COPIED_YOU, MARKET_DAILY, MARKET_FORKED_YOU, MARKET_PROMOTE_NEWS, MARKET_PUBLISHED, MARKET_REPUBLISHED,
   MARKET_UNBAN_NEWS, fill, type Line,
 } from '../lore/memes.js';
+import { z } from 'zod';
+import type { Feature } from './feature.js';
 import type { Rulebook } from './rulebook.js';
 import type { Spell, Wizard } from './types.js';
-import { FRESH_SECONDS, type World } from './world.js';
+import { FRESH_SECONDS } from '../shared/constants.js';
+import type { World } from './world.js';
+
+declare module './world.js' {
+  interface World {
+    /** 咒语集市 (this module's Feature): listings, their versions and lineage, the day's royalty ledger. Persisted. */
+    market: MarketBook;
+  }
+}
 
 // ------------------------------------------------------------------ state
 
@@ -589,3 +599,83 @@ export function marketMessage(world: World, wid: string, m: Record<string, unkno
     default: throw new Error(`Unknown market action "${op}".`);
   }
 }
+
+// ------------------------------------------------------------------ the plug (kernel/feature.ts)
+const desc = (zh?: unknown, en?: unknown) => (zh === undefined && en === undefined ? undefined : { zh: zh as string | undefined, en: en as string | undefined });
+const optStr = (x: unknown) => (typeof x === 'string' ? x : undefined);
+const optInt = (x: unknown) => (typeof x === 'number' ? x : undefined);
+
+export const MARKET_FEATURE: Feature = {
+  id: 'market',
+  init(world) { world.market = blankMarket(); },
+  save: (world) => world.market,
+  load(world, data, legacy) { world.market = restoreMarket(data ?? legacy.market); },
+  tools: [
+    {
+      name: 'market_browse', title: 'The spell market (咒语集市)', cost: 0, readOnly: true, anonymous: true,
+      description: 'Browse spells other wizards published: name, author, tags (effects and elements), min year, copies/forks/casts, banned and promoted badges; the Ministry\'s 推荐 shelf; your royalties today. Filter by tag, element, year (spells castable at that year), author, free text; sort popular | new | promoted. Read one with market_spell; take one with copy_spell or fork_spell.',
+      input: {
+        tag: z.string().max(20).optional().describe('an effect primitive (bolt, heal, nova, …), an element, or "delayed"'),
+        element: z.enum(['arcane', 'fire', 'ice', 'lightning', 'light']).optional(),
+        year: z.number().int().min(1).max(7).optional().describe('only spells whose minimum year is at most this'),
+        author: z.string().max(40).optional().describe('author name (part of it) or handle'),
+        q: z.string().max(60).optional().describe('search names, incantations and descriptions'),
+        sort: z.enum(['popular', 'new', 'promoted']).optional(),
+        mine: z.boolean().optional().describe('only your own listings (unpublished ones too)'),
+        limit: z.number().int().min(1).max(50).optional(),
+        offset: z.number().int().min(0).optional(),
+      },
+      run: (world, wid, a) => browseMarket(world, wid, a as BrowseFilter),
+      runAnon: (world, wid, a) => browseMarket(world, wid, a as BrowseFilter),
+    },
+    {
+      name: 'market_spell', title: 'Read a market spell', cost: 0, readOnly: true, anonymous: true,
+      description: 'One market spell in full: its source (any version: v1, v2 …), versions, lineage (the spells it was forked from, up to the original), its forks, stats, whether it is banned or promoted, and whether you can copy it at your year.',
+      input: { id: z.string().min(3).max(16).describe('a market id like "m_1a" (from market_browse)'), v: z.number().int().min(1).optional().describe('version (default: the latest)') },
+      run: (world, wid, a) => marketSpell(world, wid, String(a.id), optInt(a.v)),
+      runAnon: (world, wid, a) => marketSpell(world, wid, String(a.id), optInt(a.v)),
+    },
+    {
+      name: 'publish_spell', title: 'Publish a spell to the market', cost: 2,
+      description: 'Put one of your own custom spells in the spell market (咒语集市), or publish its current state as the next version if it is already there (versions are immutable). Others can copy or fork it; each distinct wizard who casts it successfully earns you +1 reputation a day (+0.3 when they cast a fork of it), up to the daily cap (rulebook market.dailyCap). Copies of other wizards\' spells cannot be published — fork them.',
+      input: {
+        spell: z.string().min(1).max(60).describe('your spell\'s name or id'),
+        desc_zh: z.string().max(140).optional().describe('a one-line description in Chinese'),
+        desc_en: z.string().max(140).optional().describe('a one-line description in English'),
+      },
+      run: (world, wid, a) => publishSpell(world, wid, String(a.spell), { desc: desc(a.desc_zh, a.desc_en) }),
+    },
+    {
+      name: 'unpublish_spell', title: 'Unpublish a market spell', cost: 1,
+      description: 'Hide one of your listings from the market (by market id or spell name). Existing copies keep your name and still work; publish_spell brings it back.',
+      input: { spell: z.string().min(1).max(60).describe('market id or spell name') },
+      run: (world, wid, a) => unpublishSpell(world, wid, String(a.spell)),
+    },
+    {
+      name: 'copy_spell', title: 'Copy a market spell into your book', cost: 3,
+      description: 'Forge a market spell into your spellbook, credited to its author. Your own year caps, seals, banned primitives and spellbook size apply (a failed copy spends nothing). Banned spells can be read but not copied.',
+      input: {
+        id: z.string().min(3).max(16).describe('market id (from market_browse)'),
+        v: z.number().int().min(1).optional().describe('version (default: the latest)'),
+        name: z.string().min(1).max(40).optional().describe('name for your copy (default: the original name)'),
+        slot: z.number().int().min(1).max(6).optional().describe('hotbar slot'),
+      },
+      run: (world, wid, a) => copySpell(world, wid, String(a.id), { v: optInt(a.v), name: optStr(a.name), slot: optInt(a.slot) }),
+    },
+    {
+      name: 'fork_spell', title: 'Fork a market spell', cost: 3,
+      description: 'Copy a market spell, change its source, and publish the result as your own listing: it is forged into your book (your caps apply; a failure spends and lists nothing) and its lineage records the parent. The source must differ from the parent\'s. When others cast your fork, you get the royalty and the parent\'s author a small share.',
+      input: {
+        id: z.string().min(3).max(16).describe('market id of the parent'),
+        source: z.string().min(1).max(4000).describe('your edited Runes source'),
+        v: z.number().int().min(1).optional().describe('parent version (default: the latest)'),
+        name: z.string().min(1).max(40).optional().describe('name of the fork (default: "<parent name> II")'),
+        incantation: z.string().max(60).optional(),
+        desc_zh: z.string().max(140).optional(),
+        desc_en: z.string().max(140).optional(),
+        slot: z.number().int().min(1).max(6).optional(),
+      },
+      run: (world, wid, a) => forkSpell(world, wid, String(a.id), { source: String(a.source), v: optInt(a.v), name: optStr(a.name), incantation: optStr(a.incantation), desc: desc(a.desc_zh, a.desc_en), slot: optInt(a.slot) }),
+    },
+  ],
+};
