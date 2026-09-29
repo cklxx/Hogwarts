@@ -16,7 +16,7 @@ import { findPath, walkableAt } from '../src/kernel/pathfind.js';
 import { analyze } from '../src/runes/checker.js';
 import { ensureNpcs } from '../src/kernel/npc.js';
 import {
-  CARD_DUP_GALLEONS, CUP_CAP_DEFAULT, CUP_CAP_MAX, CUP_FINAL_S, CUP_MULT_MAX, CURFEW_GRACE_S, CURFEW_PENALTY, EVENT_IDS, EVENT_INTERVAL_MAX, EVENT_INTERVAL_MIN, EVENT_MAX_S,
+  CARD_DUP_GALLEONS, CUP_CAP_DEFAULT, CUP_CAP_MAX, CUP_FINAL_S, CUP_MULT_MAX, CURFEW_CLOSE_S, CURFEW_GRACE_S, CURFEW_PENALTY, EVENT_IDS, EVENT_INTERVAL_MAX, EVENT_INTERVAL_MIN, EVENT_MAX_S,
   SNITCH_CAP_PER_TERM, SNITCH_POINTS,
 } from '../src/shared/constants.js';
 import type { Wizard } from '../src/kernel/types.js';
@@ -321,19 +321,43 @@ describe('校园事件轮盘: the event wheel', () => {
     expect(mine(w, a).some((x) => x.type === 'wheel' && /不会扣成负数/.test(x.zh ?? ''))).toBe(true);
   });
 
-  it('宵禁: lasting it out in the castle without being caught pays; being caught does not', () => {
+  it('宵禁: a close call pays (Filch walks right past you, unseen); being caught, or idling in a far corner, does not', () => {
     const w = mk();
-    const hider = join(w, 'George Weasley');
+    const shadow = join(w, 'George Weasley');
+    const idler = join(w, 'Lee Jordan');
     const unlucky = join(w, 'Percy Weasley');
     const e = startEvent(w, 'curfew')!;
-    hider.pos = { x: -10.5, z: -68 }; // the far corner of the Great Hall, out of the round's sight
+    idler.pos = { x: -10.5, z: -68 }; // the far corner of the Great Hall, out of the round's sight
     run(w, EVENTS.curfew.seconds + 0.5, () => {
       const p = e.d.patrol?.[0];
-      if (p && w.wheel.active) unlucky.pos = { x: p.x + Math.sin(p.f) * 3, z: p.z - Math.cos(p.f) * 3 };
+      if (!p || !w.wheel.active) return;
+      unlucky.pos = { x: p.x + Math.sin(p.f) * 3, z: p.z - Math.cos(p.f) * 3 }; // in his lantern
+      shadow.pos = { x: p.x - Math.sin(p.f) * 5, z: p.z + Math.cos(p.f) * 5 }; // 5 m behind him, out of the cone
     });
-    expect(hider.cup?.src.events ?? 0).toBeGreaterThan(0);
+    expect(e.d.close![shadow.id]).toBeGreaterThanOrEqual(CURFEW_CLOSE_S);
+    expect(shadow.cup?.src.events ?? 0).toBeGreaterThan(0);
+    expect(idler.cup?.src.events ?? 0).toBe(0); // in the castle all along, but nobody came near
     expect(unlucky.cup?.src.events ?? 0).toBe(0);
     expect(e.d.caught).toContain(unlucky.id);
+  });
+
+  it('keeps the running event across a restart, with the creatures it spawned', () => {
+    const w = mk();
+    join(w, 'Neville Longbottom');
+    const e = startEvent(w, 'troll')!;
+    run(w, 5);
+    const troll = w.creatures.get(e.d.mobs![0])!;
+    troll.hp -= 40;
+    const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    expect(back.wheel.active).toMatchObject({ id: 'troll', n: e.n, outcome: 'on', endsAt: e.endsAt });
+    expect(back.creatures.get(troll.id)).toMatchObject({ kind: 'troll', hp: troll.hp, maxHp: troll.maxHp });
+    expect(back.wheel.seq).toBe(w.wheel.seq);
+    // an event that ran out while the server was down is not resumed, and the history stays
+    const s2 = w.serialize() as { now: number };
+    s2.now = e.endsAt + 1;
+    const late = World.restore(JSON.parse(JSON.stringify(s2)));
+    expect(late.wheel.active).toBeNull();
+    expect(late.wheel.nextAt).toBeGreaterThan(late.now);
   });
 
   it('摄魂怪来袭: night only; a house with nobody kissed rewards everyone who fought; the Dementors leave at the end', () => {
@@ -405,14 +429,6 @@ describe('校园事件轮盘: the event wheel', () => {
     }
   });
 
-  it('a restart drops the running event and waits one interval', () => {
-    const w = mk();
-    join(w, 'Tester');
-    startEvent(w, 'troll');
-    const r = World.restore(JSON.parse(JSON.stringify(w.serialize())), 1);
-    expect(r.wheel.active).toBeNull();
-    expect(r.wheel.nextAt).toBeGreaterThan(r.now);
-  });
 });
 
 // ------------------------------------------------------------------ 巧克力蛙画片

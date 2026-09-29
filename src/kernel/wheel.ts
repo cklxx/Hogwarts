@@ -1,5 +1,5 @@
 import {
-  CURFEW_GRACE_S, CURFEW_PENALTY, EVENT_IDS, EVENT_MAX_S, SNITCH_CAP_PER_TERM, SNITCH_POINTS, type EventId, type House,
+  CURFEW_CLOSE_M, CURFEW_CLOSE_S, CURFEW_GRACE_S, CURFEW_PENALTY, EVENT_IDS, EVENT_MAX_S, SNITCH_CAP_PER_TERM, SNITCH_POINTS, type EventId, type House,
 } from '../shared/constants.js';
 import { CURFEW_CAUGHT, WHEEL_LINES, fill, houseLine, type Line } from '../lore/memes.js';
 import { zhHouse } from '../shared/zh.js';
@@ -57,6 +57,8 @@ interface EventData {
   /** curfew: Filch and Mrs Norris on their loop; grace per wizard; who was caught; seconds each spent in the castle. */
   route?: Vec2[]; legs?: number[]; loop?: number; patrol?: { k: 'filch' | 'norris'; s: number; x: number; z: number; f: number }[];
   grace?: Record<string, number>; caught?: string[]; inside?: Record<string, number>; day?: boolean;
+  /** curfew: seconds each spent with a patroller close by and not seen (a close call; standing in a far corner is not). */
+  close?: Record<string, number>;
   /** dementors: who took part (id → house); houses that lost someone. */
   part?: Record<string, House>; kissed?: House[];
   /** peeves: the ink's radius and where Peeves floats; the place's name. */
@@ -189,15 +191,15 @@ export const EVENTS: Record<EventId, EventDef> = {
     id: 'curfew', major: true, seconds: 150, weight: 2,
     name: { zh: '宵禁！费尔奇在巡逻', en: 'Curfew! Filch on patrol' },
     brief: (w, e) => (e.d.day
-      ? { zh: '乌姆里奇第 29 号教育令：宵禁提前 · 城堡里别被费尔奇和洛丽丝夫人看见 · 躲在柱子后面', en: 'Educational Decree No. 29: curfew moved up · in the castle, stay out of sight of Filch and Mrs Norris · hide behind pillars' }
-      : { zh: '城堡里别被费尔奇和洛丽丝夫人看见 · 躲在柱子后面 · 熬过去有奖励', en: 'In the castle, stay out of sight of Filch and Mrs Norris · hide behind pillars · last it out for a reward' }),
+      ? { zh: '乌姆里奇第 29 号教育令：宵禁提前 · 城堡里别被费尔奇和洛丽丝夫人看见 · 躲在柱子后面 · 让他们从你身边走过、熬过去有奖励', en: 'Educational Decree No. 29: curfew moved up · in the castle, stay out of sight of Filch and Mrs Norris · hide behind pillars · let them pass you by and last it out for a reward' }
+      : { zh: '城堡里别被费尔奇和洛丽丝夫人看见 · 躲在柱子后面 · 让他们从你身边走过、熬过去有奖励', en: 'In the castle, stay out of sight of Filch and Mrs Norris · hide behind pillars · let them pass you by and last it out for a reward' }),
     can: () => true,
     start(w, e) {
       const { route, legs } = curfewRoute(w);
       e.d.route = route; e.d.legs = legs; e.d.loop = legs[legs.length - 1];
       e.d.patrol = [{ k: 'filch', s: 0, x: route[0].x, z: route[0].z, f: 0 }, { k: 'norris', s: e.d.loop! / 2, x: route[0].x, z: route[0].z, f: 0 }];
       for (const p of e.d.patrol) placeOnRoute(e, p);
-      e.d.grace = {}; e.d.caught = []; e.d.inside = {}; e.d.day = !w.isNight(); e.d.acc = 0;
+      e.d.grace = {}; e.d.caught = []; e.d.inside = {}; e.d.close = {}; e.d.day = !w.isNight(); e.d.acc = 0;
       e.x = route[0].x; e.z = route[0].z;
       const l = line(WHEEL_LINES.curfew.start, w, e);
       return e.d.day ? { zh: `📜 乌姆里奇第 29 号教育令：宵禁提前到下午！${l.zh}`, en: `📜 Educational Decree No. 29: curfew starts this afternoon! ${l.en}` } : l;
@@ -216,6 +218,7 @@ export const EVENTS: Record<EventId, EventDef> = {
         if ((d.grace![x.id] ?? -1e9) > w.now) continue;
         const who = d.patrol!.find((p) => seesWizard(w, p, x));
         if (who) caughtAfterCurfew(w, e, x, who.k);
+        else if (d.patrol!.some((p) => Math.hypot(x.pos.x - p.x, x.pos.z - p.z) <= CURFEW_CLOSE_M)) (d.close ??= {})[x.id] = (d.close[x.id] ?? 0) + step;
       }
     },
     pay(w, e) {
@@ -223,10 +226,10 @@ export const EVENTS: Record<EventId, EventDef> = {
       let n = 0;
       for (const [id, secs] of Object.entries(d.inside ?? {})) {
         const x = w.wizards.get(id);
-        if (!x || d.caught!.includes(id) || secs < Math.min(60, EVENTS.curfew.seconds * 0.4)) continue;
+        if (!x || d.caught!.includes(id) || secs < Math.min(60, EVENTS.curfew.seconds * 0.4) || (d.close?.[id] ?? 0) < CURFEW_CLOSE_S) continue;
         n++;
         const g = w.cupGain(x, 25, 'events');
-        w.emit('wheel', `🏮 You lasted the curfew in the castle without being caught: +${g} house points for ${x.house}.`, { to: x.id, zh: `🏮 你在城堡里熬过了宵禁，一次也没被抓到：${zhHouse(x.house)} +${g} 学院分。` });
+        w.emit('wheel', `🏮 You lasted the curfew in the castle, and they walked right past you: +${g} house points for ${x.house}.`, { to: x.id, zh: `🏮 你在城堡里熬过了宵禁，他们从你身边走过也没发现你：${zhHouse(x.house)} +${g} 学院分。` });
       }
       e.outcome = n > 0 ? 'won' : 'lost';
       d.acc = n;
@@ -600,11 +603,33 @@ export function schoolEvents(w: World, wid: string) {
 }
 
 // ------------------------------------------------------------------ the plug (kernel/feature.ts)
+/** What a restart keeps: the count, the recent results and the running event with the creatures it spawned (the
+ * world does not save creatures, so they are stored here and put back as they were). */
+interface WheelSave { seq: number; history: WheelState['history']; active: ActiveEvent | null; mobs: Creature[] }
+
+function saveWheel(w: World): WheelSave {
+  const s = w.wheel, e = s.active?.outcome === 'on' ? s.active : null;
+  const mobs = (e?.d.mobs ?? []).map((id) => w.creatures.get(id)).filter((c): c is Creature => !!c);
+  return { seq: s.seq, history: s.history, active: e, mobs };
+}
+
+function loadWheel(w: World, saved: WheelSave | undefined) {
+  const s = w.wheel;
+  s.nextAt = w.now + w.rules.events.intervalSeconds; // nothing running: the next event is a whole interval away
+  if (!saved) return;
+  s.seq = saved.seq ?? 0;
+  s.history = saved.history ?? [];
+  const e = saved.active;
+  if (!e || e.outcome !== 'on' || e.endsAt <= w.now || !EVENT_IDS.includes(e.id)) return;
+  for (const c of saved.mobs ?? []) w.creatures.set(c.id, { ...c, target: null }); // ids come from the saved seq: no clash
+  s.active = e;
+}
+
 export const WHEEL_FEATURE: Feature = {
   id: 'wheel',
   init(world) { world.wheel = blankWheel(world.rules.events.intervalSeconds); world.wheelResult = null; },
-  // after a restart the next event is a whole interval away
-  load(world) { world.wheel.nextAt = world.now + world.rules.events.intervalSeconds; },
+  save: saveWheel,
+  load: (world, saved) => loadWheel(world, saved as WheelSave | undefined),
   stepLate: stepWheel,
   wire: { key: 'ev', get: wheelView },
   bolt: (world, p) => { if (world.wheel.active) wheelBolt(world, p); }, // 金色飞贼 / 皮皮鬼: a spell passing close enough catches or chases

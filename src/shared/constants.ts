@@ -232,6 +232,9 @@ export const SNITCH_CAP_PER_TERM = 150;
 /** 宵禁: points lost when Filch or Mrs Norris catches you (never below zero), and the grace before they can again. */
 export const CURFEW_PENALTY = 5;
 export const CURFEW_GRACE_S = 20;
+/** 宵禁 pays only a real close call: Filch or Mrs Norris within this many metres, unseen, for this many seconds in all. */
+export const CURFEW_CLOSE_M = 12;
+export const CURFEW_CLOSE_S = 3;
 
 /** 巧克力蛙画片: rarities, and the Galleons a duplicate turns into. */
 export const CARD_RARITIES = ['common', 'rare', 'epic', 'legendary'] as const;
