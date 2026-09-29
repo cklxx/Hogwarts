@@ -140,7 +140,7 @@ async function worker(n: number, jobs: Job[], port: number, token: string, hello
     await page.addInitScript({ content: readFileSync(join(HERE, 'inpage.js'), 'utf8') });
     // the key goes after '#', like an agent's enrol link: the page logs in as the director
     await page.goto(`http://127.0.0.1:${port}/?capture=1&q=high#k=${encodeURIComponent(token)}`, { waitUntil: 'load' });
-    await page.waitForFunction('window.__ready && window.__ready()', undefined, { timeout: 120_000 });
+    await page.waitForFunction('window.__ready && window.__ready()', undefined, { timeout: 300_000 }); // SwiftShader under load can take minutes
     await page.addStyleTag({ content: CSS });
     // every browser must get the same faces (a flaky fetch would mix fonts between shots): retry, then refuse
     let fonts = !FONTS || LOCAL_FONTS;
