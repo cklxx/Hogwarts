@@ -189,7 +189,7 @@ const uiSizes = { s: 0.85, m: 1, l: 1.15 } as const;
 let uiSize: keyof typeof uiSizes = (() => { try { const v = localStorage.getItem(UI_KEY); return v === 's' || v === 'l' ? v : 'm'; } catch { return 'm'; } })();
 function applyUiScale() {
   const phone = innerWidth < 820 || innerHeight < 500;
-  const base = phone ? 1 : Math.max(0.74, Math.min(1.1, Math.min(innerWidth / 1600, innerHeight / 900)));
+  const base = phone ? 1 : Math.max(0.66, Math.min(1.1, Math.min(innerWidth / 1600, innerHeight / 900)));
   const u = base * uiSizes[uiSize];
   document.documentElement.style.setProperty('--u', u.toFixed(3));
   document.documentElement.style.setProperty('--t', (0.5 + 0.5 * u).toFixed(3));
