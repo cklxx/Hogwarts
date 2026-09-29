@@ -235,5 +235,5 @@ export const SPECIAL_DOCS: Record<string, string> = {
   each: '(each x list body...) iterate (at most 16 items).',
   'min-by': '(min-by x list expr) [year 4] the item of list whose expr (with x bound to it) is smallest, or nil; at most 16 items, ties go to the first. E.g. (min-by e (enemies 30) (hp e)).',
   'max-by': '(max-by x list expr) [year 4] the same, largest.',
-  after: '(after secs body...) [year 2] run body later (<=5s, <=3 per cast). Each delayed body is its own atomic cast.',
+  after: '(after secs body...) [year 2] run body later (<=5s, <=3 per cast, not inside another after). Each delayed body is its own atomic cast, with the bindings the cast left; simulate shows what each would do as "t+Ns: ...".',
 };

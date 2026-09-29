@@ -376,7 +376,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('simulate_spell', {
     title: 'Simulate a spell (dry run)',
-    description: 'Run Runes source against the live world without learning it or spending mana. Shows planned effects, mana, gas, clamps and errors. Simulate first, so you never have to say "it works on my wand". (先模拟，再施法。)',
+    description: 'Run Runes source against the live world without learning it or spending mana. Shows planned effects, mana, gas, clamps and errors; (after N ...) blocks are planned too, each line prefixed with when it fires ("t+1.5s: ..."), their total in delayedMana. Simulate first, so you never have to say "it works on my wand". (先模拟，再施法。)',
     inputSchema: { source: z.string().min(1).max(4000), target: z.string().optional().describe('creature id or wizard handle/name'), aim_x: z.number().optional(), aim_z: z.number().optional() },
     annotations: { readOnlyHint: true },
   }, me((wid, a: { source: string; target?: string; aim_x?: number; aim_z?: number }) => world.simulate(wid, a.source, { target: a.target, aim: aimOf(a.aim_x, a.aim_z) })));

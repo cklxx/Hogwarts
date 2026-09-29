@@ -58,7 +58,7 @@ describe('set!', () => {
     expect(tr(errOf(() => analyze('(set! n)')))).toMatch(/写法不对，应该是 \(set! name expr\)/);
   });
 
-  it('works in a real cast: the weakest foe with an accumulator', () => {
+  it('works in a real cast: the weakest foe with an accumulator; a delayed block sees the latest value', () => {
     const w = new World({ seed: 5, secret: 'set' });
     w.rules.creatures.spawnMultiplier = 0;
     const me = w.enroll('Accumulator').wizard;
@@ -71,5 +71,7 @@ describe('set!', () => {
     const r = w.simulate(me.id, '(let t nil) (each e (enemies 30) (when (or (not t) (< (hp e) (hp t))) (set! t e))) (say (str (hp t)))');
     expect(r.ok, r.error).toBe(true);
     expect(r.effects[0]).toMatch(/say "12"/);
+    // a delayed block closes over the cast's bindings: it sees the value the cast left (simulate plans it)
+    expect(w.simulate(me.id, '(let n 1) (after 1 (say (str n))) (set! n 2)').effects).toEqual(['t+1s: say "2" (0 mana)']);
   });
 });

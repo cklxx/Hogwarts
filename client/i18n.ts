@@ -114,6 +114,7 @@ const ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
   // ---- notes on a cast or a simulation
   [/^(.+?) ([\d.]+) clamped to your cap ([\d.]+)/, (m) => `${primZh(m[1])} ${m[2]} 超过了你的年级上限，按 ${m[3]} 施放（升年级上限会提高）`],
   [/^after ([\d.]+)s clamped to (\d+)s/, (m) => `after ${m[1]} 秒超过上限，按 ${m[2]} 秒`],
+  [/^Delayed blocks are planned against the world as it is now/, () => '延时块是按现在的世界推演的；等它们生效时，目标可能已经走开了'],
   [/^glamour :secs only times a jinx on someone else/, () => 'glamour :secs 只对别人（变色恶咒）有用；你自己的新造型会一直保持，直到你再换'],
   [/^The (.+) Curse is Unforgivable/, (m) => `${m[1]} 是不可饶恕咒。施放它会被送进阿兹卡班。`],
   [/^Cost (\d+) Galleons for ([\d.]+)\/(\d+) enchantment points/, (m) => `花了 ${m[1]} 加隆（附魔 ${m[2]}/${m[3]} 点）`],
@@ -230,7 +231,11 @@ export function splitBi(line: string): { zh: string; en: string } | null {
   const ef = /^(.*?[.!?)])\s+([^A-Za-z]*[\u3400-\u9fff][^A-Za-z]*)$/s.exec(line);
   return ef ? { en: ef[1], zh: ef[2] } : null;
 }
+/** A dry run's delayed-block line (kernel/magic.ts planLater): "t+1.5s: rest" → ["1.5 秒后：", "rest"]. */
+const later = (line: string): [string, string] => { const m = /^t\+([\d.]+)s: (.*)$/s.exec(line); return m ? [`${m[1]} 秒后：`, m[2]] : ['', line]; };
 function trLine(line: string): string {
+  const [when, rest] = later(line);
+  if (when) return when + trLine(rest);
   const pos = /^(.*) \(line (\d+), col (\d+)\)$/s.exec(line);
   const core = pos ? pos[1] : line;
   let out: string | null = null;
@@ -250,6 +255,8 @@ const el = (e: string) => ZH_ELEMENT[e] ?? e;
 const SUMMON_ZH: Record<string, string> = { serpent: '大蛇', birds: '飞鸟' };
 /** A simulate / cast effect line (kernel/magic.ts `desc` + " (n mana)") in Chinese; unknown shapes pass through. */
 export function simEffectZh(line: string): string {
+  const [when, rest] = later(line);
+  if (when) return when + (rest.startsWith('fizzles: ') ? `失败：${trLine(rest.slice(9))}` : rest === 'nothing to act on' ? '没有可以作用的对象（按现在的世界）' : simEffectZh(rest));
   const m = /^(.*?)(?: \(([\d.]+) mana\))?$/.exec(line)!;
   const d = m[1], mana = m[2] ? `（${m[2]} 法力）` : '';
   const R: [RegExp, (...g: string[]) => string][] = [

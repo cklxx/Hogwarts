@@ -1492,10 +1492,10 @@ function loadSpell(id: string | null) {
   renderBookList();
   bookOut(s?.builtin ? L(`${spellName(s.name)}（${s.name}）是标准课程的一部分。点后面的数字把它放上快捷栏；改一改、用新名字铸造，它就是你的了。`, `${s.name} is part of the standard curriculum. Click a number to put it on the hotbar; edit it and forge it under a new name to make it yours.`) : s ? L('修改后点「铸造」来改良它（同名会覆盖）。', 'Edit and Forge to rework it (same name replaces it).') : L('写一段 Runes 程序，或者点左边的「从模板开始」。下面的魔法书里有你能用的每一个词。', 'Write a Runes program, or pick "Start from a template" on the left. The Grimoire below has every word you can use.'));
 }
-function showSim(r: { ok: boolean; mana: number; effects: string[]; notes: string[]; gas: number; error?: string; nodes?: number }) {
+function showSim(r: { ok: boolean; mana: number; effects: string[]; notes: string[]; gas: number; error?: string; nodes?: number; delayedMana?: number }) {
   const notes = r.notes.map((n) => '  ! ' + tr(n)).join('\n');
   bookOut(r.ok
-    ? `✓ ${L(`会消耗 ${r.mana} 法力`, `Would cast for ${r.mana} mana`)}（${r.gas} gas${r.nodes ? L(`，${r.nodes} 个节点`, `, ${r.nodes} nodes`) : ''}）\n${r.effects.map((e) => '  • ' + simEffect(e)).join('\n') || L('  （无效果）', '  (no effects)')}${notes ? '\n' + notes : ''}`
+    ? `✓ ${L(`会消耗 ${r.mana} 法力`, `Would cast for ${r.mana} mana`)}${r.delayedMana ? L(`，延时块生效时再付 ${r.delayedMana}`, `, delayed blocks ${r.delayedMana} more as they fire`) : ''}（${r.gas} gas${r.nodes ? L(`，${r.nodes} 个节点`, `, ${r.nodes} nodes`) : ''}）\n${r.effects.map((e) => '  • ' + simEffect(e)).join('\n') || L('  （无效果）', '  (no effects)')}${notes ? '\n' + notes : ''}`
     : `✗ ${L('失效', 'Fizzles')}：${tr(r.error ?? '')}${r.gas ? L(`（运行了 ${r.gas} gas 之后）`, ` (after ${r.gas} gas)`) : ''}${notes ? '\n' + notes : ''}`, r.ok ? 'good' : 'bad');
 }
 const simulateDraft = () => send({ t: 'simulate', source: $<HTMLTextAreaElement>('#sp-src').value, x: ctl.aim.x, z: ctl.aim.z, target: ctl.targetKey() ?? undefined });
