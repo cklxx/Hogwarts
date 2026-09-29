@@ -24,6 +24,7 @@ import { SnapshotFanout } from './fanout.js';
 import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
 import { serveStatic } from './static.js';
+import { PROTOCOL, buildId, serverName, startDiscovery } from './discovery.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -267,6 +268,7 @@ const http = createServer(async (req, res) => {
       const owls = all.filter((m) => !isConfirmAnswer(w.owlbox, m.re));
       return json(res, 200, { owls, cursor: all.at(-1)?.id ?? since ?? w.agentReadUpTo, read: w.agentReadUpTo });
     }
+    if (url.pathname === '/api/version') return json(res, 200, version());
     if (url.pathname === '/api/realms') return json(res, 200, { mode: realm.mode, realms: [{ id: realm.id, up: true, ...realmStats(), restarts: 0 }] });
     if (url.pathname === '/api/leaderboard') return json(res, 200, world.leaderboard());
     if (url.pathname === '/api/history') return json(res, 200, HISTORY);
@@ -410,7 +412,7 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
@@ -472,6 +474,13 @@ function realmStats() {
 }
 
 // Failing to bind is fatal (the uncaughtException guard above must not keep a deaf process alive).
+/** What this server is (GET /api/version, the LAN discovery answer): the desktop client checks it before connecting. */
+const PKG_VERSION = (() => { try { return String(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version); } catch { return '0'; } })();
+const onlinePlayers = () => { let n = 0; for (const w of world.wizards.values()) if (!w.npc && world.online(w)) n++; return n; };
+const version = () => ({ name: serverName(), version: PKG_VERSION, build: buildId(DIST), protocol: PROTOCOL, players: onlinePlayers() });
+// LAN discovery (discovery.ts): answers "HOGWARTS?" on PORT/udp, so desktop clients and `npm run find` list this server
+if (realm.mode === 'single' && !/^127\.|^localhost$|^::1$/.test(HOST)) startDiscovery(PORT, () => ({ ...version(), port: PORT }));
+
 http.on('error', (e) => { console.error(`[hogwarts] cannot listen on ${HOST}:${PORT}:`, (e as Error).message); process.exit(1); });
 http.listen(PORT, HOST, () => {
   if (!process.env.PUBLIC_URL) console.log(`[hogwarts] 本机 http://localhost:${PORT}${LAN ? `   局域网 http://${LAN}:${PORT}（别的电脑用这个；游戏里的连接命令会自动填上玩家实际访问的地址）` : ''}`);
