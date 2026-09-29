@@ -13,6 +13,7 @@ fn main() {
         "switch_server",
         "agent_info",
         "agent_setup",
+        "keys",
     ])))
     .expect("tauri build script");
 }

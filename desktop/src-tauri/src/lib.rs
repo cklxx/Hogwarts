@@ -7,7 +7,7 @@
 //! What the shell adds to the browser game:
 //! - the Owl Post key lives in the system keychain (per server) and is handed back to the page when it opens, so a
 //!   reinstall or a wiped web profile still lands you in the world;
-//! - F11 full screen, Ctrl+Shift+S back to the server list;
+//! - F11 full screen, Ctrl+Shift+S back to the server list (macOS: a Chinese menu bar, ⌃⌘F and ⇧⌘S, see `mac_menu`);
 //! - links to other sites open in the system browser; the game window only ever shows its server.
 //!
 //! Safety: the game page may call exactly three commands (key_store, toggle_fullscreen, switch_server), granted at
@@ -201,12 +201,13 @@ fn bridge_script(origin: &str, key: Option<&str>) -> String {
     let k = serde_json::to_string(&key).unwrap();
     let ls = serde_json::to_string(KEY_LS).unwrap();
     let cc = serde_json::to_string(&format!("claude mcp add -s user hogwarts -- \"{}\" --mcp-stdio", exe_path())).unwrap();
+    let keys = serde_json::to_string(&KEYS).unwrap();
     format!(
         r#"(function () {{
   var O = {o}, K = {k}, LS = {ls};
   if (location.origin !== O) return;
   // the game's Owl Post shows the desktop client's own agent command instead of the Node bridge (client/main.ts)
-  window.__HOGWARTS_SHELL__ = {{ claudeCode: {cc} }};
+  window.__HOGWARTS_SHELL__ = {{ claudeCode: {cc}, keys: {keys} }};
   var call = function (cmd, args) {{ var t = window.__TAURI_INTERNALS__; if (t) return t.invoke(cmd, args || {{}}).catch(function () {{}}); }};
   try {{ if (K && !localStorage.getItem(LS)) localStorage.setItem(LS, K); }} catch (e) {{}}
   var last = K;
@@ -440,12 +441,89 @@ pub fn mcp_stdio(args: &[String]) {
     bridge::run(args)
 }
 
+/// The shell's keyboard shortcuts as the player sees them (the launcher's footer, the game's Owl Post): macOS keeps
+/// F11 for itself (Show Desktop), so there it is the menu's own ⌃⌘F and ⇧⌘S.
+#[derive(Serialize, Clone, Debug)]
+pub struct Keys {
+    full: &'static str,
+    switch: &'static str,
+}
+const KEYS: Keys = if cfg!(target_os = "macos") { Keys { full: "⌃⌘F", switch: "⇧⌘S" } } else { Keys { full: "F11", switch: "Ctrl+Shift+S" } };
+
+#[tauri::command]
+fn keys() -> Keys {
+    KEYS
+}
+
+/// macOS menu bar, in Chinese: the app menu (About / Hide / Quit), Edit (so ⌘C / ⌘V / ⌘Z reach the chat and the
+/// spell editor), Game → switch server (⇧⌘S), View → native full screen (⌃⌘F), Window.
+#[cfg(target_os = "macos")]
+fn mac_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem as P, Submenu};
+    let about = AboutMetadata { name: Some("霍格沃茨".into()), version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() };
+    Menu::with_items(
+        app,
+        &[
+            &Submenu::with_items(
+                app,
+                "霍格沃茨",
+                true,
+                &[
+                    &P::about(app, Some("关于霍格沃茨"), Some(about))?,
+                    &P::separator(app)?,
+                    &P::services(app, Some("服务"))?,
+                    &P::separator(app)?,
+                    &P::hide(app, Some("隐藏霍格沃茨"))?,
+                    &P::hide_others(app, Some("隐藏其他"))?,
+                    &P::show_all(app, Some("全部显示"))?,
+                    &P::separator(app)?,
+                    &P::quit(app, Some("退出霍格沃茨"))?,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "编辑",
+                true,
+                &[
+                    &P::undo(app, Some("撤销"))?,
+                    &P::redo(app, Some("重做"))?,
+                    &P::separator(app)?,
+                    &P::cut(app, Some("剪切"))?,
+                    &P::copy(app, Some("拷贝"))?,
+                    &P::paste(app, Some("粘贴"))?,
+                    &P::select_all(app, Some("全选"))?,
+                ],
+            )?,
+            &Submenu::with_items(app, "游戏", true, &[&MenuItem::with_id(app, MENU_SWITCH, "换服务器…", true, Some("CmdOrCtrl+Shift+S"))?])?,
+            &Submenu::with_items(app, "显示", true, &[&P::fullscreen(app, Some("进入全屏幕"))?])?,
+            &Submenu::with_items(
+                app,
+                "窗口",
+                true,
+                &[&P::minimize(app, Some("最小化"))?, &P::maximize(app, Some("缩放"))?, &P::separator(app)?, &P::close_window(app, Some("关闭窗口"))?],
+            )?,
+        ],
+    )
+}
+#[cfg(target_os = "macos")]
+const MENU_SWITCH: &str = "switch-server";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(mac_menu).on_menu_event(|app, e| {
+        if e.id() == MENU_SWITCH {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = switch_server(app).await;
+            });
+        }
+    });
+    builder
         .plugin(tauri_plugin_opener::init())
         .manage(Shell::default())
-        .invoke_handler(tauri::generate_handler![discover, probe, saved, forget, connect, key_store, toggle_fullscreen, switch_server, agent_info, agent_setup])
+        .invoke_handler(tauri::generate_handler![discover, probe, saved, forget, connect, key_store, toggle_fullscreen, switch_server, agent_info, agent_setup, keys])
         .run(tauri::generate_context!())
         .expect("error while running the Hogwarts desktop client");
 }
@@ -493,5 +571,8 @@ mod tests {
         // the key is a JSON string literal: quotes are escaped, nothing breaks out of the script
         assert!(s.contains(r#"K = "k\"</script>""#));
         assert!(bridge_script("http://a:1", None).contains("K = null"));
+        // the page is told the shortcuts of this platform (macOS: the menu's, since F11 is Show Desktop there)
+        let want = if cfg!(target_os = "macos") { r#""switch":"⇧⌘S""# } else { r#""switch":"Ctrl+Shift+S""# };
+        assert!(s.contains(want), "{s}");
     }
 }

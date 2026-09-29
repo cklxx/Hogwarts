@@ -3,7 +3,7 @@ import { CURRICULUM } from '../src/lore/spells';
 import { analyze } from '../src/runes/checker';
 import { World, spellKind } from '../src/kernel/world';
 import * as K from '../src/kernel/world';
-import { AGENT_LIVE_S, agentView, clientLabel, curseText, routeChat, tokenFromUrl } from '../client/controls';
+import { AGENT_LIVE_S, agentView, clampDist, clientLabel, curseText, isSubmitEnter, pageKey, routeChat, tokenFromUrl, wheelCam } from '../client/controls';
 import { tr } from '../client/i18n';
 import { SLOW_DOWN } from '../src/server/net';
 
@@ -139,5 +139,29 @@ describe('Owl Post in the browser', () => {
       expect(/[一-鿿]/.test(zh), m).toBe(true);
     }
     expect(tr(`${K.BOUND_REFUSAL} (42s)`)).toContain('42');
+  });
+});
+
+describe('Mac input (the desktop client runs in WKWebView)', () => {
+  it('an Enter that commits a 拼音 candidate never sends the line', () => {
+    expect(isSubmitEnter({ key: 'Enter', isComposing: false, keyCode: 13 })).toBe(true);
+    expect(isSubmitEnter({ key: 'Enter', isComposing: true, keyCode: 229 })).toBe(false); // Chromium
+    expect(isSubmitEnter({ key: 'Enter', isComposing: false, keyCode: 229 })).toBe(false); // Safari / WKWebView: compositionend came first
+    expect(isSubmitEnter({ key: 'a', isComposing: false, keyCode: 65 })).toBe(false);
+    expect(pageKey({ isComposing: false, keyCode: 27 })).toBe(true);
+    expect(pageKey({ isComposing: false, keyCode: 229 })).toBe(false); // Escape dropping the candidates
+  });
+  it('trackpad: scroll zooms, a sideways swipe turns, a pinch zooms faster; mouse wheels in lines count too', () => {
+    const w = (deltaX: number, deltaY: number, ctrlKey = false, deltaMode = 0) => wheelCam({ deltaX, deltaY, ctrlKey, deltaMode });
+    expect(w(0, 100)).toEqual({ zoom: 1, yaw: 0 });
+    expect(w(3, 40).yaw).toBe(0); // a slightly crooked vertical scroll does not turn the camera
+    const side = w(-50, 5); // fingers to the right (natural scrolling)
+    expect(side.zoom).toBe(0);
+    expect(side.yaw).toBeLessThan(0); // the camera turns as a drag to the right turns it (yaw -= movementX)
+    expect(w(0, -10, true).zoom).toBeLessThan(0); // pinch out: closer
+    expect(w(0, -10, true).zoom).toBeLessThan(w(0, -10).zoom);
+    expect(w(0, 3, false, 1).zoom).toBeCloseTo(0.48); // 3 lines
+    expect(clampDist(1)).toBe(3.5);
+    expect(clampDist(99)).toBe(40);
   });
 });
