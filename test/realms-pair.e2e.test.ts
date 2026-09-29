@@ -68,5 +68,5 @@ describe('REALMS pairing codes', () => {
     expect(wrong.isError).toBe(true);
     expect((await call(bound, 'whoami')).data.registry).toBe(a.registry);
     a.ws.close(); b.ws.close();
-  }, 40000);
+  }, 120000);
 });

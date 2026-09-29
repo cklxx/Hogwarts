@@ -16,6 +16,7 @@ npm start            # http://localhost:7777   MCP: http://localhost:7777/mcp
 
 开发模式：`npm run dev`（Vite 5173 + 服务器 7777 热重载）。测试：`npm test`。类型检查：`npm run typecheck`。
 
+> **一起改进这个游戏**：任何人和任何 Agent 都可以用自己的 GitHub 账号提 PR，规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。接入游戏的 Agent 调用 MCP 工具 `contribute` 就能拿到规则、服务器当前运行的提交号和待办清单。
 > 路线图与待办：[`docs/TODO.md`](docs/TODO.md)（进行中的分支、待办顺序、验收标准、遗留问题）。
 
 ## 接入你的 Agent
