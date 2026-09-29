@@ -3,12 +3,14 @@
  * pictures from two builds can be laid side by side (e.g. before and after a shading change).
  *
  *   npx vite build && npx tsx scripts/gpu-shots.ts --gpu=webgpu|webgl [--label=x] [--out=dir] [--port=9004]
- *        [--size=960x540] [--shots=castle-dusk,courtyard-day,...] [--wait=6] [--url=&extra=1] [--serve]
+ *        [--size=960x540] [--shots=castle-dusk,courtyard-day,...] [--wait=6] [--url=&extra=1] [--serve] [--viewer=x,z]
  *
  * The world: a viewer on the lawn south-east of the courtyard, seven wizards in a row wearing each glamour material (velvet,
  * silk, scales, mirror, flame, starlight, ghost), 24 bots walking and casting in the courtyard (spells in
  * flight), the aurora decreed. Each shot pins the camera, the hour and the weather through `?capture=1`
- * (client/capture.ts), waits `--wait` seconds, and writes `<out>/<label>-<shot>.png` with the HUD hidden.
+ * (client/capture.ts), waits `--wait` seconds, and writes `<out>/<label>-<shot>.png` with the HUD hidden. A shot with
+ * `cam` instead of `pos`/`look` is the game's own camera behind the viewer (spring arm, occluder fades), set to that
+ * orbit: `hall-candles` wants the viewer in the Great Hall (`--viewer=-1.3,-62.5 --shots=hall-candles`).
  * `--gpu=webgl` adds `?gpu=webgl` (only meaningful for builds from the WebGPU period, 205ed7b..e38c005; the
  * WebGLRenderer client ignores it). Headless Chromium renders through SwiftShader: slow, but pixel-comparable.
  */
@@ -39,7 +41,7 @@ const SCRATCH = process.env.PERF_TMP ?? join(ROOT, 'data', 'perf');
 
 type V3 = [number, number, number];
 /** The comparison spots: camera, look-at, hour of the day, weather. */
-const SHOTS: Record<string, { pos: V3; look: V3; hour: number; weather?: string; fov?: number }> = {
+const SHOTS: Record<string, { pos?: V3; look?: V3; cam?: { yaw: number; pitch: number; dist: number }; hour: number; weather?: string; fov?: number }> = {
   'castle-dusk': { pos: [55, 40, 40], look: [0, 12, -45], hour: 17.8, fov: 60 },
   'courtyard-day': { pos: [8, 14, 45], look: [0, 1, -22], hour: 11, fov: 60 },
   forest: { pos: [110, 14, 70], look: [170, 4, 10], hour: 14.5, fov: 60 },
@@ -49,6 +51,10 @@ const SHOTS: Record<string, { pos: V3; look: V3; hour: number; weather?: string;
   lake: { pos: [-55, 10, 10], look: [-110, 0, 45], hour: 10, fov: 60 },
   /** the viewer stands on the lawn south-east of the courtyard: the grass field is around them */
   meadow: { pos: [24, 2.2, 24], look: [12, 0.4, 6], hour: 15.5, fov: 60 },
+  /** the Highlands to the west, over the Black Lake */
+  mountains: { pos: [-120, 22, 70], look: [-420, 70, 20], hour: 13, fov: 60 },
+  /** the game camera in the Great Hall, looking down past the floating candles (viewer inside, see above) */
+  'hall-candles': { cam: { yaw: 0, pitch: 1.0, dist: 10 }, hour: 12 },
 };
 const WANT = (args.get('shots') ?? Object.keys(SHOTS).join(',')).split(',');
 
@@ -65,7 +71,8 @@ function makeWorld(file: string) {
   world.term.endsAt = 86400;
   (world.rules.world.aesthetics as { aurora: boolean }).aurora = true;
   const viewer = world.enroll('Shot Viewer').wizard;
-  viewer.pos = { x: 18, z: 12 }; // (on the lawn: the grass grows round the viewer)
+  const at = args.get('viewer')?.split(',').map(Number);
+  viewer.pos = at ? { x: at[0], z: at[1] } : { x: 18, z: 12 }; // (on the lawn: the grass grows round the viewer)
   viewer.createdAt = -1e9;
   const still: string[] = [];
   GLAMOURS.forEach((mat, i) => {
@@ -147,7 +154,11 @@ async function main() {
     for (const name of WANT) {
       const s = SHOTS[name];
       if (!s) { console.warn(`no shot ${name}`); continue; }
-      await page.evaluate((c: unknown) => { (window as any).__capture = c; }, s);
+      await page.evaluate((c: typeof s) => {
+        const w = window as any;
+        w.__capture = c.cam ? null : c;
+        if (c.cam) Object.assign(w.__view.cam, c.cam);
+      }, s);
       await sleep(WAIT * 1000);
       const file = join(OUT, `${LABEL}-${name}.png`);
       await page.screenshot({ path: file, timeout: 120_000 });

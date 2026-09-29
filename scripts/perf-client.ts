@@ -4,6 +4,7 @@
  *   npx vite build && npx tsx scripts/perf-client.ts [--port=8820] [--q=high,low] [--secs=8] [--warm=4]
  *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,crowd,castle,lake,overview] [--size=1280x720]
  *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium] [--census] [--shots=dir] [--url=&extra=1]
+ *        [--viewer=x,z]   (spots also: close, hall, forest)
  *
  * What it does: writes a world save with `--bots` enrolled wizards (`--crowd` of them within 15 m of the courtyard
  * spawn, the rest spread over the map), the wild pre-filled to 3x its population, and one viewer wizard at the spawn;
@@ -35,7 +36,8 @@ import { World } from '../src/kernel/world.js';
 import { mulberry32, SPAWN, WORLD_HALF } from '../src/shared/map.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1'] as [string, string]; }));
+// (split at the first '=' only: --url='&dyn=0&x=1' keeps its own '=' signs)
+const args = new Map(process.argv.slice(2).map((a) => { const s = a.replace(/^--/, ''), i = s.indexOf('='); return (i < 0 ? [s, '1'] : [s.slice(0, i), s.slice(i + 1)]) as [string, string]; }));
 const opt = (k: string, d: string) => args.get(k) ?? d;
 const PORT = Number(opt('port', '8820'));
 const SECS = Number(opt('secs', '8'));
@@ -52,6 +54,8 @@ const OUT = args.get('out');
 const SCRATCH = process.env.PERF_TMP ?? join(ROOT, 'data', 'perf');
 const PW = process.env.PLAYWRIGHT_CORE ?? opt('playwright', '/tmp/claude-0/-home-user-Hogwarts/f6d5f4cd-c14a-5196-b6e5-05eb73ec4d18/scratchpad/node_modules/playwright-core/index.mjs');
 const CHROMIUM = opt('chromium', process.env.CHROMIUM ?? '/opt/pw-browsers/chromium');
+/** Where the viewer stands (`--viewer=x,z`; default a few metres south of the courtyard spawn). `--viewer=0,-58`: in the Great Hall. */
+const VIEWER = args.get('viewer')?.split(',').map(Number);
 const EXTRA = (args.get('url') ?? '').replace(/^&?/, '&').replace(/^&$/, '');
 
 /** Camera shots (client/capture.ts); `follow` is the game's own camera behind the viewer at the spawn. */
@@ -63,6 +67,9 @@ const SHOTS: Record<string, { pos: [number, number, number]; look: [number, numb
   crowd: { pos: [8, 14, 45], look: [0, 1, -22] },
   /** (a look at your own wizard up close: not in the default set) */
   close: { pos: [2.2, 2.0, -12.6], look: [0, 1.1, -16] },
+  /** (not in the default set: the Great Hall from its doorway, and the Forbidden Forest with the Highlands behind) */
+  hall: { pos: [0, 10, -41], look: [0, 4, -66] },
+  forest: { pos: [110, 14, 70], look: [170, 4, 10] },
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -79,7 +86,7 @@ function makeWorld(file: string) {
   for (let i = 0; i < 40; i++) (world as unknown as { spawnCreatures(): void }).spawnCreatures();
   const rnd = mulberry32(777);
   const viewer = world.enroll('Perf Viewer').wizard;
-  viewer.pos = { x: SPAWN.x, z: SPAWN.z + 6 };
+  viewer.pos = VIEWER ? { x: VIEWER[0], z: VIEWER[1] } : { x: SPAWN.x, z: SPAWN.z + 6 };
   viewer.createdAt = -1e9;
   const tokens: string[] = [];
   for (let i = 0; i < BOTS; i++) {
