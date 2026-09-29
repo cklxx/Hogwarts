@@ -104,6 +104,8 @@ const api = {
   },
   /** Draw calls per render() since the last reset, keyed by scene type, target size and camera. */
   get passes() { return state.passes; },
+  /** The shader programs three.js holds (name and cache key head), to see what compiled when. */
+  programs() { return (state.renderer?.info.programs ?? []).map((p) => `${p.name} ${String(p.cacheKey).slice(0, 60)}`); },
   /** What the scene holds: visible drawables grouped by their top-level ancestor, and shadow casters. */
   census() {
     const out: Record<string, { n: number; casters: number; tris: number; instances: number }> = {};

@@ -1817,7 +1817,12 @@ const warmed = (async () => {
   const far = 3000;
   ring(far, far, 0xffffff, 1, 2, 0.1); puff(far, far, 0xffffff); column(far, far, 0xffffff, 0.1); floatText(far, far, '1', '#fff'); lightning([far, far, far + 1, far], 0xffffff);
   scene.add(g);
+  // compiled for the composer's render target: the scene is drawn into it (linear, tone mapped later by the
+  // output pass), and three.js builds a different variant of every shader for the screen
+  const was = R.renderer.getRenderTarget();
+  R.renderer.setRenderTarget(R.composer.renderTarget1);
   try { await R.renderer.compileAsync(scene, camera); } catch { /* compile on first use, as before */ }
+  R.renderer.setRenderTarget(was);
   scene.remove(g);
   herd.begin(); herd.end();
   crowd.begin(); crowd.end(false);

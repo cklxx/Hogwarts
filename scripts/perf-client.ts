@@ -194,6 +194,7 @@ async function main() {
       if (args.has('profile')) printProfile(((await cdp.send('Profiler.stop')) as { profile: Profile }).profile, 'load');
       const lm = Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]));
       console.log(`  load main thread: task ${Math.round(lm.TaskDuration * 1000)} ms, script ${Math.round(lm.ScriptDuration * 1000)} ms, layout ${Math.round(lm.LayoutDuration * 1000)} ms, style ${Math.round(lm.RecalcStyleDuration * 1000)} ms`);
+      const progs0: string[] = args.has('census') ? await page.evaluate(() => (window as any).__perf.programs?.() ?? []) : [];
       await sleep(1500); // HDRIs and textures that arrive after the first frame
       const load = { q, loadEventMs: loadMs, ...Object.fromEntries(Object.entries(marks as Record<string, number>).map(([k, v]) => [`${k}Ms`, Math.round(v)])), totalKB: Math.round(total / 1024), ...Object.fromEntries(Object.entries(bytes).map(([k, v]) => [`KB_${k}`, Math.round(v / 1024)])) };
       console.log(`\nload (q=${q}):`, JSON.stringify(load));
@@ -214,6 +215,9 @@ async function main() {
         const wall = (Date.now() - w0) / 1000;
         const r = await page.evaluate(() => { const p = (window as any).__perf; return { frames: p.frames, counters: p.counters, info: p.info(), lt: (window as any).__lt, heap: (window as any).__heap, passes: p.passes, census: p.census() }; });
         if (args.has('census')) {
+          const progs: string[] = await page.evaluate(() => (window as any).__perf.programs?.() ?? []);
+          const fresh = progs.filter((p) => !progs0.includes(p));
+          console.log(`  programs: ${progs0.length} at the first frame, ${fresh.length} compiled since${fresh.length ? ': ' + fresh.slice(0, 12).join(' / ') : ''}`);
           const n = (r.frames as unknown[]).length || 1;
           console.log(`  passes (draw calls per frame): ${Object.entries(r.passes as Record<string, number>).map(([k, v]) => `${k} ${f1(v / n)}`).join(', ')}`);
           const c = Object.entries(r.census as Record<string, { n: number; casters: number; tris: number; instances: number }>).sort((a, b) => b[1].n - a[1].n);
