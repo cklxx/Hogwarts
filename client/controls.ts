@@ -184,7 +184,8 @@ const EN_CREATURE: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snar
 const HEIGHT: Record<CreatureKind, number> = { pixie: 1.5, snare: 1.3, spider: 1.4, troll: 3.8, dementor: 3.2, inferius: 1.9, unicorn: 2.1, phoenix: 3, serpent: 0.7, birds: 2.4 };
 const SIZE: Record<CreatureKind, number> = { pixie: 0.8, snare: 1.4, spider: 1.2, troll: 1.7, dementor: 1.1, inferius: 0.9, unicorn: 1.2, phoenix: 1, serpent: 0.9, birds: 1.2 };
 const REL_COLOR: Record<Rel, number> = { self: 0x9fd3ff, ally: 0x6cff8a, hostile: 0xff4a4a, neutral: 0xffe08a };
-const REL_CSS: Record<Rel, string> = { self: '#9fd3ff', ally: '#7dff9a', hostile: '#ff6b6b', neutral: '#ffe08a' };
+/** The target frame's ink (it is parchment): red for a foe, verdigris for a friend, ochre for a bystander, indigo for you. */
+const REL_CSS: Record<Rel, string> = { self: '#27466f', ally: '#245548', hostile: '#a3262a', neutral: '#74500f' };
 const PICK_PX = 48;
 const FRIEND_PX = 22;
 const HARM_RANGE = 32;
@@ -855,7 +856,7 @@ export function createControls(d: ControlsDeps) {
   }
   function renderHelp() {
     const row = (k: string, v: string) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`;
-    $('#helppanel').innerHTML = `<h2><span>${L('操作说明', 'Controls')} <small><kbd>H</kbd></small></span> <button class="x" data-close="helppanel" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+    $('#helppanel').innerHTML = `<h2><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg><span>${L('操作说明', 'Controls')} <small><kbd>H</kbd></small></span> <button class="x" data-close="helppanel" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
       <div class="cols"><div>
       <h3>${L('移动', 'Moving')}</h3><table>
       ${row('W A S D', L('移动（相对镜头方向）；跑动时镜头会慢慢转到你身后', 'Move (relative to the camera); the camera drifts in behind you'))}

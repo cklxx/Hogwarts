@@ -3,31 +3,76 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="light" />
   <title>Hogwarts — a world where spells are code</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <!-- the reading hand first; the brush and the Latin arrive with font-display: swap -->
+  <link rel="preload" href="/fonts/LXGWWenKai-Regular.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <!-- one ink set: thin hand-drawn strokes in currentColor, used by the HUD, the touch bar and the panels -->
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <defs>
-      <symbol id="i-owl" viewBox="0 0 24 24"><path d="M6.2 9.4C6 6.1 8.6 4.1 12 4.1s6.1 2 5.8 5.3v5.4c.1 3.3-2.6 5.2-5.8 5.2s-5.9-1.9-5.8-5.2z"/><path d="M6.4 8.6 4.9 4.6l3.6 1.9M17.6 8.6l1.5-4 -3.6 1.9"/><circle cx="9.6" cy="10.4" r="1.8"/><circle cx="14.4" cy="10.4" r="1.8"/><path d="m12 12.6-.8 1.3h1.6z"/><path d="M9.5 16.8c1.5.8 3.5.8 5 0"/></symbol>
-      <symbol id="i-book" viewBox="0 0 24 24"><path d="M3.2 5.6c3-1.1 6-.9 8.8 1 2.8-1.9 5.8-2.1 8.8-1v13.1c-3-1-6-.8-8.8 1.1-2.8-1.9-5.8-2.1-8.8-1.1z"/><path d="M12 6.6v13.2M5.6 9.2c1.6-.3 3-.1 4.3.5M5.6 12.2c1.6-.3 3-.1 4.3.5M14.1 9.7c1.3-.6 2.7-.8 4.3-.5"/></symbol>
-      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.6"/><path d="M12 2.6v4M12 17.4v4M2.6 12h4M17.4 12h4"/><circle cx="12" cy="12" r="1.1"/></symbol>
-      <symbol id="i-hand" viewBox="0 0 24 24"><path d="M9 11.2V5.6a1.5 1.5 0 0 1 3 0v5.2M12 10.4V4.4a1.5 1.5 0 0 1 3 0v6.4M15 10.8V6.2a1.5 1.5 0 0 1 3 0v7.1c0 4.1-2.6 7.1-6.6 7.1-2.8 0-4.4-1.4-5.8-3.6L4 13.1a1.4 1.4 0 0 1 2.3-1.6L9 14.3"/></symbol>
-      <symbol id="i-trunk" viewBox="0 0 24 24"><path d="M3.8 9.4h16.4v9.8H3.8z"/><path d="M3.8 9.4c.1-3 3.7-4.6 8.2-4.6s8.1 1.6 8.2 4.6M3.8 13.2h16.4"/><path d="M10.9 12.1h2.2v2.9h-2.2z"/></symbol>
-      <symbol id="i-letter" viewBox="0 0 24 24"><path d="M3.4 6.4h17.2v11.4H3.4z"/><path d="m3.6 6.8 8.4 6.5 8.4-6.5"/><circle cx="12" cy="13.6" r="1.9"/></symbol>
-      <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8"/><path d="M9.5 9.6a2.6 2.6 0 1 1 3.6 2.4c-.7.3-1.1.9-1.1 1.7v.5"/><path d="M12 16.9v.1"/></symbol>
-      <symbol id="i-quill" viewBox="0 0 24 24"><path d="M19.8 3.8C13.9 4.9 9 9.6 6.9 16.8l-1.8 3.4"/><path d="M6.9 16.8c4-.1 7.9-3 9.9-7.1M9.1 12.4h4.6"/></symbol>
-      <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6.8 3.6h10.4M6.8 20.4h10.4"/><path d="M8 3.6c0 4.9 7.9 5 7.9 8.4S8 15.5 8 20.4M16 3.6c0 4.9-7.9 5-7.9 8.4s7.9 3.5 7.9 8.4"/><path d="M10.3 18.4c1-.8 2.4-.8 3.4 0"/></symbol>
-      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.6 12.1S6.1 6.2 12 6.2s9.4 5.9 9.4 5.9-3.5 5.8-9.4 5.8-9.4-5.8-9.4-5.8z"/><circle cx="12" cy="12" r="2.6"/></symbol>
-      <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="m12 6.2 2 5.8-2 5.8-2-5.8z"/><path d="M12 2.2v1.4"/></symbol>
-      <symbol id="i-figures" viewBox="0 0 24 24"><circle cx="9" cy="8.2" r="2.5"/><circle cx="16.2" cy="9.2" r="2"/><path d="M4.4 19.2c.5-3.5 2.3-5.6 4.6-5.6s4.1 2.1 4.6 5.6M14.2 14.1c1.9 0 3.6 1.6 4.2 4.6"/></symbol>
-      <symbol id="i-x" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
-      <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.2c.6 4.4 2.4 6.3 6.8 6.8-4.4.6-6.2 2.4-6.8 6.8-.6-4.4-2.4-6.2-6.8-6.8 4.4-.5 6.2-2.4 6.8-6.8z"/><path d="M18.4 15.6c.2 1.6.9 2.3 2.4 2.4-1.5.2-2.2.9-2.4 2.4-.2-1.5-.9-2.2-2.4-2.4 1.5-.1 2.2-.8 2.4-2.4z"/></symbol>
-    </defs>
-  </svg>
+  <!-- the ink set: hand-drawn symbols (48 grid). Classes: .s outline, .f wash, .f2 accent, .t detail, .p dot; colours from
+       --ic-* on the <svg class="ic"> that uses them (style.css), per-symbol accent (--acc) and wash (--wash) on the symbol -->
+  <svg id="ink" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-stupefy" viewBox="0 0 48 48" style="--acc:#b8452a"><path class="f" d="M23.9 8.7C25.7 18.3 29.4 22.3 38.7 24C29 25.5 25.3 29.1 23.9 39.2C22.1 29.2 18.7 25.9 9.1 23.9C19 22.1 22.7 18.4 23.7 8.7Z"/><path class="s" d="M23.9 9.2C25.4 18.7 29.5 22.3 39 23.7C29.1 25.4 25.7 29.3 23.9 39.1C22.4 29.2 18.8 25.8 8.8 24.1C18.6 22.7 22.6 18.4 24.4 8.7Z"/><path class="t" d="M6.4 31.2C2.7 24 13.6 15.6 26.2 13.3M41.8 16.9C45.1 24.1 34.1 32.5 22.3 35.1"/><path class="f2" d="M7 27.1C7.1 30.7 7.6 30.9 11.2 30.8C7.4 31.6 7.1 31.5 6.7 34.7C6.2 31.7 6.2 31.3 2.9 31.3C6.2 30.5 6.6 30.8 7.2 27.3Z"/><path class="f2" d="M40.8 12.9C41.4 16.8 41.8 16.3 44.8 16.8C41.3 17.5 41.5 17.3 40.6 20.9C40.4 17.5 40.9 17.6 37 17.1C40.7 16.2 40.8 16.7 41.3 13.2Z"/></symbol>
+<symbol id="i-incendio" viewBox="0 0 48 48" style="--acc:#c0561e;--wash:rgba(214,128,50,.30)"><path class="f" d="M23.9 4.9C27.2 13.6 36.7 17.7 36.8 29.2C36.9 36.7 30.6 42.7 23.7 42.9C16.6 43.3 11.1 36.7 10.8 29.4C10.9 21.7 16.3 19.9 17.5 13C20.7 16.7 22.4 20.3 22 23.7C25.1 20.8 26 11.7 24 4.6Z"/><path class="s" d="M24 5.4C27.8 13.6 36.8 17.9 36.7 29.7C37 37.2 30.9 42.8 24.2 43.4C17.3 43.2 11.2 37.2 10.8 29.5C10.9 21.6 15.6 19.3 17.3 13.1C21.3 17 22.8 20.9 22.1 23.9C25.3 20.3 25.8 11.8 24.1 5.3Z"/><path class="f2" d="M24.3 43C20.1 43.2 17.2 40.1 17.8 36.4C17.7 31.5 21.8 30.2 23.1 25.7C26.9 28.9 30.4 32.1 30.7 35.9C30.2 39.7 28.3 43.2 23.7 43.2Z"/><path class="t" d="M38.4 9.6V13.4M36 11.2H39.6M9.9 8.1V11M8.3 9.4H11.3"/></symbol>
+<symbol id="i-protego" viewBox="0 0 48 48" style="--acc:#27466f;--wash:rgba(80,110,160,.18)"><path class="f" d="M24.2 3.8L40.8 8.8V21.8C41.1 32.8 33.4 40.2 24.3 43.9C14.5 40.6 7.3 32.9 7.3 22V9Z"/><path class="s" d="M24 3.6L41 8.8V21.6C41.2 32.8 33.5 40.7 24 43.9C14.5 40.5 7.2 32.7 7 21.8V8.8Z"/><path class="t" d="M24.2 10.5L35.5 14.7V22.8C35.5 30.6 30.5 36 24.1 38.8C17.5 36 12.8 30.7 12.8 22.8V14.3Z"/><path class="f2" d="M24 16.3C25.2 22.8 24.7 23 31.7 23.8C24.6 25.1 25.2 25.3 23.7 32.2C23.2 24.7 23.3 25.3 15.8 24.3C23 23 23.4 23.3 23.7 15.9Z"/></symbol>
+<symbol id="i-episkey" viewBox="0 0 48 48" style="--acc:#2f6a58;--wash:rgba(190,70,60,.22)"><path class="f" d="M24 39.9C13.8 32.9 7.2 26.6 7 19C6.6 13.4 11.1 10 15.2 10.4C19.7 10.4 22.2 12.3 23.7 15.7C25.3 12.2 28.4 10.3 32.7 9.8C36.7 10.3 41.1 13.7 40.7 18.7C41.1 26.9 33.7 33.3 24.1 40.2Z"/><path class="s" d="M23.7 40.3C13.7 33.3 7 26.9 7 19.3C6.8 13.2 11 9.8 15.2 9.7C19.2 9.8 22.4 12.4 24.2 15.3C25.5 12.3 28.4 9.6 32.3 9.6C37.2 10 40.8 13.5 41.3 18.7C41.2 26.9 34 33.3 23.9 40Z"/><path class="t w" d="M24.1 18.9V30.4M18.3 24.7H30.1"/></symbol>
+<symbol id="i-lumos" viewBox="0 0 48 48" style="--acc:#d59a1c"><path class="s w" d="M7.9 40.9L25.2 23.2"/><path class="s" d="M7.7 41.2L12.8 35.7" style="stroke-width:6.5"/><circle class="f2" cx="31" cy="17" r="5.5"/><circle class="s" cx="31" cy="17" r="5.5" style="stroke-width:2"/><path class="t" d="M30.7 8.3L31.3 3.6M37.2 10.4L40.3 7.5M39.7 17L44.3 17.4M37.8 23.4L40.3 26.9M30.9 25.9L30.6 30.4M22 17L17.3 17M24.2 10.4L21.2 7.4"/></symbol>
+<symbol id="i-tempus" viewBox="0 0 48 48" style="--acc:#a4741d"><path class="s" d="M12.2 6.1H35.4M12.3 41.6H35.5"/><path class="f" d="M16.2 6.6C16.2 16.3 21.9 18.9 22.4 23.7C22.2 29.1 15.7 32.3 16.3 41.6H32.2C32.2 31.7 26 29 26.3 24.2C26.2 19.1 32.3 16.1 32.1 6.3Z"/><path class="s" d="M15.6 6.2C15.9 15.7 22.3 19 22.1 24.1C22.1 29 15.6 32.2 16.2 41.5M32 6.6C31.7 16.2 25.8 18.7 25.8 24.2C25.8 29.2 32.4 32 31.9 41.5"/><path class="f2" d="M19.3 13.2H28.9C28.1 16.9 24.7 18.8 24.2 21.4C23.1 18.6 19.7 17 19.3 13.1Z"/><path class="f2" d="M18.4 38.3C20 34.5 23 33.2 24.3 30.3C25.4 33.8 27.6 34.5 29.9 38.9Z"/><path class="t" d="M24 22.8V29.8"/></symbol>
+<symbol id="i-revelio" viewBox="0 0 48 48" style="--acc:#27466f"><path class="f" d="M5.3 23.8C10.1 14.7 16.5 11.3 23.7 11.2C31.5 11.3 38.2 14.8 43.3 24C37.6 32.6 31.5 37 23.8 36.7C16.4 36.9 10.3 32.6 5.2 24.3Z"/><path class="s" d="M4.7 24.3C10.2 15.3 16.3 10.9 23.9 11.4C31.6 10.9 37.9 14.8 42.7 23.7C38.3 32.8 31.8 36.8 23.8 37C16.3 36.9 10.3 33.3 5.2 24.1Z"/><circle class="f2" cx="24" cy="24" r="7"/><circle class="t" cx="24" cy="24" r="7"/></symbol>
+<symbol id="i-fire" viewBox="0 0 48 48" style="--acc:#c0561e;--wash:rgba(214,128,50,.30)"><path class="f" d="M24.3 7.3C28 15.7 34.7 19.7 35 29.2C35.1 35.3 29.7 41.3 23.7 41C17.9 40.8 13.2 35.9 12.8 29.1C12.8 23 17.4 19.7 18.7 14.3C21.8 18 22.3 21.3 22.4 24.5C25.2 21.3 26.2 13.9 23.7 6.8Z"/><path class="s" d="M23.8 7.1C28.3 15.7 34.9 19.4 35 28.9C34.9 35.2 29.8 41.4 23.7 41C18.1 41.3 12.8 35.3 12.8 28.9C13 23.3 17.8 20.3 18.6 14.1C21.7 18.3 22.5 21.1 21.6 24.4C25.8 21.7 26.8 14.4 23.8 6.7Z"/></symbol>
+<symbol id="i-ice" viewBox="0 0 48 48" style="--acc:#27466f"><path class="s" d="M23.7 41L24.1 7.3M24.2 34.6L20.8 39.5M24 34.2L27.6 39.3M24.3 13.6L27.3 8.2M23.8 13.6L20.8 8.2M9 32.5L38.8 15.4M14.7 29.4L8.5 28.6M14.9 29.6L12.4 35M33.1 18.5L38.9 19.6M33.3 18.6L35.3 13.3M9.4 15.4L38.5 32.6M15.2 18.5L11.9 13.2M14.8 18.8L8.7 19.4M33.3 29.3L35.5 35.1M33 29.5L38.9 28.6"/><circle class="f2" cx="24" cy="24" r="3"/></symbol>
+<symbol id="i-lightning" viewBox="0 0 48 48" style="--wash:rgba(226,182,52,.42)"><path class="f" d="M28.7 4.3L12.3 27H22.3L18.8 43.4L36.6 20.3H25.7Z"/><path class="s" d="M28.4 4.3L12.4 26.7H22.2L18.7 43.4L36.8 20.3H26.2Z"/></symbol>
+<symbol id="i-light" viewBox="0 0 48 48" style="--acc:#d59a1c;--wash:rgba(230,180,60,.32)"><circle class="f" cx="24" cy="24" r="8"/><circle class="s" cx="24" cy="24" r="8"/><path class="t" d="M24.4 11.8L23.9 4.8M33.1 15.4L37 10.7M36.4 23.9L42.9 23.7M32.4 32.6L37.3 37.7M23.7 36.9L23.8 42.9M15.4 33L10.5 37.1M11.5 23.9L5.3 23.8M15.1 15.5L10.2 10.5"/></symbol>
+<symbol id="i-arcane" viewBox="0 0 48 48" style="--acc:#6b4a8a;--wash:rgba(110,80,150,.18)"><path class="f" d="M28.2 7.2A17 17 0 1 0 41 31A13.5 13.5 0 1 1 28 7Z"/><path class="s" d="M27.7 6.6A17 17 0 1 0 41 31A13.5 13.5 0 1 1 28 7Z"/><path class="f2" d="M32.7 13.3C33.5 18.5 34 18.2 38.8 19.3C33.8 19.5 33.9 19.6 32.8 24.6C32.5 20 32.4 20.1 26.6 18.8C32.3 18.6 32.6 18.2 32.8 12.9Z"/></symbol>
+<symbol id="i-gryffindor" viewBox="0 0 48 48" style="--acc:#a3262a;--wash:rgba(214,170,50,.30)"><path class="f" d="M24 4.3L40.8 9.2V22.2C41.2 33.2 33.6 40.4 23.9 43.9C14.7 40.2 6.8 33.2 6.8 21.7V8.6Z"/><path class="s" d="M24 3.9L41.4 9.3V22.4C40.8 32.7 33.2 40.5 24.2 44C14.3 40.4 7.1 33.1 7.2 22.3V9.1Z"/><path class="f2" d="M23.7 14.3Q27.6 11.2 29.3 15.8Q33.9 15 32.9 19.5Q37.6 22.2 33.8 25.3Q36.6 29.6 31.4 30.7Q31.3 35.7 26.5 33.6Q24.2 37.7 21.5 33.3Q16.6 35 16.2 30.9Q11.9 29.9 14 25.7Q10.7 21.9 15.1 20.1Q13.6 15.3 18.7 15.4Q20.1 10.8 23.8 13.8Z"/><path class="t" d="M24.1 14.1Q27.6 10.7 29.3 15.7Q33.9 15.1 32.9 20Q37.3 21.8 33.6 25.3Q36.2 29.7 31.3 30.2Q31.3 35.2 26.6 33.5Q24.3 37.3 21.3 33.5Q16.7 35.6 16.8 30.4Q11.6 29.8 13.9 25Q11 22 15.1 19.7Q14.2 15.2 18.3 15.2Q20.2 11.2 24.3 13.7Z"/><circle class="f" cx="24" cy="25" r="6.3"/><circle class="t" cx="24" cy="25" r="6.3"/><path class="t" d="M21.3 23.5h0.1M26.7 23.3h0.1M22.4 27.4L24.3 28.3L25.4 27.6"/></symbol>
+<symbol id="i-hufflepuff" viewBox="0 0 48 48" style="--acc:#2a1b0f;--wash:rgba(214,170,50,.42)"><path class="f" d="M24.4 3.8L40.7 9.3V22.4C41 32.7 33.8 40.4 24.3 44.1C14.7 40.2 7.2 32.8 6.9 22.3V9.3Z"/><path class="s" d="M23.8 3.8L40.9 9V21.9C40.7 32.8 33.7 40.8 23.7 44C14.7 40.1 7.3 32.7 7.1 22V9.1Z"/><circle class="f2" cx="15.5" cy="15.5" r="3"/><circle class="f2" cx="32.5" cy="15.5" r="3"/><path class="f2" d="M13.4 19.9C13.6 13.9 34.6 14 34.5 19.6C34.6 28 28.8 34.7 24.2 37C18.8 34.5 13.2 27.7 13.4 19.7Z"/><path class="t" d="M13.5 20C13.2 14.1 34.2 14.2 34.7 20C34.2 28 28.9 34.8 23.7 37.3C19.4 34.7 13.7 27.8 13.9 20Z"/><path class="t w" d="M24.3 16.3V32.7"/><path class="t" d="M18.7 23.8h0.1M29.2 23.4h0.1"/></symbol>
+<symbol id="i-ravenclaw" viewBox="0 0 48 48" style="--acc:#27466f;--wash:rgba(60,90,150,.20)"><path class="f" d="M24.2 3.7L41.3 8.8V22.2C40.7 33 33.8 40.3 23.8 44C14.4 40.1 6.8 32.7 7.3 22.1V9.3Z"/><path class="s" d="M23.7 4.2L40.7 9V22.1C40.9 33.3 33.5 40.6 24.3 43.7C14.9 40.6 6.9 33.2 6.8 22.4V9.1Z"/><path class="f2" d="M23.9 18.2C20 15.3 14.2 14.7 9.7 17.8C13.6 19.2 15.4 20.6 16.2 22.1C13.2 22.5 11.9 24.1 11 26.5C14.1 25.2 17.4 25.6 18.9 27.9L20.9 34.9L23.8 32.4L26.9 34.8L28.8 28C30.4 26.3 33.4 25.1 36.7 26.3C36.5 24.4 34.3 22.6 31.3 22.6C32.7 20.4 34.6 18.8 38.8 18.2C33.8 15.3 27.7 15.5 23.9 17.8Z"/><path class="t" d="M23.7 18.2C19.6 15.5 14.3 14.7 9.3 18.1C13.5 18.9 15.5 20.3 16.2 22.3C13.3 23.1 12 24.4 10.6 26.5C14.6 25.4 17.5 26 19.1 27.7L21 34.6L23.9 32.5L26.9 35.3L28.9 27.8C30.7 26 33.8 25.4 36.8 26.3C36.6 24 34.7 22.4 31.5 22.3C32.9 20.8 34.7 18.7 38.8 17.9C33.8 15.3 28.1 15.6 24.1 18.4Z"/><circle class="f2" cx="24" cy="15" r="3.2"/><circle class="t" cx="24" cy="15" r="3.2"/></symbol>
+<symbol id="i-slytherin" viewBox="0 0 48 48" style="--acc:#2f6a58;--wash:rgba(47,106,88,.22)"><path class="f" d="M24 4.3L41.2 9.3V22C41.2 33.1 33.4 40.3 24.1 43.7C14.8 40.2 6.6 32.7 7.3 21.9V8.7Z"/><path class="s" d="M23.6 3.7L41.1 9.1V22.1C41.2 32.7 33.6 40.4 24.2 44.2C14.8 40.2 7.3 33.3 7.3 21.7V8.8Z"/><path class="t w2" d="M28.7 14.1C22.3 10.7 14.6 15.7 19.6 20.8C23.2 24.7 31.2 24.8 28.4 31.4C26.1 35.8 19.8 36.7 16.4 32.9"/><ellipse class="f2" cx="30.5" cy="14.8" rx="3.6" ry="2.7" transform="rotate(20 30.5 14.8)"/><path class="t" d="M34.2 16.5L36.8 17.3M36.1 17.1L37.8 16.2M36.4 17.4L37.2 18.6"/></symbol>
+<symbol id="i-owl" viewBox="0 0 48 48" style="--acc:#f7ecd0"><path class="f" d="M12.3 18.7C12.2 12.7 10.6 8.8 10.7 6.9C13.1 8 16 9.7 17.8 10.2C19.9 9.7 21.8 9.3 23.8 8.8C26.2 9 27.7 9.5 29.7 10.4C32.1 9.7 34.6 7.9 37.4 6.4C37.3 8.7 36.3 12.6 35.8 18.8V30.3C36 36.9 31.3 42.3 24 42.5C17.2 42.7 12.1 36.9 11.9 29.7Z"/><path class="s" d="M12.3 19.1C12.2 12.7 11 9.2 10.6 6.2C13.5 8.3 15.8 9.3 17.8 10.4C20.3 9.1 21.7 8.8 23.9 9C25.7 8.9 27.8 9.8 30.2 9.9C32.4 9.2 34.4 8.4 37.7 6.7C37 8.8 36.1 12.7 35.8 18.9V29.6C35.9 37.2 31.1 42.5 24.1 42.5C16.7 42.6 11.9 37.2 12.3 29.9Z"/><circle class="f2" cx="18.6" cy="20" r="5.3"/><circle class="f2" cx="29.4" cy="20" r="5.3"/><circle class="t" cx="18.6" cy="20" r="5.3"/><circle class="t" cx="29.4" cy="20" r="5.3"/><circle class="p" cx="19.2" cy="20.3" r="2.1"/><circle class="p" cx="28.8" cy="20.3" r="2.1"/><path class="p" d="M22.5 25.2L23.9 28.8L25.8 25.3Z"/><path class="t" d="M19.2 33.7l2.5 2 2.5-2 2.5 2 2.5-2"/></symbol>
+<symbol id="i-heart" viewBox="0 0 48 48" style="--wash:rgba(163,38,42,.55)"><path class="f" d="M24.3 40.1C14.1 33 6.9 27.1 6.7 18.9C7.2 13.7 11.1 9.8 15.4 10C19.6 9.9 22.6 12.8 23.8 15.6C25.7 12.4 28.5 10.4 32.1 10C36.7 10.2 41.3 13.5 40.7 19.1C41 27.2 34 33.1 24.3 40Z"/><path class="s" d="M23.9 40.3C13.8 33.1 6.9 27.2 6.7 19.4C6.9 13.2 10.8 9.9 15.1 9.9C19.4 10.2 22.4 12.3 23.8 15.7C25.8 12.5 28.3 10.2 32.4 9.8C36.7 10.2 41.2 13.6 41 19C40.8 27.4 33.9 33.1 24.2 40.2Z"/></symbol>
+<symbol id="i-mana" viewBox="0 0 48 48" style="--acc:#f6ebd0;--wash:rgba(46,91,149,.40)"><path class="f" d="M24 4.8C29 14.2 36.3 20.4 36.3 29.3C35.9 36.3 30.4 41.8 23.6 42.2C17.3 41.8 11.8 36.5 11.9 29.6C12.1 20.4 19.3 14.8 23.7 5.2Z"/><path class="s" d="M24.3 5.2C28.7 14.8 36.1 20.1 35.6 29.8C36.1 36.3 30.2 41.7 23.8 42.2C17.4 41.7 12.3 36.7 11.7 29.8C12.1 20.7 19.1 14.8 24.2 5.3Z"/><path class="f2" d="M23.8 23.6C24.8 29.4 24.7 29.5 30.5 29.8C24.6 30.5 24.8 30.4 24 36.2C23.2 30.8 23.3 31.1 17.1 30.3C23.2 29.3 23.3 29.5 23.9 23.4Z"/></symbol>
+<symbol id="i-quill" viewBox="0 0 48 48" style="--wash:rgba(255,255,255,.4)"><path class="f" d="M40.4 5.7C29.1 8.1 18.1 16.6 14.6 30.8L12.9 36.4C23 34.5 34.8 24.6 40.2 6.1Z"/><path class="s" d="M39.9 6.3C28.9 8 18.5 16.7 14.3 30.5L12.9 36C23.2 34.3 34.7 24.9 40 5.8Z"/><path class="t" d="M37.5 9.4L9.1 42.2M21.9 24.4l5 1M26.3 19.6l5 0.8"/></symbol>
+<symbol id="i-star" viewBox="0 0 48 48" style="--acc:#a4741d;--wash:rgba(214,170,50,.35)"><path class="f" d="M24.1 5.2L28.7 18.7L43.3 19L31.7 27.6L35.6 41.3L24.3 33.6L12.1 41.7L16.3 27.9L5.1 19.1L19.1 18.6Z"/><path class="s" d="M24.1 4.8L29.1 18.5L43.2 18.7L31.8 27.4L36.2 41.8L24.1 33.4L12.2 41.7L16 27.6L4.8 18.9L18.9 18.4Z"/></symbol>
+<symbol id="i-x" viewBox="0 0 48 48"><path class="s" d="M14.1 14.3L33.7 34.1M33.6 13.7L14.2 34.1"/></symbol>
+<symbol id="i-check" viewBox="0 0 48 48"><path class="s" d="M11.3 25L19.6 33.9L37.1 14.3"/></symbol>
+<symbol id="i-plus" viewBox="0 0 48 48"><path class="s" d="M24.4 11V36.9M10.7 24.1H36.8"/></symbol>
+<symbol id="i-scroll" viewBox="0 0 48 48"><path class="f" d="M11.7 9.6H33.6C37.1 9.7 38.4 11.7 38.3 13.7V37.6H16.2C12.8 38.2 11.8 35.7 12.2 34.2Z"/><path class="s" d="M12.3 10.2H33.7C37.1 10.2 38 12.3 37.8 14.4V38.2H15.6C12.6 38.1 12.2 35.7 11.9 34.2ZM7.7 14.3C8 11.2 9.9 10.1 12 10.1M7.7 14.2V15.9H12.1M16.1 37.9C18.4 38.2 20.3 36.2 20.1 33.8H11.7"/><path class="t" d="M18.4 18.2H32.2M17.9 23.6H32.4M18.3 29.1H26.9"/></symbol>
+<symbol id="i-flask" viewBox="0 0 48 48" style="--acc:#2f6a58"><path class="f" d="M18.9 6.3H28.9M20.1 6.1V17.3L10.2 35.8C8.1 38.8 10.4 42.1 14.2 42.3H33.7C37.8 42.2 39.8 39.1 37.8 36.3L28.2 17.1V6.3Z"/><path class="s" d="M17.9 5.7H30M20.2 5.8V17.2L10.3 35.8C8.6 39.1 10.5 41.8 13.8 42.2H34.2C37.5 41.7 39.7 39.2 37.8 36.1L28.3 17.3V6"/><path class="f2" d="M14.5 30.1H33.3L36.8 36.8C37.7 38.4 36.5 39.4 35 39.2H12.7C11.9 39.4 10.2 38.6 11.2 36.7Z"/></symbol>
+<symbol id="i-seal" viewBox="0 0 48 48" style="--acc:#962024;--wash:rgba(150,32,36,.30)"><path class="f" d="M24.1 7.9Q28.2 5.1 30.5 10Q36.1 9.1 36.6 13.8Q41.3 15.7 39.9 20.6Q43.2 24.4 39.4 27.2Q40.9 32 36.2 33.7Q35.8 39.2 30.9 38.7Q28.5 42.2 24.1 39.9Q19.5 42.8 16.9 38.4Q12.3 39.2 11.6 33.9Q6.9 31.9 8.8 28Q4.8 23.6 8.2 20.3Q7.2 16.1 11.8 13.7Q12.4 9.3 17.2 10Q19.5 5.2 24.2 8.3Z"/><path class="s" d="M24.1 7.8Q28.3 5.7 30.6 9.5Q35.6 8.8 36.5 13.7Q40.9 15.5 39.7 20Q43.2 23.8 39.2 27.9Q40.9 32.5 36.8 34.3Q35.5 38.9 30.6 38.7Q28.5 42.6 24 39.9Q20 42.5 17.2 38.1Q12 38.6 11.7 34Q6.6 32.5 8.2 27.5Q4.7 23.8 8.7 20.3Q6.6 15.8 11.4 14.3Q11.9 9.5 16.8 9.9Q19.9 5.3 24 7.8Z"/><circle class="t" cx="24" cy="24" r="11"/></symbol>
+<symbol id="i-book" viewBox="0 0 48 48" style="--acc:#962024;--wash:rgba(250,244,228,.7)"><path class="f" d="M4.8 11.8C11.4 9.9 18.9 10.3 23.7 13.8C29.8 9.7 36.7 9.3 43.4 11.6V38.2C36.4 35.5 29.1 36.5 24 39.8C18.5 36.5 11.3 35.9 4.7 37.8Z"/><path class="s" d="M5.2 12.2C11.3 9.2 18.2 10.1 24 13.8C29.3 10.1 36.7 9.7 43.1 11.8V37.7C36.7 35.7 29.7 35.9 24.2 39.9C18.8 36.5 11.5 35.4 5.3 38ZM24.3 13.8V39.8"/><path class="t" d="M9.8 17.9C12.7 16.9 16.6 16.8 20 18.4M9.5 23.2C13.2 22.7 16.8 22.6 20.2 23.8M9.7 28.7C13.3 28.3 16.5 28.2 20 29.4M27.6 18.8C31.3 17 34.7 16.8 38.7 17.6M27.7 24.1C31.3 22.3 35.1 22.6 38.5 23.7"/><path class="f2" d="M30.7 37.5V45.7L32.9 42.9L35.4 45.5V36.6Z"/></symbol>
+<symbol id="i-target" viewBox="0 0 48 48" style="--acc:#962024"><circle class="f" cx="24" cy="24" r="12.5"/><circle class="s" cx="24" cy="24" r="12.5"/><path class="t w" d="M23.7 3.9V12.2M24.1 35.8V43.7M4.1 24.2H12.2M35.7 24.3H43.9"/><circle class="f2" cx="24" cy="24" r="3.4"/></symbol>
+<symbol id="i-hand" viewBox="0 0 48 48"><path class="f" d="M17.9 23.3V11.5C17.9 8.3 24.2 7.9 23.8 11.4V9.5C24.4 6.2 30.3 6.2 30.3 9.2V12.5C30.3 9.3 35.8 8.9 36.1 12.4V27C35.7 35.9 30.5 41.6 22.2 42.4C17.2 42.3 14.1 39.7 11.3 35.3L7.1 28.6C5.8 25.6 9.3 22.5 12.8 25.1L17.8 30Z"/><path class="s" d="M17.9 30.3V11.3C17.9 8.1 23.7 8.1 24.3 11.5V21.8M24 21V9.2C23.7 5.7 29.8 5.9 29.8 9.3V21.7M30 22.3V12.6C30.1 9.1 35.8 9.2 36 12.5V27.1C36 35.9 30.3 41.8 22.5 41.9C17.1 41.6 13.9 39.8 10.8 35L7.5 28.3C6.4 25.3 9.7 22.2 12.2 25.3L18 29.7"/></symbol>
+<symbol id="i-trunk" viewBox="0 0 48 48" style="--acc:#a4741d;--wash:rgba(150,100,50,.28)"><path class="f" d="M6.9 20H41.2V40.2H6.8Z"/><path class="s" d="M7.3 20.2H40.7V40.4H6.9ZM7.1 20.1C7.8 13.2 14.5 9.2 24.2 9.2C33.5 9.2 40.7 13.3 40.7 20.3"/><path class="t" d="M6.6 27.2H41.1M15 12.9V40.6M32.9 12.7V40.8"/><path class="f2" d="M20.9 23.9H27.2V31.5H21Z"/><path class="t" d="M20.6 23.9H27.2V31.4H20.7ZM24.2 27.3V29"/></symbol>
+<symbol id="i-letter" viewBox="0 0 48 48" style="--acc:#962024"><path class="f" d="M5.5 12.3H42.4V37.2H5.6Z"/><path class="s" d="M5.6 12.2H42.8V37.4H5.8ZM6.3 13.8L23.8 27.4L42.3 13.1"/><path class="t" d="M5.7 37L19 24.8M42.2 37L29.4 24.5"/><circle class="f2" cx="24" cy="27.5" r="5"/><path class="t" d="M22 26.6L23.9 28.9L26.1 26.4" style="stroke:rgba(255,235,220,.8)"/></symbol>
+<symbol id="i-help" viewBox="0 0 48 48"><circle class="f" cx="24" cy="24" r="17.5"/><circle class="s" cx="24" cy="24" r="17.5"/><path class="t w" d="M18.8 19.6C18.5 12.7 29.4 12.4 29.5 19.1C29.8 23.9 24 23.5 24.1 28.9"/><circle class="f2" cx="24" cy="34.5" r="2.2"/></symbol>
+<symbol id="i-hourglass" viewBox="0 0 48 48" style="--acc:#a4741d"><path class="s" d="M12.4 6.5H35.7M12.2 41.4H35.9"/><path class="f" d="M16.2 6.5C15.7 16.3 22.1 19.2 22.4 24.3C21.9 28.7 15.8 32 16 41.3H31.8C32.1 32.1 25.9 29.4 26.1 23.7C25.9 19.2 31.9 16.1 31.6 6.4Z"/><path class="s" d="M16.3 6.6C16.1 15.8 22 19 21.8 24.1C22 29.4 16.1 31.9 15.7 41.2M32.2 6.2C31.7 15.7 26 19.2 26.1 24.2C25.7 28.6 32.2 31.9 32.2 41.4"/><path class="f2" d="M18.9 12.8H28.5C28.3 17.3 24.9 19 23.9 21.2C23.3 19.1 20.3 17.2 19.3 12.8Z"/><path class="f2" d="M18 38.8C20.3 34.4 23.3 33.7 23.9 30.6C25.3 33.5 28.3 34.3 29.6 38.7Z"/><path class="t" d="M23.8 22.9V30.3"/></symbol>
+<symbol id="i-eye" viewBox="0 0 48 48" style="--acc:#27466f"><path class="f" d="M5 24.2C9.8 14.8 16.4 10.8 24.4 10.8C31.5 10.7 38 14.9 42.9 23.7C37.7 33.2 31.4 36.8 23.8 36.8C16.3 36.6 10.1 32.9 4.7 24.2Z"/><path class="s" d="M4.7 23.8C10.3 14.7 16.5 11.3 24.2 10.7C31.4 11.2 37.9 15.3 42.8 24.3C38 32.8 31.5 36.7 24.2 36.8C16.8 37.1 9.9 32.8 5.1 23.8Z"/><circle class="f2" cx="24" cy="24" r="7"/><circle class="t" cx="24" cy="24" r="7"/></symbol>
+<symbol id="i-compass" viewBox="0 0 48 48" style="--acc:#962024"><circle class="f" cx="24" cy="25" r="17"/><circle class="s" cx="24" cy="25" r="17"/><path class="t" d="M24.3 4.7V8M22 4.3H26.2"/><path class="f2" d="M23.9 12.1L28.3 24.9H19.7Z"/><path class="t" d="M23.7 11.8L28.5 24.9L24.1 37.7L19.8 24.9Z"/><circle class="p" cx="24" cy="25" r="1.6"/></symbol>
+<symbol id="i-figures" viewBox="0 0 48 48"><circle class="f" cx="18" cy="15" r="5.5"/><circle class="s" cx="18" cy="15" r="5.5"/><circle class="f" cx="32.5" cy="17.5" r="4.3"/><circle class="s" cx="32.5" cy="17.5" r="4.3"/><path class="f" d="M7 40.8C7.7 31.9 11.8 27.2 18.2 27.3C23.9 27.8 28.2 32.3 29.3 40.7Z"/><path class="s" d="M6.8 40.6C8.1 32.1 11.9 27.4 18.1 27.7C23.8 27.8 27.9 32.1 28.8 40.7"/><path class="s" d="M29.8 28.7C35.2 28.2 38.7 32.2 40.3 39.4"/></symbol>
+<symbol id="i-wand" viewBox="0 0 48 48" style="--acc:#d59a1c"><path class="s w" d="M7.9 39.6L29.9 18.1"/><path class="s" d="M7.8 40.3L13.6 34.7" style="stroke-width:6.5"/><path class="t" d="M16.8 31L19.6 33.4"/><path class="f2" d="M34.6 6.3C36.1 12 35.5 12.4 42.1 12.7C35.6 13.5 36.1 13.6 35.3 20.2C33.8 14 34.1 14 28.2 12.8C33.8 12.5 34.1 12.5 35.1 6.2Z"/><path class="t" d="M35.3 6.1C35.8 11.8 36 12.1 42 13.3C35.6 14 35.5 14 35.2 19.8C34.2 14.2 34.3 13.9 27.8 12.7C34.1 12.1 33.9 12 34.7 6.2Z"/></symbol>
+<symbol id="i-robe" viewBox="0 0 48 48" style="--acc:#a4741d;--wash:rgba(39,70,111,.25)"><path class="f" d="M17.1 7.8C18.8 10.5 21.5 11.8 23.9 11.3C26.8 11.2 29 10.4 31.2 8L39.2 11.7L44.1 24.1L38 26.2L36.3 20.7V41.8H11.9V20.8L9.7 25.8L3.8 24.2L9 11.7Z"/><path class="s" d="M16.9 8C18.9 10.2 21.2 11.1 24.4 11.7C26.2 11.7 29.4 10.5 30.7 8L39 11.8L44 23.6L38.3 26.1L36.1 21.3V42.1H11.8V20.8L9.7 25.6L4.2 24.3L8.8 11.8Z"/><path class="f2" d="M17.1 8.3C19.1 12.2 21.4 15.3 24.2 14.9C26.6 15.2 29.1 12.4 31 7.9C29.3 10.3 26.2 11.6 24.1 11.7C21.7 11.8 19.3 10.5 17 7.7Z"/><path class="t" d="M23.8 15.1V41.7M12.1 35.7H36"/></symbol>
+<symbol id="i-amulet" viewBox="0 0 48 48" style="--acc:#2f6a58"><path class="t" d="M13.4 4.7C12.7 15 17.3 20.7 23.6 22.8C30.8 20.7 34.9 14.8 35.1 5"/><circle class="f" cx="24" cy="31" r="9"/><circle class="s" cx="24" cy="31" r="9"/><path class="f2" d="M23.9 25.9L28 31.1L24.2 36.3L19.7 30.8Z"/><path class="t" d="M24 26L27.9 30.8L23.7 35.9L20 31.4Z"/></symbol>
+<symbol id="i-ring" viewBox="0 0 48 48" style="--acc:#962024"><circle class="f" cx="24" cy="30" r="11.5"/><circle class="s w" cx="24" cy="30" r="11.5"/><circle class="t" cx="24" cy="30" r="7.5"/><path class="f2" d="M24.3 6.3L30.9 12.9L24.1 19.2L17.2 12.6Z"/><path class="t" d="M24.1 5.8L30.6 12.8L24 19.1L17.3 12.4ZM17.8 12.1H30.3"/></symbol>
+<symbol id="i-broom" viewBox="0 0 48 48" style="--acc:#a4741d;--wash:rgba(190,140,70,.40)"><path class="s w" d="M41.1 5L19.7 26.1"/><path class="f" d="M18.9 25.1C14.4 25 10.5 28.4 7.7 33.3C6.6 37 5 40.8 4.6 43.5C8.3 43 11.5 42.2 14.3 40.1C19.2 36.8 22.9 32.2 22.4 28.2Z"/><path class="s" d="M19 25.3C14.5 25.2 10.7 28.2 8.4 33.7C6 37.3 5.2 40.3 5.1 43.8C8.5 42.9 11.7 41.9 14.3 39.9C19.1 36.9 22.6 32.3 22.7 28.4Z"/><path class="t" d="M10.3 37.1L17.3 30M8.3 41.8L18.2 31.7M13.4 40.7L20.6 33.7"/><path class="f2" d="M17 24.7L20.2 22.8L25 26.9L22.7 29.7Z"/></symbol>
+<symbol id="i-coin" viewBox="0 0 48 48" style="--acc:#a4741d;--wash:rgba(214,170,50,.45)"><circle class="f" cx="24" cy="24" r="16"/><circle class="s" cx="24" cy="24" r="16"/><circle class="t" cx="24" cy="24" r="11.5"/><path class="f2" d="M24 17.7C24.5 23.5 24.9 23 30.3 24C25 24.8 24.5 24.4 23.7 30.7C23 24.8 23.1 24.9 17.4 23.7C23.5 23.2 23.4 23.5 24.3 17.1Z"/></symbol>
+<symbol id="i-cup" viewBox="0 0 48 48" style="--acc:#a4741d;--wash:rgba(214,170,50,.40)"><path class="f" d="M13.9 6.7H34V15.3C34.2 23.1 29.3 28.7 24.1 28.4C18.5 28.2 14.3 23.4 14.3 15.1Z"/><path class="s" d="M13.7 6.9H33.8V15.3C34.1 23.2 29.2 28.4 24 28.6C18.4 28.4 13.6 23.6 13.9 14.6ZM14 10.9H8.2C8.2 17.6 10.8 20.8 15.5 21.8M34.1 10.5H39.8C39.9 17.1 37 21.2 32.8 22.2M24.1 28.6V34.9"/><path class="f" d="M15.3 42.2H32.8L30.8 35.1H17.4Z"/><path class="s" d="M15.7 42.2H32.5L30.6 34.9H17.5Z"/><path class="f2" d="M23.9 11.2C24.5 15.8 25 15.9 28.9 16.3C24.4 17 24.3 16.7 24.3 21.5C23.4 17.2 23.2 16.8 18.7 16.3C23.3 16.1 23.4 16.2 23.9 11.8Z"/></symbol>
+<symbol id="i-key" viewBox="0 0 48 48"><circle class="f" cx="15" cy="24" r="8.5"/><circle class="s" cx="15" cy="24" r="8.5"/><circle class="f2" cx="15" cy="24" r="3"/><path class="s w" d="M23.6 23.7H41.8"/><path class="s" d="M35.1 24.4V30.9M40.7 23.9V29.8"/></symbol>
+<symbol id="i-seal-broken" viewBox="0 0 48 48" style="--acc:#962024;--wash:rgba(150,32,36,.14)"><path class="f" d="M23.7 8Q28.5 5.3 30.7 9.2Q35.5 8.9 36.7 13.8Q41 15.6 39.7 20.7Q43.1 23.8 39.8 28Q41.2 31.9 36.7 34.3Q35.7 38.6 30.7 38.4Q28.5 42.6 24.3 39.8Q19.7 42.7 17.2 38.3Q12.3 38.8 11.2 33.9Q6.6 32.3 8.3 27.6Q5.1 23.8 8.4 20Q7.2 15.8 11.9 13.7Q12.3 9.3 17 9.3Q19.5 5.2 24.2 7.7Z"/><path class="s" d="M24.2 7.9Q28.2 5.6 30.9 9.7Q35.9 9 36.7 13.8Q41.3 16 39.8 20.3Q43.2 24.4 39.6 27.4Q41.1 32.5 36.2 33.6Q35.8 39 31.1 38.3Q28.6 42.3 24.2 39.7Q19.4 42.2 16.8 38.4Q12.2 38.7 11.8 33.9Q6.6 32 8.6 27.9Q4.7 23.6 8.6 20.2Q7.3 15.8 11.6 13.9Q12.4 9.1 17 9.9Q19.5 5.7 23.7 8.1Z"/><circle class="t" cx="24" cy="24" r="11"/><path class="t w" d="M20.9 5.8L25.7 15.5L20.4 23.3L27.8 31.1L23.3 42.3"/></symbol>
+<symbol id="i-expelliarmus" viewBox="0 0 48 48" style="--acc:#b8452a"><path class="s w" d="M6.8 40.9L23.8 23.8"/><path class="s" d="M7.2 41.1L12.3 35.9" style="stroke-width:6.5"/><path class="f2" d="M29.8 9.1C30.8 17.2 31.4 16.7 39.2 18.2C30.9 19 31.1 19.4 29.7 27.1C29 19 29 19.4 20.8 18.3C28.8 17.1 29.2 16.7 30.3 9.4Z"/><path class="t" d="M29.8 8.6C30.8 17.3 30.7 17.2 38.7 18.2C30.8 18.8 31.2 18.8 29.9 27.3C29.1 19.4 29.3 18.7 20.8 18.2C29.1 16.6 28.9 16.7 29.9 8.7Z"/><path class="t" d="M37.6 6.9L35.4 10.8M42.7 14L38.7 15.4M42.3 25.6L38.2 23.7"/></symbol>
+<symbol id="i-depulso" viewBox="0 0 48 48" style="--acc:#27466f"><path class="s" d="M5 16.2H26.9C32 16.8 34.9 13.3 35.4 10.3C35.2 6.3 31.3 4.3 28.2 6.2"/><path class="s" d="M5 25.9H36C40.4 25.6 43.1 29.1 43 32.5C43.1 36.4 39.8 38.2 36.4 35.9"/><path class="t" d="M8.9 35.9H24.9M12.9 21.1H21.7"/><path class="f2" d="M27.4 13.1L33.1 16.8L26.8 19.6Z"/></symbol>
+<symbol id="i-ferula" viewBox="0 0 48 48" style="--acc:#2f6a58;--wash:rgba(250,244,228,.9)"><circle class="f" cx="16" cy="24" r="10.5"/><path class="f" d="M15.9 13.3H39.8C41.7 13.8 43.2 15.3 42.7 17.1V30.9C43.1 33 41.9 34.9 39.6 34.7H16.3Z"/><path class="s" d="M16 13.6H40.4C41.8 13.6 43.2 14.9 43.2 16.9V31C43.1 33.1 41.9 34.6 40 34.3H16.1"/><circle class="s" cx="16" cy="24" r="10.5"/><circle class="t" cx="16" cy="24" r="4"/><path class="f2" d="M31.4 18.8H34.4V22.8H38.5V25.4H34.2V29.2H31.9V25.4H27.5V22.6H31.8Z"/></symbol>
+<symbol id="i-finite" viewBox="0 0 48 48" style="--acc:#6b4a8a"><circle class="f" cx="24" cy="24" r="17"/><circle class="s" cx="24" cy="24" r="17"/><path class="f2" d="M23.8 13.8C25.4 22.8 25.3 23 34.3 24.3C24.9 25.1 25.5 25.4 23.7 33.7C22.6 24.9 22.7 25.4 14 24C22.5 22.7 23.2 22.9 24 14Z"/><path class="s w" d="M12.2 36.2L35.7 12.1"/></symbol>
+<symbol id="i-snake" viewBox="0 0 48 48" style="--acc:#2f6a58"><path class="t w2" d="M33.4 11.5C26.8 6.4 16.4 8.9 16.6 16.3C17.6 22.7 31.3 23.2 30.8 30.9C30.3 38.8 19.7 41.1 12.8 36.3"/><ellipse class="f2" cx="35" cy="12.5" rx="4.2" ry="3.2" transform="rotate(25 35 12.5)"/><path class="t" d="M38.7 14.7L42.1 15.2M41.7 15.3L43.4 14M41.8 15.2L42.9 17.4"/><circle class="p" cx="35.5" cy="11.6" r="0.9"/></symbol>
+<symbol id="i-patronus" viewBox="0 0 48 48" style="--acc:#7d9cc4;--wash:rgba(170,200,240,.30)"><path class="f" d="M23.9 42.9C13.6 39.3 9.3 30.9 11.7 21.9C13.6 13.4 21.7 9.7 28.4 11.5C35 13.8 37.2 20.1 33.6 25.5C30.5 30.3 23.4 29 22.8 24"/><path class="s" d="M24 43C13.7 39.1 9.7 30.4 11.2 22.1C13.5 13.7 22.2 9.2 28.3 11.2C35.2 13.2 36.7 20.7 33.5 25.2C30.6 30.2 23.5 28.7 22.6 23.9"/><path class="t" d="M35.1 36.4C38.2 34.3 40.2 30.9 41.5 26.6M6.4 13.8C7.8 10.9 10.3 9.3 13.5 7.5"/><path class="f2" d="M37.9 5.2C38.5 10.6 38.9 10.6 43.3 10.8C38.3 11.7 38.6 11.6 38 16.6C37.2 11.9 37.1 12 32.5 10.7C37.2 10.4 37.3 10.4 37.9 5.3Z"/></symbol>
+<symbol id="i-chain" viewBox="0 0 48 48"><path class="s w" d="M11.2 14.8H21.2C25.4 15.1 27 17.1 27 21.3V22.7C26.9 27.3 24.9 29.3 20.7 29.1H10.8C7.1 29 5.2 27.2 5.1 23.1V20.8C4.8 17.1 6.5 15.3 10.8 14.7Z"/><path class="s w" d="M26.7 19.2H37.3C41.1 19.1 42.8 21.1 43.1 24.7V26.7C43.1 30.9 41.5 32.8 36.8 33.1H26.9C22.8 32.7 21.3 31.1 21.3 26.7V25.2C21.4 20.7 22.4 18.9 27.1 18.8Z"/><path class="f2" d="M20 21.2H28V26.7H19.9Z" style="opacity:.0"/></symbol>
+<symbol id="i-burst" viewBox="0 0 48 48" style="--acc:#c0561e;--wash:rgba(214,128,50,.30)"><path class="f" d="M24.1 3.7L27.7 14.7L37.8 9.9L32.8 19.5L43.8 21.9L33.7 27.5L40.8 36.7L29 33.3L26.1 44L21.2 33.2L10.8 39.3L16.3 28.8L4.8 24.6L15.6 20.9L8.9 10.8L20.1 14.7Z"/><path class="s" d="M23.9 4L27.3 15.2L37.3 9.7L32.3 19.2L44 21.7L33.5 27.7L40.6 37L28.6 33L25.7 44.1L21.2 33.6L10.9 38.9L16.1 28.7L4.2 25.3L15.4 20.8L9.3 10.5L19.7 14.7Z"/><path class="f2" d="M24.3 13.7L26.5 20.5L32.7 19L28.2 24.5L33 29.9L26.3 27.9L23.8 33.7L21.3 28.3L15 30.3L19.1 24.8L15 19.2L21.6 20.6Z"/></symbol>
+<symbol id="i-bird" viewBox="0 0 48 48" style="--acc:#27466f"><path class="f" d="M3.8 21.2C9.7 16.3 15.6 17.4 21.5 23.3C24.3 16.7 30.6 11.3 41.1 10.7C37.2 14.2 33.8 18.6 32.9 23.2C38.1 22.6 42.2 24.4 44.2 28C37.3 28.1 30.8 30.4 26.4 34.7C19.3 35.2 13.6 29.7 3.9 20.7Z"/><path class="s" d="M3.8 20.8C9.9 16.9 16.4 17.7 21.5 23.5C24.2 17.3 30.7 11.6 40.8 10.6C37.3 14.7 33.7 18.7 32.4 23.2C38.4 22.6 42.2 24.2 44.2 28.3C37.3 28.7 30.8 30.7 26.6 35C19.7 35.2 13.8 29.8 4.4 21Z"/><path class="f2" d="M21.8 23.2C24.4 17.2 30.3 11.8 40.8 10.3C37 14.3 34 18.8 32.6 23.7C28.9 24.2 25.2 24.1 21.8 23.7Z"/><circle class="p" cx="37" cy="26.5" r="1.1"/></symbol>
+<symbol id="i-swirl" viewBox="0 0 48 48" style="--acc:#6b4a8a"><path class="s" d="M23.9 23.7C24.1 21.3 26.9 20.1 29.3 22.2C30.6 25 28.1 29.7 24.2 29.9C18.1 30 15.9 22.8 18.9 18.3C23.1 12.3 32.7 12.8 36.2 19C40.1 27.2 33.7 38.1 23.7 38.2C12.8 37.8 7.3 28.9 8.8 20.3"/><path class="f2" d="M38.1 3.3C38.5 7.4 38.9 7.4 43.4 7.8C38.9 8.3 38.6 8.2 37.8 13.3C37.4 8.8 37.2 8.5 32.7 8C37.7 7.4 37.3 7.7 38.3 3.1Z"/><path class="t" d="M8.7 20.1L6.5 16.3M8.9 20.1L12.6 16.9"/></symbol>
+<symbol id="i-revive" viewBox="0 0 48 48" style="--acc:#b8452a;--wash:rgba(190,70,60,.22)"><path class="f" d="M24 40.1C14.3 33 6.9 27.4 6.7 19.3C7.1 13.5 11 10.2 15.8 10.2C19.7 9.6 22.4 12.2 24.3 15.8C25.2 12.6 28.6 9.7 32.4 10.2C37.1 9.8 41.2 13.3 41 18.9C41.4 27.1 34.2 33.1 23.9 40.4Z"/><path class="s" d="M24.2 40.1C13.8 32.7 7.1 27.2 7.2 18.9C6.7 13.5 11.3 9.7 15.7 9.7C19.4 9.7 22.3 12.4 24.4 15.9C25.3 12.4 28.8 9.8 32.4 10C36.7 9.8 40.9 13.4 41.4 18.8C40.8 27.3 34 33.3 24.1 40.2Z"/><path class="t w" d="M23.9 31.7V18.2M18.5 23.5L24.1 18.2L29.3 23.4"/><path class="f2" d="M40.3 3.5C40.4 7.6 40.4 7.7 44.2 8.2C40.6 8.4 40.9 8.4 39.8 12.2C39.5 8.7 39.6 8.5 35.7 7.7C39.3 7.6 39.8 7.6 40.1 3.7Z"/></symbol>
+<symbol id="i-moon" viewBox="0 0 48 48" style="--acc:#a4741d;--wash:rgba(110,80,150,.14)"><path class="f" d="M27.9 7.3A17 17 0 1 0 41 31A13.5 13.5 0 1 1 28 7Z"/><path class="s" d="M28.2 6.9A17 17 0 1 0 41 31A13.5 13.5 0 1 1 28 7Z"/><path class="f2" d="M32.9 13.2C33.6 18 34 18.3 39 19.1C34 19.4 33.6 19.4 32.9 25C32.5 19.8 32.3 19.6 27.1 18.8C32.5 18.5 32.5 18 33.1 13.2Z"/></symbol>
+</defs></svg>
 
   <canvas id="view"></canvas>
 
@@ -41,16 +86,16 @@
     <div class="field"><span data-zh="分院帽会考虑你的意愿">The Sorting Hat may consider</span>
       <div id="gate-house" class="houses" role="radiogroup">
         <button type="button" role="radio" class="on" data-house="" data-zh="让帽子决定">Let the Hat decide</button>
-        <button type="button" role="radio" data-house="Gryffindor" style="--hc:#c9443a" data-zh="格兰芬多">Gryffindor</button>
-        <button type="button" role="radio" data-house="Hufflepuff" style="--hc:#e0b83c" data-zh="赫奇帕奇">Hufflepuff</button>
-        <button type="button" role="radio" data-house="Ravenclaw" style="--hc:#4f7fd0" data-zh="拉文克劳">Ravenclaw</button>
-        <button type="button" role="radio" data-house="Slytherin" style="--hc:#3f9a62" data-zh="斯莱特林">Slytherin</button>
+        <button type="button" role="radio" data-house="Gryffindor" style="--hc:#a8282b" data-zh="格兰芬多">Gryffindor</button>
+        <button type="button" role="radio" data-house="Hufflepuff" style="--hc:#c9962a" data-zh="赫奇帕奇">Hufflepuff</button>
+        <button type="button" role="radio" data-house="Ravenclaw" style="--hc:#2c5288" data-zh="拉文克劳">Ravenclaw</button>
+        <button type="button" role="radio" data-house="Slytherin" style="--hc:#22603f" data-zh="斯莱特林">Slytherin</button>
         <button type="button" role="radio" class="whisper" data-house="not slytherin" data-zh="不要斯莱特林……">Not Slytherin…</button>
       </div>
     </div>
     <button id="gate-go" class="seal" data-zh="登上霍格沃茨特快">Board the Hogwarts Express</button>
     <details><summary data-zh="我已有猫头鹰邮递密钥或游戏链接">I have an Owl Post key or play link</summary>
-      <div class="row"><input id="gate-token" autocomplete="off" placeholder="key or play link" data-zh-ph="密钥，或 Agent 给你的游戏链接" /><button id="gate-login" data-zh="登录">Log in</button></div>
+      <div class="row"><input id="gate-token" autocomplete="off" placeholder="key or play link" data-zh-ph="密钥，或 Agent 给你的游戏链接" /><button id="gate-login" class="ghost" data-zh="登录">Log in</button></div>
     </details>
     <p id="gate-err" class="err"></p>
   </section>
@@ -60,12 +105,11 @@
 
   <div id="hud" hidden>
     <div id="topleft"><div id="me"></div><div id="agentbox" hidden></div><div id="goal" hidden></div></div>
-    <div id="clock"></div>
-    <div id="feed"></div>
+    <div id="topright"><div id="clock"></div><div id="owlpop" hidden></div><div id="feed"></div></div>
     <div id="bars">
       <div class="vitals">
-        <div class="bar hp"><i></i><span></span></div>
-        <div class="bar mana"><i></i><span></span></div>
+        <div class="bar hp"><i></i><span></span><svg class="ic" aria-hidden="true"><use href="#i-heart"/></svg><b class="lbl" data-zh="生命">Health</b></div>
+        <div class="bar mana"><i></i><span></span><svg class="ic" aria-hidden="true"><use href="#i-mana"/></svg><b class="lbl" data-zh="法力">Mana</b></div>
       </div>
       <div id="hotbar"></div>
       <div class="bar xp"><i></i><span></span></div>
@@ -96,17 +140,16 @@
     <div id="crosshair"></div>
     <div id="banner" hidden></div>
     <div id="cursebar" hidden></div>
-    <div id="owlpop" hidden></div>
     <div id="atask" class="sheet" hidden></div>
     <div id="owl" class="sheet" hidden>
-      <h2><span data-zh="猫头鹰 <small>只有你和你的 Agent</small>">Owl <small>just you and your agent</small></span> <button id="owl-close" class="x" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+      <h2><svg class="ic" aria-hidden="true"><use href="#i-owl"/></svg><span data-zh="猫头鹰 <small>只有你和你的 Agent</small>">Owl <small>just you and your agent</small></span> <button id="owl-close" class="x" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
       <div id="owl-who"></div>
       <div id="owl-log"></div>
-      <div class="row"><input id="owl-input" maxlength="400" placeholder="Write to your agent… (Enter)" data-zh-ph="对你的 Agent 说……（回车寄出）" /><button id="owl-send" data-zh="寄出">Send</button></div>
+      <div class="row"><input id="owl-input" maxlength="400" placeholder="Write to your agent… (Enter)" data-zh-ph="写给你的 Agent……（回车寄出）" /><button id="owl-send"><svg class="ic" aria-hidden="true"><use href="#i-quill"/></svg><span data-zh="寄出">Send</span></button></div>
       <div id="owl-status" class="err"></div>
     </div>
     <div id="trunk" class="sheet" hidden>
-      <h2><span data-zh="行囊 <small><kbd>T</kbd></small>">Trunk <small><kbd>T</kbd></small></span> <button class="x" data-act="close" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+      <h2><svg class="ic" aria-hidden="true"><use href="#i-trunk"/></svg><span data-zh="行囊 <small><kbd>T</kbd></small>">Trunk <small><kbd>T</kbd></small></span> <button class="x" data-act="close" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
       <div id="trunk-cure" class="row"></div>
       <ul id="trunk-list"></ul>
       <div id="trunk-msg" class="err"></div>
@@ -117,39 +160,57 @@
     <div id="pointme"></div>
     <div id="presence"></div>
     <div id="seals" class="sheet" hidden>
-      <h2><span data-zh="禁书区 <small><kbd>R</kbd></small>">The Restricted Section <small><kbd>R</kbd></small></span> <button class="x" data-close="seals" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+      <h2><svg class="ic" aria-hidden="true"><use href="#i-seal"/></svg><span data-zh="禁书区 <small><kbd>R</kbd></small>">The Restricted Section <small><kbd>R</kbd></small></span> <button class="x" data-close="seals" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
       <p class="warn" data-zh="禁书区会说谎。页边注释可能是假的；并非每一段如尼文都能被执行到。只有真正运行这些符文，才能知道真相。">The Restricted Section lies. Margin notes may be false; not every block of runes can be reached. Only running the runes tells the truth.</p>
       <div id="seal-list"></div>
       <h3 id="seal-title"></h3>
-      <div class="row"><button id="seal-read" data-zh="阅读此处的书页">Read the page that rests here</button> <input id="seal-words" placeholder="answer words, e.g. 0x1a2b3c4d 0x0badf00d" data-zh-ph="答案字，例如 0x1a2b3c4d 0x0badf00d" /> <button id="seal-break" data-zh="念出咒文">Speak the words</button></div>
+      <div class="row"><button id="seal-read" class="ghost" data-zh="阅读此处的书页">Read the page that rests here</button> <input id="seal-words" placeholder="answer words, e.g. 0x1a2b3c4d 0x0badf00d" data-zh-ph="答案字，例如 0x1a2b3c4d 0x0badf00d" /> <button id="seal-break" data-zh="念出咒文">Speak the words</button></div>
       <pre id="seal-runes"></pre>
       <details><summary data-zh="古代如尼文法典">Codex of Old Runes</summary><pre id="seal-codex"></pre></details>
     </div>
     <div id="board" class="sheet" hidden></div>
     <div id="menu" class="sheet" hidden></div>
     <div id="map" class="parchment" hidden><h2 data-zh="活点地图">The Marauder's Map</h2><canvas width="640" height="640"></canvas><ul></ul></div>
+    <!-- the spellbook: an open book; the left page lists your spells and the hotbar, the right page edits one -->
     <div id="book" class="sheet" hidden>
-      <h2><span data-zh="咒语书 <small>咒语就是 Runes 程序 · <kbd>B</kbd></small>">Spellbook <small>spells are Runes programs · <kbd>B</kbd></small></span> <button class="x" data-close="book" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
-      <div id="book-bar" aria-label="Hotbar"></div>
+      <button class="x" data-close="book" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button>
       <div class="cols">
-        <ul id="book-list"></ul>
-        <div class="editor">
+        <section class="page l">
+          <h2><span data-zh="咒语书 <small class='lat'>Liber Incantationum</small>">Spellbook <small class="lat">Liber Incantationum</small></span></h2>
+          <p class="sub" data-zh="咒语就是 Runes 程序：点一条来读、来改，或者从模板开始 · <kbd>B</kbd> 合上">Spells are Runes programs: pick one to read or change, or start from a template · <kbd>B</kbd> closes</p>
+          <ul id="book-list"></ul>
+          <div id="book-bar" aria-label="Hotbar"></div>
+          <div class="folio" data-zh="— 三 —">— iii —</div>
+        </section>
+        <section class="page r editor">
+          <h3 id="sp-title" class="pg-title"></h3>
           <div id="sp-tpl" hidden></div>
-          <div class="row"><input id="sp-name" maxlength="40" placeholder="Spell name" data-zh-ph="咒语名" /><input id="sp-inc" maxlength="60" placeholder="Incantation (what you shout)" data-zh-ph="咒文（施法时喊出的话）" /></div>
+          <div class="row fields">
+            <label class="fld"><small data-zh="名字">Name</small><input id="sp-name" maxlength="40" placeholder="Spell name" data-zh-ph="咒语名" /></label>
+            <label class="fld"><small data-zh="咒文">Words</small><input id="sp-inc" maxlength="60" placeholder="Incantation (what you shout)" data-zh-ph="施法时喊出的话" /></label>
+          </div>
           <textarea id="sp-src" spellcheck="false" placeholder="(bolt (or target aim) 14 :fire)"></textarea>
-          <div class="row">
-            <select id="sp-slot"><option value="" data-zh="不放快捷栏">no hotbar slot</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+          <div class="row acts">
+            <select id="sp-slot" title="Hotbar slot" data-zh-title="铸造到快捷栏的哪一格"><option value="" data-zh="不放快捷栏">no hotbar slot</option><option value="1" data-zh="1 号格">slot 1</option><option value="2" data-zh="2 号格">slot 2</option><option value="3" data-zh="3 号格">slot 3</option><option value="4" data-zh="4 号格">slot 4</option><option value="5" data-zh="5 号格">slot 5</option><option value="6" data-zh="6 号格">slot 6</option></select>
             <button id="sp-sim" class="ghost" title="Dry run at your current aim: nothing is spent" data-zh-title="对准当前瞄准点预演：不消耗任何东西" data-zh="模拟">Simulate</button>
             <button id="sp-forge" data-zh="铸造">Forge</button>
             <button id="sp-cast" class="ghost" title="Cast the selected spell at your aim" data-zh-title="对准瞄准点施放所选咒语" data-zh="施放">Cast</button>
             <button id="sp-forget" class="ghost quiet" data-zh="遗忘">Unlearn</button>
-            <button id="sp-agent-btn" class="ghost" title="Open the owl to your agent with this draft and its error" data-zh-title="把这段草稿和报错写进给 Agent 的猫头鹰" data-zh="🦉 让 Agent 帮我写">🦉 Ask my agent</button>
+            <button id="sp-agent-btn" class="ghost" title="Open the owl to your agent with this draft and its error" data-zh-title="把这段草稿和报错写进给 Agent 的猫头鹰"><svg class="ic" aria-hidden="true"><use href="#i-owl"/></svg><span data-zh="让 Agent 帮我写">Ask my agent</span></button>
           </div>
           <pre id="sp-out" data-zh="在左边选一个咒语阅读它的源码，或者写一个新的。模拟是免费的。">Pick a spell on the left to read its source, or write a new one. Simulate is free.</pre>
           <div id="sp-agent" hidden></div>
-        </div>
+          <details><summary data-zh="魔法书（Grimoire）—— 完整的语言参考">Grimoire — the full language reference</summary><pre id="grimoire"></pre></details>
+          <div class="folio r" data-zh="— 四 —">— iv —</div>
+        </section>
+        <div class="gutter" aria-hidden="true"></div>
       </div>
-      <details><summary data-zh="魔法书（Grimoire）—— 完整的语言参考">Grimoire — the full language reference</summary><pre id="grimoire"></pre></details>
+      <div class="ribbons" aria-hidden="true">
+        <div class="ribbon gryffindor"><svg class="ic"><use href="#i-gryffindor"/></svg></div>
+        <div class="ribbon hufflepuff"><svg class="ic"><use href="#i-hufflepuff"/></svg></div>
+        <div class="ribbon ravenclaw"><svg class="ic"><use href="#i-ravenclaw"/></svg></div>
+        <div class="ribbon slytherin"><svg class="ic"><use href="#i-slytherin"/></svg></div>
+      </div>
     </div>
   </div>
   <script type="module" src="./main.ts"></script>

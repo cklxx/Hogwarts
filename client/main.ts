@@ -22,6 +22,7 @@ import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo,
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
 import { PAIR_TTL_S } from '../src/shared/constants';
 import { TIPS } from '../src/lore/memes';
+import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
 import * as probe from './perf';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
@@ -314,6 +315,7 @@ function connect() {
     else if (msg.t === 'me') me = msg.s;
     else if (msg.t === 'event') feed(msg.e, true);
     else if (msg.t === 'cast') {
+      if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
       ctl.onCast(msg.r);
       if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
       else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
@@ -548,7 +550,7 @@ function feedLine(text: string, cls: string) {
   const box = $('#feed');
   const d = document.createElement('div');
   d.className = cls;
-  d.textContent = text;
+  d.innerHTML = `${ic(feedIcon(cls.split(' ')[0]))}<span>${esc(text)}</span>`;
   box.append(d);
   while (box.children.length > FEED_MAX) box.firstChild!.remove();
   setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 1300); }, FEED_S * 1000 + Math.min(4000, text.length * 40));
@@ -595,10 +597,9 @@ function hud() {
   const has = (k: string) => me!.ui.includes(k);
   // top-left: one quiet line (title · name · house); Revelio reveals your own measure
   const stats = has('revelio')
-    ? `<div class="stats">${L(`${me.year} 年级 · 声望 <span class="num">${me.reputation}</span> · <span class="num">${me.galleons}</span> 加隆 · 封印 <span class="num">${me.seals}</span>/4`, `Year ${me.year} · <span class="num">${me.reputation}</span> reputation · <span class="num">${me.galleons}</span> Galleons · <span class="num">${me.seals}</span>/4 seals`)}${me.title.next ? ` · <span title="${esc(tr(me.title.next.how))}">${L('下一级', 'next')}: ${esc(L(me.title.next.zh, me.title.next.en))}</span>` : ''}</div>`
+    ? `<div class="stats">${L(`声望 <span class="num">${me.reputation}</span> · 封印 <span class="num">${me.seals}</span>/4`, `<span class="num">${me.reputation}</span> reputation · <span class="num">${me.seals}</span>/4 seals`)}${me.title.next ? ` · <span title="${esc(tr(me.title.next.how))}">${L('下一级', 'next')}: ${esc(L(me.title.next.zh, me.title.next.en))}</span>` : ''}</div>`
     : '';
-  setHtml($('#me'), `<div class="who" title="${esc(houseName(me.house))}"><span class="dot" style="color:${wizardColor(me.house)}"></span><span class="title">${esc(L(me.title.zh, me.title.en))}</span><b>${esc(me.name)}</b><span class="sep">·</span><span class="house">${houseName(me.house)}</span>` +
-    (has('revelio') ? '' : rune('eye', L('点一下施放「原形立现 Revelio」，看清自己的斤两', 'Click to cast Revelio and see your own measure'), '', 'Revelio')) + '</div>' + stats +
+  setHtml($('#me'), meCard(me, has('revelio')) + stats +
     (me.decree ? `<div class="decree">${L('魔法部长 —— 你手握一道未颁布的法令（MCP: decree）', 'Minister for Magic — you hold an unspent decree (MCP: decree)')}</div>` : ''));
   $('#me').classList.add('veiled');
   // top-right: Tempus
@@ -607,7 +608,7 @@ function hud() {
   const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather);
   const procl = me.proclamation ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
   setHtml($('#clock'), has('tempus')
-    ? `<div class="time veiled">${snap.night ? '☾' : '☼'} <span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</div>${procl}`
+    ? `<div class="time veiled">${ic(snap.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</span></div>${procl}`
     : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
   // bottom-right: Homenum Revelio
   const pres = $('#presence');
@@ -616,7 +617,7 @@ function hud() {
     const near = snap.w.filter((x) => x.h !== myHandle && my && Math.hypot(x.x - my.root.position.x, x.z - my.root.position.z) < 60)
       .map((x) => ({ x, d: Math.hypot(x.x - my!.root.position.x, x.z - my!.root.position.z), a: Math.atan2(x.x - my!.root.position.x, -(x.z - my!.root.position.z)) }))
       .sort((a, b) => a.d - b.d).slice(0, 5);
-    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span style="color:${wizardColor(x.ho)}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`) + '</div>');
+    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span class="hn" data-house="${x.ho}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`) + '</div>');
   } else setHtml(pres, me.year >= 3
     ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
     : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
@@ -625,11 +626,11 @@ function hud() {
   setHtml($('#pointme'), me.year >= 2
     ? rune('compass', L('点一下施放「给我指路」，点亮小地图', 'Click to cast Point Me and light the minimap'), 'tip-up', 'Point Me')
     : rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
-  bar('.hp', me.hp, me.maxHp, `${L('生命', 'HP')} ${Math.round(me.hp)} / ${me.maxHp}`);
-  bar('.mana', me.mana, me.maxMana, `${Math.round(me.mana)} / ${me.maxMana} ${L('法力', 'mana')}`);
+  bar('.hp', me.hp, me.maxHp, `${Math.round(me.hp)}/${me.maxHp}`);
+  bar('.mana', me.mana, me.maxMana, `${Math.round(me.mana)}/${me.maxMana}`);
   bar('.xp', me.xpNext ? me.xp : 1, me.xpNext ?? 1, '');
   const hb = $('#hotbar');
-  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => '<div><span></span><b></b><i></i><em></em></div>').join('');
+  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => `<div><span></span><b></b><i></i><em></em>${ic('wand')}<u class="cost"></u></div>`).join('');
   me.hotbar.forEach((s, i) => {
     const el = hb.children[i] as HTMLElement;
     // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
@@ -643,6 +644,12 @@ function hud() {
     if (s) { if (cd > 0) cdMax.set(s.id, Math.max(cdMax.get(s.id) ?? 0, cd)); else cdMax.delete(s.id); }
     setStyle(el.children[2] as HTMLElement, '--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
     setText(el.children[3], cd >= 1 ? String(Math.ceil(cd)) : '');
+    // the tile's drawing (a written spell by what it does, once the armory has said) and its last mana cost
+    const info = s ? bookSpells.find((x) => x.id === s.id) : null;
+    const icon = `#i-${s ? spellIcon(s.name, info?.effects, info?.source) : 'wand'}`;
+    const use = el.children[4].firstElementChild as SVGUseElement;
+    if (use.getAttribute('href') !== icon) use.setAttribute('href', icon);
+    setText(el.children[5], s && manaCost.has(s.name) ? String(manaCost.get(s.name)) : '');
     el.onclick ??= () => ctl.castSlot(i);
   });
   ctl.hud();
@@ -661,6 +668,19 @@ function hud() {
   renderGoal();
   trackBars();
 }
+/** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
+function meCard(me: Me, revealed: boolean) {
+  const title = L(me.title.zh, me.title.en);
+  const measure = revealed
+    ? ` · ${L(`${YEAR_ZH[me.year] ?? me.year + ' '}年级`, `Year ${me.year}`)} · ${L(`<span class="num">${me.galleons}</span> 加隆`, `<span class="num">${me.galleons}</span> Galleons`)}`
+    : rune('eye', L('点一下施放「原形立现 Revelio」，看清自己的斤两', 'Click to cast Revelio and see your own measure'), '', 'Revelio');
+  return `<span class="crest" data-house="${esc(me.house)}" aria-hidden="true">${ic(houseIcon(me.house))}</span>`
+    + `<div class="who" title="${esc(houseName(me.house))}">${title ? `<span class="rank">${esc(title)}</span>` : ''}<b class="name${isLatin(me.name) ? ' lat' : ''}">${esc(me.name)}</b></div>`
+    + `<div class="meta"><span class="house" data-house="${esc(me.house)}">${houseName(me.house)}</span>${measure}</div>`;
+}
+const YEAR_ZH: Record<number, string> = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七' };
+/** The last mana each spell cost (from your own cast reports), shown on its hotbar tile. */
+const manaCost = new Map<string, number>();
 const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
   setStyle(b.children[0] as HTMLElement, 'width', `${Math.max(0, Math.min(100, (v / Math.max(1, max)) * 100)).toFixed(2)}%`);
@@ -680,17 +700,17 @@ function drawMinimap() {
   g.clearRect(0, 0, 220, 220);
   g.save();
   g.beginPath(); g.arc(110, 110, 108, 0, Math.PI * 2); g.clip();
-  g.fillStyle = 'rgba(22,26,30,.78)'; g.fillRect(0, 0, 220, 220);
+  g.fillStyle = 'rgba(238,224,192,.95)'; g.fillRect(0, 0, 220, 220);
   const P = (x: number, z: number) => [110 + (x - cx) * S, 110 + (z - cz) * S] as const;
   for (const o of OBSTACLES) {
     if (o.style === 'tree') continue;
-    g.fillStyle = o.style === 'water' ? '#1d3f5c' : '#9a9a9a';
+    g.fillStyle = o.style === 'water' ? '#6f93b3' : '#8f7a5c';
     if (o.kind === 'box') { const [a, b] = P(o.x0, o.z0); g.fillRect(a, b, (o.x1 - o.x0) * S, (o.z1 - o.z0) * S); }
     else { const [a, b] = P(o.x, o.z); g.beginPath(); g.arc(a, b, Math.max(1, o.r * S), 0, 7); g.fill(); }
   }
-  for (const c2 of snap.c) { const [a, b] = P(c2.x, c2.z); g.fillStyle = '#ff5050'; g.fillRect(a - 1.5, b - 1.5, 3, 3); }
-  for (const w of snap.w) { const [a, b] = P(w.x, w.z); g.fillStyle = w.h === myHandle ? '#ffffff' : '#' + HOUSE_COLORS[w.ho].toString(16).padStart(6, '0'); g.beginPath(); g.arc(a, b, w.h === myHandle ? 4 : 3, 0, 7); g.fill(); }
-  g.fillStyle = '#f4ecd9'; g.font = '13px Georgia, serif';
+  for (const c2 of snap.c) { const [a, b] = P(c2.x, c2.z); g.fillStyle = '#a3262a'; g.fillRect(a - 1.5, b - 1.5, 3, 3); }
+  for (const w of snap.w) { const [a, b] = P(w.x, w.z); g.fillStyle = w.h === myHandle ? '#2a1b0f' : '#' + HOUSE_COLORS[w.ho].toString(16).padStart(6, '0'); g.beginPath(); g.arc(a, b, w.h === myHandle ? 4 : 3, 0, 7); g.fill(); }
+  g.fillStyle = '#3a2716'; g.font = '600 13px "LXGW WenKai", Georgia, serif';
   for (const l of LANDMARKS) { const [a, b] = P(l.x, l.z); if (a > 0 && a < 220 && b > 0 && b < 220) g.fillText(l.name, a + 3, b); }
   g.restore();
 }
@@ -722,12 +742,12 @@ async function showBoard() {
   if (!b.hidden) { b.hidden = true; return; }
   const lb = await (await fetch('/api/leaderboard')).json();
   solo(b);
-  b.innerHTML = `<h2><span>${L('排行榜', 'Leaderboard')} <small>${L(`第 ${lb.term.n} 学期 · 剩余 <span class="num">${fmtT(lb.term.secondsLeft)}</span>`, `term ${lb.term.n} · <span class="num">${fmtT(lb.term.secondsLeft)}</span> left`)} · <kbd>L</kbd></small></span> <button class="x" data-close="board" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
-    <p><b>${L('学院分', 'House points')}:</b> <span class="num">${Object.entries(lb.housePoints).map(([h, p]) => `${houseName(h)} ${p}`).join(' · ')}</span></p>
+  b.innerHTML = `<h2>${ic('cup')}<span>${L('排行榜', 'Leaderboard')} <small>${L(`第 ${lb.term.n} 学期 · 剩余 <span class="num">${fmtT(lb.term.secondsLeft)}</span>`, `term ${lb.term.n} · <span class="num">${fmtT(lb.term.secondsLeft)}</span> left`)} · <kbd>L</kbd></small></span> <button class="x" data-close="board" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+    <p class="hp-line"><b>${L('学院分', 'House points')}:</b> ${Object.entries(lb.housePoints).map(([h, p]) => `<span>${ic(houseIcon(h))}${houseName(h)} <span class="num">${p}</span></span>`).join('')}</p>
     <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : '—'}<br/><small>${L('每学期结束时，声望最高（至少 100）的玩家成为魔法部长，可以颁布一道法令改写世界规则。', esc(lb.ministerRule))}</small></p>
     <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th></tr>
     ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
-    ${lb.loopholeFirstFoundBy ? `<p>🎉 ${L('第一个发现韦斯莱漏洞的人', 'First to find the Weasley Loophole')}: <b>${esc(lb.loopholeFirstFoundBy)}</b></p>` : ''}`;
+    ${lb.loopholeFirstFoundBy ? `<p>${ic('star')} ${L('第一个发现韦斯莱漏洞的人', 'First to find the Weasley Loophole')}: <b>${esc(lb.loopholeFirstFoundBy)}</b></p>` : ''}`;
   b.hidden = false;
 }
 
@@ -760,9 +780,9 @@ function menuInfo(url?: string) {
   // "$PWD" is expanded by the shell when the command is added, so the saved entry holds an absolute path and works from any directory
   const bridge = `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
   const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
-  $('#menu').innerHTML = `<h2><span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button class="x" data-close="menu" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+  $('#menu').innerHTML = `<h2>${ic('letter')}<span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button class="x" data-close="menu" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
     <section class="op-first">
-      <h3>${L('连接你的 Agent', 'Connect your agent')}</h3>
+      <h3>${ic('owl')}${L('连接你的 Agent', 'Connect your agent')}</h3>
       <div id="op-pair"></div>
       <div id="op-agent" class="hint"></div>
     </section>
@@ -771,7 +791,7 @@ function menuInfo(url?: string) {
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
     <p>${L('<b>HTTP 直连 + 配置头</b>（命令里是字面的 <code>${HOGWARTS_TOKEN}</code>，要用单引号；再在 shell profile 里 <code>export HOGWARTS_TOKEN=你的密钥</code>）：', '<b>Direct HTTP with a header</b> (the command holds a literal <code>${HOGWARTS_TOKEN}</code> in single quotes; put <code>export HOGWARTS_TOKEN=&lt;your key&gt;</code> in your shell profile):')}</p>
     <div class="op-cmd"><pre id="op-header">${esc(header)}</pre><button class="ghost" data-copy="op-header">${L('复制', 'Copy')}</button></div>
-    <h3>${L('你的猫头鹰邮递密钥', 'Your Owl Post key')}</h3>
+    <h3>${ic('key')}${L('你的猫头鹰邮递密钥', 'Your Owl Post key')}</h3>
     <div id="op-key"></div>
     <p class="op-registry">${L('你的登记号', 'Your registry number')}: <code>${esc(account.registry || '—')}</code><br/><span class="hint">${L('登记号是魔法部的公开记录，猫头鹰凭它投递包裹。', 'Your registry number is a public Ministry record: owls deliver parcels by it.')}</span></p>
     <p id="op-msg" class="hint"></p>
@@ -851,21 +871,21 @@ function renderMenuLive() {
   if (pairing && left <= 0) { pairing = null; pairExpired = true; left = 0; }
   let html: string;
   if (pairedWith) {
-    html = `<p class="op-ok">✅ ${L(`${esc(pairedWith)} 已连接`, `${esc(pairedWith)} is connected`)}</p><p class="hint">${L('现在可以按 <kbd>O</kbd> 和它说话。', 'Press <kbd>O</kbd> to talk to it.')}</p>`;
+    html = `<p class="op-ok">${ic('check')} ${L(`${esc(pairedWith)} 已连接`, `${esc(pairedWith)} is connected`)}</p><p class="hint">${L('现在可以按 <kbd>O</kbd> 和它说话。', 'Press <kbd>O</kbd> to talk to it.')}</p>`;
   } else if (pairing) {
     html = `<div class="op-code">${esc(pairing.code)}</div>
       <p>${L('对你的 Agent 说：', 'Tell your agent:')}<br/><b class="op-say">${L(`「${esc(PAIR_SAY(pairing.code))}」`, `"${esc(PAIR_SAY(pairing.code))}"`)}</b></p>
       <p><button class="ghost" data-copy="op-say">${L('复制这句话', 'Copy the sentence')}</button> <button class="ghost" data-act="pair">${L('换一个', 'New code')}</button> <span class="hint">${L('有效期', 'Valid for')} <span id="op-count"></span> · ${L('只能用一次', 'single use')}</span></p>`;
   } else {
-    html = `<p><button data-act="pair" class="op-big">🦉 ${L('生成配对码', 'Get a pairing code')}</button></p>
+    html = `<p><button data-act="pair" class="op-big">${ic('owl')}${L('生成配对码', 'Get a pairing code')}</button></p>
       <p class="hint">${pairExpired ? L('配对码过期了，再生成一个吧。', 'That code expired; get a new one.') : L(`得到一个 6 位配对码（${Math.round(PAIR_TTL_S / 60)} 分钟内有效，只能用一次），然后对你的 Agent 说：「连上霍格沃茨，配对码 XXX-XXX」。不用复制任何长密钥。`, `You get a 6-character code (${Math.round(PAIR_TTL_S / 60)} minutes, single use); then tell your agent: "Connect to Hogwarts, pairing code XXX-XXX". No long key to copy.`)}</p>`;
   }
   if (html !== lastPairHtml) { $('#op-pair').innerHTML = html; lastPairHtml = html; }
   const cnt = document.getElementById('op-count');
   if (cnt) cnt.textContent = fmtT(left);
   const agentLine = a?.connected
-    ? `🤖 ${esc(a.client)} ${L('已连接', 'connected')}${a.ago !== null ? ` · ${agoText(a.ago)}${a.tool ? `：${esc(a.tool)}` : ''}` : ''}${a.paused ? L(' · ⏸ 已暂停', ' · ⏸ paused') : ''}`
-    : L('🤖 还没有 Agent 连接。', '🤖 No agent connected yet.');
+    ? `<i class="dot on"></i>${esc(a.client)} ${L('已连接', 'connected')}${a.ago !== null ? ` · ${agoText(a.ago)}${a.tool ? `：${esc(a.tool)}` : ''}` : ''}${a.paused ? L(' · ⏸ 已暂停', ' · ⏸ paused') : ''}`
+    : `<i class="dot"></i>${L('还没有 Agent 连接。', 'No agent connected yet.')}`;
   const al = $('#op-agent');
   if (al.innerHTML !== agentLine) al.innerHTML = agentLine;
   const keyHtml = (keyShown
@@ -949,7 +969,7 @@ function askHtml(l: OwlLine, now: number) {
   const st = askStateOf(l, now);
   if (st === 'answered') return `<div class="ow-ans">✓ ${L('你选了', 'You chose')}: <b>${esc(l.answer ?? '')}</b></div>`;
   if (st === 'expired') return `<div class="ow-ans hint">${L('（提问已过期）', '(the question expired)')}</div>`;
-  return `<div class="ow-opts">${l.ask.options.map((o) => `<button data-ask="${l.id}" data-choice="${esc(o)}"${st === 'pending' ? ' disabled' : ''}>${esc(o)}</button>`).join('')}<span class="hint" data-left="${l.id}"></span></div>`;
+  return `<div class="ow-opts">${l.ask.options.map((o) => `<button data-ask="${l.id}" data-choice="${esc(o)}"${st === 'pending' ? ' disabled' : ''}>${esc(o)}</button>`).join('')}<span class="hint timer">${ic('hourglass')}<span data-left="${l.id}"></span></span></div>`;
 }
 let owlStates = '';
 function renderOwl() {
@@ -961,10 +981,10 @@ function renderOwl() {
   if (!panel.hidden && owlDirty) {
     owlDirty = false;
     const a = agentNow();
-    $('#owl-who').innerHTML = a?.connected ? `🤖 ${esc(a.client)}${a.paused ? L(' · ⏸ 已暂停', ' · ⏸ paused') : ''}` : `<span class="hint">${L('Agent 未连接：信会留在信箱里，它连上后用 listen 收。', 'No agent connected: owls wait in the owlbox until it listens.')}</span>`;
+    $('#owl-who').innerHTML = a?.connected ? `<i class="dot ${a.paused ? 'paused' : 'on'}"></i>${esc(a.client)} ${a.paused ? L('已暂停', 'paused') : L('已连接', 'connected')}` : `<i class="dot"></i><span class="hint">${L('Agent 未连接：信会留在信箱里，它连上后用 listen 收。', 'No agent connected: owls wait in the owlbox until it listens.')}</span>`;
     const log = $('#owl-log');
     log.innerHTML = owlLog.length
-      ? owlLog.map((l) => `<div class="ow ${l.from}"><span class="ow-from">${l.from === 'agent' ? '🤖 Agent' : L('🧙 你', '🧙 You')}</span>${l.re !== undefined ? `<span class="hint">${L('（回答）', ' (answer)')}</span>` : ''}<div class="ow-text">${esc(l.text)}</div>${askHtml(l, now)}</div>`).join('')
+      ? owlLog.map((l) => `<div class="ow ${l.from}"><span class="ow-from">${l.from === 'agent' ? `${ic('quill')}${L(`${esc(a?.client ?? 'Agent')} 回信`, `${esc(a?.client ?? 'Agent')} writes`)}` : L('你写道', 'You wrote')}${l.re !== undefined ? L('（回答）', ' (answer)') : ''}</span><div class="ow-text">${esc(l.text)}</div>${askHtml(l, now)}</div>`).join('')
       : `<div class="hint">${L('这里只有你和你的 Agent。写一句话，按回车寄出。', 'Only you and your agent see this. Write a line and press Enter.')}</div>`;
     log.scrollTop = log.scrollHeight;
     $('#owl-status').textContent = owlStatus;
@@ -979,7 +999,7 @@ function renderOwl() {
 }
 function owlPop(l: OwlLine) {
   const pop = $('#owlpop');
-  pop.innerHTML = `<div class="op-head">🦉 ${L('你的 Agent 说', 'Your agent says')} <span class="hint">${L('（按 O 回复）', '(O to reply)')}</span></div><div class="ow-text">${esc(l.text)}</div>${askHtml(l, worldNow())}`;
+  pop.innerHTML = `<div class="op-head">${ic('owl')}${L('你的 Agent 来信', 'Your agent writes')} <span class="hint">${L('（按 O 回复）', '(O to reply)')}</span></div><div class="ow-text">${esc(l.text)}</div>${askHtml(l, worldNow())}`;
   pop.hidden = false;
   owlPopUntil = performance.now() + (l.ask ? Math.max(4, l.ask.expiresAt - worldNow()) * 1000 : 9000);
 }
@@ -1067,7 +1087,7 @@ function trackBars() {
   const tl = Math.round($('#topleft').getBoundingClientRect().bottom);
   if (tl !== tlBottom && tl > 0) { tlBottom = tl; document.documentElement.style.setProperty('--tl-bottom', `${tl}px`); }
   const tut = $('#tutorial');
-  const high = tut.dataset.at === 'topleft' || (tut.dataset.at === 'topright' && innerWidth <= 800);
+  const high = tut.dataset.at === 'topleft' || tut.dataset.at === 'topright';
   const th = !tut.hidden && high && !tut.dataset.over ? Math.round(tut.getBoundingClientRect().height) : 0;
   if (th !== tutH) { tutH = th; document.documentElement.style.setProperty('--tut-h', `${th}px`); }
 }
@@ -1133,7 +1153,6 @@ let trunkRefetch = 0;
 /** The armory has arrived at least once (so an empty trunk really is empty). */
 let trunkKnown = false;
 let trunkOk = false;
-const SLOT_ICON: Record<string, string> = { wand: '🪄', robe: '🥻', amulet: '📿', trinket: '💍', broom: '🧹' };
 const SLOT_ZH: Record<string, string> = { wand: '魔杖', robe: '长袍', amulet: '护身符', trinket: '小饰物', broom: '扫帚' };
 const MOD_ZH: Record<string, string> = { maxHp: '生命上限', maxMana: '法力上限', manaRegen: '回蓝', speed: '移速', power: '威力', ward: '护甲' };
 function onArmory(armory: { items?: TrunkItem[]; spells?: { name: string }[] }) {
@@ -1160,8 +1179,8 @@ function renderTrunk(rebuild = false) {
   if (el.hidden) return;
   if (rebuild) {
     const fin = finiteBlocked(), rev = knows('Revelio', 1) ? null : L('你还不会「原形立现」', 'You do not know Revelio yet');
-    $('#trunk-cure').innerHTML = `<button data-act="finite"${fin ? ` disabled title="${esc(fin)}"` : ''}>✨ ${L('念咒立停解咒', 'Cast Finite Incantatem to break curses')}</button>${fin ? ` <span class="hint">${esc(fin)}</span>` : ''}
-      <button class="ghost" data-act="revelio"${rev ? ` disabled title="${esc(rev)}"` : ''}>👁️ ${L('念原形立现，看看是谁', 'Cast Revelio: who sent it?')}</button>`;
+    $('#trunk-cure').innerHTML = `<button data-act="finite"${fin ? ` disabled title="${esc(fin)}"` : ''}>${ic('finite')}${L('念咒立停解咒', 'Cast Finite Incantatem to break curses')}</button>${fin ? ` <span class="hint">${esc(fin)}</span>` : ''}
+      <button class="ghost" data-act="revelio"${rev ? ` disabled title="${esc(rev)}"` : ''}>${ic('eye')}${L('念原形立现，看看是谁', 'Cast Revelio: who sent it?')}</button>`;
     $('#trunk-list').innerHTML = trunkItems.length ? trunkItems.map((it) => {
       const bound = boundLeft(it) > 0;
       const badges = [
@@ -1175,7 +1194,7 @@ function renderTrunk(rebuild = false) {
       const del = it.unique === 'elder_wand' ? '' : destroyArmed === it.id
         ? `<button data-act="destroy-yes" data-id="${esc(it.id)}">${L('确定销毁', 'Destroy it')}</button> <button class="ghost" data-act="destroy-no">${L('取消', 'Cancel')}</button>`
         : `<button class="ghost" data-act="destroy" data-id="${esc(it.id)}"${stuck}>${L('销毁', 'Destroy')}</button>`;
-      return `<li class="${it.cursed ? 'cursed' : ''}"><div class="ti-name">${SLOT_ICON[it.slot] ?? '📦'} <b>${esc(it.name)}</b> <span class="hint">${esc(L(SLOT_ZH[it.slot] ?? it.slot, it.slot))}</span> ${badges}</div>
+      return `<li class="${it.cursed ? 'cursed' : ''}"><span class="it-ic">${ic(itemIcon(it.slot))}</span><div class="ti-name"><b>${esc(it.name)}</b> <span class="hint">${esc(L(SLOT_ZH[it.slot] ?? it.slot, it.slot))}</span> ${badges}</div>
         <div class="ti-mods">${modsText(it.mods)}${it.lore ? ` <i class="hint">“${esc(it.lore)}”</i>` : ''}</div><div class="ti-acts">${wear} ${del}</div></li>`;
     }).join('') : `<li class="hint">${L('箱子是空的。在下面的商店买一件，或者让你的 Agent 用 forge_item 给你锻造。', 'Your trunk is empty. Buy something in the shop below, or ask your agent to forge you something (forge_item).')}</li>`;
     $('#trunk-msg').textContent = trunkMsg;
@@ -1226,10 +1245,10 @@ let shopSig = '';
 function renderShop() {
   const g = me?.galleons ?? 0;
   shopSig = `${me?.galleons}`;
-  $('#shop').innerHTML = `<h3>${L('商店', 'Shop')} <small>${L(`你有 <span class="num">${g}</span> 加隆 · 买下自动穿上 · 打败魔物赚加隆`, `you have <span class="num">${g}</span> Galleons · worn at once · creatures drop Galleons`)}</small></h3><ul class="shop-list">` +
+  $('#shop').innerHTML = `<h3>${ic('coin')}${L('商店', 'Shop')} <small>${L(`你有 <span class="num">${g}</span> 加隆 · 买下自动穿上 · 打败魔物赚加隆`, `you have <span class="num">${g}</span> Galleons · worn at once · creatures drop Galleons`)}</small></h3><ul class="shop-list">` +
     SHOP.map((s) => {
       const price = shopPrice(s), can = g >= price;
-      return `<li><div class="ti-name">${SLOT_ICON[s.slot] ?? '📦'} <b>${esc(L(s.zh, s.en))}</b> <span class="hint">${esc(L(SLOT_ZH[s.slot] ?? s.slot, s.slot))}</span></div>
+      return `<li><span class="it-ic">${ic(itemIcon(s.slot))}</span><div class="ti-name"><b>${esc(L(s.zh, s.en))}</b> <span class="hint">${esc(L(SLOT_ZH[s.slot] ?? s.slot, s.slot))}</span></div>
         <div class="ti-mods">${modsText(s.mods)} <i class="hint">“${esc(L(s.lore.zh, s.lore.en))}”</i></div>
         <div class="ti-acts"><button data-act="buy" data-item="${esc(s.key)}"${can ? '' : ' disabled'}>${L(`<span class="num">${price}</span> 加隆 · 购买`, `Buy · <span class="num">${price}</span> Galleons`)}</button>${can ? '' : ` <span class="hint">${L(`还差 ${price - g} 加隆`, `${price - g} more Galleons`)}</span>`}</div></li>`;
     }).join('') + '</ul>';
@@ -1260,7 +1279,7 @@ let lastBookErr = '';
 function toggleBook(force?: boolean) {
   const b = $('#book');
   b.hidden = !(force ?? b.hidden);
-  if (!b.hidden) { solo(b); send({ t: 'book' }); ctl.notify('book'); }
+  if (!b.hidden) { solo(b); b.dataset.house = me?.house ?? ''; send({ t: 'book' }); ctl.notify('book'); }
 }
 function bookOut(text: string, cls = '') {
   const o = $('#sp-out');
@@ -1281,13 +1300,25 @@ function renderBookList() {
   const slotOf = (id: string) => bookBar.indexOf(id) + 1;
   const keys = (s: ArmorySpell) => `<span class="bk-slots" role="group" aria-label="${esc(L('放到快捷栏', 'Put on the hotbar'))}">${[1, 2, 3, 4, 5, 6].map((n) =>
     `<button type="button" class="bk-slot${slotOf(s.id) === n ? ' on' : ''}" data-slot="${n}" data-spell="${esc(s.id)}" title="${esc(slotOf(s.id) === n ? L(`在 ${n} 号栏 · 再点一下取下`, `On slot ${n} · click again to remove`) : L(`放到 ${n} 号栏`, `Put on slot ${n}`))}">${n}</button>`).join('')}</span>`;
-  $('#book-list').innerHTML = `<li data-id="" class="${!bookSel && !tplKey ? 'sel' : ''}">＋ <b>${L('新咒语', 'New spell')}</b><small>${L('自己写一个', 'write your own')}</small></li>`
-    + `<li data-tpl="1" class="tpl-entry${tplKey ? ' sel' : ''}">🧩 <b>${L('从模板开始', 'Start from a template')}</b><small>${L('不用写代码：选一选、拖一拖', 'no code: pick and slide')}</small></li>`
-    + bookSpells.map((s) => `<li data-id="${esc(s.id)}" draggable="true" class="${s.id === bookSel ? 'sel' : ''}">${s.builtin ? '📖' : '✒️'} <b>${esc(spellLabel(s))}</b><small>${L(`${s.minYear} 年级`, `y${s.minYear}`)} · ${s.nodes} ${L('节点', 'nodes')} · ${esc(s.effects.join(', ') || '—')}</small>${keys(s)}</li>`).join('');
+  $('#book-list').innerHTML = `<li data-id="" class="tab${!bookSel && !tplKey ? ' sel' : ''}" title="${esc(L('自己写一个', 'write your own'))}">${ic('plus')}${L('新咒语', 'New spell')}</li>`
+    + `<li data-tpl="1" class="tab tpl-entry${tplKey ? ' sel' : ''}" title="${esc(L('不用写代码：选一选、拖一拖', 'no code: pick and slide'))}">${ic('scroll')}${L('从模板开始', 'Start from a template')}</li>`
+    + bookSpells.map((s) => `<li data-id="${esc(s.id)}" draggable="true" class="${s.id === bookSel ? 'sel' : ''}" title="${esc(spellLabel(s))}"><span class="sp-ic">${ic(spellIcon(s.name, s.effects, s.source))}</span>`
+      + `<span class="sp-tx"><b>${s.builtin && lang === 'zh' ? `${esc(spellName(s.name))}<span class="lat">${esc(s.name)}</span>` : `<span class="${isLatin(s.name) ? 'lat' : ''}">${esc(s.name)}</span>`}</b>`
+      + `<small>${L(`${YEAR_ZH[s.minYear] ?? s.minYear}年级`, `Year ${s.minYear}`)} · ${s.nodes} ${L('节点', 'nodes')} · ${esc(s.effects.join(', ') || '—')}</small></span>${keys(s)}</li>`).join('');
   $('#book-bar').innerHTML = `<span class="bb-h">${L('快捷栏', 'Hotbar')}</span>` + bookBar.map((id, i) => {
     const s = id ? bookSpells.find((x) => x.id === id) : null;
-    return `<div class="bb-cell${s ? '' : ' empty'}" data-cell="${i + 1}" title="${esc(L('把咒语拖到这里；或者先选中咒语再点这一格', 'Drop a spell here, or select one and click this cell'))}"><b>${i + 1}</b><span>${s ? esc(s.builtin ? spellName(s.name) : s.name) : '·'}</span></div>`;
-  }).join('') + `<span class="bb-hint hint">${L('点咒语后面的数字，或把咒语拖到格子里', 'Click a number after a spell, or drag it onto a cell')}</span>`;
+    const nm = s ? (s.builtin ? spellName(s.name) : s.name) : '';
+    return `<div class="bb-cell${s ? '' : ' empty'}" data-cell="${i + 1}" title="${esc((nm ? nm + ' — ' : '') + L('把咒语拖到这里；或者先选中咒语再点这一格', 'Drop a spell here, or select one and click this cell'))}"><b>${i + 1}</b>${ic(s ? spellIcon(s.name, s.effects, s.source) : 'plus')}<span>${esc(nm || '·')}</span></div>`;
+  }).join('') + `<span class="bb-hint hint">${L('把咒语拖到格子里', 'Drag a spell onto a cell')}</span>`;
+  renderBookTitle();
+}
+/** The right page's heading: the template, the spell you are reading, or a blank page. */
+function renderBookTitle() {
+  const t = tplKey ? TEMPLATES.find((x) => x.key === tplKey) : null;
+  const s = !t && bookSel ? bookSpells.find((x) => x.id === bookSel) : null;
+  $('#sp-title').innerHTML = t ? `${esc(L(t.zh, t.en))} <small>${L('模板 · 不用写代码：选一选、拖一拖', 'template · no code: pick and slide')}</small>`
+    : s ? `${esc(s.builtin ? spellName(s.name) : s.name)}${s.builtin && lang === 'zh' ? ` <span class="lat">${esc(s.name)}</span>` : ''} <small>${s.builtin ? L('标准课程', 'the standard curriculum') : L('你自己的咒语', 'your own spell')}</small>`
+    : `${L('新咒语', 'A new spell')} <small>${L('写一段 Runes 程序', 'write a Runes program')}</small>`;
 }
 /** Put a spell on a hotbar slot (it swaps with whatever was there; the same slot again takes it off). */
 function assignSlot(id: string, n: number) {
@@ -1375,6 +1406,8 @@ function openTemplates(key?: string) {
   applyTemplate();
 }
 function closeTemplates() { tplKey = null; $('#sp-tpl').hidden = true; }
+/** How far along its track a slider sits (the inked part of the track). */
+const rangePct = (v: number, min: number, max: number) => `${max > min ? Math.round(((v - min) / (max - min)) * 100) : 0}%`;
 function renderTemplates() {
   const t = TEMPLATES.find((x) => x.key === tplKey);
   if (!t) return;
@@ -1384,7 +1417,14 @@ function renderTemplates() {
   const params = t.params.map((p) => {
     if (p.kind === 'range') {
       const unit = p.unit ? L(p.unit.zh, p.unit.en) : '';
-      return `<label class="tp-p"><span>${esc(L(p.zh, p.en))}</span><input type="range" data-p="${p.id}" min="${p.min}" max="${p.max(y, se)}" step="${p.step ?? 1}" value="${v[p.id]}"/><b class="num" data-pv="${p.id}">${v[p.id]}${unit}</b></label>`;
+      return `<label class="tp-p"><span>${esc(L(p.zh, p.en))}</span><input type="range" data-p="${p.id}" min="${p.min}" max="${p.max(y, se)}" step="${p.step ?? 1}" value="${v[p.id]}" style="--p:${rangePct(Number(v[p.id]), p.min, p.max(y, se))}"/><b class="num" data-pv="${p.id}">${v[p.id]}${unit}</b></label>`;
+    }
+    // the element: inked chips with their drawings, not a menu
+    if (p.options.every((o) => ELEMENT_ICON[o.v])) {
+      return `<div class="tp-p"><span>${esc(L(p.zh, p.en))}</span><div class="tp-els" role="radiogroup">${p.options.map((o) => {
+        const open = optionOpen(o, y, se);
+        return `<label class="tp-el" title="${esc(L(o.zh, o.en))}"><input type="radio" name="tp-${p.id}" data-p="${p.id}" value="${esc(o.v)}"${o.v === v[p.id] ? ' checked' : ''}${open ? '' : ' disabled'}/>${ic(ELEMENT_ICON[o.v])}${esc(L(o.zh, o.en).split(/\s*[—（(]/)[0])}</label>`;
+      }).join('')}</div></div>`;
     }
     return `<label class="tp-p"><span>${esc(L(p.zh, p.en))}</span><select data-p="${p.id}">${p.options.map((o) => {
       const lock = optionLock(o, y, se);
@@ -1420,6 +1460,7 @@ $('#sp-tpl').addEventListener('input', (e) => {
   const p = t.params.find((x) => x.id === id);
   const out = $('#sp-tpl').querySelector(`[data-pv="${id}"]`);
   if (out && p?.kind === 'range') out.textContent = `${el.value}${p.unit ? L(p.unit.zh, p.unit.en) : ''}`;
+  if (el instanceof HTMLInputElement && el.type === 'range') el.style.setProperty('--p', rangePct(Number(el.value), Number(el.min), Number(el.max)));
   applyTemplate();
 });
 
@@ -1469,7 +1510,7 @@ function toggleSeals() { const s = $('#seals'); s.hidden = !s.hidden; if (!s.hid
 type SealInfo = { tier: number; name: string; zh: string; rewardZh: string; requiresYear: number; inputWords: number; reward: string; state: string; pages: { page: number; where: string; collected: boolean }[] };
 function renderSeals(section: { progress: string; seals: SealInfo[]; codex: string[] }, current: { tier: number; name: string; zh: string; inputWords: number; pagesCollected: string; runes: string; broken: boolean }) {
   sealTier = current.tier;
-  $('#seal-list').innerHTML = section.seals.map((x) => `<div class="${x.state === 'broken' ? 'broken' : ''}"><b>${esc(L(x.zh, x.name))}</b><br/>${esc(sealState(x.state))} · ${L(`${x.requiresYear} 年级`, `year ${x.requiresYear}`)} · ${L(`${x.inputWords} 个字`, `${x.inputWords} word(s)`)}<br/><i>${esc(L(x.rewardZh, x.reward))}</i><br/>${x.pages.map((p) => `${p.collected ? '📜' : '▫️'} ${esc(placeName(p.where))}`).join('<br/>')}</div>`).join('');
+  $('#seal-list').innerHTML = section.seals.map((x) => `<div class="${x.state === 'broken' ? 'broken' : ''}">${ic(x.state === 'broken' ? 'seal-broken' : 'seal')}<b>${esc(L(x.zh, x.name))}</b><br/>${esc(sealState(x.state))} · ${L(`${x.requiresYear} 年级`, `year ${x.requiresYear}`)} · ${L(`${x.inputWords} 个字`, `${x.inputWords} word(s)`)}<br/><i>${esc(L(x.rewardZh, x.reward))}</i><br/>${x.pages.map((p) => `<span class="pg${p.collected ? '' : ' no'}">${ic('scroll')} ${esc(placeName(p.where))}</span>`).join('<br/>')}</div>`).join('');
   $('#seal-title').textContent = L(`${current.zh} —— 已收集 ${current.pagesCollected} 页${current.broken ? '（已破解）' : ''}`, `${current.name} — ${current.pagesCollected} pages${current.broken ? ' (broken)' : ''}`);
   $('#seal-runes').textContent = current.runes;
   $('#seal-codex').textContent = section.codex.join('\n');
@@ -1500,7 +1541,7 @@ function renderGoal() {
     if (goalKey) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
     goalKey = goal.key; lsSet('hogwarts.goal.seen', goal.key); goalOpen = false;
   }
-  const html = `<div class="g-row"><button type="button" class="g-line" aria-expanded="${goalOpen}" title="${esc(L('点一下看怎么做', 'Click for how'))}"><span class="g-k">${L('下一步', 'Next')}</span><span class="g-t">${esc(goal.text)}</span></button>`
+  const html = `<div class="g-row"><button type="button" class="g-line" aria-expanded="${goalOpen}" title="${esc(L('点一下看怎么做', 'Click for how'))}">${ic('quill')}<span class="g-k">${L('下一步', 'Next')}</span><span class="g-t">${esc(goal.text)}</span></button>`
     + `<button type="button" class="g-x" title="${esc(L('隐藏（帮助面板 H 里可以重新打开）', 'Hide (the help panel, H, brings it back)'))}" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></div>`
     + (goalOpen ? `<div class="g-why">${esc(goal.why)}${goal.act ? `<div class="g-acts"><button type="button" class="g-act">${esc(goal.actLabel ?? '')}</button></div>` : ''}</div>` : '');
   setHtml(el, html);

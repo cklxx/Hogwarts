@@ -14,7 +14,7 @@ import { gzipSync } from 'node:zlib';
  * - Files are read once and kept in memory, keyed by size and mtime (a rebuild is picked up on the next
  *   request: the stat is cheap).
  */
-const MIME: Record<string, string> = { '.webp': 'image/webp', '.hdr': 'application/octet-stream', '.md': 'text/markdown; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.ico': 'image/x-icon', '.ktx2': 'image/ktx2', '.woff2': 'font/woff2' };
+const MIME: Record<string, string> = { '.webp': 'image/webp', '.hdr': 'application/octet-stream', '.md': 'text/markdown; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.ico': 'image/x-icon', '.ktx2': 'image/ktx2', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 const COMPRESSIBLE = new Set(['.js', '.css', '.html', '.svg', '.json', '.md', '.hdr', '.txt']);
 
 interface Entry { tag: string; body: Buffer; br: Buffer | null; gz: Buffer | null }
