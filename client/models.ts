@@ -20,10 +20,25 @@ export class Label {
     this.sprite.scale.set(4.8 * scale, 1.5 * scale, 1);
     this.sprite.renderOrder = 10;
   }
+  private pending: [string, string, number, string | undefined, string] | null = null;
+  /**
+   * Set what the tag says. Painting the canvas and uploading it (512 x 160 RGBA) is the costly part, so it
+   * happens only when something changed, and for a hidden tag (far away, see main.ts) only once it is shown.
+   */
   draw(name: string, color: string, hpFrac: number, say?: string, extra = '') {
     const key = `${name}|${color}|${hpFrac.toFixed(2)}|${say}|${extra}`;
-    if (key === this.last) return;
+    if (key === this.last) { this.pending = null; return; }
+    if (!this.sprite.visible) { this.pending = [name, color, hpFrac, say, extra]; return; }
     this.last = key;
+    this.paint(name, color, hpFrac, say, extra);
+  }
+  /** Show or hide the tag (painting what it was last told to say, if that changed while hidden). */
+  show(on: boolean) {
+    if (this.sprite.visible === on) return;
+    this.sprite.visible = on;
+    if (on && this.pending) { const p = this.pending; this.pending = null; this.draw(...p); }
+  }
+  private paint(name: string, color: string, hpFrac: number, say: string | undefined, extra: string) {
     const c = this.ctx;
     c.clearRect(0, 0, 512, 160);
     if (say) {
@@ -619,6 +634,63 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
       return fire;
     },
   };
+}
+
+// ------------------------------------------------------------------ the far wizard (crowd.ts)
+/**
+ * A wizard seen from afar, in one low-poly mesh in the rest pose (~230 triangles against ~9 000 up
+ * close): closed robe and sleeves, head, pointed hat and brim, the scarf at the neck. It is drawn
+ * instanced (crowd.ts), so every far wizard together costs one draw call (two with the ink outline).
+ * `aTint` says what colours each vertex: 1 = the robe (per instance: the house black or a glamour's
+ * robe), 2 = the trim (per instance: the house scarf colour or a glamour's trim), 0 = its own colour.
+ */
+export function farWizardGeometry() {
+  return once('farWizardGeo', () => {
+    const parts: [THREE.BufferGeometry, number, number][] = []; // geometry, own colour, tint
+    const robe = rings(ROBE.map(([r, y]) => ({ r, y })), 10);
+    robe.deleteAttribute('uv');
+    parts.push([robe, 0xffffff, 1]);
+    const hem = new THREE.CylinderGeometry(0.575, 0.585, 0.06, 10, 1, true); hem.translate(0, 0.06, 0);
+    parts.push([hem, 0xffffff, 2]);
+    const scarf = new THREE.TorusGeometry(0.135, 0.058, 4, 8); scarf.rotateX(Math.PI / 2); scarf.translate(0, 1.52, 0);
+    parts.push([scarf, 0xffffff, 2]);
+    const head = new THREE.SphereGeometry(0.215, 8, 6); head.scale(1, 1.06, 0.98); head.translate(0, 1.71, 0);
+    parts.push([head, SKIN[1], 0]);
+    const crown = new THREE.ConeGeometry(0.225, 0.68, 8, 1, true); crown.translate(0, 0.34, 0);
+    const brim = new THREE.CylinderGeometry(0.42, 0.4, 0.03, 10); brim.translate(0, 0.01, 0);
+    for (const g of [crown, brim]) { g.rotateZ(0.06); g.rotateX(0.24); g.translate(0, 1.87, 0.03); parts.push([g, 0xffffff, 1]); }
+    for (const s of [-1, 1]) {
+      const sleeve = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 6, 1, true); sleeve.translate(0, -0.3, 0);
+      sleeve.rotateZ(s < 0 ? -0.12 : 0.1); sleeve.rotateX(s < 0 ? 0.06 : 0.3); sleeve.translate(s * 0.29, 1.41, 0);
+      parts.push([sleeve, 0xffffff, 1]);
+    }
+    const c = new THREE.Color();
+    const geo = mergeGeometries(parts.map(([g0, col, tint]) => {
+      const g = g0.index ? g0.toNonIndexed() : g0;
+      g.deleteAttribute('uv');
+      if (!g.getAttribute('normal')) g.computeVertexNormals();
+      const n = g.getAttribute('position').count;
+      c.set(col);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: n * 3 }, (_, i) => (i % 3 === 0 ? c.r : i % 3 === 1 ? c.g : c.b)), 3));
+      g.setAttribute('aTint', new THREE.Float32BufferAttribute(new Array(n).fill(tint), 1));
+      return g;
+    }))!;
+    geo.computeBoundingSphere();
+    return geo;
+  });
+}
+const farCache = new Map<string, { robe: number; trim: number }>();
+/** The colours a far wizard is drawn in: robe and trim, from the house and the glamour worn (if any). */
+export function farColors(m: WizardModel): { robe: number; trim: number } {
+  const d = m.dress, k = `${d.house}|${d.key}`;
+  let v = farCache.get(k);
+  if (!v) {
+    const g = parseGlamourKey(d.key);
+    const scarf = new THREE.Color(SCARF[d.house][0]).getHex();
+    v = { robe: g?.robe ?? (g ? PRESET_CLOTH[g.mat] : undefined) ?? CLOTH, trim: g?.trim ?? scarf };
+    farCache.set(k, v);
+  }
+  return v;
 }
 
 // ------------------------------------------------------------------ transfiguration of self (glamour)

@@ -3,7 +3,7 @@
  *
  *   npx vite build && npx tsx scripts/perf-client.ts [--port=8820] [--q=high,low] [--secs=8] [--warm=4]
  *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,castle,lake,overview] [--size=1280x720]
- *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium]
+ *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium] [--census] [--shots=dir] [--url=&extra=1]
  *
  * What it does: writes a world save with `--bots` enrolled wizards (`--crowd` of them within 15 m of the courtyard
  * spawn, the rest spread over the map), the wild pre-filled to 3x its population, and one viewer wizard at the spawn;
@@ -60,6 +60,7 @@ const SHOTS: Record<string, { pos: [number, number, number]; look: [number, numb
   castle: { pos: [55, 40, 40], look: [0, 12, -45] },
   lake: { pos: [-55, 10, 10], look: [-110, 0, 45] },
   overview: { pos: [0, 150, 170], look: [0, 0, -20] },
+  crowd: { pos: [8, 14, 45], look: [0, 1, -22] },
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -125,6 +126,7 @@ async function main() {
   delete env.REALMS;
   const proc: ChildProcess = spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { proc.kill('SIGKILL'); process.exit(130); });
   proc.stdout!.on('data', (d) => { log += d; });
   proc.stderr!.on('data', (d) => { log += d; });
   const workers: Worker[] = [];
@@ -148,6 +150,7 @@ async function main() {
       const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
       const page = await ctx.newPage();
       page.on('pageerror', (e: Error) => console.error('[page error]', e.message));
+      page.on('console', (m: { text(): string }) => { if (m.text().startsWith('[perf]')) console.log(`  ${m.text()}`); });
       await page.addInitScript(INIT);
       const cdp = await ctx.newCDPSession(page);
       await cdp.send('Network.enable');
@@ -189,6 +192,7 @@ async function main() {
           console.log(`  passes (draw calls per frame): ${Object.entries(r.passes as Record<string, number>).map(([k, v]) => `${k} ${f1(v / n)}`).join(', ')}`);
           const c = Object.entries(r.census as Record<string, { n: number; casters: number; tris: number; instances: number }>).sort((a, b) => b[1].n - a[1].n);
           console.log(`  scene: ${c.reduce((a, [, v]) => a + v.n, 0)} drawables, ${c.reduce((a, [, v]) => a + v.casters, 0)} shadow casters`);
+          if (args.get('detail')) for (const name of args.get('detail')!.split(',')) console.log(`  detail ${name}:`, JSON.stringify(await page.evaluate((n: string) => (window as any).__perf.detail(n), name)));
           for (const [k, v] of c.slice(0, 25)) console.log(`    ${k.padEnd(28)} ${String(v.n).padStart(5)} objs ${String(v.casters).padStart(5)} casters ${String(Math.round(v.tris)).padStart(8)} tris/obj-sum ${v.instances !== v.n ? `${v.instances} instances` : ''}`);
         }
         const fr = (r.frames as { dt: number; js: number; calls: number; tris: number; s: Record<string, number> }[]).filter((f) => f.dt > 0);
@@ -209,6 +213,7 @@ async function main() {
           wsKBps: r.counters.wsBytes / 1024 / wall, snapKB: r.counters.snapBytes / 1024 / snaps, snapsPerSec: r.counters.snaps / wall,
         };
         rows.push(row);
+        if (args.has('shots')) { await page.addStyleTag({ content: '#hud,#perf,#tutorial,#overlay{display:none!important}' }); mkdirSync(args.get('shots')!, { recursive: true }); await page.screenshot({ path: join(args.get('shots')!, `${LABEL || 'run'}-${q}-${spot}.png`), timeout: 120_000 }); }
         if (OUT) appendFileSync(OUT, JSON.stringify({ kind: 'spot', ...row }) + '\n');
         console.log(`  ${q}/${spot}: ${f1(row.fps as number)} fps, JS ${f1(row.jsPerFrame as number)} ms/frame, ${f1(row.calls as number)} calls`);
       }

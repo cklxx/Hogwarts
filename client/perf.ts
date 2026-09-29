@@ -116,6 +116,21 @@ const api = {
     });
     return out;
   },
+  /** The drawables under top-level objects called `name` (or unnamed ones of that type), by geometry and material. */
+  detail(name: string) {
+    const out: Record<string, number> = {};
+    for (const t of state.scene?.children ?? []) {
+      if ((t.name || t.type) !== name) continue;
+      t.traverseVisible((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh && !(o as THREE.Sprite).isSprite) return;
+        const mat = m.material as THREE.Material;
+        const k = `${m.geometry?.type}/${mat?.type}${mat?.transparent ? '/transp' : ''}${o.parent !== state.scene ? ' (child)' : ''}${o.name ? ` "${o.name}"` : ''}`;
+        out[k] = (out[k] ?? 0) + 1;
+      });
+    }
+    return Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 30);
+  },
   reset() {
     state.passes = {};
     state.frames = [];

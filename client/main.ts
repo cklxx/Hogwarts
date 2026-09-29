@@ -7,7 +7,12 @@ import { L, applyStatic, creatureName, houseName, lang, placeName, setLang, spel
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { heightAt } from './terrain';
-import { makeAuraRing, makeBolt, makeCreature, makeWizard, releaseWizardLook, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
+import { farColors, makeAuraRing, makeBolt, makeCreature, makeWizard, releaseWizardLook, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
+import { createLightBudget } from './lights';
+import { createCrowd } from './crowd';
+import { mergeStatic } from './batch';
+import { createEffects } from './effects';
+import { captureFocus } from './capture';
 import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
 import { PAIR_TTL_S } from '../src/shared/constants';
@@ -138,15 +143,44 @@ function rotateTips(el: HTMLElement, ms: number): () => void {
 
 // ------------------------------------------------------------------ rendering setup
 const canvas = $<HTMLCanvasElement>('#view');
+probe.mark('script');
 const R = createRenderer(canvas);
 probe.attach(R.renderer, R.scene);
+probe.mark('renderer');
 const { scene, camera } = R;
+const sceneBefore = new Set(scene.children);
 const world = buildWorld(scene);
 const decor = createDecor(scene, world.bannerSpots);
+// the world's static meshes, merged per material (batch.ts): exercise the world's own animation to find what moves
+{
+  const sun = new THREE.Vector3(0.4, 0.6, 0.3).normalize(), at = new THREE.Vector3();
+  const b = mergeStatic(scene, scene.children.filter((o) => !sceneBefore.has(o)), (step) => {
+    for (const [t, hour, x, z] of [[0, 3.2, 0, -56], [6.1, 9.7, 0, 0], [13.9, 15.1, 120, 90], [27.3, 21.4, -110, 40]]) {
+      world.tick(t, 0.05, t > 10, sun, { hour, banner: t > 10 ? 'Gryffindor' : null, focus: at.set(x, 0, z) });
+      step();
+    }
+    world.setQuality('low'); step();
+    world.setQuality('high'); step();
+  }, { exclude: [world.ground.parent ?? world.ground] });
+  if (probe.PERF) console.log(`[perf] static batching: ${b.merged} of ${b.candidates} meshes into ${b.meshes} (${b.moving} move)`);
+}
+// every point light in the world is shown through a fixed number of real lights (lights.ts)
+const lights = createLightBudget(scene, 8);
+lights.adopt(scene);
+// far wizards: one instanced crowd instead of full models (crowd.ts)
+const crowd = createCrowd(scene);
+/**
+ * Level of detail, in metres from the camera: full wizard models nearer than `wizard` (the instanced crowd
+ * beyond, with a few metres of hysteresis), name tags nearer than `label` (and always on your target),
+ * creatures drawn nearer than `creature` and animated nearer than `anim`.
+ */
+const LOD = { high: { wizard: 42, label: 45, creature: 170, anim: 70 }, low: { wizard: 24, label: 30, creature: 110, anim: 45 } };
+if (new URLSearchParams(location.search).get('lod') === '0') for (const l of Object.values(LOD)) Object.assign(l, { wizard: 1e9, label: 1e9, creature: 1e9, anim: 1e9 }); // (for comparisons)
+probe.mark('world');
 // Quality: ?q=low|high forces it; otherwise measure the first seconds and drop to low if slow.
 const forcedQ = new URLSearchParams(location.search).get('q');
 let quality: 'low' | 'high' = forcedQ === 'low' ? 'low' : 'high';
-const applyQuality = (q: 'low' | 'high') => { quality = q; R.setQuality(q); world.setQuality(q); };
+const applyQuality = (q: 'low' | 'high') => { quality = q; R.setQuality(q); world.setQuality(q); lights.setSlots(q === 'low' ? 4 : 8); };
 applyQuality(quality);
 const perf = { frames: 0, time: 0, done: !!forcedQ };
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
@@ -173,10 +207,9 @@ let myHandle = '';
 let token = '';
 let ws: WebSocket | null = null;
 let wsFails = 0;
-const wizards = new Map<string, WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh }>();
+const wizards = new Map<string, WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number }>();
 const creatures = new Map<string, ReturnType<typeof makeCreature> & { tx: number; tz: number; tf: number; aura: THREE.Mesh }>();
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
-const effects: { obj: THREE.Object3D; t: number; life: number; update: (k: number, o: THREE.Object3D) => void }[] = [];
 let camYaw = 0, camPitch = 0.45, camDist = 14;
 let clock = 0;
 
@@ -231,7 +264,7 @@ function connect() {
     }
   };
   let opened = false;
-  ws.onopen = () => { opened = true; wsFails = 0; };
+  ws.onopen = () => { opened = true; wsFails = 0; probe.mark('wsOpen'); };
   ws.onclose = (ev) => {
     if (ev.code === 4001) { // the key was changed elsewhere
       const t = loadToken();
@@ -257,6 +290,8 @@ function apply(s: Snap) {
       m.root.add(m.aura);
       m.root.name = 'wizard';
       m.root.position.set(w.x, 0, w.z);
+      m.label.sprite.visible = false; // (the frame's level of detail shows it when near)
+      lights.add(m.glow);
       scene.add(m.root);
       wizards.set(w.h, m);
     }
@@ -275,7 +310,7 @@ function apply(s: Snap) {
     if (setWizardLook(m, w.g)) { const p = m.root.position; particles.burst(p.x, p.y + 1.1, p.z, { count: 60, color: m.tipHex(false), intensity: 3, whiten: 0.5, radius: 0.8, speed: 1.2, up: 1.4, size: 0.12, life: 0.9, drag: 1.5 }); particles.motes(p.x, p.y, p.z, m.tipHex(false), 30); }
     (m.wandTip.material as THREE.MeshBasicMaterial).color.setHex(w.s.includes('D') ? 0x444444 : m.tipHex(w.s.includes('L')));
   }
-  for (const [h, m] of wizards) if (!seenW.has(h)) { releaseWizardLook(m); scene.remove(m.root); wizards.delete(h); }
+  for (const [h, m] of wizards) if (!seenW.has(h)) { releaseWizardLook(m); lights.remove(m.glow); scene.remove(m.root); wizards.delete(h); }
 
   const seenC = new Set<string>();
   for (const c of s.c) {
@@ -286,6 +321,7 @@ function apply(s: Snap) {
       m.root.add(m.aura);
       m.root.name = 'creature';
       m.root.position.set(c.x, 0, c.z);
+      m.label.sprite.visible = false;
       scene.add(m.root);
       creatures.set(c.i, m);
     }
@@ -324,64 +360,9 @@ const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "De
 // ------------------------------------------------------------------ effects
 const particles = createFx(scene, world.chimneys);
 const tmpTip = new THREE.Vector3();
-function addEffect(obj: THREE.Object3D, life: number, update: (k: number, o: THREE.Object3D) => void) {
-  scene.add(obj);
-  effects.push({ obj, t: 0, life, update });
-}
-function ring(x: number, z: number, color: number, r0: number, r1: number, life: number, y = 0.2) {
-  const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
-  m.rotation.x = -Math.PI / 2;
-  m.position.set(x, y + heightAt(x, z), z);
-  addEffect(m, life, (k, o) => { const s = r0 + (r1 - r0) * k; o.scale.set(s, s, s); ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 1 - k; });
-}
-function puff(x: number, z: number, color: number, size = 1.5) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false }));
-  m.position.set(x, 1.2 + heightAt(x, z), z);
-  addEffect(m, 0.5, (k, o) => { o.scale.setScalar(1 + k * size * 2); ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - k); });
-}
-/** A pillar of light that fades out upward (alpha gradient), widening as it dies. */
-let columnFade: THREE.Texture | null = null;
-function column(x: number, z: number, color: number, life = 1.2) {
-  if (!columnFade) {
-    const c = document.createElement('canvas');
-    c.width = 4; c.height = 64;
-    const g = c.getContext('2d')!;
-    const gr = g.createLinearGradient(0, 0, 0, 64);
-    gr.addColorStop(0, 'rgb(0,0,0)'); gr.addColorStop(0.55, 'rgb(40,40,40)'); gr.addColorStop(0.9, 'rgb(200,200,200)'); gr.addColorStop(1, 'rgb(255,255,255)');
-    g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
-    columnFade = new THREE.CanvasTexture(c);
-  }
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.05, 8, 20, 1, true), new THREE.MeshBasicMaterial({ color, alphaMap: columnFade, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
-  m.position.set(x, 4 + heightAt(x, z), z);
-  addEffect(m, life, (k, o) => { ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.28 * (1 - k) * Math.min(1, k * 8); o.scale.x = o.scale.z = 1 + k * 0.6; });
-}
-function floatText(x: number, z: number, text: string, color: string) {
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 64;
-  const g = c.getContext('2d')!;
-  g.font = 'bold 44px Georgia'; g.textAlign = 'center';
-  g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(text, 64, 48);
-  g.fillStyle = color; g.fillText(text, 64, 48);
-  const tex = new THREE.CanvasTexture(c);
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  sp.scale.set(1.6, 0.8, 1);
-  sp.renderOrder = 20;
-  const jx = (Math.random() - 0.5) * 0.8;
-  const gy = heightAt(x, z);
-  sp.position.set(x + jx, 2.4 + gy, z);
-  addEffect(sp, 1.1, (k, o) => { o.position.y = gy + 2.4 + k * 1.8; (o as THREE.Sprite).material.opacity = 1 - k * k; if (k >= 1) tex.dispose(); });
-}
-
-/** A jagged bolt through the given x,z points (at chest height, or from the sky when `sky` > 0). */
-function lightning(pts: number[], color: number, sky = 0) {
-  const v: THREE.Vector3[] = [];
-  for (let i = 0; i + 1 < pts.length; i += 2) v.push(new THREE.Vector3(pts[i], heightAt(pts[i], pts[i + 1]) + (i === 0 && sky ? sky : 1.3), pts[i + 1]));
-  const jag: THREE.Vector3[] = [];
-  for (let i = 0; i + 1 < v.length; i++) for (let k = 0; k < 6; k++) jag.push(v[i].clone().lerp(v[i + 1], k / 6).add(new THREE.Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6)));
-  jag.push(v[v.length - 1]);
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(jag), new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(4), transparent: true }));
-  addEffect(line, 0.35, (k, o) => { ((o as THREE.Line).material as THREE.LineBasicMaterial).opacity = 1 - k; });
-}
+// pooled spell effects (effects.ts)
+const fxm = createEffects(scene);
+const { ring, puff, column, floatText, lightning } = fxm;
 
 function spawnFx(f: Fx) {
   const col = f.e ? ELEMENT_COLORS[f.e] : 0xffffff;
@@ -1551,7 +1532,10 @@ function frame() {
     }
   }
   const k = 1 - Math.exp(-dt * 12);
-  for (const w of wizards.values()) {
+  // level of detail from last frame's camera (it moves a fraction of a metre per frame)
+  const lod = LOD[quality], cam = camera.position, focusKey = ctl.targetKey();
+  crowd.begin();
+  for (const [h, w] of wizards) {
     const px = w.root.position.x, pz = w.root.position.z;
     w.root.position.x += (w.tx - w.root.position.x) * k;
     w.root.position.z += (w.tz - w.root.position.z) * k;
@@ -1559,6 +1543,20 @@ function frame() {
     const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
     w.body.rotation.y += turn * Math.min(1, dt * 14);
     const speed = dt > 0 ? Math.hypot(w.root.position.x - px, w.root.position.z - pz) / dt : 0;
+    const d = Math.hypot(w.root.position.x - cam.x, w.root.position.y - cam.y, w.root.position.z - cam.z);
+    const mine = h === myHandle, focused = h === focusKey;
+    // (a stunned wizard lies down: only the full model does that)
+    w.far = !mine && !focused && d > lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
+    w.body.visible = !w.far;
+    w.label.show(focused || (!w.far && d < lod.label));
+    if (w.far) {
+      // the crowd's walk: a bob twice per stride while moving
+      w.bob = ((w.bob ?? 0) + dt * Math.min(speed, 9) * 1.3) % Math.PI;
+      const col = farColors(w);
+      crowd.put(w.root.position.x, w.root.position.y + w.body.position.y, w.root.position.z, w.body.rotation.y, speed > 0.3 ? Math.abs(Math.cos(w.bob)) * 0.06 : 0, col.robe, col.trim);
+      w.castPending = false;
+      continue;
+    }
     if (w.update(dt, speed, w.castPending)) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
     w.castPending = false;
     if (w.patronus.visible) {
@@ -1566,12 +1564,16 @@ function frame() {
       particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
     }
   }
-  for (const c of creatures.values()) {
+  crowd.end(quality === 'high');
+  for (const [i, c] of creatures) {
     c.root.position.x += (c.tx - c.root.position.x) * k;
     c.root.position.z += (c.tz - c.root.position.z) * k;
     c.root.position.y = heightAt(c.root.position.x, c.root.position.z);
     c.root.rotation.y = -c.tf;
-    c.anim(clock);
+    const d = Math.hypot(c.root.position.x - cam.x, c.root.position.y - cam.y, c.root.position.z - cam.z);
+    c.root.visible = d < lod.creature || i === focusKey;
+    c.label.show(i === focusKey || d < lod.label);
+    if (d < lod.anim) c.anim(clock);
   }
   for (const b of bolts.values()) {
     b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, k * 2);
@@ -1581,19 +1583,7 @@ function frame() {
     const spin = b.getObjectByName('spin');
     if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
   }
-  for (let i = effects.length - 1; i >= 0; i--) {
-    const e = effects[i];
-    e.t += dt;
-    e.update(Math.min(1, e.t / e.life), e.obj);
-    if (e.t >= e.life) {
-      scene.remove(e.obj);
-      effects.splice(i, 1);
-      // every effect mesh owns its geometry and material: free them (sprites share one geometry: keep it)
-      const o = e.obj as THREE.Mesh;
-      if (!(e.obj as THREE.Sprite).isSprite) o.geometry?.dispose();
-      (o.material as THREE.Material | undefined)?.dispose();
-    }
-  }
+  fxm.update(dt);
   elderGlint.rotation.y += dt * 2;
   elderGlint.position.y = 2.6 + heightAt(elderGlint.position.x, elderGlint.position.z) + Math.sin(clock * 2) * 0.2;
   probe.end('anim', tp); tp = probe.begin();
@@ -1639,6 +1629,7 @@ function frame() {
 
   ctl.update(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
+  lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();
   R.render();
   probe.end('render', tp);
@@ -1653,6 +1644,7 @@ setInterval(() => { const t = probe.begin(); hud(); probe.end('hud', t); }, 100)
   applyStatic();
   veil(true);
   token = await gate();
+  probe.mark('gate');
   $('#gate').hidden = true;
   veil(true);
   setTimeout(() => veil(false), 20000); // never hide the castle for long, snapshot or not
