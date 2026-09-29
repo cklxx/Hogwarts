@@ -1461,25 +1461,37 @@ $('#book-list').addEventListener('click', (e) => {
   else if (li.dataset.tpl) openTemplates();
   else loadSpell(li.dataset.id || null);
 });
+// drag a spell from the list onto a hotbar slot: a cell of the book's own strip, or a tile of the hotbar on
+// screen (lifted over the book while you drag), the same six slots either way
 $('#book-list').addEventListener('dragstart', (e) => {
   const li = (e.target as HTMLElement).closest('li[data-id]') as HTMLElement | null;
   if (!li?.dataset.id || !e.dataTransfer) return;
   e.dataTransfer.setData('text/plain', li.dataset.id);
   e.dataTransfer.effectAllowed = 'move';
-  $('#book-bar').classList.add('drag');
+  document.body.classList.add('spell-drag');
 });
-$('#book-list').addEventListener('dragend', () => $('#book-bar').classList.remove('drag'));
+const endDrag = () => { document.body.classList.remove('spell-drag'); $('#hotbar').querySelectorAll('.over').forEach((c) => c.classList.remove('over')); };
+$('#book-list').addEventListener('dragend', endDrag);
 const barCell = (e: Event) => (e.target as HTMLElement).closest('.bb-cell') as HTMLElement | null;
-$('#book-bar').addEventListener('dragover', (e) => { const c = barCell(e); if (!c) return; e.preventDefault(); c.classList.add('over'); });
-$('#book-bar').addEventListener('dragleave', (e) => barCell(e)?.classList.remove('over'));
-$('#book-bar').addEventListener('drop', (e) => {
+/** The slot (1–6) a drag is over, and its element: a book strip cell or an on-screen hotbar tile. */
+const dropSlot = (e: Event): [HTMLElement, number] | null => {
   const c = barCell(e);
-  $('#book-bar').classList.remove('drag');
-  if (!c) return;
-  e.preventDefault();
-  const id = e.dataTransfer?.getData('text/plain');
-  if (id && bookSpells.some((s) => s.id === id)) assignSlot(id, Number(c.dataset.cell));
-});
+  if (c) return [c, Number(c.dataset.cell)];
+  const tile = (e.target as HTMLElement).closest('#hotbar > div') as HTMLElement | null;
+  return tile ? [tile, Array.prototype.indexOf.call(tile.parentElement!.children, tile) + 1] : null;
+};
+for (const zone of [$('#book-bar'), $('#hotbar')]) {
+  zone.addEventListener('dragover', (e) => { const s = dropSlot(e); if (!s) return; e.preventDefault(); s[0].classList.add('over'); });
+  zone.addEventListener('dragleave', (e) => dropSlot(e)?.[0].classList.remove('over'));
+  zone.addEventListener('drop', (e) => {
+    const s = dropSlot(e);
+    endDrag();
+    if (!s) return;
+    e.preventDefault();
+    const id = e.dataTransfer?.getData('text/plain');
+    if (id && bookSpells.some((x) => x.id === id)) assignSlot(id, s[1]);
+  });
+}
 $('#book-bar').addEventListener('click', (e) => { const c = barCell(e); if (c && bookSel) assignSlot(bookSel, Number(c.dataset.cell)); });
 
 function loadSpell(id: string | null) {
