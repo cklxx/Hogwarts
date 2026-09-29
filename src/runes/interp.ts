@@ -19,6 +19,11 @@ export class Env {
     throw new RuneError(`unknown name '${name}'`, at.line, at.col);
   }
   def(name: string, v: Value) { this.vars.set(name, v); }
+  /** set!: rebind `name` in the nearest block that has it (the checker has already refused built-ins and unbound names). */
+  set(name: string, v: Value, at: Node): Value {
+    for (let e: Env | undefined = this; e; e = e.parent) if (e.vars.has(name)) { e.vars.set(name, v); return v; }
+    throw new RuneError(`set! needs an existing binding: '${name}' is unbound — (let ${name} ...) first`, at.line, at.col);
+  }
   child() { return new Env(this); }
 }
 
@@ -98,6 +103,7 @@ export class Interp {
         env.def((rest[0] as { v: string }).v, v);
         return v;
       }
+      case 'set!': return env.set((rest[0] as { v: string }).v, this.eval(rest[1], env), rest[0]);
       case 'if': return truthy(this.eval(rest[0], env)) ? this.eval(rest[1], env) : rest[2] ? this.eval(rest[2], env) : null;
       case 'when': return truthy(this.eval(rest[0], env)) ? this.run(rest.slice(1), env.child()) : null;
       case 'unless': return truthy(this.eval(rest[0], env)) ? null : this.run(rest.slice(1), env.child());
