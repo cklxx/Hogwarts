@@ -153,9 +153,40 @@ HUD 四个角默认是暗的，要用魔法点亮（新原语 `reveal`）：**Te
 v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发光魔杖尖，走路摆臂/袍摆、施法抬杖动作，13–15 个 draw call）；一个 GPU 粒子池负责咒语拖尾、命中火花、冲击波、治疗光点、升级喷泉、烟囱炊烟；玩家周围按区块生成、视锥剔除的风吹草地（高画质约 7 万片草叶）和随风摆动的树冠；礼堂坡屋顶、尖拱发光窗、角楼尖塔与学院色三角旗、指针显示游戏时间的钟楼表盘。
 画质自动检测：前 3 秒平均帧时 > 45ms 自动降档（关 Bloom、关湖面反射、隐藏草簇、0.75x 像素）；`?q=low` / `?q=high` 可强制。
 
+## 普通巫师等级考试
+
+**代码本身就是内容。** 每周一套 O.W.L.（Ordinary Wizarding Levels）实战考题：每道题是一个固定种子的沙盒场景 + 一个目标 + 若干**隐藏测试用例**，像单元测试一样。提交一段 Runes 源码，考场（每个用例一个私有的一次性 `World`，默认 Rulebook、不刷怪、统一的考试用魔杖、没有回蓝）用**真正的内核**施法、模拟几秒让魔弹落地和延迟块触发，再由间谍钩子记录咒语做了什么（治了谁、打了谁、用了什么元素、说了什么）来判分。**真实世界不受任何影响**；源码 ≤ 4000 字符、节点和 gas 按考题年级封顶、每个用例最多模拟几秒、整场有墙钟预算、每人每分钟最多交 10 份。
+
+- **评分**：全部用例通过才算及格。分数 = 100 × (节点/标准 + gas/标准 + 法力/标准) / 3，100 = 标准线，越低越好（gas 含延迟块，法力为全部花费，均取各用例最差值）。**O** 优秀 ≤ 100 · **E** 良好 ≤ 130 · **A** 及格；不及格：过半用例通过 **P** 差 · 至少一个 **D** 很差 · 一个都没过或编译失败 **T 巨怪**（附赠奇洛教授的「巨怪——在地下教室里！」）。失败时报告像 CI 日志：逐个用例 ✓/✗、失败原因和提示。
+- **每周轮换**：题库 17 道，按 ISO 周 + 世界密钥确定性地抽 6 道（至少两道一、二年级能考的）；考题年级高于你的年级时锁定。
+- **奖励**：每周每题第一次及格发经验/加隆/声望（`10+10×年级` / `2+2×年级` / `1+年级`，O ×1.5、E ×1.25），之后成绩提升只补差额；每题一个全服前 10 排行榜（每人一行，同分先到先得），随存档持久化。一周全部及格得成就「O.W.L. 全科通过」，全部 O 得「**O.W.L. 全 O**」，第一次拿 T 得「地下教室里有巨怪」。
+- **MCP**：`owl_exams`（本周考题、简介、标准线、你的最好成绩、前三名）· `sit_exam`（`exam_id` + `source` → 评分报告）· `exam_leaderboard`（`exam_id` 可选）。**WebSocket**：`{t:'exams'}` → `{t:'exams', r}`；`{t:'sit', id, source}` → `{t:'sat', r}`。
+
+| 考题 | 年级 | 科目 | 目标 | 标准线（节点/gas/法力） |
+|---|---|---|---|---|
+| `counting-door` 数门 | 1 | 魔咒学 | 说出 15 米内生物的数量 | 7 / 6 / 2 |
+| `two-headed-door` 双头门 | 1 | 算术占卜 | 说出最近两只生物的生命之和 | 22 / 19 / 2 |
+| `three-pixies` 一咒三精 | 1 | 黑魔法防御术 | 一次施法击晕所有小精灵 | 10 / 21 / 55 |
+| `triage` 分诊 | 1 | 医疗翼实习 | 只治疗生命 < 30% 的同院同学 | 22 / 47 / 44 |
+| `shorthand-protego` 速记铁甲咒 | 1 | 魔咒学 | 给自己和 10 米内同学加盾，≤ 16 节点 | 15 / 17 / 50 |
+| `curfew` 宵禁 | 1 | 天文学 | 夜里点魔杖，白天报钟点 | 12 / 9 / 3 |
+| `hello-owl` 你好，猫头鹰 | 1 | 麻瓜研究 | 向最近的巫师说 "Hello, 名字!" | 13 / 12 / 2 |
+| `knut-wasted` 分毫不差 | 1 | 算术占卜 | 一发魔弹恰好击晕受伤的小精灵 | 10 / 9 / 15 |
+| `double-tap` 双响炮 | 2 | 黑魔法防御术 | 一次施法命中目标两次，间隔 ≥ 1.5 秒 | 11 / 8 / 24 |
+| `now-you-see-it` 召之即去 | 2 | 变形术 | 召唤一条蛇，3 秒内消失，消失后报数 | 13 / 10 / 35 |
+| `finite-precisely` 精准咒立停 | 2 | 魔咒学 | 只给中招的同院同学（和自己）解咒 | 21 / 24 / 32 |
+| `know-thy-enemy` 对症下药 | 2 | 草药学 | 每个敌人用它最怕的元素打一次 | 28 / 52 / 29 |
+| `freeze-spare-unicorn` 冰封，但放过独角兽 | 3 | 保护神奇生物 | 冻住 12 米内所有敌对生物，不碰独角兽 | 10 / 25 / 35 |
+| `rennervate` 快快复苏 | 3 | 医疗翼实习 | 只扶起被击晕的同院同学 | 18 / 29 / 72 |
+| `area-or-single` 看人下菜 | 3 | 黑魔法防御术 | ≥ 3 个近敌放 nova，否则单发 | 22 / 15 / 33 |
+| `weakest-link` 最弱的一环 | 3 | 黑魔法防御术 | 只打生命最低的敌人 | 62 / 66 / 12 |
+| `halfway-apparate` 半途显形 | 6 | 幻影显形 | 显形到瞄准点的中点，≤ 12 gas | 11 / 11 / 32 |
+
+参考答案只在 `test/exams.test.ts` 里（每题一个拿 O 的解和一个必挂的天真解），不会通过任何工具下发。实现：`src/kernel/exams.ts`（考场、题库、评分、轮换、奖励）、`src/lore/exams.ts`（等级名、梗、成就）。
+
 ## MCP 工具
 
-`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history` `owl_exams` `sit_exam` `exam_leaderboard`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
 
 ## 真实的霍格沃茨
 

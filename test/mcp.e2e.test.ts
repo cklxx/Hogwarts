@@ -135,8 +135,23 @@ describe('MCP over streamable HTTP', () => {
         if (got.has('welcome') && got.has('snap') && got.has('me') && got.has('cast')) ok();
       });
     });
-    ws.close();
     expect([...got]).toEqual(expect.arrayContaining(['welcome', 'snap', 'me', 'cast']));
+
+    // the O.W.L. exams panel: {t:'exams'} lists the week, {t:'sit'} grades a submission (kernel/exams.ts)
+    const next = (t: string) => new Promise<any>((ok, bad) => {
+      const timer = setTimeout(() => bad(new Error(`no ${t}`)), 8000);
+      const on = (raw: WebSocket.RawData) => { const m = JSON.parse(String(raw)); if (m.t === t || m.t === 'err') { clearTimeout(timer); ws.off('message', on); ok(m); } };
+      ws.on('message', on);
+    });
+    ws.send(JSON.stringify({ t: 'exams' }));
+    const list = await next('exams');
+    expect(list.r.exams.length).toBeGreaterThanOrEqual(5);
+    const open = list.r.exams.find((e: { locked?: string }) => !e.locked);
+    ws.send(JSON.stringify({ t: 'sit', id: open.id, source: '(say' }));
+    const sat = await next('sat');
+    expect(sat.r.grade).toBe('T');
+    expect(sat.r.log).toMatch(/FAIL/);
+    ws.close();
   });
 
   it('links a player and their agent: pair, owls, pause, rotate — and never leaks the key', async () => {
