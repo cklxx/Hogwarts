@@ -1044,6 +1044,86 @@ def cupVectors : String :=
     return out
   obj [("constants", consts), ("cupMult", arr mults), ("cupAward", arr awards), ("cupDeduct", arr deducts), ("terms", arr terms)]
 
+/-! ## 决斗俱乐部 — the Duelling Club's rewards (src/kernel/duelclub.ts `duelStep`, `duelGrant`)
+
+A finished match counts for the winner only when it is fresh (against a player, not a rematch of the same pair
+within DUEL_PAIR_GAP_S) and the winner is still under the term's cap of rewarded wins; a counted win pays
+DUEL_WIN_REP reputation, anything else nothing. Proved: the count never passes the cap (`duel_step_capped`), a
+step pays DUEL_WIN_REP exactly when it counts and 0 otherwise (`duel_step_pay`), and whatever sequence of matches
+a term holds, a wizard's Duelling-Club reputation is at most cap · DUEL_WIN_REP (`duel_club_term_bounded`).
+The rematch gap and the NPC rule feed the `fresh` flag; the TypeScript test checks that flag on its own. -/
+
+def DUEL_WIN_REP : Nat := 6
+def DUEL_TERM_CAP : Nat := 5
+
+/-- duelclub.ts `duelStep`: (wins', reputation paid). -/
+def duelStep (wins cap : Nat) (fresh : Bool) : Nat × Nat :=
+  if fresh ∧ wins < cap then (wins + 1, DUEL_WIN_REP) else (wins, 0)
+
+theorem duel_step_capped (wins cap : Nat) (fresh : Bool) (h : wins ≤ cap) : (duelStep wins cap fresh).1 ≤ cap := by
+  unfold duelStep; split
+  · rename_i hc; omega
+  · exact h
+
+theorem duel_step_pay (wins cap : Nat) (fresh : Bool) :
+    (duelStep wins cap fresh).2 = ((duelStep wins cap fresh).1 - wins) * DUEL_WIN_REP := by
+  unfold duelStep; split <;> simp [DUEL_WIN_REP]
+
+/-- A term: the wins count and the reputation paid so far, after each match's `fresh` flag. -/
+def duelRun (cap : Nat) (ms : List Bool) : Nat × Nat :=
+  ms.foldl (fun (acc : Nat × Nat) f => let s := duelStep acc.1 cap f; (s.1, acc.2 + s.2)) (0, 0)
+
+theorem duel_run_inv (cap : Nat) : ∀ (ms : List Bool) (w r : Nat), w ≤ cap → r = w * DUEL_WIN_REP →
+    (ms.foldl (fun (acc : Nat × Nat) f => let s := duelStep acc.1 cap f; (s.1, acc.2 + s.2)) (w, r)).1 ≤ cap ∧
+    (ms.foldl (fun (acc : Nat × Nat) f => let s := duelStep acc.1 cap f; (s.1, acc.2 + s.2)) (w, r)).2
+      = (ms.foldl (fun (acc : Nat × Nat) f => let s := duelStep acc.1 cap f; (s.1, acc.2 + s.2)) (w, r)).1 * DUEL_WIN_REP := by
+  intro ms
+  induction ms with
+  | nil => intro w r hw hr; exact ⟨hw, hr⟩
+  | cons f fs ih =>
+    intro w r hw hr
+    simp only [List.foldl_cons]
+    apply ih
+    · exact duel_step_capped w cap f hw
+    · unfold duelStep; split
+      · rename_i hc; subst hr; simp [DUEL_WIN_REP]; omega
+      · simp [hr]
+
+/-- duel_club_term_bounded: whatever a term holds, a wizard's Duelling-Club reputation ≤ cap · DUEL_WIN_REP. -/
+theorem duel_club_term_bounded (cap : Nat) (ms : List Bool) : (duelRun cap ms).2 ≤ cap * DUEL_WIN_REP := by
+  have ⟨h1, h2⟩ := duel_run_inv cap ms 0 0 (Nat.zero_le _) (by simp)
+  unfold duelRun
+  rw [h2]
+  exact Nat.mul_le_mul_right _ h1
+
+/-- The 决斗俱乐部 part of the vectors: constants, the step on a grid, and whole terms of pseudo-random matches. -/
+def duelVectors : String :=
+  let q (s : String) : String := "\"" ++ s ++ "\""
+  let arr (xs : List String) : String := "[" ++ ",".intercalate xs ++ "]"
+  let obj (xs : List (String × String)) : String := "{" ++ ",".intercalate (xs.map fun (k, v) => q k ++ ":" ++ v) ++ "}"
+  let b (x : Bool) : String := if x then "1" else "0"
+  let steps := Id.run do
+    let mut out : List String := []
+    for w in [0, 1, 4, 5, 6] do
+      for c in [0, 3, 5] do
+        for f in [false, true] do
+          let s := duelStep w c f
+          out := out ++ [s!"[{w},{c},{b f},{s.1},{s.2}]"]
+    return out
+  let lcg (x : Nat) : Nat := (x * 1103515245 + 12345) % 2147483648
+  let terms := Id.run do
+    let mut out : List String := []
+    let mut x := 2718
+    for cap in [0, 3, 5, 9] do
+      let mut ms : List Bool := []
+      for _ in [0:30] do
+        x := lcg x
+        ms := ms ++ [x / 65536 % 3 != 0]
+      let r := duelRun cap ms
+      out := out ++ [obj [("cap", toString cap), ("fresh", arr (ms.map b)), ("wins", toString r.1), ("rep", toString r.2)]]
+    return out
+  obj [("constants", obj [("DUEL_WIN_REP", toString DUEL_WIN_REP), ("DUEL_TERM_CAP", toString DUEL_TERM_CAP)]), ("step", arr steps), ("terms", arr terms)]
+
 /-! ## Conformance vectors (compared with the TypeScript code in test/formal.test.ts) -/
 
 /-- The agent-link part of the vectors: every shared constant, and samples of each floor/cost function. -/
@@ -1139,7 +1219,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ "}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ ",\"duel\":" ++ duelVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 

@@ -11,8 +11,8 @@ Invuln    == {"phoenix"}
 Entities  == Wizards \cup Summons \cup Wild \cup Benign \cup Invuln
 Owner(s)  == IF s = "sa" THEN "a" ELSE "b"
 
-VARIABLES house, active, safe, alive, pvp, ff
-vars == <<house, active, safe, alive, pvp, ff>>
+VARIABLES house, active, safe, alive, pvp, ff, duel
+vars == <<house, active, safe, alive, pvp, ff, duel>>
 
 Init ==
   /\ house  \in [Wizards -> {"G", "S"}]
@@ -21,9 +21,15 @@ Init ==
   /\ alive  \in [Entities -> BOOLEAN]
   /\ pvp    \in BOOLEAN
   /\ ff     \in BOOLEAN
+  /\ duel   \in BOOLEAN                         \* 决斗俱乐部: a and b are fighting a match (duelclub.ts)
+  /\ duel => pvp                                \* a match only opens while PvP is on (duelClosed)
 Next == UNCHANGED vars                          \* a static relation: TLC checks every initial state
 
 PvP(x, y) == pvp /\ (house[x] # house[y] \/ ff)
+\* The wizard behind an entity: a summon's owner, else the entity itself.
+Behind(e) == IF e \in Summons THEN Owner(e) ELSE e
+InDuel(e) == duel /\ Behind(e) \in Wizards
+DuelOrPvP(x, y) == (duel /\ x # y) \/ PvP(x, y)
 
 RECURSIVE CanHarm(_, _)
 CanHarm(src, dst) ==
@@ -32,6 +38,9 @@ CanHarm(src, dst) ==
   ELSE IF dst \in Wizards /\ ~active[dst] THEN FALSE
   ELSE IF dst \in Invuln THEN FALSE
   ELSE IF safe[dst] THEN FALSE
+  \* during a match only the two duelists (and their summons) touch each other, and nobody else touches them
+  ELSE IF InDuel(src) \/ InDuel(dst) THEN
+         InDuel(src) /\ InDuel(dst) /\ Behind(src) # Behind(dst) /\ ~safe[Behind(src)]
   ELSE IF src \in Summons THEN
          IF dst = Owner(src) \/ (dst \in Summons /\ Owner(dst) = Owner(src)) THEN FALSE
          ELSE CanHarm(Owner(src), dst)
@@ -56,5 +65,11 @@ SummonProxy         == \A s \in Summons, d \in Entities :
 WildOnlyHuntsWizardsAndSummons == \A w \in Wild, d \in Entities : CanHarm(w, d) => d \in Wizards \cup Summons
 NoPvPMeansNoPvP     == ~pvp => \A x, y \in Wizards : ~CanHarm(x, y)
 AttackSummonIsAttackOwner == \A w \in Wizards, s \in Summons :
-                         (Owner(s) # w /\ alive[s] /\ ~safe[s] /\ ~safe[w]) => (CanHarm(w, s) = PvP(w, Owner(s)))
+                         (Owner(s) # w /\ alive[s] /\ ~safe[s] /\ ~safe[w]) => (CanHarm(w, s) = DuelOrPvP(w, Owner(s)))
+\* 决斗俱乐部: the two duelists can always reach each other (in play, outside safe zones), whatever their houses …
+DuelMutual          == duel => \A x, y \in Wizards :
+                         (x # y /\ alive[x] /\ alive[y] /\ active[x] /\ active[y] /\ ~safe[x] /\ ~safe[y]) => CanHarm(x, y)
+\* … and nothing outside the match touches them or is touched by them
+DuelIsolated        == duel => \A c \in Wild \cup Benign \cup Invuln, e \in Wizards \cup Summons :
+                         ~CanHarm(c, e) /\ ~CanHarm(e, c)
 ============================================================================

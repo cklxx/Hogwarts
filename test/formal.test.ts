@@ -17,6 +17,7 @@ import { titleIndex } from '../src/lore/titles.js';
 import { World } from '../src/kernel/world.js';
 import { royaltyGrant, royaltyStep } from '../src/kernel/market.js';
 import { cupAward, cupDeduct, cupMult, cupRun, type CupOp } from '../src/kernel/housecup.js';
+import { DUEL_TERM_CAP, DUEL_WIN_REP, duelStep } from '../src/kernel/duelclub.js';
 import { MEME } from '../src/lore/memes.js';
 import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
 import { mulberry32 } from '../src/shared/map.js';
@@ -44,10 +45,27 @@ type CupVectors = {
   constants: Record<string, number>; cupMult: [number, number, number, number][]; cupAward: [number, number, number, number, number][];
   cupDeduct: [number, number, number][]; terms: { cap: number; ops: [number, number, number][]; final: number }[];
 };
+type DuelVectors = {
+  constants: Record<string, number>; step: [number, number, number, number, number][];
+  terms: { cap: number; fresh: number[]; wins: number; rep: number }[];
+};
 const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.url), 'utf8')) as {
   yearForXp: [number, number][]; titleIndex: [number, number, number, number, number][]; steal: [number, number, number][];
-  agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors; cup: CupVectors;
+  agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors; cup: CupVectors; duel: DuelVectors;
 };
+
+describe('Lean conformance vectors: 决斗俱乐部 (duel_step_capped, duel_step_pay, duel_club_term_bounded)', () => {
+  it('the constants, the step, and whole terms of matches agree with Lean', () => {
+    expect(V.duel.constants).toEqual({ DUEL_WIN_REP, DUEL_TERM_CAP });
+    for (const [w, c, f, w2, r] of V.duel.step) expect([w, c, f, ...duelStep(w, c, f === 1)]).toEqual([w, c, f, w2, r]);
+    for (const t of V.duel.terms) {
+      let wins = 0, rep = 0;
+      for (const f of t.fresh) { const [w2, r] = duelStep(wins, t.cap, f === 1); wins = w2; rep += r; }
+      expect({ wins, rep }).toEqual({ wins: t.wins, rep: t.rep });
+      expect(rep).toBeLessThanOrEqual(t.cap * DUEL_WIN_REP); // the theorem, on the vector
+    }
+  });
+});
 
 describe('Lean conformance vectors', () => {
   it('yearForXp', () => { for (const [xp, y] of V.yearForXp) expect([xp, yearForXp(xp)]).toEqual([xp, y]); });
@@ -232,7 +250,8 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
   it('on 3000 random worlds', () => {
     const rnd = mulberry32(2024);
     const rj = mulberry32(88); // jinxes draw from their own stream, so the worlds above are the ones they always were
-    const seen = { bit: 0, spared: 0, senderElsewhere: 0, capped: 0 }; // each branch below must actually be exercised
+    const rd = mulberry32(3141); // and duels from theirs
+    const seen = { bit: 0, spared: 0, senderElsewhere: 0, capped: 0, duels: 0 }; // each branch below must actually be exercised
     const SAFE = { x: 0, z: -56 }; // the Great Hall
     for (let trial = 0; trial < 3000; trial++) {
       const w = new World({ seed: trial, secret: 'x' });
@@ -267,6 +286,15 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       const ids = [a.id, b.id, 'sa', 'sb', 'pixie', 'unicorn', 'phoenix'];
       const owner: Record<string, string> = { sa: a.id, sb: b.id };
       const safe = (id: string) => w.inSafe(w.entity(id)!.pos);
+      // 决斗俱乐部: sometimes a and b are fighting a match (only ever while PvP is on: duelClosed)
+      const duel = w.rules.combat.pvp && rd() < 0.35;
+      if (duel) w.duel.match = { id: 1, a: a.id, b: b.id, phase: 'fight', at: 0, npc: false, stats: {} };
+      if (duel) {
+        const inPlay = (x: Wizard) => x.hp > 0 && !x.st.stunnedUntil && !safe(x.id);
+        if (inPlay(a) && inPlay(b)) { expect(w.canHarm(a.id, b.id)).toBe(true); expect(w.canHarm(b.id, a.id)).toBe(true); } // DuelMutual
+        for (const c of ['pixie', 'unicorn', 'phoenix']) for (const e of [a.id, b.id, 'sa', 'sb']) { expect(w.canHarm(c, e)).toBe(false); expect(w.canHarm(e, c)).toBe(false); } // DuelIsolated
+        seen.duels++;
+      }
       for (const s of ids) {
         expect(w.canHarm(s, s)).toBe(false); // NoSelfHarm
         for (const d of ids) {
@@ -297,7 +325,9 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       // floor and without a shield always loses health; never more than the tick's rate, never below
       // max(1, 25% max health), and it never counts as being hurt.
       for (const x of [a, b]) {
-        const pvpOk = (src: string | null) => { const s = src ? w.wizards.get(src) : undefined; return !s || (s !== x && w.rules.combat.pvp && (s.house !== x.house || w.rules.combat.friendlyFire)); };
+        // (in a Duelling-Club match only the opponent's jinxes and silences act on a duelist, whatever the houses)
+        const opp = duel ? (x === a ? b.id : a.id) : undefined;
+        const pvpOk = (src: string | null) => { const s = src ? w.wizards.get(src) : undefined; if (opp !== undefined) return !s || s.id === opp; return !s || (s !== x && w.rules.combat.pvp && (s.house !== x.house || w.rules.combat.friendlyFire)); };
         for (const au of x.auras) {
           const bites = w.jinxBites(au.src, x.id);
           expect(bites).toBe(w.canHarm(null, x.id) && pvpOk(au.src));
@@ -323,7 +353,7 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       }
       void sa; void sb;
     }
-    expect(Math.min(seen.bit, seen.spared, seen.senderElsewhere, seen.capped)).toBeGreaterThan(20);
+    expect(Math.min(seen.bit, seen.spared, seen.senderElsewhere, seen.capped, seen.duels)).toBeGreaterThan(20);
   });
 });
 

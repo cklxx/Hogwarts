@@ -46,18 +46,18 @@ body.cup.boss #target { top: calc(92px * var(--u)); }
 body.cup.boss #pn-top { top: calc(172px * var(--u)); }
 
 /* ------------------------------------------------------------------ the event slip + compass (under the clock) */
-#evslip { --edge: calc(8px * var(--u)); border: var(--edge) solid transparent; border-image: url('/ui/edge.svg') 30 / var(--edge) / 0 round;
+:is(#evslip, #duelslip) { --edge: calc(8px * var(--u)); border: var(--edge) solid transparent; border-image: url('/ui/edge.svg') 30 / var(--edge) / 0 round;
   background: var(--paper-bg); background-clip: padding-box, padding-box, padding-box; box-shadow: inset 0 0 calc(14px * var(--u)) rgba(120, 72, 22, .42), inset calc(3px * var(--u)) 0 0 var(--gold), var(--shadow);
   display: flex; align-items: center; gap: calc(9px * var(--u)); padding: calc(3px * var(--u)) calc(12px * var(--u)) calc(4px * var(--u)) calc(8px * var(--u)); font-size: var(--fs-body); width: min(calc(420px * var(--u)), 100%); animation: fadein .3s var(--ease) both; }
-#evslip > svg.ic { flex: none; width: calc(34px * var(--u)); height: calc(34px * var(--u)); vertical-align: 0; }
-#evslip .es-t { flex: 1; min-width: 0; line-height: 1.45; }
-#evslip .es-t b { color: var(--wax); font-weight: 600; }
-#evslip .es-left { margin-left: calc(6px * var(--u)); color: var(--ink2); font-size: calc(17px * var(--t)); }
-#evslip .es-t small { display: block; font-size: calc(15px * var(--t)); color: var(--ink2); }
-#evslip .es-cf { color: var(--ink) !important; }
-#evslip .es-cf.danger { color: var(--wax) !important; }
-#evslip .es-d { flex: none; display: inline-flex; flex-direction: column; align-items: center; color: var(--indigo); }
-#evslip .arrow { display: inline-block; width: 1.1em; text-align: center; color: var(--wax); font-weight: 700; font-size: calc(22px * var(--t)); line-height: 1; }
+:is(#evslip, #duelslip) > svg.ic { flex: none; width: calc(34px * var(--u)); height: calc(34px * var(--u)); vertical-align: 0; }
+:is(#evslip, #duelslip) .es-t { flex: 1; min-width: 0; line-height: 1.45; }
+:is(#evslip, #duelslip) .es-t b { color: var(--wax); font-weight: 600; }
+:is(#evslip, #duelslip) .es-left { margin-left: calc(6px * var(--u)); color: var(--ink2); font-size: calc(17px * var(--t)); }
+:is(#evslip, #duelslip) .es-t small { display: block; font-size: calc(15px * var(--t)); color: var(--ink2); }
+:is(#evslip, #duelslip) .es-cf { color: var(--ink) !important; }
+:is(#evslip, #duelslip) .es-cf.danger { color: var(--wax) !important; }
+:is(#evslip, #duelslip) .es-d { flex: none; display: inline-flex; flex-direction: column; align-items: center; color: var(--indigo); }
+:is(#evslip, #duelslip) .arrow { display: inline-block; width: 1.1em; text-align: center; color: var(--wax); font-weight: 700; font-size: calc(22px * var(--t)); line-height: 1; }
 #evslip .es-d .num { font-size: calc(16px * var(--t)); }
 #evslip.won { box-shadow: inset 0 0 calc(14px * var(--u)) rgba(120, 72, 22, .42), inset calc(3px * var(--u)) 0 0 var(--verdigris), 0 0 calc(14px * var(--u)) rgba(214, 170, 50, .6); }
 #evslip.won .es-t b { color: var(--verdigris); }
@@ -146,3 +146,4 @@ html:lang(en) #album .al-g h3 { font: 700 calc(18px * var(--t))/1.3 var(--latin)
   #cupstrip.fm .cs-row, #curfewedge { animation: none; }
   #ceremony, #ceremony .cer-card { animation: none; }
 }
+#duelslip.fight { box-shadow: inset 0 0 calc(14px * var(--u)) rgba(120, 72, 22, .42), inset calc(3px * var(--u)) 0 0 var(--wax), var(--shadow); }

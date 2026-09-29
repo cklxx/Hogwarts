@@ -13,6 +13,7 @@ import { TIME_REMARKS, WEATHER_REMARKS, WHOAMI_QUOTES, dayPart } from '../lore/m
 import { FailWindow } from '../server/limits.js';
 import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { browseMarket, copySpell, forkSpell, marketSpell, publishSpell, unpublishSpell } from '../kernel/market.js';
+import { DUEL_FIGHT_S, DUEL_NPC_AFTER_S, DUEL_PAIR_GAP_S, DUEL_STAGE, DUEL_TERM_CAP, DUEL_WIN_REP, duelJoin, duelLeave, duelStatus } from '../kernel/duelclub.js';
 import { grimoire } from './grimoire.js';
 import { schoolEvents } from '../kernel/wheel.js';
 import { albumOf } from '../kernel/cards.js';
@@ -397,6 +398,12 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const pool = [...TIME_REMARKS[dayPart(world.hour(), world.isNight())], ...(WEATHER_REMARKS[world.rules.world.weather] ?? [])];
     return { ...v, time: { ...v.time, remark: world.quip(pool, w.handle, 'look') } };
   }));
+
+  register('duel_club', {
+    title: 'Duelling Club',
+    description: `决斗俱乐部 on the Courtyard stage (${DUEL_STAGE.x}, ${DUEL_STAGE.z}): op "join" queues you (two in the queue make a match; alone for ${DUEL_NPC_AFTER_S}s and an NPC spars with you), "leave" leaves the queue (or forfeits a match), "status" shows the queue, the match and your rewarded wins this term. A match: placed at the two ends and healed, a bow and a countdown (no moving or casting), then up to ${DUEL_FIGHT_S}s. Only you two can harm each other (whatever your houses); nobody can interfere. Knocked to zero, walked off the stage or gone: the other wins. Win: +${DUEL_WIN_REP} reputation and XP, at most ${DUEL_TERM_CAP} rewarded wins a term, the same pair once every ${DUEL_PAIR_GAP_S / 60} minutes; NPC sparring pays XP only. dodge and a well-timed Protego matter here.`,
+    inputSchema: { op: z.enum(['join', 'leave', 'status']).optional() },
+  }, me((wid, a: { op?: 'join' | 'leave' | 'status' }) => (a.op === 'join' ? duelJoin(world, wid) : a.op === 'leave' ? duelLeave(world, wid) : duelStatus(world, wid))));
 
   register('dodge', {
     title: 'Dodge roll',

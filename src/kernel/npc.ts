@@ -67,6 +67,16 @@ export function thinkNpcs(world: World) {
     const p = PERSONAS.find((x) => x.name === w.name)!;
     const d = derived(w, world.rules);
 
+    // 决斗俱乐部 (duelclub.ts): a sparring partner — still until the countdown ends, then only the opponent, gently
+    // (no healing, a Stupefy about every other thought), so a first-year can beat a seventh-year NPC
+    const m = world.duel.match;
+    if (m && (m.a === w.id || m.b === w.id)) {
+      if (m.phase !== 'fight') continue;
+      const opp = world.wizards.get(m.a === w.id ? m.b : m.a);
+      if (opp && world.rand() < 0.5 && w.mana > 10) cast(world, w, 'Stupefy', opp.id);
+      continue;
+    }
+
     // remember whoever hurt me recently (wizards only), for 30s
     const attacker = w.lastHurtBy && world.wizards.get(w.lastHurtBy);
     if (attacker && world.now - w.hurtAt < 1) { b.grudge = attacker.id; b.grudgeUntil = world.now + 30; }

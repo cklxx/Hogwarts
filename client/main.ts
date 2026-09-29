@@ -29,6 +29,7 @@ import * as probe from './perf';
 import { createMarket } from './market';
 import { createPanels, type FamiliarState, type UnfairState } from './panels';
 import { createFun } from './panels/fun';
+import { createDuel, type DuSnap } from './panels/duel';
 import { createFunWorld } from './funworld';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
@@ -37,7 +38,7 @@ interface SW { h: string; n: string; ho: House; x: number; z: number; f: number;
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string; b?: 1 }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
-interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
+interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; du?: DuSnap; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
   hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self' } | null)[];
@@ -355,6 +356,7 @@ function connect() {
       if (!$('#trunk').hidden) send({ t: 'book' }); // Finite Incantatem / Revelio change what the trunk shows
     }
     else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); market.onBook(); }
+    else if (duel.onMessage(msg)) { /* 决斗俱乐部 (client/panels/duel.ts) */ }
     else if (msg.t === 'market') market.onMessage(msg); // 咒语集市 (client/market.ts)
     else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
     else if (msg.t === 'token') onToken(String(msg.token ?? ''));
@@ -759,6 +761,7 @@ function hud() {
   renderGoal();
   pn.hud();
   fun.hud();
+  duel.hud();
   trackBars();
 }
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
@@ -1741,6 +1744,7 @@ const pn = createPanels({
 });
 // ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 · 巧克力蛙画片 · 隐藏宝箱 (client/panels/fun.ts, client/funworld.ts)
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
+const duel = createDuel({ send, toast, du: () => snap?.du, nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?', myHandle: () => myHandle, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw });
 const funWorld = createFunWorld();
 scene.add(funWorld.group);
 /** What a chest held (the card itself arrives as its own event and flips over). */
@@ -1811,6 +1815,7 @@ addEventListener('keydown', (e) => {
   }
   if (pn.keydown(e)) return; // J 邓布利多军, K O.W.L. (client/panels)
   if (fun.keydown(e)) return; // C 巧克力蛙画片 (client/panels/fun.ts)
+  if (!spectate && !watch.observing() && duel.keydown(e)) return; // G 决斗俱乐部 (client/panels/duel.ts)
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }

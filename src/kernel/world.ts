@@ -51,6 +51,7 @@ import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook
 import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { blankWheel, stepWheel, wheelBolt, wheelKissed, wheelRoom, wheelSlain, wheelView, type Outcome, type WheelState } from './wheel.js';
+import { type DuelClub, duelWire, inMatch, newDuelClub, stepDuelClub } from './duelclub.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
 import { type MarketBook, bannedCastText, bannedListing, blankMarket, marketDecreeErrors, marketDecreeNews, payRoyalty, restoreMarket, rollDay, sanitizeMarket } from './market.js';
@@ -170,6 +171,8 @@ export class World {
   private stuck = new Map<string, { t: number; replans: number }>();
   projectiles = new Map<string, Projectile>();
   pending: Pending[] = [];
+  /** 决斗俱乐部 (duelclub.ts): the queue, the match on the stage, and the term's reward ledger (persisted). */
+  duel: DuelClub = newDuelClub();
   events: WorldEvent[] = [];
   term: Term;
   houseCups: { term: number; winner: House | null; points: Record<House, number> }[] = [];
@@ -458,7 +461,10 @@ export class World {
   // wherever the kernel moves something (moved()), in bulk at the start of every tick, and before any
   // query made from outside a tick (tests, MCP and WebSocket syscalls may have moved things directly).
   private syncIndex() { this.wizards.grid.syncAll(); this.creatures.grid.syncAll(); }
-  private moved(e: Wizard | Creature) {
+  /** A wizard's stats from their year, items and auras (progression.ts derived), under the current rules. */
+  derivedOf(w: Wizard) { return derived(w, this.rules); }
+
+  moved(e: Wizard | Creature) {
     if ('house' in e) this.wizards.grid.update(e);
     else this.creatures.grid.update(e);
   }
@@ -533,8 +539,19 @@ export class World {
     if (dw && !this.isActive(dw)) return false;
     if (dc && CREATURES[dc.kind].invulnerable) return false;
     if (this.inSafe(dst.pos)) return false;
+    const sc = srcId ? this.creatures.get(srcId) : undefined;
+    // 决斗俱乐部 (duelclub.ts, formal/tla/Hostility.tla DuelMutual / DuelIsolated): while two wizards fight on the
+    // stage, only they (and their summons) touch each other — whatever their houses — and nobody else touches them
+    const m = this.duel.match;
+    if (srcId && m && m.phase === 'fight') { // (canHarm(null, x) keeps meaning "x is in play": see jinxBites)
+      const inD = (id: string | null | undefined) => id === m.a || id === m.b;
+      const so = sc?.owner ?? srcId, dso = dc?.owner ?? dstId;
+      if (inD(so) || inD(dso)) {
+        const sw0 = so ? this.wizards.get(so) : undefined;
+        return inD(so) && inD(dso) && so !== dso && !(sw0 && this.inSafe(sw0.pos));
+      }
+    }
     if (!srcId) return true;
-    const sc = this.creatures.get(srcId);
     if (sc?.owner) {
       if (dstId === sc.owner || dc?.owner === sc.owner) return false;
       return this.canHarm(sc.owner, dstId);
@@ -572,7 +589,16 @@ export class World {
   jinxBites(src: string | null, dstId: string): boolean {
     if (!this.canHarm(null, dstId)) return false;
     const dw = this.wizards.get(dstId);
-    return !dw || this.rulesLetHarm(src, dw);
+    if (!dw) return true;
+    const duelSide = this.duelOpponent(dw.id);
+    if (duelSide !== undefined) return !src || src === duelSide; // 决斗俱乐部: only the opponent's (or the world's)
+    return this.rulesLetHarm(src, dw);
+  }
+  /** The opponent of a wizard fighting a Duelling-Club match right now, else undefined. */
+  duelOpponent(wid: string): string | undefined {
+    const m = this.duel.match;
+    if (!m || m.phase !== 'fight') return undefined;
+    return m.a === wid ? m.b : m.b === wid ? m.a : undefined;
   }
 
   /** Stunned wizards within r (they are not "in play", so `around` never returns them). */
@@ -864,6 +890,7 @@ export class World {
       return { ...fail(bannedCastText(this, spell, w.handle)), spell: spell.name };
     }
     if (!opts.dryRun) {
+      if (inMatch(this.duel, w.id) && this.duel.match!.phase !== 'fight') return fail('Wait for the countdown to finish. 等倒计时结束再施法。');
       if (this.now < w.globalCd) return fail('Too fast — your wand arm needs a moment.');
       if (this.now < (w.cooldowns[spell.id] ?? 0)) return fail(`${spell.name} is recharging (${(w.cooldowns[spell.id] - this.now).toFixed(1)}s).`);
     }
@@ -975,12 +1002,14 @@ export class World {
   }
 
   heal(src: Wizard, t: Wizard, amount: number) {
+    if (src.id !== t.id && inMatch(this.duel, t.id)) return; // 决斗俱乐部: no help from the crowd
     const amt = amount * this.rules.combat.healingMultiplier * derived(src, this.rules).care;
     t.hp = Math.min(derived(t, this.rules).maxHp, t.hp + amt);
     this.fx({ k: 'heal', x: t.pos.x, z: t.pos.z, h: t.handle });
   }
 
   shield(src: Wizard, t: Wizard, amount: number, secs: number) {
+    if (src.id !== t.id && inMatch(this.duel, t.id)) return; // 决斗俱乐部: no help from the crowd
     t.st.shield = amount * derived(src, this.rules).care;
     t.st.shieldUntil = this.now + secs;
     t.st.shieldAt = this.now;
@@ -1307,6 +1336,18 @@ export class World {
       const before = w.hp;
       w.hp = hexDotHp(w.hp, derived(w, rb).maxHp, a);
       return before - w.hp;
+    }
+    const dm = this.duel.match;
+    if (dm && dm.phase === 'fight' && (dm.a === w.id || dm.b === w.id)) {
+      // 决斗俱乐部: count the hit for the summary; a knock-out ends the match instead of stunning (duelclub.ts)
+      const st = by ? dm.stats[by] : undefined;
+      if (st) { st.dealt += Math.min(a, Math.max(0, w.hp)); if (!opts.dot) st.hits++; }
+      if (w.hp - a <= 0) {
+        w.hp = 1;
+        dm.loser = w.id;
+        this.fx({ k: 'stun', x: w.pos.x, z: w.pos.z, h: w.handle });
+        return a;
+      }
     }
     w.hp -= a;
     w.hurtAt = this.now;
@@ -1677,7 +1718,11 @@ export class World {
    * while the PvP rules would not let its sender harm you (jinxBites, without the in-play part: a stunned or
    * offline wizard casts nothing anyway).
    */
-  silenced(w: Wizard) { return w.st.silencedUntil > this.now && !this.inSafe(w.pos) && this.rulesLetHarm(w.st.silenceSrc ?? null, w); }
+  silenced(w: Wizard) {
+    if (!(w.st.silencedUntil > this.now && !this.inSafe(w.pos))) return false;
+    const src = w.st.silenceSrc ?? null, opp = this.duelOpponent(w.id);
+    return opp !== undefined ? !src || src === opp : this.rulesLetHarm(src, w); // 决斗俱乐部: only the opponent's silence holds
+  }
 
   /**
    * The one fairness gate for hostile parcels (docs/AGENT_LINK.md §B.4; formal/tla/Hex.tla SendHex mirrors
@@ -2092,6 +2137,7 @@ export class World {
     this.now += dt;
     this.syncSolids();
     thinkNpcs(this);
+    stepDuelClub(this);
     const rb = this.rules;
     // 1. delayed spell blocks
     if (this.pending.length) {
@@ -2228,6 +2274,7 @@ export class World {
 
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
     if (w.st.rootedUntil > this.now) return;
+    if (inMatch(this.duel, w.id) && this.duel.match!.phase !== 'fight') return; // 决斗俱乐部: bowing, counting down
     if ((w.st.dodgeUntil ?? 0) > this.now) {
       // 翻滚闪避: the dash overrides the keys and any walk while it lasts
       const v = DODGE_DIST / DODGE_S;
@@ -3499,6 +3546,8 @@ export class World {
       // 学院杯: the four houses' points, the final minute, the ceremony card; 校园事件轮盘: the event (kernel/wheel.ts)
       cup: this.cupView(),
       ev: wheelView(this),
+      // 决斗俱乐部: the match on the stage (handles, phase, seconds left), for everyone
+      du: duelWire(this),
       w: ws,
       c: [...this.creatures.values()].map((c) => ({
         i: c.id, k: c.kind, x: round(c.pos.x), z: round(c.pos.z), f: round(c.facing), hp: Math.round(c.hp), m: Math.round(c.maxHp),
@@ -3652,6 +3701,8 @@ export class World {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       owls: this.owls,
       market: this.market,
+      // 决斗俱乐部: only the term's reward ledger (caps and rematch gaps survive a restart; the queue and match do not)
+      duelLedger: this.duel.ledger,
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
       wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, agentLog: undefined, goalBy: null, steerAt: undefined, jinxLook: null })),
     };
@@ -3672,6 +3723,8 @@ export class World {
     w.wheel.nextAt = w.now + w.rules.events.intervalSeconds;
     w.seq = data.seq ?? 0;
     w.owls = { boards: data.owls?.boards ?? {}, bests: data.owls?.bests ?? {} };
+    const dl = (data as { duelLedger?: { term?: unknown; wins?: unknown; pairs?: unknown } }).duelLedger;
+    if (dl && typeof dl.term === 'number') w.duel.ledger = { term: dl.term, wins: { ...(dl.wins as Record<string, number> ?? {}) }, pairs: { ...(dl.pairs as Record<string, number> ?? {}) } };
     w.market = restoreMarket((data as { market?: unknown }).market);
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)

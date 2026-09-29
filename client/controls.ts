@@ -895,6 +895,7 @@ export function createControls(d: ControlsDeps) {
       ${row('C', L('巧克力蛙画片册：已有的画片、还缺的剪影、集齐一套得称号（画片不卖，只能打怪、事件、宝箱里得到）', 'Chocolate Frog album: the cards you have, silhouettes of the ones you miss, sets that earn titles (never sold: creatures, events and chests)'))}
       ${row('L', L('排行榜：学期末声望第一成为魔法部长（改写规则）；声望 ≥150 的第一名戴上黑魔标记', 'Leaderboard: the top wizard at term end becomes Minister (rewrites the rules); the top one with 150+ wears the Dark Mark'))}
       ${row('J', L('邓布利多军：弱者的联盟，加入、在法令颁布后投票否决、联合守护神', "Dumbledore's Army: the underdogs' union; join, veto a fresh decree, strike together"))}
+      ${row('G', L('决斗俱乐部：报名 / 退出。凑齐两人就在庭院决斗台开打，打倒不进医院，赢了加声望（每学期最多 5 场有奖励）', 'Duelling Club: join / leave. Two make a match on the Courtyard stage; a knock-out sends nobody to the Hospital Wing; wins pay reputation (up to 5 rewarded a term)'))}
       ${row(L('空格', 'Space'), L('翻滚闪避：瞄准你的咒语和飞刺会落空；盔甲护身卡在咒语落地前一瞬间举起，能把它弹回去', 'Dodge roll: aimed spells and thorns miss; raise Protego just before a bolt lands to send it back'))}
       ${row('V', L('看你的 Agent 玩（按键不打断它）', 'Watch your agent play (your keys will not interrupt it)'))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}

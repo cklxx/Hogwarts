@@ -14,6 +14,7 @@ import { ensureNpcs } from '../kernel/npc.js';
 import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { marketMessage } from '../kernel/market.js';
 import { schoolEvents } from '../kernel/wheel.js';
+import { duelJoin, duelLeave, duelStatus } from '../kernel/duelclub.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
@@ -300,6 +301,7 @@ type ClientMsg =
   | { t: 'breakseal'; tier: number; words: string[] }
   | { t: 'goto'; x: number; z: number }
   | { t: 'dodge'; dx: number; dz: number }
+  | { t: 'duel'; op?: 'join' | 'leave' | 'status' }
   // Owl Post (docs/AGENT_LINK.md §C.5)
   | { t: 'owl'; text: string }
   | { t: 'answer'; id: number; choice: string }
@@ -376,6 +378,8 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       }
       case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(wid, { x: m.x, z: m.z }) : world.setGoal(wid, null) }); break;
       case 'dodge': world.dodge(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0); break; // (a roll on cooldown just does nothing)
+      // 决斗俱乐部 (kernel/duelclub.ts): join / leave / status; replies { t: 'duel', r }
+      case 'duel': reply({ t: 'duel', r: m.op === 'join' ? duelJoin(world, wid) : m.op === 'leave' ? duelLeave(world, wid) : duelStatus(world, wid) }); break;
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
       case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
       case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;
