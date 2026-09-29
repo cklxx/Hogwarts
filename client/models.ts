@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
+import { parseGlamourKey, type Glamour, type GlamourMaterial } from '../src/shared/glamour';
 
 /** A canvas sprite used for name tags, hp bars and speech bubbles. */
 export class Label {
@@ -62,6 +63,10 @@ export interface WizardModel {
   elder: THREE.Mesh;
   /** Set when a 'cast' fx for this wizard arrives; pass it to update() and clear it. */
   castPending: boolean;
+  /** The wand-tip colour at rest, or lit by Lumos (a glamour's :glow tints both). */
+  tipHex(lit: boolean): number;
+  /** The parts a glamour re-dresses (setWizardLook). */
+  dress: Dress;
   /**
    * Animate: walk cycle scaled by ground speed (m/s), and the wand-arm cast gesture when `casting`
    * is true. Returns true on the frame the wand is thrust forward (the moment to flash the tip).
@@ -422,20 +427,20 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
     m.emissive.setScalar(0.12);
     return emissiveByVertexColor(m, 'wizard-head');
   });
-  head.add(shadow(new THREE.Mesh(once(`headGeo:${skinI}:${hairI}`, () => {
+  const headMesh = head.add(shadow(new THREE.Mesh(once(`headGeo:${skinI}:${hairI}`, () => {
     const fg = faceGeo();
     const hair = new THREE.SphereGeometry(0.228, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62); hair.rotateX(0.85); hair.translate(0, 0.225, 0.014);
     return painted([[hg.face, SKIN[skinI]], [fg.whites, 0xf4f1ea], [fg.pupils, 0x1a120c], [fg.brows, HAIR[hairI]], [fg.mouth, 0x5a2a22], [hair, HAIR[hairI]]]);
-  }), headMat)));
+  }), headMat))).children.at(-1) as THREE.Mesh;
   // the hat: crown, brim and house band in one mesh
   const hat = new THREE.Group();
   hat.position.set(0, 0.37, 0.03);
   hat.rotation.set(0.24, 0, 0.06); // pushed back so the brim does not hide the face
   const hatMat = once('hatMat', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }));
-  hat.add(shadow(new THREE.Mesh(once(`hatGeo:${house}`, () => {
+  const hatMesh = hat.add(shadow(new THREE.Mesh(once(`hatGeo:${house}`, () => {
     const band = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); band.translate(0, 0.032, 0);
     return painted([[hatGeo(), 0x17171e], [brimGeo(), 0x17171e], [band, new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.6)]]);
-  }), hatMat)));
+  }), hatMat))).children.at(-1) as THREE.Mesh;
   head.add(hat);
   rig.add(head);
 
@@ -446,10 +451,13 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
     const hand = hg.hand.clone(); hand.translate(0, -0.6, 0);
     return painted([[sleeve, 0x1c1c22], [hand, SKIN[skinI]]]);
   });
+  const armMeshes: THREE.Mesh[] = [];
   const arm = (s: number) => {
     const a = new THREE.Group();
     a.position.set(s * 0.29, 1.41, 0);
-    a.add(shadow(new THREE.Mesh(armGeo, sleeveMat)));
+    const m = shadow(new THREE.Mesh(armGeo, sleeveMat));
+    armMeshes.push(m);
+    a.add(m);
     rig.add(a);
     return a;
   };
@@ -458,12 +466,12 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   wand.position.set(0, -0.6, -0.02);
   wand.rotation.x = -(Math.PI - 1.0); // about 57° off the forearm, so it points ahead from a lowered arm
   armR.add(wand);
-  wand.add(new THREE.Mesh(once('wandGeo', () => {
+  const wandMesh = wand.add(new THREE.Mesh(once('wandGeo', () => {
     const shaft = new THREE.CylinderGeometry(0.007, 0.014, 0.4, 6); shaft.translate(0, 0.2, 0);
     const grip = new THREE.CylinderGeometry(0.02, 0.018, 0.11, 8); grip.translate(0, 0.01, 0);
     const knob = new THREE.SphereGeometry(0.024, 8, 6); knob.translate(0, -0.05, 0);
     return mergeGeometries([shaft, grip, knob])!;
-  }), wood));
+  }), wood)).children.at(-1) as THREE.Mesh;
   const wandTip = new THREE.Mesh(once('tipGeo', () => new THREE.SphereGeometry(0.022, 8, 6)), new THREE.MeshBasicMaterial({ color: 0xffffff }));
   wandTip.position.y = 0.41;
   wand.add(wandTip);
@@ -507,10 +515,16 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '' };
   const tipColor = new THREE.Color();
   const REST_R = 0.3;
+  const dress: Dress = {
+    house, skinI, hairI, robe, sway, torso, legs, tails: [tailF, tailB], arms: armMeshes, head: headMesh, hat: hatMesh, wand: wandMesh, glow,
+    orig: new Map(), key: '', applied: '', held: [], own: [], tip: 0xffffff, lumos: 0xfff2c0, first: true,
+  };
   return {
-    root, body, label, shield, glow, wandTip, root2, patronus, elder, castPending: false,
+    root, body, label, shield, glow, wandTip, root2, patronus, elder, castPending: false, dress,
+    tipHex: (lit) => (lit ? dress.lumos : dress.tip),
     update(dt, speed, casting) {
       st.t += dt;
+      if (dress.animated) glamTime.value = performance.now() / 1000;
       if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high'; }
       // The stride follows ground speed up to GAIT_MAX (beyond it the feet slide a little instead of the
       // legs blurring). Anything faster than GLIDE is not walking but the model catching up after an
@@ -566,6 +580,261 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
       return fire;
     },
   };
+}
+
+// ------------------------------------------------------------------ transfiguration of self (glamour)
+/**
+ * A wizard's look comes from the snapshot entry's `g` (src/shared/glamour.ts glamourKey), set only by a
+ * glamour spell. Everything a look needs is cached by what it depends on and reference-counted, so N
+ * wizards with the same look share their textures, geometry and materials (the robe material is the
+ * exception: it carries the wizard's own sway uniform, as before); replaced ones are disposed. At 'low'
+ * every preset is a MeshStandardMaterial approximation (no sheen, clearcoat or iridescence).
+ */
+export interface Dress {
+  house: House; skinI: number; hairI: number;
+  robe: THREE.Mesh; sway: { value: THREE.Vector3 }; torso: THREE.Mesh; legs: THREE.Mesh[]; tails: THREE.Mesh[]; arms: THREE.Mesh[];
+  head: THREE.Mesh; hat: THREE.Mesh; wand: THREE.Mesh; glow: THREE.PointLight;
+  /** Each re-dressed mesh's own material and geometry, to put back for the house look. */
+  orig: Map<THREE.Mesh, { material: THREE.Material; geometry: THREE.BufferGeometry }>;
+  /** The look key worn, and `${key}|${detail}` as last built. */
+  key: string; applied: string;
+  /** Shared pool entries this wizard holds, and materials only it uses (the robe). */
+  held: string[]; own: THREE.Material[];
+  tip: number; lumos: number; first: boolean; animated?: boolean;
+}
+
+/** One clock for every animated glamour (starlight, flame, ghost). */
+const glamTime = { value: 0 };
+const WHITE = new THREE.Color(0xffffff);
+/** A preset's own robe (and hat) colour when the spell names none; unset = the black school robe. */
+const PRESET_CLOTH: Partial<Record<GlamourMaterial, number>> = { scales: 0x2f6f5a, mirror: 0xc0c6cc, flame: 0x3a0c04, starlight: 0x0d1238, ghost: 0xdfeeff };
+/** The light an animated preset adds (a :glow colour tints it). */
+const PRESET_SPARK: Partial<Record<GlamourMaterial, number>> = { starlight: 0xfff3d6, flame: 0xff5a14, ghost: 0x9fd8ff };
+
+const pool = new Map<string, { v: { dispose(): void }; n: number }>();
+function take<T extends { dispose(): void }>(d: Dress, key: string, make: () => T): T {
+  let e = pool.get(key);
+  if (!e) { e = { v: make(), n: 0 }; pool.set(key, e); }
+  e.n++;
+  d.held.push(key);
+  return e.v as T;
+}
+function drop(key: string) {
+  const e = pool.get(key);
+  if (e && --e.n <= 0) { e.v.dispose(); pool.delete(key); }
+}
+const hexStr = (n: number) => '#' + n.toString(16).padStart(6, '0');
+
+/** The robe cloth in any colour: the same folds, noise, front edges, hem and piping as robeTex; dragon scales for :scales. */
+function glamRobeTex(house: House, robe: number | null, trim: number | null, scales: boolean) {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  const base = new THREE.Color(robe ?? 0x1a1a20);
+  for (let x = 0; x < S; x++) {
+    const k = 0.78 + 0.22 * Math.cos((x / S) * Math.PI * 2 * 7);
+    g.fillStyle = '#' + base.clone().multiplyScalar(k).getHexString();
+    g.fillRect(x, 0, 1, S);
+  }
+  for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`; g.fillRect(Math.random() * S, Math.random() * S, 1, 3); }
+  if (scales) {
+    const r = 9;
+    for (let row = 0; row * r * 0.9 < S + r; row++) for (let col = -1; col * r * 2 < S + r; col++) {
+      const cx = col * r * 2 + (row % 2) * r, cy = row * r * 0.9;
+      const gr = g.createRadialGradient(cx, cy - r * 0.3, 1, cx, cy, r);
+      gr.addColorStop(0, 'rgba(255,255,255,0.22)'); gr.addColorStop(0.75, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.45)');
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(cx, cy, r, 0, Math.PI); g.fill();
+    }
+  }
+  const edge = trim ?? HOUSE_COLORS[house];
+  g.fillStyle = hexStr(edge);
+  g.fillRect(0, 0, S * 0.045, S);
+  g.fillRect(S * 0.955, 0, S * 0.045, S);
+  g.fillRect(0, S * 0.93, S, S * 0.07);
+  g.fillStyle = trim === null ? '#c9a23a' : '#' + new THREE.Color(trim).lerp(WHITE, 0.45).getHexString();
+  g.fillRect(S * 0.045, 0, 2, S * 0.93);
+  g.fillRect(S * 0.955 - 2, 0, 2, S * 0.93);
+  g.fillRect(0, S * 0.93 - 2, S, 2);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** The preset's surface: MeshPhysicalMaterial at 'high' where it has sheen, clearcoat, iridescence or metal. */
+function surface(mat: GlamourMaterial, hi: boolean, p: THREE.MeshStandardMaterialParameters, tint: THREE.Color): THREE.MeshStandardMaterial {
+  const P = (x: THREE.MeshPhysicalMaterialParameters) => new THREE.MeshPhysicalMaterial({ ...p, ...x });
+  const S = (x: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ ...p, ...x });
+  switch (mat) {
+    case 'velvet': return hi ? P({ roughness: 0.95, sheen: 1, sheenRoughness: 0.4, sheenColor: tint.clone().lerp(WHITE, 0.4) }) : S({ roughness: 0.95 });
+    case 'silk': return hi ? P({ roughness: 0.38, sheen: 0.6, sheenRoughness: 0.25, sheenColor: tint.clone().lerp(WHITE, 0.6), clearcoat: 0.7, clearcoatRoughness: 0.18 }) : S({ roughness: 0.38, metalness: 0.08 });
+    // (a razor-sharp sun highlight blows out under bloom: mirror and scales stay a touch rough)
+    case 'scales': return hi ? P({ roughness: 0.38, metalness: 0.35, iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [220, 820] }) : S({ roughness: 0.4, metalness: 0.45 });
+    case 'mirror': return hi ? P({ roughness: 0.2, metalness: 1, clearcoat: 0.3, clearcoatRoughness: 0.25 }) : S({ roughness: 0.24, metalness: 0.9 });
+    case 'starlight': return S({ roughness: 0.75 });
+    case 'flame': return S({ roughness: 0.85 });
+    case 'ghost': return S({ roughness: 0.6, transparent: true, opacity: 0.38, depthWrite: false });
+    default: return S({ roughness: 0.82 });
+  }
+}
+
+/** Light added after shading by the animated presets (object-space position in vGlamPos, time in uGlamTime). */
+const EFFECT_GLSL: Partial<Record<GlamourMaterial, string>> = {
+  starlight: `{
+    vec3 sp = vGlamPos * 34.0;
+    float hh = fract(sin(dot(floor(sp), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float star = step(0.86, hh) * smoothstep(0.32, 0.0, length(fract(sp) - 0.5));
+    float tw = 0.3 + 0.7 * pow(0.5 + 0.5 * sin(uGlamTime * (1.5 + hh * 4.0) + hh * 60.0), 3.0);
+    outgoingLight += uGlamSpark * (star * tw * 4.0 + 0.03);
+  }`,
+  flame: `{
+    float hgt = clamp(1.0 - vGlamPos.y / 1.6, 0.0, 1.0);
+    float an = atan(vGlamPos.z, vGlamPos.x);
+    float lick = sin(an * 7.0 + uGlamTime * 3.1) * 0.5 + sin(an * 13.0 - uGlamTime * 4.3 + vGlamPos.y * 9.0) * 0.35;
+    float wave = 0.5 + 0.5 * sin(vGlamPos.y * 18.0 - uGlamTime * 7.0 + lick * 3.0);
+    float fl = clamp(hgt * 1.3 + lick * 0.25 - 0.25, 0.0, 1.0) * (0.55 + 0.45 * wave);
+    outgoingLight += mix(uGlamSpark, vec3(1.0, 0.85, 0.35), fl * fl) * fl * 2.2;
+  }`,
+  ghost: `{
+    float rim = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.0);
+    float drift = 0.85 + 0.15 * sin(uGlamTime * 1.3 + vGlamPos.y * 6.0);
+    outgoingLight = outgoingLight * 0.6 + uGlamSpark * (0.22 + rim * 1.4) * drift;
+    diffuseColor.a = clamp(diffuseColor.a + rim * 0.5, 0.0, 0.85);
+  }`,
+};
+
+/** Add a preset's animated light (if it has one); `then` runs after (the cloth sway and lining). */
+function withEffect<T extends THREE.MeshStandardMaterial>(m: T, mat: GlamourMaterial, spark: THREE.Color, key: string, then?: (sh: THREE.WebGLProgramParametersWithUniforms) => void) {
+  const glsl = EFFECT_GLSL[mat];
+  m.onBeforeCompile = (sh) => {
+    if (glsl) {
+      sh.uniforms.uGlamTime = glamTime;
+      sh.uniforms.uGlamSpark = { value: spark };
+      sh.vertexShader = 'varying vec3 vGlamPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vGlamPos = position;');
+      sh.fragmentShader = 'uniform float uGlamTime;\nuniform vec3 uGlamSpark;\nvarying vec3 vGlamPos;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', `${glsl}\n#include <opaque_fragment>`);
+    }
+    then?.(sh);
+  };
+  m.customProgramCacheKey = () => key;
+  return m;
+}
+
+/** clothMaterial in a preset: the robe (own sway, own map) or the sleeves (vertex colours, no sway). */
+function glamCloth(mat: GlamourMaterial, map: THREE.Texture | null, lining: THREE.Color, sway: { value: THREE.Vector3 }, vc: boolean, tint: THREE.Color, spark: THREE.Color) {
+  const m = surface(mat, detail === 'high', { color: 0xffffff, map, side: THREE.DoubleSide, vertexColors: vc }, tint);
+  if (vc) m.emissive.setScalar(0.12);
+  withEffect(m, mat, spark, `glam-cloth:${mat}:${vc ? 'vc' : 'map'}`, (sh) => {
+    sh.uniforms.uSway = sway;
+    sh.uniforms.uLining = { value: lining };
+    sh.vertexShader = 'uniform vec3 uSway;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float swayW = pow(clamp(1.0 - position.y / ${(ROBE_TOP - 0.2).toFixed(2)}, 0.0, 1.0), 1.6);
+      transformed.x += uSway.x * swayW;
+      transformed.z += uSway.z * swayW;
+      transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;`);
+    sh.fragmentShader = 'uniform vec3 uLining;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      if (!gl_FrontFacing) diffuseColor.rgb = uLining;`);
+    if (vc) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      #ifdef USE_COLOR
+        totalEmissiveRadiance *= vColor.rgb;
+      #endif`);
+  });
+  return m;
+}
+
+/** A translucent copy of a shared material for :ghost (bounded: one per base material). */
+function ghostOf(m: THREE.Material): THREE.Material {
+  return once(`ghost:${m.uuid}`, () => {
+    const c = m.clone();
+    c.onBeforeCompile = m.onBeforeCompile;
+    c.customProgramCacheKey = m.customProgramCacheKey;
+    c.transparent = true;
+    c.opacity = 0.35;
+    c.depthWrite = false;
+    return c;
+  });
+}
+
+/**
+ * Dress a wizard in the look `key` (the snapshot's `g`; undefined = the house look). Cheap when nothing
+ * changed. Returns true when a wizard already in view changed how they look (time for a shimmer).
+ */
+export function setWizardLook(m: WizardModel, key: string | undefined): boolean {
+  const d = m.dress;
+  const k = key ?? '';
+  const want = `${k}|${detail}`;
+  if (want === d.applied) return false;
+  const changed = !d.first && k !== d.key;
+  d.first = false;
+  d.key = k;
+  d.applied = want;
+  const held = d.held, own = d.own;
+  d.held = [];
+  d.own = [];
+  const g = parseGlamourKey(k);
+  const meshes = [d.robe, d.torso, ...d.legs, ...d.tails, ...d.arms, d.head, d.hat, d.wand];
+  for (const x of meshes) if (!d.orig.has(x)) d.orig.set(x, { material: x.material as THREE.Material, geometry: x.geometry });
+  for (const [x, o] of d.orig) { x.material = o.material; x.geometry = o.geometry; }
+  if (g) dressUp(d, g, k);
+  else { d.tip = 0xffffff; d.lumos = 0xfff2a0; d.glow.color.setHex(0xfff2c0); d.animated = false; }
+  // take the new before dropping the old, so what both looks share is never rebuilt
+  for (const x of held) drop(x);
+  for (const x of own) x.dispose();
+  return changed;
+}
+
+function dressUp(d: Dress, g: Glamour, key: string) {
+  const mat = g.mat, hi = detail === 'high';
+  const cloth = g.robe ?? PRESET_CLOTH[mat] ?? null;
+  const trim = g.trim ?? null;
+  const lining = trim !== null ? new THREE.Color(trim) : new THREE.Color(HOUSE_COLORS[d.house]).multiplyScalar(0.7);
+  const tint = new THREE.Color(cloth ?? 0x1c1c22);
+  const spark = new THREE.Color(g.glow ?? PRESET_SPARK[mat] ?? 0xffffff);
+  // robe: its own material (the sway uniform is per wizard) over a shared texture
+  const map = take(d, `rt:${d.house}:${cloth}:${trim}:${mat === 'scales'}`, () => glamRobeTex(d.house, cloth, trim, mat === 'scales'));
+  const robeMat = glamCloth(mat, map, lining, d.sway, false, tint, spark);
+  d.own.push(robeMat);
+  d.robe.material = robeMat;
+  // sleeves + hands: shared by every wizard of this house in this look
+  const skin = g.skin ?? SKIN[d.skinI];
+  const sleeves = take(d, `sl:${d.house}:${key}:${detail}`, () => glamCloth(mat, null, lining, NO_SWAY, true, tint, spark));
+  const armGeo = take(d, `ag:${cloth}:${skin}`, () => {
+    const sleeve = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 12, 1, true); sleeve.translate(0, -0.3, 0);
+    const hand = headGeo().hand.clone(); hand.translate(0, -0.6, 0);
+    return painted([[sleeve, cloth ?? 0x1c1c22], [hand, skin]]);
+  });
+  for (const a of d.arms) { a.material = sleeves; a.geometry = armGeo; }
+  if (g.skin !== undefined) {
+    d.head.geometry = take(d, `hd:${g.skin}:${d.hairI}`, () => {
+      const hg = headGeo(), fg = faceGeo();
+      const hair = new THREE.SphereGeometry(0.228, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62); hair.rotateX(0.85); hair.translate(0, 0.225, 0.014);
+      return painted([[hg.face, g.skin!], [fg.whites, 0xf4f1ea], [fg.pupils, 0x1a120c], [fg.brows, HAIR[d.hairI]], [fg.mouth, 0x5a2a22], [hair, HAIR[d.hairI]]]);
+    });
+  }
+  // hat: crown and brim in the hat colour, the band in the trim; the preset's surface
+  const hatCol = g.hat ?? PRESET_CLOTH[mat] ?? 0x17171e;
+  const band = trim ?? new THREE.Color(HOUSE_COLORS[d.house]).multiplyScalar(0.6).getHex();
+  d.hat.geometry = take(d, `hg:${hatCol}:${band}`, () => {
+    const b = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); b.translate(0, 0.032, 0);
+    return painted([[hatGeo(), hatCol], [brimGeo(), hatCol], [b, band]]);
+  });
+  d.hat.material = take(d, `hm:${mat}:${spark.getHex()}:${detail}`, () =>
+    withEffect(surface(mat, hi, { color: 0xffffff, vertexColors: true, side: THREE.DoubleSide }, new THREE.Color(hatCol)), mat, spark, `glam-hat:${mat}`));
+  if (mat === 'ghost') for (const x of [d.torso, ...d.legs, ...d.tails, d.head, d.wand]) x.material = ghostOf(d.orig.get(x)!.material);
+  d.tip = g.glow ?? 0xffffff;
+  d.lumos = g.glow ?? 0xfff2a0;
+  d.glow.color.setHex(g.glow ?? 0xfff2c0);
+  d.animated = !!EFFECT_GLSL[mat];
+}
+
+/** Give back what a wizard's look holds (call when the wizard leaves the scene). */
+export function releaseWizardLook(m: WizardModel) {
+  const d = m.dress;
+  for (const x of d.held) drop(x);
+  for (const x of d.own) x.dispose();
+  d.held = [];
+  d.own = [];
+  d.applied = '';
 }
 
 /** House colour lifted toward white so it reads on dark backgrounds. */

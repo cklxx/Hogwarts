@@ -16,6 +16,7 @@ export const ZH_SPELL: Record<string, string> = {
   'Expecto Patronum': '呼神护卫', 'Petrificus Totalus': '统统石化', Bombarda: '霹雳爆炸', Rennervate: '快快复苏',
   Avis: '飞鸟群群', 'Homenum Revelio': '人形显身', 'Lumos Solem': '日光闪耀', Reducto: '粉身碎骨',
   'Vulnera Sanentur': '伤口愈合', Apparition: '幻影显形', Confringo: '烈火爆裂', 'Wingardium Leviosa': '羽加迪姆勒维奥萨',
+  Vestimentum: '衣装变幻', Reparifarge: '恢复原形',
 };
 
 export const ZH_PLACE: Record<string, string> = {

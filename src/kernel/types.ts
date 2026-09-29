@@ -2,6 +2,7 @@ import type { CreatureKind, Element, House, ItemMod, ItemSlot, JinxKind } from '
 import type { Node } from '../runes/parser.js';
 import type { Env } from '../runes/interp.js';
 import type { Aura, AuraKind } from './auras.js';
+import type { Glamour } from '../shared/glamour.js';
 
 export interface Vec2 { x: number; z: number }
 
@@ -42,6 +43,9 @@ export interface Item {
 }
 
 export interface Jinx { kind: JinxKind; mag: number; seconds: number }
+
+/** A Colour-Change jinx on a wizard's look: what it lays over theirs, until when, and who cast it (never shown). */
+export interface JinxLook { look: Glamour; until: number; src: string }
 
 export interface WizardStatus {
   shield: number; shieldUntil: number;
@@ -150,6 +154,10 @@ export interface Wizard {
   agentReadUpTo: number;
   /** The agent's goal note, shown on the player's HUD. */
   agentGoal: string | null;
+  /** Transfiguration of self: the look this wizard chose with a glamour spell (null = house colours). Persisted. */
+  look: Glamour | null;
+  /** Not persisted: someone's Colour-Change jinx (≤ GLAMOUR_PRANK_MAX_S; Finite Incantatem ends it). */
+  jinxLook: JinxLook | null;
   /** Not persisted: the player paused their agent (MCP actions refused). */
   agentPaused: boolean;
   /** Not persisted: the agent's last MCP call. */

@@ -7,11 +7,11 @@ import { L, applyStatic, creatureName, houseName, lang, placeName, setLang, spel
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { heightAt } from './terrain';
-import { makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, wizardColor, type WizardModel } from './models';
+import { makeAuraRing, makeBolt, makeCreature, makeWizard, releaseWizardLook, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
 import { agentView, agoText, createControls, curseText, routeChat, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
-interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string }
+interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
@@ -210,9 +210,11 @@ function apply(s: Snap) {
     m.elder.visible = w.s.includes('E');
     m.body.rotation.z = w.s.includes('X') ? Math.PI / 2 : 0;
     m.body.position.y = w.s.includes('X') ? 0.3 : 0;
-    (m.wandTip.material as THREE.MeshBasicMaterial).color.setHex(w.s.includes('D') ? 0x444444 : w.s.includes('L') ? 0xfff2a0 : 0xffffff);
+    // the look a glamour spell gave them (shimmering when it changes in view)
+    if (setWizardLook(m, w.g)) { const p = m.root.position; particles.burst(p.x, p.y + 1.1, p.z, { count: 60, color: m.tipHex(false), intensity: 3, whiten: 0.5, radius: 0.8, speed: 1.2, up: 1.4, size: 0.12, life: 0.9, drag: 1.5 }); particles.motes(p.x, p.y, p.z, m.tipHex(false), 30); }
+    (m.wandTip.material as THREE.MeshBasicMaterial).color.setHex(w.s.includes('D') ? 0x444444 : m.tipHex(w.s.includes('L')));
   }
-  for (const [h, m] of wizards) if (!seenW.has(h)) { scene.remove(m.root); wizards.delete(h); }
+  for (const [h, m] of wizards) if (!seenW.has(h)) { releaseWizardLook(m); scene.remove(m.root); wizards.delete(h); }
 
   const seenC = new Set<string>();
   for (const c of s.c) {

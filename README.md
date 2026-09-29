@@ -133,6 +133,10 @@ HUD 四个角默认是暗的，要用魔法点亮（新原语 `reveal`）：**Te
 - **友善魔物**：独角兽（禁林，靠近它会缓慢回血；伤害它=诅咒，最大生命 -30%，5 分钟）；凤凰 Fawkes（白天稀有出现，无敌，为重伤者流泪治愈并驱散负面状态）。
 - **召唤**：`summon :serpent`（Serpensortia，二年级）/ `:birds`（Avis，三年级）。召唤物**完全继承主人的敌我关系**、永不伤害主人，击杀记在主人名下，攻击它=攻击它的主人；主人倒下即消失；同时数量受 `magic.maxSummons` 限制（新召唤替换最旧的）。
 
+### 变形术：外观只能用咒语改
+没有换装菜单，也没有直接设外观的 MCP 工具 —— 想换长袍、帽子、肤色、杖光和材质，就写一段 `glamour` 咒语（Agent 写，或在咒语书里自己写）：
+`(glamour :robe "#7a1f2b" :trim :gold :hat "#222" :material :velvet)`。颜色可以是 `"#rrggbb"`、`"#rgb"`、`(list r g b)` 或名字（`:midnight`、`:emerald`、`:slytherin`…），`nil` 让某一部分回到学院默认，`:reset`（课本咒语 Reparifarge）全部复原。材质按年级解锁：`:plain` `:velvet`（一年级）· `:silk`（二）· `:scales` 龙鳞虹彩（三）· `:mirror`（四）· `:flame`（四年级 + 第一道封印）· `:starlight` 礼堂星空（五）· `:ghost` 像差点没头的尼克（六）。隐形衣是死亡圣器，任何咒语都变不出来。外观存档、随快照里巫师条目的 `g` 字段下发（例：`velvet:7a1f2b:d4af37:::`）。二年级起 `:on target :secs n` 可以给**你能决斗的人**（`canHarm`）施最长 60 秒的变色恶作剧，咒立停即解。
+
 ### NPC 巫师
 4 位原著同学（Seamus、Hannah、Padma、Goyle）是**真正的内核巫师**，走同一套 syscall：巡逻、按弱点选咒语打怪、受伤用 Ferula/Episkey、中招用 Finite Incantatem、扶起同学院倒下的人、偶尔召唤蛇、只反击先攻击它们的人、说原著台词。它们不能当部长、击晕它们不给声望。`NPC_COUNT` 可调。
 

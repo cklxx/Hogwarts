@@ -1,4 +1,9 @@
 import { EFFECT_PRIMITIVES, ELEMENTS, type EffectPrimitive } from '../shared/constants.js';
+import {
+  GLAMOUR_MATERIALS, GLAMOUR_MAX_ARGS, GLAMOUR_PARTS, GLAMOUR_PRANK_MAX_S, GLAMOUR_PRANK_YEAR, MATERIAL_DEFS, NAMED_COLOURS,
+  colourFromText, forbiddenLook, type GlamourMaterial,
+} from '../shared/glamour.js';
+import { type Node, RuneError } from './parser.js';
 
 /**
  * One table drives everything about the spell language: the static checker, the interpreter's
@@ -17,7 +22,15 @@ export interface Prim {
   variadic?: ArgType;
   doc: string;
   example?: string;
+  /**
+   * Extra static checks on the literal arguments (the checker calls it with the argument nodes). It may
+   * throw a RuneError, and returns what the literal arguments themselves require (e.g. a year-6 material).
+   */
+  check?: (args: Node[], at: Node) => Gate[] | void;
 }
+
+/** A requirement found in a primitive's literal arguments: `what` needs this year and these seals. */
+export interface Gate { what: string; year: number; seals: number }
 
 const a = (name: string, type: ArgType, optional = false): ArgSpec => ({ name, type, optional });
 
@@ -55,6 +68,8 @@ export function capsFor(year: number, seals = 0) {
     boltRange: 45,
     afterDelay: 5,
     afterPerCast: 3,
+    glamourRange: 20,
+    glamourSecs: GLAMOUR_PRANK_MAX_S,
   };
 }
 export type Caps = ReturnType<typeof capsFor>;
@@ -81,7 +96,44 @@ export const EFFECT_COST: Record<EffectPrimitive, (x: Record<string, number>) =>
   summon: ({ base, secs }) => base + secs * 0.5,
   chain: ({ power }) => power * 2.2,
   storm: ({ power, radius }) => power * (1 + 0.4 * radius),
+  // parts: colours changed; tier: the material's extra mana; other: 1 when jinxing someone else for secs
+  glamour: ({ parts, tier, other, secs }) => 5 + 2 * parts + tier + (other ? 5 + 0.5 * secs : 0),
 };
+
+const GLAMOUR_KEYS = [...GLAMOUR_PARTS, 'material', 'on', 'secs', 'reset'] as const;
+/**
+ * Static checks for (glamour :key value ...): with literal keywords the checker already knows the keys,
+ * the material and the colours, so a typo, a forbidden look or a year-locked material is refused at
+ * forge time with a position. Anything computed is checked again when the spell runs (magic.ts).
+ */
+function checkGlamour(args: Node[], at: Node): Gate[] {
+  const gates: Gate[] = [];
+  if (!args.length) throw new RuneError(`(glamour :key value ...) needs at least one key: :${GLAMOUR_KEYS.join(' :')}`, at.line, at.col);
+  if (args.length > GLAMOUR_MAX_ARGS) throw new RuneError(`glamour takes at most ${GLAMOUR_MAX_ARGS} words`, at.line, at.col);
+  const word = (n: Node | undefined) => (n && (n.t === 'kw' || n.t === 'str') ? n.v : null);
+  for (let i = 0; i < args.length;) {
+    const k = args[i];
+    if (k.t !== 'kw') return gates; // a computed key: checked at cast time
+    const bad = forbiddenLook(k.v);
+    if (bad) throw new RuneError(`${bad.en} ${bad.zh}`, k.line, k.col);
+    if (k.v === 'reset') { i++; continue; }
+    if (!(GLAMOUR_KEYS as readonly string[]).includes(k.v)) throw new RuneError(`glamour: unknown key :${k.v} — use :${GLAMOUR_KEYS.join(' :')}`, k.line, k.col);
+    const v = args[i + 1];
+    if (!v) throw new RuneError(`glamour: :${k.v} needs a value`, k.line, k.col);
+    const lit = word(v);
+    if (k.v === 'material' && lit !== null) {
+      const no = forbiddenLook(lit);
+      if (no) throw new RuneError(`${no.en} ${no.zh}`, v.line, v.col);
+      if (!(GLAMOUR_MATERIALS as readonly string[]).includes(lit)) throw new RuneError(`glamour: no such material :${lit} — one of :${GLAMOUR_MATERIALS.join(' :')}`, v.line, v.col);
+      const d = MATERIAL_DEFS[lit as GlamourMaterial];
+      gates.push({ what: `glamour :${lit}`, year: d.year, seals: d.seals });
+    } else if ((GLAMOUR_PARTS as readonly string[]).includes(k.v) && lit !== null && colourFromText(lit) === null) {
+      throw new RuneError(`glamour: "${lit}" is not a colour — use "#rrggbb", "#rgb" or a name like :${Object.keys(NAMED_COLOURS).slice(0, 8).join(' :')}`, v.line, v.col);
+    } else if (k.v === 'on') gates.push({ what: 'glamour :on (a Colour-Change jinx on someone else)', year: GLAMOUR_PRANK_YEAR, seals: 0 });
+    i += 2;
+  }
+  return gates;
+}
 
 export const PRIMS: Prim[] = [
   // ---- pure ----
@@ -151,6 +203,11 @@ export const PRIMS: Prim[] = [
   { name: 'reveal', kind: 'effect', year: 1, args: [a('charm', 'str')], doc: 'Unlock a corner of your sight for good: :tempus (clock, y1), :revelio (your own measure, y1), :point-me (radar, y2), :homenum (who is near, y3). Cost 10.', example: '(reveal :tempus)' },
   { name: 'chain', kind: 'effect', year: 4, seals: 2, args: [a('at', 'ent'), a('power', 'num'), a('element', 'elem', true)], doc: '[Second Seal] Lightning that strikes a foe then leaps to up to 3 more within 8m, losing 30% each jump. Cost: 2.2*power.', example: '(chain target 20 :lightning)' },
   { name: 'storm', kind: 'effect', year: 7, seals: 4, args: [a('at', 'place'), a('radius', 'num'), a('power', 'num'), a('element', 'elem', true)], doc: '[Fourth Seal] A tempest gathers at a point (<=40m) and breaks 1.5s later on everything harmable within radius (<=10). Cost: power*(1+0.4*radius).', example: '(storm aim 8 40 :lightning)' },
+  {
+    name: 'glamour', kind: 'effect', year: 1, args: [], variadic: 'any', check: checkGlamour,
+    doc: `Transfiguration of self: change how you look, for good. Keys: :robe :trim :hat :skin :glow take a colour ("#7a1f2b", "#b5f", or a name like :gold :midnight :emerald :slytherin); nil puts that part back to your house default. :material one of ${GLAMOUR_MATERIALS.map((m) => `:${m}${MATERIAL_DEFS[m].year > 1 ? ` (y${MATERIAL_DEFS[m].year}${MATERIAL_DEFS[m].seals ? `, seal ${MATERIAL_DEFS[m].seals}` : ''})` : ''}`).join(' ')}. :reset returns to your house look first. Year 2: :on <wizard> :secs n (<=${GLAMOUR_PRANK_MAX_S}) jinxes someone you may duel instead, until it wears off or they cast Finite Incantatem. Cost: 5 + 2 per colour + material (velvet 4 .. ghost 16); on someone else +5 +0.5/s.`,
+    example: '(glamour :robe "#7a1f2b" :trim :gold :material :velvet)',
+  },
   { name: 'apparate', kind: 'effect', year: 6, args: [a('to', 'place')], doc: 'Teleport up to 30m. Cost 30. Blocked on Hogwarts grounds unless the Rulebook allows it.' },
 ];
 

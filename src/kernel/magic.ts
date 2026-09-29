@@ -5,6 +5,7 @@ import { Env, Interp, type RuneHost, type Value, display, isRef, isVec, ref, vec
 import { type Node, RuneError } from '../runes/parser.js';
 import { type Caps, EFFECT_COST, capsFor } from '../runes/primitives.js';
 import { gasLimit } from './progression.js';
+import { describeGlamour, glamourCostArgs, jinxLayer, materialRefusal, nextLook, prankRefusal, prankSecs, PRANK_MIN_S, readGlamour } from './glamour.js';
 import { dist } from './physics.js';
 import type { Pending, Vec2, Wizard } from './types.js';
 import type { World } from './world.js';
@@ -249,6 +250,27 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
           if (rb.magic.maxSummons < 1) throw new RuneError('conjuration is forbidden by Ministry decree (maxSummons = 0)', at.line, at.col);
           const secs = clampNote('summon secs', Math.max(1, (args[1] as number) ?? 20), caps.summonSecs);
           return push({ base: kind === 'serpent' ? 30 : 40, secs }, `summon ${kind} for ${fmt(secs)}s`, () => world.summon(w, kind, secs));
+        }
+        case 'glamour': {
+          const req = readGlamour(args, at, notes);
+          if (req.mat && !ctx.free) {
+            const no = materialRefusal(req.mat, w.year, w.seals);
+            if (no) throw new RuneError(no, at.line, at.col);
+          }
+          const onId = req.on ? (req.on as { id: string }).id : w.id;
+          if (onId === w.id) {
+            if (req.secs !== undefined) notes.push('glamour :secs only times a jinx on someone else; your own look lasts until you change it');
+            return push(glamourCostArgs(req, false, 0), `glamour self: ${describeGlamour(req)}`, () => world.setLook(w, nextLook(w.look, req)));
+          }
+          // a Colour-Change jinx on someone else: only where you could duel them, and never for long
+          const refusal = ctx.free ? null : prankRefusal(w.year);
+          if (refusal) throw new RuneError(refusal, at.line, at.col);
+          if (req.reset) throw new RuneError('glamour :reset only works on yourself — Finite Incantatem (cleanse) ends a jinx on someone else', at.line, at.col);
+          if (!world.wizards.has(onId)) throw new RuneError('glamour :on needs a wizard — only wizards wear robes', at.line, at.col);
+          const t = wizardArg(req.on!, at, caps.glamourRange);
+          if (!world.canHarm(w.id, t.id)) throw new RuneError(`you cannot jinx ${t.name}'s robes here — only someone you may duel (PvP, outside the safe zones)`, at.line, at.col);
+          const secs = Math.max(PRANK_MIN_S, clampNote('glamour secs', prankSecs(req), caps.glamourSecs));
+          return push(glamourCostArgs(req, true, secs), `glamour ${t.name} for ${fmt(secs)}s: ${describeGlamour(req)}`, () => world.jinxLook(w, t, jinxLayer(req), secs));
         }
         default: {
           const never: never = name;
