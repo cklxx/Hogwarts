@@ -74,6 +74,7 @@
 
 | 内容 | 提交 |
 |---|---|
+| 玩法插件化：决斗俱乐部、魁地奇、事件轮盘、集市、O.W.L. 考试改成 `Feature`（`src/kernel/feature.ts` / `features.ts`：`step` `stepLate` `wire` `save`/`load` `moveMult` `castBlock` `helpBlock` `bolt` `npc` `tools` `ws`），内核只遍历预建的 `HOOKS`；MCP 工具、WebSocket 操作、快照字段、存档都走注册表，加一个玩法 = 新写一个模块 + 在 `FEATURES` 里加一行；客户端同理（`client/features.ts`）。看 Agent 玩简化为看自己的巫师（删掉观看链接和只读观看者）。内核压测与 main 持平（噪声内，`docs/PERF.md`） | `ea7f63b`（`wf/plugins`） |
 | 好玩第 1 步：学院杯比赛化（顶部四院比分 + 倒计时、决胜时刻 ×2、颁奖卡：冠军 / MVP / 决斗 / 猎手 / 事件英雄、礼堂换旗；所有来源的学院分走同一个每人每学期上限、永不为负）、校园事件轮盘（注册表：巨怪 / 金色飞贼 / 宵禁费尔奇与洛丽丝夫人 / 摄魂怪 / 皮皮鬼墨水 / 有求必应屋；种子确定、同时最多一件、按期结束、奖励只发一次）、82 张巧克力蛙画片（四种稀有度、五个套装称号、重复换加隆、不卖）、14 个隐藏宝箱（每学期刷新）；MCP `school_events` `frog_cards` `open_chest`；Lean `cup_*` + TLA+ `EventWheel.tla`（+ 非空性见证） | `wf/fun` |
 | 渲染器退回 WebGL：去掉 `WebGPURenderer`/TSL（`wf/webgpu`）与为它做的 HTTPS 证书流程。原因：局域网 HTTP 玩家本来就拿不到 WebGPU，而 WebGPU 渲染器的 WebGL 2 回退比经典渲染器慢（同一台机器 SwiftShader、1280x720、高画质：帧率 0.24–0.25 → 0.49–0.54 fps，首帧 42.3 → 25.0 s，着色器预热 18.5 → 0.16 s，JS 下载 355 → 268 KB；只看方向）。WebGPU 版的实现留在 git 历史（`205ed7b`），`docs/PERF.md` 保留其测量 | `wf/webgl` |
 | 咒语集市：发布（不可变版本）/下架、抄、改编与家谱、有界版税（每人每咒语每天 +1、改编上游 +0.3、每日上限 20）、部长禁用/推荐与邓布利多军否决；MCP 工具 + 咒语书里的集市页；Lean `royalty_*` + TLA+ `Market.tla` | 本次（`wf/market`） |
