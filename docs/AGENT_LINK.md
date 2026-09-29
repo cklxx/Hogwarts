@@ -38,6 +38,7 @@
 - 限速：`pair` 失败每 IP 每分钟 10 次、每领域每分钟 30 次；`login` 失败每 IP 每分钟 20 次。内核 `redeemPairCode(code, source)` 按来源（服务器传客户端 IP）计数：已超每 IP 上限的来源**先被拒绝、不计入领域额度**，所以锁住整个领域至少要 3 个来源（Lean `realm_lock_needs_sources`，TLA `RealmLockNeedsSources`）。权衡：领域额度满时连正确的码也被拒（这正是 `GuessesBounded` 成立的原因），3 个以上 IP 持续乱试仍能让全领域 1 分钟内无法配对；可接受，因为浏览器里的密钥与 `login` 不受影响。
 - REALMS：多领域时码带领域前缀 `2-ABC-DEF`；前门按前缀把 MCP 会话迁到对应领域（复用 `login` 跨领域迁移会话的同一钩子）。单领域时无前缀。
 - 反方向（Agent 先注册）：`enroll` 结果的 `play` 链接改为 `http://host/#k=<token>`（fragment 不会发给服务器、不进日志）；网页 gate 读取 `#k=`（兼容旧 `?token=`）后立刻 `history.replaceState` 抹掉。
+- 服务器只从请求头取密钥：`Authorization: Bearer …`、`x-wizard-token`，或浏览器 WebSocket 的子协议列表 `['hogwarts', 'hw-key.<密钥>']`（浏览器的 WebSocket 不能设请求头；服务器回 `hogwarts`，不回显密钥那一项）。地址里的 `?token=` 一律不认（HTTP 与 `/ws` 都回 401），因为地址会进代理和访问日志（`src/server/key.ts`）。
 
 ### A.3 换钥（泄露后的补救）
 

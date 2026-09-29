@@ -8,7 +8,10 @@
 //! - after enroll / login / pair / rotate_key the new key is saved to the keychain FIRST, then removed from the text
 //!   the model sees (if saving fails the text passes through and stderr says why);
 //! - a dead upstream session (server restart: 404, or 400 "No valid MCP session") is rebuilt by replaying the
-//!   client's initialize with the current key, and the call is retried once.
+//!   client's initialize with the current key, and the call is retried once;
+//! - channel push: the initialize reply declares experimental `claude/channel`, and `GET /api/owls` is polled every
+//!   2 s, each new owl from the human going to the client as `notifications/claude/channel` (a key the server
+//!   refuses is not polled again: that would only count as failed logins).
 //! Status goes to stderr only; the key is never printed.
 
 use serde_json::Value;
@@ -18,6 +21,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const KEY_TOOLS: [&str; 4] = ["enroll", "login", "pair", "rotate_key"];
+const BRIDGE_NOTE: &str = "\nThrough this bridge your key is saved and restored for you. Owls from your human may also arrive as <channel source=\"hogwarts\" kind=\"owl\"> messages; answer with tell_player and still call listen to acknowledge them.";
+const OWL_POLL: Duration = Duration::from_secs(2);
 
 struct Relay {
     origin: String,
@@ -27,6 +32,9 @@ struct Relay {
     init: Mutex<Option<Value>>,
     /// Pending tools/call ids → tool name (to spot the calls that hand out a key).
     calls: Mutex<HashMap<String, String>>,
+    /// Channel push: the last owl id seen, and a key the server refused.
+    owl_cursor: Mutex<Option<u64>>,
+    dead_key: Mutex<Option<String>>,
     out: Mutex<std::io::Stdout>,
     agent: ureq::Agent,
 }
@@ -135,6 +143,10 @@ impl Relay {
     /// A message from the server to the client: save and hide a key a tool handed out, then pass it on.
     fn relay_down(&self, mut v: Value) {
         let id = v.get("id").map(|i| i.to_string());
+        let init_id = self.init.lock().unwrap().as_ref().and_then(|m| m.get("id")).map(|i| i.to_string());
+        if id.is_some() && id == init_id {
+            announce_channel(&mut v);
+        }
         let tool = id.as_ref().and_then(|i| self.calls.lock().unwrap().remove(i));
         // a key handed out but not saved stays visible in that reply (the agent can still keep it itself)
         let shown = tool.as_deref().map(|t| KEY_TOOLS.contains(&t)).unwrap_or(false) && !self.take_key(&mut v);
@@ -176,6 +188,67 @@ impl Relay {
         }
         saved
     }
+}
+
+impl Relay {
+    /// One poll of `GET /api/owls`: each owl from the human not yet read with `listen` goes to the client.
+    fn poll_owls(&self) {
+        let Some(key) = self.key.lock().unwrap().clone() else { return };
+        if self.dead_key.lock().unwrap().as_deref() == Some(key.as_str()) {
+            return;
+        }
+        let cursor = *self.owl_cursor.lock().unwrap();
+        let url = match cursor {
+            Some(c) => format!("{}/api/owls?since={c}", self.origin),
+            None => format!("{}/api/owls", self.origin),
+        };
+        let body: Value = match self.agent.get(&url).set("authorization", &format!("Bearer {key}")).call() {
+            Ok(r) => match r.into_json() {
+                Ok(b) => b,
+                Err(_) => return,
+            },
+            Err(ureq::Error::Status(401 | 429, _)) => {
+                *self.dead_key.lock().unwrap() = Some(key);
+                return;
+            }
+            Err(_) => return, // server down: the next poll tries again
+        };
+        for m in owls_to_push(&body) {
+            let mut n = serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/claude/channel", "params": m });
+            scrub(&mut n, &key, "(key)");
+            self.emit(&n);
+        }
+        if let Some(c) = body.get("cursor").and_then(Value::as_u64) {
+            *self.owl_cursor.lock().unwrap() = Some(c);
+        }
+    }
+}
+
+/// The initialize reply, as the client should see it: the channel capability declared and the bridge's note added.
+fn announce_channel(v: &mut Value) {
+    let Some(result) = v.get_mut("result").and_then(Value::as_object_mut) else { return };
+    let caps = result.entry("capabilities").or_insert_with(|| serde_json::json!({}));
+    if let Some(c) = caps.as_object_mut() {
+        let exp = c.entry("experimental").or_insert_with(|| serde_json::json!({}));
+        if let Some(e) = exp.as_object_mut() {
+            e.insert("claude/channel".into(), serde_json::json!({}));
+        }
+    }
+    let note = result.get("instructions").and_then(Value::as_str).unwrap_or("Hogwarts (Owl Post bridge).").to_string() + BRIDGE_NOTE;
+    result.insert("instructions".into(), Value::String(note));
+}
+
+/// The channel notifications' params for a `GET /api/owls` answer: owls after the ones already read with `listen`.
+fn owls_to_push(body: &Value) -> Vec<Value> {
+    let read = body.get("read").and_then(Value::as_u64).unwrap_or(0);
+    let Some(owls) = body.get("owls").and_then(Value::as_array) else { return vec![] };
+    owls.iter()
+        .filter_map(|m| {
+            let id = m.get("id").and_then(Value::as_u64)?;
+            let text = m.get("text").and_then(Value::as_str)?;
+            (id > read).then(|| serde_json::json!({ "content": format!("🦉 主人说：{text}"), "meta": { "kind": "owl", "id": id.to_string() } }))
+        })
+        .collect()
 }
 
 /// Replace every occurrence of `needle` in the strings of `v`.
@@ -224,6 +297,8 @@ pub fn run(args: &[String]) {
         session: Mutex::new(None),
         init: Mutex::new(None),
         calls: Mutex::new(HashMap::new()),
+        owl_cursor: Mutex::new(None),
+        dead_key: Mutex::new(None),
         out: Mutex::new(std::io::stdout()),
         agent: ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(5)).build(),
     });
@@ -251,6 +326,11 @@ pub fn run(args: &[String]) {
         if first {
             first = false;
             relay.forward(&msg, true);
+            let r = relay.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(OWL_POLL);
+                r.poll_owls();
+            });
         } else {
             let r = relay.clone();
             std::thread::spawn(move || r.forward(&msg, true));
@@ -270,5 +350,24 @@ mod tests {
         let mut short = serde_json::json!("abc");
         scrub(&mut short, "abc", "(key)"); // too short to be a key: left alone
         assert_eq!(short, serde_json::json!("abc"));
+    }
+
+    #[test]
+    fn initialize_reply_declares_the_channel() {
+        let mut v = serde_json::json!({ "id": 0, "result": { "capabilities": { "tools": {} }, "instructions": "Hi." } });
+        announce_channel(&mut v);
+        assert_eq!(v.pointer("/result/capabilities/experimental/claude~1channel"), Some(&serde_json::json!({})));
+        assert!(v.pointer("/result/capabilities/tools").is_some());
+        assert!(v["result"]["instructions"].as_str().unwrap().starts_with("Hi.\nThrough this bridge"));
+        let mut err = serde_json::json!({ "id": 0, "error": { "code": 1 } });
+        announce_channel(&mut err); // an error reply is left alone
+        assert!(err.get("result").is_none());
+    }
+
+    #[test]
+    fn only_unread_owls_are_pushed() {
+        let body = serde_json::json!({ "read": 2, "cursor": 4, "owls": [{ "id": 2, "text": "old" }, { "id": 3, "text": "come to the lake" }, { "id": 4 }] });
+        let got = owls_to_push(&body);
+        assert_eq!(got, vec![serde_json::json!({ "content": "🦉 主人说：come to the lake", "meta": { "kind": "owl", "id": "3" } })]);
     }
 }

@@ -242,3 +242,7 @@ export const CARD_DROP_PCT_MAX = 20;
 
 /** Stunning a wizard enrolled less than this long ago earns no reputation (stops throwaway-alt farming); also no royalties, no hexes. */
 export const FRESH_SECONDS = 600;
+
+/** The browser's WebSocket carries the key as a subprotocol entry (it cannot set headers): src/server/key.ts. */
+export const WS_PROTOCOL = 'hogwarts';
+export const WS_KEY_PREFIX = 'hw-key.';

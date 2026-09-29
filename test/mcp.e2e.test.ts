@@ -125,7 +125,15 @@ describe('MCP over streamable HTTP', () => {
   it('serves the 3D client protocol over WebSocket', async () => {
     const r = await fetch(`${BASE}/api/enroll`, { method: 'POST', body: JSON.stringify({ name: 'Browser Kid' }) });
     const { token } = (await r.json()) as { token: string };
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}`);
+    // the key comes from a header or the browser's subprotocol entry, never from the address
+    expect((await fetch(`${BASE}/api/me?token=${encodeURIComponent(token)}`)).status).toBe(401);
+    const opened = (ws: WebSocket) => new Promise<string>((ok) => { ws.on('message', (m) => ok(JSON.parse(String(m)).t)); ws.on('unexpected-response', (_q, res) => ok(`HTTP ${res.statusCode}`)); ws.on('error', () => ok('error')); });
+    expect(await opened(new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(token)}`))).toBe('HTTP 401');
+    const browser = new WebSocket(`ws://127.0.0.1:${PORT}/ws?aoi=1`, ['hogwarts', `hw-key.${token}`]); // what client/main.ts sends
+    expect(await opened(browser)).toBe('welcome');
+    expect(browser.protocol).toBe('hogwarts'); // the key entry is never echoed back
+    browser.close();
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const got = new Set<string>();
     let bought: unknown = null, build: unknown = null;
     await new Promise<void>((ok) => {
@@ -168,7 +176,7 @@ describe('MCP over streamable HTTP', () => {
     const r = await fetch(`${BASE}/api/enroll`, { method: 'POST', body: JSON.stringify({ name: 'Owl Keeper' }) });
     const { token } = (await r.json()) as { token: string };
     const wsMsgs: string[] = [];
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const next = (pred: (m: any) => boolean, ms = 8000) => new Promise<any>((ok, bad) => {
       const t = setTimeout(() => bad(new Error('ws timeout')), ms);
       const on = (raw: WebSocket.RawData) => { const m = JSON.parse(String(raw)); if (pred(m)) { clearTimeout(t); ws.off('message', on); ok(m); } };
@@ -229,7 +237,7 @@ describe('MCP over streamable HTTP', () => {
 
     /** Another browser socket (e.g. a thief who had the key), recording what it gets and how it closes. */
     const sock = (tok: string) => {
-      const s = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${tok}`);
+      const s = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${tok}` } });
       const msgs: any[] = [];
       s.on('message', (raw) => { wsMsgs.push(String(raw)); msgs.push(JSON.parse(String(raw))); });
       const closed = new Promise<number>((ok) => s.on('close', (code) => ok(code)));
@@ -252,8 +260,8 @@ describe('MCP over streamable HTTP', () => {
     expect(await ownerClosed).toBe(4001);
     expect(thief.msgs.some((m) => m.t === 'token')).toBe(false);
     expect(wsMsgs.some((m) => m.includes(fresh))).toBe(false);
-    expect((await fetch(`${BASE}/api/me?token=${encodeURIComponent(token)}`)).status).toBe(401);
-    const meNew = await fetch(`${BASE}/api/me?token=${encodeURIComponent(fresh)}`);
+    expect((await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(401);
+    const meNew = await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${fresh}` } });
     expect(meNew.status).toBe(200);
     expect(JSON.stringify(await meNew.json())).not.toContain(fresh);
     expect((await call(await client(token), 'whoami')).isError).toBe(true);
@@ -291,9 +299,9 @@ describe('MCP over streamable HTTP', () => {
     expect(none.data).toEqual({ approved: false, via: 'none', reason: 'no human reachable' });
 
     // a right key is never throttled, however many wrong keys the same address sent
-    for (let i = 0; i < 22; i++) await fetch(`${BASE}/api/me?token=bogus-key-${i}`);
-    expect((await fetch(`${BASE}/api/me?token=bogus-key-x`)).status).toBe(429);
-    expect((await fetch(`${BASE}/api/me?token=${encodeURIComponent(third)}`)).status).toBe(200);
+    for (let i = 0; i < 22; i++) await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer bogus-key-${i}` } });
+    expect((await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer bogus-key-x` } })).status).toBe(429);
+    expect((await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${third}` } })).status).toBe(200);
     expect((await fetch(`${BASE}/api/owls`, { headers: { Authorization: `Bearer ${third}` } })).status).toBe(200);
 
     expect((await call(await client(third), 'whoami')).isError).toBe(false); // MCP with the right key too

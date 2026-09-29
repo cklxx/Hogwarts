@@ -116,7 +116,7 @@ describe('stdio bridge (docs/AGENT_LINK.md §A.1, §C.4)', () => {
     const conf = await b.call('confirm_with_player', { question: 'ok?', timeout_seconds: 5 });
     expect(conf.data).toMatchObject({ approved: true, via: 'terminal' });
 
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${tok}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${tok}` } });
     const seen = new Promise<any>((ok) => ws.on('message', (raw) => { const m = JSON.parse(String(raw)); if (m.t === 'me' && m.s.agent?.seen) ok(m.s.agent.seen); }));
     await new Promise((ok) => ws.once('open', ok));
     await b.call('look');
