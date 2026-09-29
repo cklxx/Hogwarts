@@ -1,5 +1,5 @@
 import { type Node, RuneError, parse } from './parser.js';
-import { BY_YEAR, CONSTANTS, type Gate, PRIM_BY_NAME, SPECIAL_FORMS } from './primitives.js';
+import { CONSTANTS, type Gate, PRIM_BY_NAME, SPECIAL_FORMS, SPECIAL_YEAR } from './primitives.js';
 
 export interface Analysis {
   program: Node[];
@@ -14,6 +14,8 @@ export interface Analysis {
 export interface CheckLimits { year: number; maxNodes: number; banned?: readonly string[]; seals?: number }
 
 const SPECIAL = new Set<string>(SPECIAL_FORMS);
+/** Names a spell can read but never rebind: the bindings every cast starts with, the literals, the language's own words. */
+const builtin = (v: string) => (CONSTANTS as readonly string[]).includes(v) || PRIM_BY_NAME.has(v) || SPECIAL.has(v);
 
 /** Parse + static checks. Throws RuneError with a position on the first problem. */
 export function analyze(source: string, limits?: CheckLimits): Analysis {
@@ -23,6 +25,8 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
   let minSeals = 0;
   let usesAfter = false;
   const prims = new Set<string>();
+  /** Special forms used that are learned after year 1 (SPECIAL_YEAR), for the year error. */
+  const late = new Set<string>();
   /** Requirements found in literal arguments (e.g. a year-6 glamour material). */
   const gates: Gate[] = [];
 
@@ -42,11 +46,21 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
     nodes++;
     const name = head.v;
     if (SPECIAL.has(name)) {
+      const y = SPECIAL_YEAR[name as keyof typeof SPECIAL_YEAR];
+      if (y) { late.add(name); minYear = Math.max(minYear, y); }
       switch (name) {
         case 'let': {
           if (rest.length !== 2 || rest[0].t !== 'sym') throw new RuneError('(let name expr)', n.line, n.col);
           walk(rest[1], scope);
           scope.add(rest[0].v);
+          return;
+        }
+        case 'set!': {
+          if (rest.length !== 2 || rest[0].t !== 'sym') throw new RuneError('(set! name expr)', n.line, n.col);
+          const v = rest[0].v;
+          if (builtin(v)) throw new RuneError(`set! cannot change '${v}': it is built in — bind a name of your own with (let ...)`, rest[0].line, rest[0].col);
+          if (!scope.has(v)) throw new RuneError(`set! needs an existing binding: '${v}' is unbound — (let ${v} ...) first`, rest[0].line, rest[0].col);
+          walk(rest[1], scope);
           return;
         }
         case 'if':
@@ -69,7 +83,6 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
         }
         case 'min-by':
         case 'max-by': {
-          minYear = Math.max(minYear, BY_YEAR);
           if (rest.length !== 3 || rest[0].t !== 'sym') throw new RuneError(`(${name} x list expr)`, n.line, n.col);
           walk(rest[1], scope);
           walk(rest[2], new Set(scope).add(rest[0].v));
@@ -77,7 +90,6 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
         }
         case 'after': {
           usesAfter = true;
-          minYear = Math.max(minYear, 2);
           if (rest.length < 2) throw new RuneError('(after secs body...)', n.line, n.col);
           walk(rest[0], scope);
           const inner = new Set(scope);
@@ -122,8 +134,11 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
   const effects = primitives.filter((p) => PRIM_BY_NAME.get(p)!.kind === 'effect');
   if (limits) {
     if (minYear > limits.year) {
-      const blockers = [...primitives.filter((p) => PRIM_BY_NAME.get(p)!.year > limits.year), ...gates.filter((g) => g.year > limits.year).map((g) => g.what)];
-      throw new RuneError(`this spell needs year ${minYear} magic (${usesAfter && limits.year < 2 ? 'after, ' : ''}${blockers.join(', ')}); you are year ${limits.year}`);
+      const blockers = [
+        ...[...late].filter((f) => SPECIAL_YEAR[f as keyof typeof SPECIAL_YEAR]! > limits.year),
+        ...primitives.filter((p) => PRIM_BY_NAME.get(p)!.year > limits.year), ...gates.filter((g) => g.year > limits.year).map((g) => g.what),
+      ];
+      throw new RuneError(`this spell needs year ${minYear} magic (${blockers.join(', ')}); you are year ${limits.year}`);
     }
     if (minSeals > (limits.seals ?? 0)) {
       const blockers = [...primitives.filter((p) => (PRIM_BY_NAME.get(p)!.seals ?? 0) > (limits.seals ?? 0)), ...gates.filter((g) => g.seals > (limits.seals ?? 0)).map((g) => g.what)];

@@ -212,9 +212,12 @@ export const PRIMS: Prim[] = [
 ];
 
 export const PRIM_BY_NAME = new Map(PRIMS.map((p) => [p.name, p]));
-export const SPECIAL_FORMS = ['do', 'let', 'if', 'when', 'unless', 'and', 'or', 'repeat', 'each', 'min-by', 'max-by', 'after'] as const;
-/** The year min-by / max-by are learned: after the third-year exam that is about doing without them (weakest-link). */
-export const BY_YEAR = 4;
+export const SPECIAL_FORMS = ['do', 'let', 'set!', 'if', 'when', 'unless', 'and', 'or', 'repeat', 'each', 'min-by', 'max-by', 'after'] as const;
+/**
+ * The year a special form is learned (unlisted: year 1). min-by / max-by and set! come after the third-year exam
+ * that is about doing without them (weakest-link: "there is no accumulator"), so its hint stays true.
+ */
+export const SPECIAL_YEAR: Partial<Record<(typeof SPECIAL_FORMS)[number], number>> = { after: 2, 'set!': 4, 'min-by': 4, 'max-by': 4 };
 export const CONSTANTS = ['self', 'target', 'aim', 'object', 'true', 'false', 'nil', 'pi'] as const;
 export const ELEMENT_SET = new Set<string>(ELEMENTS);
 export const isEffect = (name: string): name is EffectPrimitive => (EFFECT_PRIMITIVES as readonly string[]).includes(name);
@@ -222,6 +225,7 @@ export const isEffect = (name: string): name is EffectPrimitive => (EFFECT_PRIMI
 export const SPECIAL_DOCS: Record<string, string> = {
   do: '(do e1 e2 ...) evaluate in order, return last.',
   let: '(let name expr) bind name in the current block.',
+  'set!': '(set! name expr) [year 4] change an existing binding (from let, each, repeat\'s i, min-by) in the nearest block that has it; returns the new value. Built-ins (self target aim object true false nil pi, spell words) cannot be changed. E.g. (let n 0) (each e (enemies 20) (set! n (+ n (hp e)))).',
   if: '(if cond then else?)',
   when: '(when cond body...)',
   unless: '(unless cond body...)',
