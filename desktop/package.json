@@ -1,0 +1,14 @@
+{
+  "name": "hogwarts-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Hogwarts desktop micro-client: finds servers on the LAN, keeps your key in the system keychain, follows the server's version.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icon": "tauri icon icon.svg"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.0"
+  }
+}

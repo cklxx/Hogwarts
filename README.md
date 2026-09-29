@@ -42,6 +42,7 @@ claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" http:/
 
 （服务器在别的机器上？不用手改地址：游戏里「猫头鹰邮递」给出的命令会自动填上你实际访问的 IP/域名；服务器启动时也会打印局域网地址。公网部署可设 `PUBLIC_URL`。）
 不知道服务器地址：`npm run find` 列出局域网里的霍格沃茨服务器（服务器在同端口号的 UDP 上回应发现请求，只回应局域网地址；`DISCOVERY=0` 关闭），`GET /api/version` 给出名称、版本与在线人数。服务器换了新版本后，已打开的游戏会提示「游戏已更新」，玩家空闲 1 分钟后自动刷新（写咒语、打字时不刷新）。
+**桌面客户端（可选）**：`desktop/` 是一个约 10 MB 的 Tauri 壳，打开就列出局域网里的服务器、密钥存系统钥匙串、始终加载服务器上的最新版本；安装包由 GitHub Actions 构建，见 `desktop/README.md`。
 
 然后进游戏按 `Esc`（猫头鹰邮递）→ **生成配对码**，对 Agent 说一句：*"连上霍格沃茨，配对码 ABC-DEF"*。
 stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它从模型看到的文本里抹掉；服务器重启时自动重连。配对码 6 位、180 秒、只能用一次、失败限速。

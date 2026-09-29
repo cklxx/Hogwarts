@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>霍格沃茨</title>
+  <link rel="stylesheet" href="launcher.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>霍格沃茨</h1>
+      <p class="sub">选一座城堡进去。局域网里的服务器会自动出现。</p>
+    </header>
+    <p id="status" role="status" aria-live="polite"></p>
+    <section>
+      <div class="row head"><h2>局域网</h2><button id="rescan" type="button">重新查找</button></div>
+      <ul id="found" class="list"><li class="empty">正在查找…</li></ul>
+    </section>
+    <section id="known-box" hidden>
+      <h2>去过的</h2>
+      <ul id="known" class="list"></ul>
+    </section>
+    <form id="manual">
+      <h2>手动输入</h2>
+      <div class="row">
+        <input id="addr" placeholder="例如 10.37.1.20 或 10.37.1.20:7777" autocomplete="off" spellcheck="false" aria-label="服务器地址">
+        <button type="submit" class="primary">进入</button>
+      </div>
+    </form>
+    <footer>进入游戏后：F11 全屏，Ctrl+Shift+S 回到这里换服务器。密钥保存在系统钥匙串里。</footer>
+  </main>
+  <script src="launcher.js"></script>
+</body>
+</html>

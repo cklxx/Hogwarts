@@ -30,7 +30,7 @@
 | 步 | 内容 | 状态 / 验收标准 |
 |---|---|---|
 | P0 | 服务器：`GET /api/version`（名称、版本、构建号、协议号、在线人数）；UDP 局域网发现（端口同 `PORT`，只回应私网/本机/同网段，限频；`DISCOVERY=0` 关）；`npm run find` 列出局域网服务器。客户端：服务器换了新构建时提示「游戏已更新」，空闲 1 分钟（或标签页在后台）自动刷新，写咒语、打字时不刷新 | 已完成（`wf/shell`） |
-| P1 | Tauri 2 壳（`desktop/`）：服务器列表（发现 + 手动输入 + 记住上次）、直接加载服务器页面（因此内容永远与服务器同版本）、密钥存系统钥匙串、全屏与鼠标锁定；GitHub Actions 构建 Windows / macOS 安装包（不签名，内网用） | 验收：两台机器上安装后不输 IP 进入游戏；重启服务器换版本后壳内自动刷新；清浏览器缓存不影响壳内登录 |
+| P1 | Tauri 2 壳（`desktop/`）：服务器列表（发现 + 手动输入 + 记住上次，上次的服务器在线就直接进）、直接加载服务器页面（内容永远与服务器同版本）、密钥存系统钥匙串（每个服务器一条，失效随之删除）、F11 全屏、Ctrl+Shift+S 换服务器、外部链接走系统浏览器；GitHub Actions 构建 Windows / macOS / Linux 安装包（不签名） | 已完成：Linux 上端到端实测（Xvfb + Secret Service：自动发现 → 钥匙串登录 → 别处换钥后旧钥删除，`desktop/test-gui.sh`）；Windows / macOS 待真机安装验证 |
 | P2 | 一键连接我的 Agent：壳在本机开 MCP 地址，桥接到服务器并带上玩家密钥；按钮写入 Claude Desktop / Claude Code 配置 | 验收：新装的 Claude Desktop 点一次按钮后能 `whoami` 到当前巫师 |
 | P3 | 可选：壳内恢复 WebGPU（从 `205ed7b` 取回），浏览器版继续 WebGL | 视真机测量决定 |
 

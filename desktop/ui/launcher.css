@@ -1,0 +1,30 @@
+:root { --paper: #f2e6c9; --paper-d: #e6d5ae; --ink: #2a1b0f; --ink-soft: #5b4029; --wax: #962024; --wax-d: #6e1719; --rule: #c9ad78; --bg: #1a120b; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0f0a06; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 'LXGW WenKai', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', serif; display: flex; align-items: flex-start; justify-content: center; padding: 28px 16px; overflow-y: auto; }
+main { width: min(680px, 100%); background: var(--paper); border-radius: 6px; box-shadow: 0 10px 40px #000a; padding: 26px 30px 20px; }
+h1 { margin: 0; font-size: 34px; letter-spacing: 4px; }
+h2 { margin: 0; font-size: 15px; color: var(--ink-soft); font-weight: 600; letter-spacing: 1px; }
+.sub { margin: 2px 0 10px; color: var(--ink-soft); }
+section, form { margin-top: 18px; }
+.row { display: flex; gap: 10px; align-items: center; }
+.row.head { justify-content: space-between; margin-bottom: 6px; }
+.list { list-style: none; margin: 6px 0 0; padding: 0; border-top: 1px solid var(--rule); }
+.list li { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--rule); }
+.list li.empty { color: var(--ink-soft); font-size: 14px; }
+.list .name { font-weight: 600; font-size: 17px; }
+.list .meta { color: var(--ink-soft); font-size: 13px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.list .grow { flex: 1; min-width: 0; }
+.list .grow > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button { font: inherit; font-size: 14px; border: 1px solid var(--rule); background: var(--paper-d); color: var(--ink); border-radius: 4px; padding: 5px 14px; cursor: pointer; }
+button:hover { border-color: var(--ink-soft); }
+button.primary { background: var(--wax); border-color: var(--wax-d); color: var(--paper); }
+button.primary:hover { background: var(--wax-d); }
+button.quiet { background: none; border-color: transparent; color: var(--ink-soft); padding: 5px 8px; }
+button:disabled { opacity: .5; cursor: default; }
+input { flex: 1; min-width: 0; font: 15px ui-monospace, Menlo, Consolas, monospace; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 4px; background: #fff8e6; color: var(--ink); }
+input:focus, button:focus-visible { outline: 2px solid var(--wax); outline-offset: 1px; }
+#status { min-height: 1.6em; margin: 8px 0 0; color: var(--ink-soft); }
+#status.err { color: var(--wax); }
+footer { margin-top: 20px; font-size: 13px; color: var(--ink-soft); }
