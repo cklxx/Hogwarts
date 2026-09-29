@@ -14,17 +14,28 @@ npm start            # http://localhost:7777   MCP: http://localhost:7777/mcp
 
 ## 接入你的 Agent
 
-进游戏后按 `Esc` 打开 **Owl Post**，里面有带你 token 的现成命令：
+**一次配好，之后每个新会话自动回到同一个巫师。** 在霍格沃茨仓库目录里运行一次（命令会记下完整路径）：
 
 ```bash
-claude mcp add --transport http hogwarts http://localhost:7777/mcp \
-  --header "Authorization: Bearer <你的 token>"
+claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" http://localhost:7777/mcp
 ```
 
-- 没有 token 也能连：Agent 调用 `enroll` 会直接创建巫师并返回 token 和游戏链接（`/?token=...`），浏览器打开即可看到同一个角色。
-- 只支持 stdio 的客户端：`HOGWARTS_TOKEN=<token> npm run mcp:stdio`（HTTP↔stdio 透明桥）。
+然后进游戏按 `Esc`（猫头鹰邮递）→ **生成配对码**，对 Agent 说一句：*"连上霍格沃茨，配对码 ABC-DEF"*。
+stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它从模型看到的文本里抹掉；服务器重启时自动重连。配对码 6 位、180 秒、只能用一次、失败限速。
+
+- **HTTP 直连**：`claude mcp add -s user --transport http hogwarts <url>/mcp -H 'Authorization: Bearer ${HOGWARTS_TOKEN}'`，在 shell profile 里 `export HOGWARTS_TOKEN=…`。没配头也能 `pair`，结果里的 `remember` 会教 Agent 把密钥记进自己的记忆、下次先 `login`。
+- **Agent 先注册**：`enroll` 返回 `http://…/#k=<token>` 链接（密钥在 `#` 后面，不进服务器日志，页面打开后立刻从地址栏抹掉）。
+- **密钥泄露**：`rotate_key` 或菜单里的「更换密钥」，旧钥立即失效。
 - 示例：`npm run bot -- "Neville Longbottom"` 是一个脚本化"Agent"，通过 MCP 入学、铸造自己的咒语、按弱点挑选法术猎杀生物。
-- 没有 Agent 也能写咒语：游戏里按 `B` 打开**咒语书**，可阅读课本咒语源码、编写 Runes、免费模拟（显示法力/gas/效果/截断）、铸造并放上快捷栏；底部附完整 Grimoire。
+- 没有 Agent 也能写咒语：游戏里按 `B` 打开**咒语书**，可阅读课本咒语源码、编写 Runes、免费模拟、铸造并放上快捷栏；底部附完整 Grimoire。
+
+### 边玩边和你的 Agent 说话
+
+- 按 `O`（或聊天框以 `@agent ` 开头）打开**猫头鹰**：只有你和你的 Agent 能看到。Agent 用 `tell_player` 回你，可以带 2–4 个选项按钮提问；用 `listen` / `wait(until:"owl")` 收你的信。
+- HUD 左上显示 Agent 在线状态、最近动作和它写下的目标（`set_goal_note`）。**人永远优先**：你一按 WASD 或点地面，Agent 的寻路立即让路；「暂停 Agent」后它只能看和跟你说话。
+- 颁布法令这类不可逆操作，Agent 会先 `confirm_with_player`：浏览器在线就在游戏里弹确认，否则在终端里问（MCP elicitation）；拒绝、取消、超时都算"不"。
+- 想让 Agent 在你说话时主动"醒来"：Claude Code 的 channels（研究预览）经 stdio 桥推送，`claude --dangerously-load-development-channels server:hogwarts`；不开也没关系，`listen` 在任何 MCP 客户端都能用。
+- 设计与取舍：`docs/AGENT_LINK.md`。
 
 然后对 Agent 说：*"读一下 grimoire，写一个专门收割残血敌人的咒语，放到 6 号快捷栏。"*
 
@@ -140,7 +151,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 
 ## MCP 工具
 
-`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full 提前返回，并汇报期间变化） `stop` `cast` `say` `events` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
 
 ## 真实的霍格沃茨
 
@@ -163,7 +174,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 `REALMS=N` 启动 N 个独立世界进程（前门代理 HTTP、按 token/cookie 路由 WebSocket 与 MCP，`/api/realms` 查看人数）；64 核机器建议 `REALMS=56`，估算约 2.8 万在线，瓶颈是网卡而不是 CPU。方法、表格与假设见 `docs/PERF.md`，压测：`npx tsx scripts/bench.ts`。
 
 ## 形式化验证
-`formal/`：6 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
+`formal/`：11 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
 
 ## 已知限制与取舍
 

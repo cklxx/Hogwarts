@@ -173,7 +173,7 @@ function connect() {
   ws.onopen = () => { opened = true; wsFails = 0; };
   ws.onclose = () => {
     // a key that stopped working (changed elsewhere) never reconnects: back to the gate instead of retrying forever
-    if (!opened && ++wsFails >= 3) void fetchMe(token).then((r) => { if (r?.status === 401) { dropToken(); location.reload(); } });
+    if (!opened && ++wsFails >= 3) void fetchMe(token).then((r) => { if (r?.status === 401) { if (loadToken() === token) dropToken(); location.reload(); } /* another tab may have saved a rotated key */ });
     setTimeout(connect, 1500);
   };
 }
