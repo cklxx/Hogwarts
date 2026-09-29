@@ -8,12 +8,27 @@ import type { Feature } from './feature.js';
 import { hookLists } from './feature.js';
 import { MARKET_FEATURE } from './market.js';
 import { QD_FEATURE } from './quidditch.js';
+import { SEALS_FEATURE } from './seals.js';
+import { DA_FEATURE, DARK_LORD_FEATURE, LAWLESS_FEATURE, STUDY_FEATURE } from './unfair.js';
 import { WHEEL_FEATURE } from './wheel.js';
 
-// the Duelling Club before Quidditch: an NPC in a duel is the duel's, even if it is also on a team
-export const FEATURES: readonly Feature[] = [MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE];
+// 不公平，但好玩 first, in its old order (the Dark Mark, the lawless zone, then the DA: the 1 Hz sweep's lines keep
+// theirs); the Duelling Club before Quidditch: an NPC in a duel is the duel's, even if it is also on a team
+export const FEATURES: readonly Feature[] = [
+  DARK_LORD_FEATURE, LAWLESS_FEATURE, DA_FEATURE, STUDY_FEATURE, SEALS_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE,
+];
 export const FEATURE_BY_ID: ReadonlyMap<string, Feature> = new Map(FEATURES.map((f) => [f.id, f]));
 export const HOOKS = hookLists(FEATURES);
 
-/** What each feature tool costs in concentration (unfair.ts AGENT_TOOL_COST has the kernel's own tools). */
+/**
+ * 专注力: what each of the kernel's own MCP tools costs in concentration (a feature's tools carry their `cost`).
+ * Tools not listed (reading, talking to your human, waiting, identity) are free; so is everything a browser sends.
+ */
+export const AGENT_TOOL_COST: Readonly<Record<string, number>> = {
+  cast: 1, use_item: 1, move_to: 1, dodge: 1, say: 1, set_hotbar: 1, unlearn_spell: 1, equip_item: 1, unequip_item: 1, destroy_item: 1,
+  forge_spell: 3, forge_item: 3, decree: 1,
+  // 隐藏宝箱: opening one is an action (reading school_events and frog_cards is free)
+  open_chest: 1,
+};
+/** What each feature tool costs. */
 export const FEATURE_TOOL_COST: Readonly<Record<string, number>> = Object.fromEntries(FEATURES.flatMap((f) => (f.tools ?? []).map((t) => [t.name, t.cost])));

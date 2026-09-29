@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CreatureKind, House } from '../src/shared/constants';
-import { LANDMARKS, zonesAt } from '../src/shared/map';
+import { zonesAt } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
 import { heightAt, rayGround } from './terrain';
 
@@ -211,8 +211,6 @@ export function createControls(d: ControlsDeps) {
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
   const fullCd = new Map<string, number>();
   const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null }[] = [];
-  let seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] | null = null;
-  let sealsAsked = -1, lastRead = -1e9;
   let hotbarSig = '';
   /** A phone or tablet: no hover, a coarse pointer. (Touch laptops keep the mouse UI; their touches still work.) */
   const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -474,23 +472,6 @@ export function createControls(d: ControlsDeps) {
     if (fallen && rk) {
       const w = wIdx.get(fallen)!, m = model(fallen)!.root.position;
       return { label: L(`按 F 扶起 ${esc(w.n)}（快快复苏）`, `F — revive ${esc(w.n)} (Rennervate)`), x: m.x, z: m.z, y: m.y + 2.6, act: () => castAt(rk, fallen) };
-    }
-    if (seals) {
-      for (const s of seals) {
-        if (s.tier <= me.seals) continue;
-        // a seal below its year will not even speak to you: no prompt at the spawn for a first-year
-        if (me.year < (s.requiresYear ?? 1)) continue;
-        for (const pg of s.pages) {
-          if (pg.collected) continue;
-          const l = LANDMARKS.find((x) => x.name === pg.where);
-          if (!l || Math.hypot(l.x - p.x, l.z - p.z) > 9.5) continue;
-          return {
-            label: L(`按 F 阅读书页 ·「${esc(s.zh)}」第 ${pg.page} 页`, `F — read the page (${esc(s.name.split('—')[0].trim())}, page ${pg.page})`),
-            x: l.x, z: l.z, y: heightAt(l.x, l.z) + 3.8,
-            act: () => { lastRead = now(); d.send({ t: 'readpage', tier: s.tier }); },
-          };
-        }
-      }
     }
     return d.extraAction?.() ?? null;
   }
@@ -760,7 +741,6 @@ export function createControls(d: ControlsDeps) {
     const sig = me.hotbar.map((s) => s?.id ?? '').join('|');
     if (sig !== hotbarSig) { hotbarSig = sig; d.send({ t: 'book' }); }
     for (const s of me.hotbar) if (s && s.cd > (fullCd.get(s.id) ?? 0) + 0.05) fullCd.set(s.id, s.cd);
-    if (sealsAsked !== me.seals) { sealsAsked = me.seals; d.send({ t: 'seals' }); }
     // keep the hotbar's click spell an attack spell if there is one
     const sel = me.hotbar[selected];
     if (!sel || kindOf(sel) !== 'harm') { const h = me.hotbar.findIndex((s) => s && kindOf(s) === 'harm'); if (h >= 0) selected = h; }
@@ -941,15 +921,10 @@ export function createControls(d: ControlsDeps) {
   }
   function onError() {
     if (dest?.pending && now() - dest.t < 3) clearDest();
-    // a page read that failed means our copy of the Restricted Section is stale (an agent may have read it over MCP)
-    if (now() - lastRead < 3) sealsAsked = -1;
   }
   function onArmory(spells: { id: string; incantation: string; effects: string[] }[]) {
     spellInfo.clear();
     for (const s of spells) spellInfo.set(s.id, { incantation: s.incantation, effects: s.effects });
-  }
-  function onSeals(section: { seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] }) {
-    seals = section.seals;
   }
 
   setupTouch();
@@ -967,7 +942,7 @@ export function createControls(d: ControlsDeps) {
     notify: (ev: 'book' | 'menu' | 'owl') => tutorial.notify(ev),
     /** The tutorial (or its closing word) is on screen. */
     tutorialActive: () => tutorial.active(),
-    onCast, onGoto, onError, onArmory, onSeals,
+    onCast, onGoto, onError, onArmory,
   };
 }
 

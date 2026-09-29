@@ -12,6 +12,9 @@
  * (World keeps one list per hook, built once).
  */
 import type { z } from 'zod';
+import type { Line } from '../lore/memes.js';
+import type { UiCharm } from '../shared/constants.js';
+import type { Rulebook } from './rulebook.js';
 import type { Projectile, Wizard } from './types.js';
 import type { World } from './world.js';
 
@@ -40,8 +43,22 @@ export interface Feature {
   step?(world: World, dt: number): void;
   /** Every tick, at its end: after creatures and housekeeping, just before the term clock. */
   stepLate?(world: World, dt: number): void;
+  /** Once a second, in the kernel's housekeeping (after curses wear off and questions expire, before the flavour lines). */
+  sweep?(world: World): void;
   /** Its field of the snapshot every client gets (`key`: undefined leaves it out of this snapshot). */
   wire?: { key: string; get(world: World): unknown };
+  /**
+   * Its field (`key`) of the views of one wizard: `me` — your own, in the browser's private state (resent whenever
+   * it changes, so keep it steady) and in MCP whoami (`whoami` instead, when that may say more); `look` — what
+   * anyone sees of wizard `x` in MCP look; `board` — fields it adds to the leaderboard. undefined leaves a key out.
+   */
+  view?: {
+    key: string;
+    me?(world: World, w: Wizard): unknown;
+    whoami?(world: World, w: Wizard): unknown;
+    look?(world: World, x: Wizard): unknown;
+    board?(world: World): Record<string, unknown>;
+  };
   /** What survives a restart (world.json `features[id]`); `load` gets it back (or undefined for an old save). */
   save?(world: World): unknown;
   load?(world: World, data: unknown, legacy: Record<string, unknown>): void;
@@ -53,6 +70,20 @@ export interface Feature {
   helpBlock?(world: World, src: Wizard, dst: Wizard): boolean;
   /** A spell in flight, every tick. */
   bolt?(world: World, p: Projectile): void;
+  /**
+   * A spell landing on `dstId` — its damage (`dmg`; not damage over time), or a root or disarm — from `by` (the
+   * attacker, or a summon's owner; `src` when a wizard cast it themselves): a multiplier on the damage (1 for none).
+   */
+  hit?(world: World, by: string | null, src: Wizard | undefined, dstId: string, tags: readonly string[], dmg: boolean): number;
+  /**
+   * A price on this wizard's head: a stun by another wizard takes the larger share of their reputation
+   * (progression.ts stealPct, the Dark Lord's) and is announced ('dark') with a line from the pool ({name}, {k}, {n}).
+   */
+  bounty?(world: World, w: Wizard): readonly Line[] | null;
+  /** The Rulebook was replaced: by `minister`'s decree, or (null) put back by a veto. */
+  rules?(world: World, before: Rulebook, minister: Wizard | null): void;
+  /** A reveal charm cast on yourself (Revelio): what it also shows you. */
+  reveal?(world: World, w: Wizard, charm: UiCharm): void;
   /** An NPC thinking (twice a second): true when this feature drove it (the NPC's own brain then rests). */
   npc?(world: World, w: Wizard): boolean;
   /** MCP tools. */
@@ -64,8 +95,11 @@ export interface Feature {
 /** The hooks, one list each, so a tick only walks the features that have them. */
 export function hookLists(fs: readonly Feature[]) {
   const has = <K extends keyof Feature>(k: K) => fs.filter((f) => f[k] !== undefined) as (Feature & Required<Pick<Feature, K>>)[];
+  const view = <K extends keyof NonNullable<Feature['view']>>(k: K) => fs.filter((f) => f.view?.[k] !== undefined) as (Feature & { view: Required<Pick<NonNullable<Feature['view']>, K | 'key'>> })[];
   return {
-    step: has('step'), stepLate: has('stepLate'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'), castBlock: has('castBlock'),
-    helpBlock: has('helpBlock'), bolt: has('bolt'), npc: has('npc'),
+    step: has('step'), stepLate: has('stepLate'), sweep: has('sweep'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'),
+    castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
+    npc: has('npc'), me: view('me'), whoami: fs.filter((f) => f.view?.me || f.view?.whoami) as (Feature & { view: NonNullable<Feature['view']> })[],
+    look: view('look'), board: view('board'),
   };
 }

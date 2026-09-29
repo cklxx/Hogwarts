@@ -12,13 +12,14 @@ import { World } from '../src/kernel/world.js';
 import { createMcpServer } from '../src/mcp/server.js';
 import { XP_FOR_YEAR, derived, spellbookSize } from '../src/kernel/progression.js';
 import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
-import { AGENT_TOOL_COST } from '../src/kernel/unfair.js';
+import { AGENT_TOOL_COST } from '../src/kernel/features.js';
 import {
   browseMarket, copySpell, forkSpell, marketMessage, marketSpell, publishSpell, royaltyStep, royaltyGrant, tagsOf, unpublishSpell, type RoyaltyLedger,
 } from '../src/kernel/market.js';
 import { LIMITS } from '../src/server/net.js';
 import { MARKET_ANNOUNCE_S, MARKET_AUTHOR_TENTHS, MARKET_CAP_MAX, MARKET_DAY_S, MARKET_MAX_PER_AUTHOR, MARKET_MAX_VERSIONS, MARKET_PARENT_TENTHS } from '../src/shared/constants.js';
 import type { Wizard } from '../src/kernel/types.js';
+import { joinDA, vetoDecree } from '../src/kernel/unfair.js';
 
 function mk(seed = 11) {
   const w = new World({ seed, secret: 'market' });
@@ -363,8 +364,8 @@ describe('咒语集市: the Minister bans and promotes, the DA vetoes', () => {
     expect(w.armory(b.id).spells.find((s) => s.name === 'Wildfire Spark')).toMatchObject({ banned: true });
     // Dumbledore's Army vetoes the decree: the ban is lifted, the spell works again
     const da = [wiz(w, 'DA One', 'gryffindor'), wiz(w, 'DA Two', 'hufflepuff'), wiz(w, 'DA Three', 'ravenclaw')];
-    for (const x of da) { x.reputation = 0; w.joinDA(x.id); }
-    for (const x of da) if (w.vetoDecree(x.id).vetoed) break;
+    for (const x of da) { x.reputation = 0; joinDA(w, x.id); }
+    for (const x of da) if (vetoDecree(w, x.id).vetoed) break;
     expect(w.rules.market.banned).toEqual([]);
     expect(w.events.some((e) => e.type === 'market' && /ban on "Wildfire Spark" is lifted/.test(e.text))).toBe(true);
     expect(cast(w, b, 'Wildfire Spark').ok).toBe(true);
@@ -396,8 +397,8 @@ describe('咒语集市: the Minister bans and promotes, the DA vetoes', () => {
     expect(w.decree(m.id, { market: { promoted: [] } }, undefined, false).ok).toBe(true);
     unpublishSpell(w, a.id, id);
     const da = [wiz(w, 'DA One', 'gryffindor'), wiz(w, 'DA Two', 'hufflepuff'), wiz(w, 'DA Three', 'ravenclaw')];
-    for (const x of da) { x.reputation = 0; w.joinDA(x.id); }
-    for (const x of da) if (w.vetoDecree(x.id).vetoed) break;
+    for (const x of da) { x.reputation = 0; joinDA(w, x.id); }
+    for (const x of da) if (vetoDecree(w, x.id).vetoed) break;
     expect(w.decrees.at(-1)!.vetoed).toBe(true);
     expect(w.rules.market.promoted).toEqual([]);
   });

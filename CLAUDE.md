@@ -8,7 +8,7 @@
 
 | 路径 | 内容 |
 |---|---|
-| `src/kernel/` | 权威世界（`world.ts`，20 Hz）、Runes 咒语虚拟机（`magic.ts`）、规则书（`rulebook.ts`，zod 模式 = 宪法，法令只能改它）、生物、NPC、学院杯；**功能插件**（`feature.ts` 接口、`features.ts` 注册表）：决斗俱乐部、魁地奇、事件轮盘、集市、考试 |
+| `src/kernel/` | 权威世界（`world.ts`，20 Hz）、Runes 咒语虚拟机（`magic.ts`）、规则书（`rulebook.ts`，zod 模式 = 宪法，法令只能改它）、生物、NPC、学院杯；**功能插件**（`feature.ts` 接口、`features.ts` 注册表）：黑魔王、邓布利多军、偷师、无规则区（`unfair.ts`）、禁书区封印（`seals.ts`）、集市、考试、事件轮盘、决斗俱乐部、魁地奇 |
 | `src/mcp/` | MCP 服务器（`server.ts`，每个会话一个）、Grimoire、stdio 桥 |
 | `src/server/` | HTTP/WS/MCP 入口（`main.ts`）、局域网发现、多进程 REALMS、静态文件、使魔 |
 | `client/` | 浏览器客户端（three.js `WebGLRenderer`，羊皮纸界面，`client/panels/*`） |

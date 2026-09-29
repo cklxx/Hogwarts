@@ -10,13 +10,14 @@ import { FORGE_REFUSAL, World } from '../src/kernel/world.js';
 import { createMcpServer } from '../src/mcp/server.js';
 import { XP_FOR_YEAR, derived, duelSteal, hexHpFloor, jointPct, spellbookSize, stealPct } from '../src/kernel/progression.js';
 import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
-import { AGENT_TOOL_COST } from '../src/kernel/unfair.js';
+import { AGENT_TOOL_COST } from '../src/kernel/features.js';
 import {
   DA_JOINT_PCT, DA_QUORUM, DA_VETO_WINDOW_S, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP, DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT,
   SILENCE_COOLDOWN_S, STEAL_CAP_PCT, STUDY_DELAY_S, STUDY_MEMORY_S, VICTIM_HEX_PER_10MIN,
 } from '../src/shared/constants.js';
 import { LAWLESS_ZONE, SPAWN, ZONES, inZone, mulberry32 } from '../src/shared/map.js';
 import type { Creature, Wizard } from '../src/kernel/types.js';
+import { daState, isDaMember, joinDA, leaveDA, reputationMedian, studySpell, studyable, updateDarkLord, vetoDecree } from '../src/kernel/unfair.js';
 
 const DEEP = { x: 205, z: 35 }; // the heart of the lawless zone
 function mk(seed = 5) {
@@ -44,6 +45,10 @@ function creature(w: World, x: number, z: number, hp = 10_000): Creature {
   return c;
 }
 const knockOut = (w: World, by: Wizard, v: Wizard) => w.damage(by.id, v.id, 1e6, 'arcane');
+/** The features' fields of your own state and of whoami (kernel/feature.ts view), and the snapshot's `dl`. */
+type Mine = { darkLord: boolean; da: { jointBadge: number; member: boolean }; studyable: unknown[] };
+const me = (w: World, id: string) => w.privateState(id) as ReturnType<World['privateState']> & Mine;
+const dlOf = (w: World) => (w.snapshot() as { dl?: unknown }).dl;
 const events = (w: World, type: string) => w.events.filter((e) => e.type === type);
 
 // ------------------------------------------------------------------ 输赢代价不对称
@@ -91,8 +96,8 @@ describe('the steal curve (输赢代价不对称)', () => {
     const w = mk();
     const a = wiz(w, 'Harry', 'gryffindor', 0);
     const v = wiz(w, 'Tom Riddle', 'slytherin', 1000);
-    w.updateDarkLord();
-    expect(w.flags.darkLordId).toBe(v.id);
+    updateDarkLord(w);
+    expect(w.darkMark.id).toBe(v.id);
     knockOut(w, a, v);
     expect(v.reputation).toBe(700);
     expect(a.reputation).toBe(310);
@@ -116,42 +121,40 @@ describe('the Dark Lord (黑魔王)', () => {
     const w = mk();
     const a = wiz(w, 'Alpha', 'gryffindor', DARK_LORD_MIN_REP - 1);
     const b = wiz(w, 'Beta', 'slytherin', 120);
-    expect(w.updateDarkLord()).toBe(null);
+    expect(updateDarkLord(w)).toBe(null);
     a.reputation = 200;
-    expect(w.updateDarkLord()).toBe(a.id);
+    expect(updateDarkLord(w)).toBe(a.id);
     expect(events(w, 'dark').at(-1)!.text).toContain('Alpha');
     b.reputation = 215; // #1, but only 107.5% of the holder
-    expect(w.updateDarkLord()).toBe(a.id);
+    expect(updateDarkLord(w)).toBe(a.id);
     b.reputation = 220; // 110%: takes the mark
-    expect(w.updateDarkLord()).toBe(b.id);
+    expect(updateDarkLord(w)).toBe(b.id);
     a.reputation = 225; // #1 again but short of 110% of 220: no flapping back
-    expect(w.updateDarkLord()).toBe(b.id);
+    expect(updateDarkLord(w)).toBe(b.id);
     a.reputation = 242;
-    expect(w.updateDarkLord()).toBe(a.id);
+    expect(updateDarkLord(w)).toBe(a.id);
     // an NPC never holds it
     const npc = wiz(w, 'Goyle', 'slytherin', 9999);
     npc.npc = true;
-    expect(w.updateDarkLord()).toBe(a.id);
+    expect(updateDarkLord(w)).toBe(a.id);
     // gone offline for longer than DARK_LORD_SEEN_S: the next in line takes it at once
     a.connections = 0; a.lastMcpAt = -1e9; a.lastSeenAt = w.now;
     w.now += DARK_LORD_SEEN_S - 1;
-    expect(w.updateDarkLord()).toBe(a.id);
+    expect(updateDarkLord(w)).toBe(a.id);
     w.now += 2;
-    expect(w.updateDarkLord()).toBe(b.id);
+    expect(updateDarkLord(w)).toBe(b.id);
     // below the minimum: nobody
     b.reputation = 10;
-    expect(w.updateDarkLord()).toBe(null);
+    expect(updateDarkLord(w)).toBe(null);
     expect(events(w, 'dark').at(-1)!.zh).toMatch(/消散/);
   });
 
-  it('is visible: a snapshot flag V, a global `dl` entry, and a bilingual broadcast of the place every minute', () => {
+  it('is visible: a global `dl` entry in the snapshot, and a bilingual broadcast of the place every minute', () => {
     const w = mk();
     const d = wiz(w, 'Voldy', 'slytherin', 500, 165, 15); // the Forbidden Forest
     run(w, 1.1);
-    expect(w.flags.darkLordId).toBe(d.id);
-    const snap = w.snapshot();
-    expect(snap.w.find((x) => x.h === d.handle)!.s).toContain('V');
-    expect(snap.dl).toEqual({ h: d.handle, n: 'Voldy', x: 165, z: 15, p: 'The Forbidden Forest' });
+    expect(w.darkMark.id).toBe(d.id);
+    expect(dlOf(w)).toEqual({ h: d.handle, n: 'Voldy', x: 165, z: 15, p: 'The Forbidden Forest' });
     const seen = events(w, 'dark').filter((e) => /Forbidden Forest/.test(e.text));
     expect(seen.length).toBe(1);
     expect(seen[0].zh).toMatch(/禁林/);
@@ -161,8 +164,9 @@ describe('the Dark Lord (黑魔王)', () => {
     run(w, 3);
     expect(events(w, 'dark').filter((e) => /Forbidden Forest/.test(e.text)).length).toBe(2);
     expect(w.leaderboard().darkLord).toMatchObject({ name: 'Voldy', place: 'The Forbidden Forest', placeZh: '禁林' });
-    expect(w.privateState(d.id).unfair.youAreDarkLord).toBe(true);
-    expect(w.whoami(d.id).darkLord).toBe(true);
+    expect(me(w, d.id).darkLord).toBe(true);
+    expect((w.whoami(d.id) as unknown as Mine).darkLord).toBe(true);
+    expect(w.look(wiz(w, 'Onlooker', 'gryffindor', 0, 166, 15).id).wizards.find((x) => x.handle === d.handle)).toMatchObject({ darkLord: true });
   });
 
   it('hits 15% harder (a bounded bonus) — and Expelliarmus still disarms them from a first… second-year', () => {
@@ -170,7 +174,7 @@ describe('the Dark Lord (黑魔王)', () => {
     const d = wiz(w, 'Dark', 'slytherin', 500, 60, 60, 7);
     const n = wiz(w, 'Plain', 'hufflepuff', 0, 60, 70, 7);
     const c1 = creature(w, 62, 60), c2 = creature(w, 62, 70);
-    w.updateDarkLord();
+    updateDarkLord(w);
     const hd = w.damage(d.id, c1.id, 10, 'arcane');
     const hn = w.damage(n.id, c2.id, 10, 'arcane');
     expect(hd / hn).toBeCloseTo(DARK_LORD_POWER_PCT / 100, 9);
@@ -200,42 +204,42 @@ describe("Dumbledore's Army (邓布利多军)", () => {
     const w = mk();
     const low = wiz(w, 'Low', 'gryffindor', 20);
     const rich = wiz(w, 'Rich', 'slytherin', 400);
-    expect(w.daState(low.id).eligible).toBe(true);
-    expect(() => w.joinDA(rich.id)).toThrow(/underdogs.*弱者/s);
-    w.joinDA(low.id);
-    expect(w.daState(low.id).members).toEqual([{ handle: low.handle, name: 'Low', online: true }]);
-    expect(w.daState(rich.id).members).toBeUndefined();
-    expect(() => w.joinDA(low.id)).toThrow(/already/);
+    expect(daState(w, low.id).eligible).toBe(true);
+    expect(() => joinDA(w, rich.id)).toThrow(/underdogs.*弱者/s);
+    joinDA(w, low.id);
+    expect(daState(w, low.id).members).toEqual([{ handle: low.handle, name: 'Low', online: true }]);
+    expect(daState(w, rich.id).members).toBeUndefined();
+    expect(() => joinDA(w, low.id)).toThrow(/already/);
     // below the median qualifies even above the ceiling
     wiz(w, 'Richer', 'ravenclaw', 900); wiz(w, 'Richest', 'hufflepuff', 1000);
-    expect(w.reputationMedian()).toBe(650);
+    expect(reputationMedian(w)).toBe(650);
     const mid = wiz(w, 'Mid', 'ravenclaw', 300);
-    expect(w.daState(mid.id).eligible).toBe(true);
+    expect(daState(w, mid.id).eligible).toBe(true);
     // a member who becomes the Dark Lord leaves
-    w.joinDA(mid.id);
+    joinDA(w, mid.id);
     mid.reputation = 5000;
-    w.updateDarkLord();
-    expect(w.isDaMember(mid.id)).toBe(false);
-    expect(w.leaveDA(low.id).member).toBe(false);
+    updateDarkLord(w);
+    expect(isDaMember(w, mid.id)).toBe(false);
+    expect(leaveDA(w, low.id).member).toBe(false);
   });
 
   it('vetoes the Minister\'s decree: quorum of 3 online, strict majority, within the window, once per term', () => {
     const w = mk();
     const [a, b, c, d] = army(w, 4);
-    for (const x of [a, b, c, d]) w.joinDA(x.id);
+    for (const x of [a, b, c, d]) joinDA(w, x.id);
     const m = minister(w);
     const before = JSON.parse(JSON.stringify(w.rules));
-    expect(() => w.vetoDecree(a.id)).toThrow(/no decree/);
+    expect(() => vetoDecree(w, a.id)).toThrow(/no decree/);
     expect(w.decree(m.id, { combat: { damageMultiplier: 2 } }, 'Order!', false).ok).toBe(true);
     expect(w.flags.statues.length).toBe(1);
     // c and d are offline: 2 online < quorum 3, however they vote
     for (const x of [c, d]) { x.connections = 0; x.lastMcpAt = -1e9; }
-    expect(w.vetoDecree(a.id)).toMatchObject({ vetoed: false, online: 2 });
-    expect(w.vetoDecree(b.id)).toMatchObject({ vetoed: false, votes: 2, online: 2 });
+    expect(vetoDecree(w, a.id)).toMatchObject({ vetoed: false, online: 2 });
+    expect(vetoDecree(w, b.id)).toMatchObject({ vetoed: false, votes: 2, online: 2 });
     expect(w.rules.combat.damageMultiplier).toBe(2);
     // all four online: a majority of 4 is 3
     c.connections = 1; d.connections = 1;
-    const r = w.vetoDecree(c.id);
+    const r = vetoDecree(w, c.id);
     expect(r).toMatchObject({ vetoed: true, votes: 3, needed: 3, online: 4, quorum: DA_QUORUM });
     expect(w.rules).toEqual(before);
     expect(w.flags.statues.length).toBe(0);
@@ -244,7 +248,7 @@ describe("Dumbledore's Army (邓布利多军)", () => {
     // the budget: one veto per term, even if the Minister somehow decreed again
     m.decreeCharges = 1;
     w.decree(m.id, { combat: { damageMultiplier: 3 } }, undefined, false);
-    expect(() => w.vetoDecree(a.id)).toThrow(/already used/);
+    expect(() => vetoDecree(w, a.id)).toThrow(/already used/);
     expect(w.rules.combat.damageMultiplier).toBe(3);
     // a new term, a new budget — but a decree is vetoable only for DA_VETO_WINDOW_S
     w.forceEndTerm();
@@ -252,29 +256,29 @@ describe("Dumbledore's Army (邓布利多军)", () => {
     m2.decreeCharges = 1;
     w.decree(m2.id, { combat: { damageMultiplier: 1.5 } }, undefined, false);
     w.now += DA_VETO_WINDOW_S + 1;
-    expect(() => w.vetoDecree(a.id)).toThrow(/Too late/);
+    expect(() => vetoDecree(w, a.id)).toThrow(/Too late/);
     run(w, 1.1);
-    expect(w.flags.veto).toBe(null);
+    expect(w.da.veto).toBe(null);
   });
 
   it('a majority of 3 needs 2 votes, and non-members cannot vote', () => {
     const w = mk();
     const ms = army(w, 3);
-    for (const x of ms) w.joinDA(x.id);
+    for (const x of ms) joinDA(w, x.id);
     const out = wiz(w, 'Outsider', 'ravenclaw', 10);
     const m = minister(w);
     w.decree(m.id, { magic: { manaRegen: 20 } }, undefined, false);
-    expect(() => w.vetoDecree(out.id)).toThrow(/Only members/);
-    expect(w.vetoDecree(ms[0].id).vetoed).toBe(false);
-    expect(w.daState(ms[1].id).veto).toMatchObject({ votes: 1, needed: 2 });
-    expect(w.vetoDecree(ms[1].id).vetoed).toBe(true);
+    expect(() => vetoDecree(w, out.id)).toThrow(/Only members/);
+    expect(vetoDecree(w, ms[0].id).vetoed).toBe(false);
+    expect(daState(w, ms[1].id).veto).toMatchObject({ votes: 1, needed: 2 });
+    expect(vetoDecree(w, ms[1].id).vetoed).toBe(true);
     expect(w.rules.magic.manaRegen).toBe(defaultRulebook().magic.manaRegen);
   });
 
   it('joint spell: 3 members on one target within 4 s deal ×1.25 — never more, and never for outsiders or stragglers', () => {
     const w = mk();
     const ms = army(w, 4);
-    for (const x of ms) w.joinDA(x.id);
+    for (const x of ms) joinDA(w, x.id);
     const out = wiz(w, 'Outsider', 'ravenclaw', 10);
     const c = creature(w, 70, 60);
     const hit = (x: Wizard) => w.damage(x.id, c.id, 10, 'arcane');
@@ -287,13 +291,13 @@ describe("Dumbledore's Army (邓布利多军)", () => {
     expect(hit(out)).toBeCloseTo(base, 9);
     expect(events(w, 'da').some((e) => /Expecto Patronum/.test(e.text) && !e.to)).toBe(true);
     // the badge: every joint hitter sees it in their own state, however rate-limited the public line is
-    for (const x of ms) expect(w.privateState(x.id).unfair.joint).toBeGreaterThan(0);
-    expect(w.privateState(out.id).unfair.joint).toBe(0);
+    for (const x of ms) expect(me(w, x.id).da.jointBadge).toBeGreaterThan(0);
+    expect(me(w, out.id).da.jointBadge).toBe(0);
     for (let n = 0; n < 50; n++) expect(jointPct(n)).toBeLessThanOrEqual(DA_JOINT_PCT);
     // spread out over more than the window: no bonus
     const w2 = mk();
     const m2 = army(w2, 3);
-    for (const x of m2) w2.joinDA(x.id);
+    for (const x of m2) joinDA(w2, x.id);
     const c2 = creature(w2, 70, 60);
     const b2 = w2.damage(m2[0].id, c2.id, 10, 'arcane');
     w2.now += 2.5; w2.damage(m2[1].id, c2.id, 10, 'arcane');
@@ -322,13 +326,13 @@ describe('learning from the strong (偷师)', () => {
   it('a custom spell that hit you is readable after 120 s, once, and copies into your book credited to its author', () => {
     const { w, a, b } = duel();
     hitWith(w, a, b, 'Viper Strike');
-    expect(w.studyable(b)).toEqual([expect.objectContaining({ spell: 'Viper Strike', from: 'Master', handle: a.handle, readyIn: STUDY_DELAY_S })]);
-    expect(() => w.studySpell(b.id, 'Viper Strike')).toThrow(/120s more|偷师要有耐心/);
+    expect(studyable(w, b)).toEqual([expect.objectContaining({ spell: 'Viper Strike', from: 'Master', handle: a.handle, readyIn: STUDY_DELAY_S })]);
+    expect(() => studySpell(w, b.id, 'Viper Strike')).toThrow(/120s more|偷师要有耐心/);
     w.now += STUDY_DELAY_S;
     // Revelio shows it is ready
     w.cast(b.id, 'Revelio');
     expect(w.events.filter((e) => e.to === b.id).some((e) => /Viper Strike/.test(e.text) && /study_spell/.test(e.text))).toBe(true);
-    const r = w.studySpell(b.id, 'viper strike', { copy: true });
+    const r = studySpell(w, b.id, 'viper strike', { copy: true });
     expect(r).toMatchObject({ studied: 'Viper Strike', author: 'Master', source: '(bolt target 9 :fire)', copied: { name: 'Viper Strike' } });
     const copy = b.spells.find((s) => s.name === 'Viper Strike')!;
     expect(copy.origin).toMatchObject({ author: 'Master', handle: a.handle, spell: 'Viper Strike' });
@@ -336,8 +340,8 @@ describe('learning from the strong (偷师)', () => {
     expect(w.events.some((e) => e.to === a.id && /Student studied your spell/.test(e.text))).toBe(true);
     // once per spell: hit again, it is not remembered, and studying again is refused
     hitWith(w, a, b, 'Viper Strike');
-    expect(w.studyable(b)).toEqual([]);
-    expect(() => w.studySpell(b.id, 'Viper Strike')).toThrow(/No spell called/);
+    expect(studyable(w, b)).toEqual([]);
+    expect(() => studySpell(w, b.id, 'Viper Strike')).toThrow(/No spell called/);
     // the registry id of the author never shows
     expect(JSON.stringify(w.privateState(b.id))).not.toContain(a.id);
   });
@@ -350,26 +354,26 @@ describe('learning from the strong (偷师)', () => {
     a.mana = 1e4; a.globalCd = 0;
     expect(w.cast(a.id, 'Ring of Fire').ok).toBe(true);
     w.now += STUDY_DELAY_S;
-    expect(() => w.studySpell(b.id, 'Ring of Fire', { copy: true })).toThrow(/year|nova/i);
-    expect(w.studyable(b).map((s) => s.spell)).toContain('Ring of Fire'); // not spent
+    expect(() => studySpell(w, b.id, 'Ring of Fire', { copy: true })).toThrow(/year|nova/i);
+    expect(studyable(w, b).map((s) => s.spell)).toContain('Ring of Fire'); // not spent
     w.gainXp(b, XP_FOR_YEAR[3] - b.xp);
-    expect(w.studySpell(b.id, 'Ring of Fire', { copy: true, name: 'My Ring' }).copied!.name).toBe('My Ring');
+    expect(studySpell(w, b.id, 'Ring of Fire', { copy: true, name: 'My Ring' }).copied!.name).toBe('My Ring');
     // spellbook full
     const { w: w2, a: a2, b: b2 } = duel();
     for (let i = 0; i < spellbookSize(b2.year); i++) w2.forgeSpell(b2.id, { name: `Own ${i}`, source: '(light 5)' });
     hitWith(w2, a2, b2, 'Viper Strike');
     w2.now += STUDY_DELAY_S;
-    expect(() => w2.studySpell(b2.id, 'Viper Strike', { copy: true })).toThrow(/spellbook holds/);
+    expect(() => studySpell(w2, b2.id, 'Viper Strike', { copy: true })).toThrow(/spellbook holds/);
     // only spells that hit you in the last STUDY_MEMORY_S
     w2.now += STUDY_MEMORY_S;
-    expect(w2.studyable(b2)).toEqual([]);
-    expect(() => w2.studySpell(b2.id, 'Viper Strike')).toThrow(/No spell called/);
+    expect(studyable(w2, b2)).toEqual([]);
+    expect(() => studySpell(w2, b2.id, 'Viper Strike')).toThrow(/No spell called/);
   });
 
   it('never the curriculum, never an NPC, and a bounded memory', () => {
     const { w, a, b } = duel();
     hitWith(w, a, b, 'Stupefy');
-    expect(w.studyable(b)).toEqual([]);
+    expect(studyable(w, b)).toEqual([]);
     for (let i = 0; i < 12; i++) {
       w.forgeSpell(a.id, { name: `Spell ${i}`, source: '(bolt target 1)' });
       hitWith(w, a, b, `Spell ${i}`);
@@ -492,7 +496,7 @@ describe('agent concentration (专注力) — a political knob', () => {
     expect(w.spendConcentration(a.id, 'forge_spell')).toMatchObject({ ok: true, cost: AGENT_TOOL_COST.forge_spell, left: 0 });
     w.now += 1000;
     expect(w.focusState(a.id).cur).toBe(max); // never overfills
-    expect(w.privateState(a.id).unfair.focus).toEqual({ on: true, cur: max, max, regen: 1 });
+    expect(w.privateState(a.id).focus).toEqual({ on: true, cur: max, max, regen: 1 });
   });
 
   it('the Minister can switch it off by decree; the constitution bounds it', () => {
@@ -552,10 +556,54 @@ describe('none of it changes who may harm whom', () => {
       const ids = [...ws.map((x) => x.id), c.id];
       const matrix = () => ids.flatMap((s) => ids.map((d) => w.canHarm(s, d)));
       const before = matrix();
-      w.updateDarkLord();
-      for (const x of ws) if (rnd() < 0.5) { try { w.joinDA(x.id); } catch { /* not eligible */ } }
-      w.flags.darkLordId = ws[Math.floor(rnd() * 3)].id;
+      updateDarkLord(w);
+      for (const x of ws) if (rnd() < 0.5) { try { joinDA(w, x.id); } catch { /* not eligible */ } }
+      w.darkMark.id = ws[Math.floor(rnd() * 3)].id;
       expect(matrix()).toEqual(before);
     }
+  });
+});
+
+// ------------------------------------------------------------------ persistence (the features: kernel/unfair.ts)
+describe('saves', () => {
+  function world() {
+    const w = mk();
+    const d = wiz(w, 'Tom Riddle', 'slytherin', 1000);
+    const ms = [0, 1, 2].map((i) => wiz(w, `Member ${i}`, 'gryffindor', 10, 60 + i, 60));
+    for (const x of ms) joinDA(w, x.id);
+    const m = wiz(w, 'Umbridge', 'slytherin', 90, 80, 80);
+    m.decreeCharges = 1;
+    updateDarkLord(w);
+    expect(w.decree(m.id, { combat: { damageMultiplier: 2 } }, 'Order!', false).ok).toBe(true);
+    return { w, d, ms };
+  }
+  const keep = (w: World) => ({ mark: { id: w.darkMark.id, since: w.darkMark.since }, members: w.da.members, vetoTerm: w.da.vetoTerm, veto: w.da.veto });
+
+  it('the Dark Mark and the DA (members, the veto window) survive a restart', () => {
+    const { w, ms } = world();
+    const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    expect(keep(back)).toEqual(keep(w));
+    for (const x of ms) back.wizards.get(x.id)!.connections = 1; // (a restart drops every socket)
+    expect(vetoDecree(back, ms[0].id).vetoed).toBe(false);
+    expect(vetoDecree(back, ms[1].id).vetoed).toBe(true);
+    expect(back.rules.combat.damageMultiplier).toBe(1);
+  });
+
+  it('a save from before the features (the mark and the DA in flags) loads the same, and the old keys do not linger', () => {
+    const { w, d, ms } = world();
+    const legacy = JSON.parse(JSON.stringify(w.serialize()));
+    const { darkLord, da } = legacy.features;
+    delete legacy.features.darkLord; delete legacy.features.da;
+    Object.assign(legacy.flags, { darkLordId: darkLord.id, darkLordSince: darkLord.since, da: { members: da.members }, vetoTerm: da.vetoTerm, veto: da.veto });
+    const back = World.restore(legacy);
+    expect(keep(back)).toEqual(keep(w));
+    expect(back.darkMark.id).toBe(d.id);
+    expect(back.da.members).toEqual(ms.map((x) => x.id));
+    for (const k of ['darkLordId', 'darkLordSince', 'da', 'vetoTerm', 'veto']) expect(back.flags).not.toHaveProperty(k);
+    expect(back.serialize().flags).not.toHaveProperty('darkLordId');
+    // and one from before any of it: nobody holds the mark, nobody is in the DA
+    const older = JSON.parse(JSON.stringify(w.serialize()));
+    delete older.features.darkLord; delete older.features.da;
+    expect(keep(World.restore(older))).toEqual({ mark: { id: null, since: 0 }, members: [], vetoTerm: 0, veto: null });
   });
 });

@@ -111,3 +111,5 @@ export function pickLang(s: string, want: 'zh' | 'en'): string {
   }
   return t;
 }
+/** An error for a panel: the kernel's refusals are often "English 中文" — the reader's half, after a ✗. */
+export const errHalf = (raw: string, want: 'zh' | 'en') => `✗ ${pickLang(raw.replace(/^✗\s*/, ''), want)}`;

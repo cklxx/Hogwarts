@@ -1,9 +1,26 @@
 /**
  * The browser's features (client/feature.ts), each the client half of a kernel feature (src/kernel/features.ts).
- * Add one here and main.ts runs its HUD, keys, messages, 3D and rider height.
+ * Add one here and main.ts runs its HUD, keys, messages, panels, 3D and rider height.
  */
-import type { ClientFeatureFactory } from './feature';
+import type { ClientFeature, ClientFeatureFactory } from './feature';
+import { daFeature } from './panels/da';
+import { darkLordFeature } from './panels/darkmark';
 import { duelFeature } from './panels/duel';
+import { lawlessFeature } from './panels/lawless';
 import { quidditchFeature } from './panels/quidditch';
+import { sealsFeature } from './panels/seals';
+import { studyFeature } from './panels/study';
 
-export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [duelFeature, quidditchFeature];
+// the top stack reads in this order: the Dark Lord's ribbon, the lawless zone, the DA's vote card and joint Patronus
+export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [darkLordFeature, lawlessFeature, daFeature, studyFeature, sealsFeature, duelFeature, quidditchFeature];
+
+/** The stack at the top centre, under the target frame (#pn-top): every feature's `top`, in order. */
+export function renderTop(feats: readonly ClientFeature[]) {
+  const hud = document.getElementById('hud');
+  if (!hud) return;
+  let el = document.getElementById('pn-top');
+  if (!el) { el = document.createElement('div'); el.id = 'pn-top'; hud.append(el); }
+  const html = feats.map((f) => f.top?.() ?? '').join('');
+  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  el.hidden = !html;
+}

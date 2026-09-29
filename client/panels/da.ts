@@ -1,13 +1,15 @@
-import { L } from '../i18n';
+import type { ClientFeatureFactory } from '../feature';
+import { L, lang } from '../i18n';
 import { ic } from '../ink';
-import { daStanding, esc, fmtClock, quorumMet, vetoPhase } from './logic';
+import { daStanding, errHalf, esc, fmtClock, quorumMet, vetoPhase } from './logic';
 import type { DaView } from './types';
 
 /**
  * 邓布利多军 (key J): whether you may join, join / leave, how many are in and online against the quorum, the members
  * (members only), and — while the Minister's last decree can still be vetoed — the big 「否决法令」 vote card with its
- * countdown and votes. The live numbers come from me.unfair.da (5 Hz); the {t:'da'} reply adds why you may not join,
- * who is admitted and the joint spell's numbers.
+ * countdown and votes. The live numbers come from me.da (5 Hz); the {t:'da'} reply adds why you may not join,
+ * who is admitted and the joint spell's numbers. daFeature (the end of this file) plugs it in (client/features.ts):
+ * the vote card and the joint-Patronus badge in the top stack, the leaderboard's and the Owl Post's way in.
  */
 export interface DaDeps {
   send: (o: unknown) => void;
@@ -122,3 +124,44 @@ export function createDa(d: DaDeps) {
     onError(text: string) { if (el.hidden) return false; msg = text; ok = false; render(); return true; },
   };
 }
+
+/** Dumbledore's Army as a client feature (client/features.ts; src/kernel/unfair.ts DA_FEATURE). */
+export const daFeature: ClientFeatureFactory = (d) => {
+  let asked = -1e9, jointUntil = 0;
+  const live = () => (d.me()?.da as (DaView & { jointBadge?: number }) | undefined) ?? null;
+  const da = createDa({ send: d.send, live, solo: d.solo, mark: () => { asked = performance.now(); }, toast: d.toast });
+  document.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-da-open], [data-pn="da"]')) da.toggle(true);
+  });
+  return {
+    id: 'da',
+    hud() { if (!d.me()) return; da.render(); da.tick(document.getElementById('pn-top') ?? document); },
+    top() {
+      const joint = performance.now() < jointUntil || (live()?.jointBadge ?? 0) > 0;
+      return da.mini() + (joint ? `<div class="joint">${ic('patronus')}<span><b>${L('联合守护神', 'Joint Patronus')}</b> · ${L('伤害 ×1.25：三名以上成员 4 秒内打中同一个目标', 'damage ×1.25: three or more members hit one target within 4 s')}</span></div>` : '');
+    },
+    keydown(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.key.toLowerCase() !== 'j') return false;
+      da.toggle();
+      return true;
+    },
+    /** {t:'da', r: {op, …}} */
+    onMessage(msg) {
+      if (msg.t !== 'da') return false;
+      const r = msg.r as DaView & { op?: string };
+      da.onReply(String(r?.op ?? 'status'), r as never);
+      return true;
+    },
+    onError: (text) => performance.now() - asked < 3000 && da.onError(errHalf(text, lang)),
+    // the joint Patronus (a public 'da' event) lights the badge
+    onEvent(e) { if (e.type === 'da' && !e.to) jointUntil = performance.now() + 8000; },
+    close() { if (da.el.hidden) return false; da.el.hidden = true; return true; },
+    open(what) { if (what !== 'da') return false; da.toggle(true); return true; },
+    goal() { const u = live(); return { da: u ? { member: u.member, eligible: u.eligible } : null }; },
+    board() {
+      const u = live();
+      return `<p class="pn-da"><button type="button" class="ghost" data-pn="da">${ic('patronus')}${L('邓布利多军', "Dumbledore's Army")} <kbd>J</kbd></button> <span class="hint">${u?.member ? L(`你是成员 · ${u.size} 人`, `you are a member · ${u.size}`) : u?.eligible ? L('弱者抱团：你可以加入，还能否决部长的法令', 'the underdogs: you may join, and veto the Minister') : L('弱者的联盟：否决部长的法令', 'the underdogs: they can veto the Minister')}</span></p>`;
+    },
+    menu: () => `<button type="button" class="ghost" data-pn="da">${ic('patronus')}${L('邓布利多军', "Dumbledore's Army")} <kbd>J</kbd></button> `,
+  };
+};

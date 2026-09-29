@@ -102,5 +102,6 @@ export const quidditchFeature: ClientFeatureFactory = (d) => {
   const qd = () => d.wire<QdSnap>('qd');
   const ui = createQuidditch({ send: d.send, toast: d.toast, qd, myHandle: d.myHandle, myHouse: d.myHouse, myPos: d.myPos, camYaw: d.camYaw });
   const world = createQuidditch3d(d.posOf, d.facingOf);
-  return { id: 'quidditch', ...ui, group: world.group, frame: (dt) => world.frame(dt, qd()), lift: world.lift };
+  // (its keys act: not while you watch your agent play)
+  return { id: 'quidditch', ...ui, keydown: (e) => !d.observing() && ui.keydown(e), group: world.group, frame: (dt) => world.frame(dt, qd()), lift: world.lift };
 };
