@@ -89,9 +89,11 @@ const ONLINE_GRACE = 300;
 const DANCE_STEP_S = 0.4;
 const DANCE_MAX_RAD = 0.6;
 import { FRESH_SECONDS } from '../shared/constants.js';
+import { UI_CHARM_INFO } from '../shared/reveal.js';
+import { revealView } from './reveal.js';
 export { FRESH_SECONDS };
 /** Curriculum reveal charms and the HUD corner each one unlocks (a slot can be reused once it is). */
-const REVEAL_CHARM: Record<string, string> = { Tempus: 'tempus', Revelio: 'revelio', 'Point Me': 'point-me', 'Homenum Revelio': 'homenum' };
+const REVEAL_CHARM: Record<string, string> = Object.fromEntries(Object.entries(UI_CHARM_INFO).map(([k, v]) => [v.spell, k]));
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
 /** placeName's order: the most specific zone wins. */
@@ -1173,8 +1175,8 @@ export class World {
     if (key === 'revelio') { this.revealSenders(w); this.revealStudies(w); } // Revelio also unmasks who posted you a curse (§B.1), and how their spells work (偷师)
     if (w.ui.includes(key)) return;
     w.ui.push(key);
-    const where = { tempus: 'the top-right corner: the time, and the term', revelio: 'the top-left corner: your own measure', 'point-me': 'the bottom-left corner: a radar that always points north', homenum: 'the bottom-right corner: everyone near you' }[key];
-    this.emit('egg', `✨ A new sense settles into ${where}.`, { to: w.id, zh: `✨ 一种新的感知落在了${({ tempus: '右上角：时间与学期', revelio: '左上角：你自己的斤两', 'point-me': '左下角：永远指北的雷达', homenum: '右下角：身边的每一个人' } as Record<string, string>)[key]}。` });
+    const c = UI_CHARM_INFO[key];
+    this.emit('egg', `✨ A new sense settles into ${c.en}. (MCP: look.${c.look})`, { to: w.id, zh: `✨ 一种新的感知落在了${c.zh}。（MCP：look.${c.look}）` });
   }
 
   /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last. */
@@ -3501,6 +3503,8 @@ export class World {
       schoolEvent: this.lookEvent(w),
       chests: chestsLeft(this).filter((c) => dist(c, w.pos) <= CHEST_SIGHT).map((c) => ({ id: c.id, x: round(c.x), z: round(c.z), dist: round(dist(c, w.pos)), howTo: 'walk within 2.6 m, then open_chest' })),
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
+      // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
+      ...revealView(this, w),
     };
   }
 
