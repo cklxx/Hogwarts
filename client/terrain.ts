@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { AZKABAN, LANDMARKS } from '../src/shared/map';
+import { STORYBOOK } from './textures';
 
 /**
  * Visual terrain. The kernel simulates a flat 2D world; the client lifts everything onto a
@@ -102,7 +103,11 @@ export function makeTerrain(grassMat: THREE.MeshStandardMaterial, rockMat: THREE
     const v = fbm(x * 0.02, z * 0.02) - 0.5;
     const dry = Math.max(0, v) * 0.35;
     const wet = y < -0.6 ? Math.min(1, -y / 4) : 0; // muddy shore
-    col.push(0.85 + v * 0.18 + dry - wet * 0.35, 0.9 + v * 0.12 - wet * 0.3, 0.78 + v * 0.06 - dry * 0.5 - wet * 0.2);
+    if (STORYBOOK) {
+      // painted meadow: broad warm (yellow-green) and cool (blue-green) washes over the grass texture
+      const w = fbm(x * 0.006 + 11, z * 0.006 - 4) - 0.5;
+      col.push(0.82 + v * 0.3 + w * 0.5 + dry * 0.8 - wet * 0.3, 0.8 + v * 0.2 + w * 0.12 + dry * 0.3 - wet * 0.3, 0.8 + v * 0.1 - w * 0.4 - dry * 0.4 - wet * 0.15);
+    } else col.push(0.85 + v * 0.18 + dry - wet * 0.35, 0.9 + v * 0.12 - wet * 0.3, 0.78 + v * 0.06 - dry * 0.5 - wet * 0.2);
   }
   inner.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   innerGrid = grid;
@@ -122,8 +127,9 @@ export function makeTerrain(grassMat: THREE.MeshStandardMaterial, rockMat: THREE
     const y = heightAt(x, z);
     rp.setY(i, y);
     const snow = ss(95, 140, y + fbm(x * 0.03, z * 0.03) * 25);
-    const rock = ss(20, 60, y);
-    const g = [0.34, 0.45, 0.25], r = [0.42, 0.4, 0.38], s = [0.95, 0.96, 1];
+    const rock = STORYBOOK ? ss(8, 110, y) : ss(20, 60, y);
+    // storybook: flat painted colour (no texture): moss green, violet-grey rock, blue-white snow
+    const g = STORYBOOK ? [0.26, 0.29, 0.21] : [0.34, 0.45, 0.25], r = STORYBOOK ? [0.31, 0.29, 0.34] : [0.42, 0.4, 0.38], s = STORYBOOK ? [0.86, 0.89, 0.98] : [0.95, 0.96, 1];
     const c = g.map((gv, k) => gv * (1 - rock) + r[k] * rock).map((v, k) => v * (1 - snow) + s[k] * snow);
     rc.push(...c);
   }
@@ -131,7 +137,7 @@ export function makeTerrain(grassMat: THREE.MeshStandardMaterial, rockMat: THREE
   ring.computeVertexNormals();
   const mat = rockMat.clone();
   mat.vertexColors = true;
-  mat.map = rockMat.map;
+  mat.map = STORYBOOK ? null : rockMat.map;
   mat.color.set(0xffffff);
   if (mat.map) { mat.map = mat.map.clone(); mat.map.repeat.set(60, 60); mat.map.needsUpdate = true; }
   const ringMesh = new THREE.Mesh(ring, mat);

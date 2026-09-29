@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { WIND } from './grass';
+import { STORYBOOK } from './textures';
+
+/** Chimney smoke and dust: warm grey, or (storybook) a soft painted lilac-grey that sits in the palette. */
+const SMOKE = STORYBOOK ? 0xb0a6b6 : 0x9a948c, DUST = STORYBOOK ? 0xa08c78 : 0x8a8070;
 
 /**
  * GPU particles. Each pool is ONE THREE.Points draw call over a ring buffer: a particle is written
@@ -274,7 +278,7 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
         const v = r * drag * (0.9 + Math.random() * 0.2);
         glow.put(x + Math.cos(a) * 0.4, y + 0.15 + Math.random() * 0.4, z + Math.sin(a) * 0.4, Math.cos(a) * v, Math.random() * 1.2, Math.sin(a) * v, c, 0.55 + Math.random() * 0.25, 0.4, 0.3, 1, drag);
       }
-      smoke.emit(x, y + 0.2, z, { color: 0x8a8070, speed: r * 2.2, dir: up, cone: 3, up: 0.3, size: 1.2, life: 1.1, drag: 2.8, grow: 3, radius: 0.6, flat: true }, N(Math.min(40, r * 4)));
+      smoke.emit(x, y + 0.2, z, { color: DUST, speed: r * 2.2, dir: up, cone: 3, up: 0.3, size: 1.2, life: 1.1, drag: 2.8, grow: 3, radius: 0.6, flat: true }, N(Math.min(40, r * 4)));
     },
     motes(x: number, y: number, z: number, color: number, n = 34) {
       api.burst(x, y + 0.9, z, { count: n, color, intensity: 3.5, whiten: 0.4, radius: 0.9, flat: true, speed: 0.4, up: 1.1, size: 0.16, life: 1.5, gravity: -0.6, drag: 0.8, grow: 0.4 });
@@ -303,7 +307,7 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
         smokeAcc[i] += dt * rate;
         while (smokeAcc[i] >= 1) {
           smokeAcc[i] -= 1;
-          smoke.emit(c.x, c.y, c.z, { color: 0x9a948c, radius: 0.25, speed: 0.25, up: 1.3, size: 1.1 / Math.sqrt(density), sizeJitter: 0.25, life: 7, lifeJitter: 0.2, gravity: -0.05, drag: 0.25, grow: 4.5, wind: [WIND.x * 0.9, WIND.y * 0.9] }, 1);
+          smoke.emit(c.x, c.y, c.z, { color: SMOKE, radius: 0.25, speed: 0.25, up: 1.3, size: 1.1 / Math.sqrt(density), sizeJitter: 0.25, life: 7, lifeJitter: 0.2, gravity: -0.05, drag: 0.25, grow: 4.5, wind: [WIND.x * 0.9, WIND.y * 0.9] }, 1);
         }
       });
     },
