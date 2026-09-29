@@ -132,6 +132,19 @@ export class Interp {
         }
         return v;
       }
+      case 'min-by':
+      case 'max-by': {
+        const xs = this.eval(rest[1], env);
+        if (!Array.isArray(xs)) throw new RuneError(`${head.v} needs a list, got ${this.show(xs)}`, rest[1].line, rest[1].col);
+        let best: Value = null, score = 0;
+        for (const x of xs.slice(0, 16)) {
+          const inner = env.child();
+          inner.def((rest[0] as { v: string }).v, x);
+          const k = this.num(this.eval(rest[2], inner), rest[2]);
+          if (best === null || (head.v === 'min-by' ? k < score : k > score)) { best = x; score = k; }
+        }
+        return best;
+      }
       case 'after': {
         const secs = this.num(this.eval(rest[0], env), rest[0]);
         this.host.schedule(secs, rest.slice(1), env, n);

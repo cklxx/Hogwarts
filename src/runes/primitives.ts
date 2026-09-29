@@ -212,7 +212,9 @@ export const PRIMS: Prim[] = [
 ];
 
 export const PRIM_BY_NAME = new Map(PRIMS.map((p) => [p.name, p]));
-export const SPECIAL_FORMS = ['do', 'let', 'if', 'when', 'unless', 'and', 'or', 'repeat', 'each', 'after'] as const;
+export const SPECIAL_FORMS = ['do', 'let', 'if', 'when', 'unless', 'and', 'or', 'repeat', 'each', 'min-by', 'max-by', 'after'] as const;
+/** The year min-by / max-by are learned: after the third-year exam that is about doing without them (weakest-link). */
+export const BY_YEAR = 4;
 export const CONSTANTS = ['self', 'target', 'aim', 'object', 'true', 'false', 'nil', 'pi'] as const;
 export const ELEMENT_SET = new Set<string>(ELEMENTS);
 export const isEffect = (name: string): name is EffectPrimitive => (EFFECT_PRIMITIVES as readonly string[]).includes(name);
@@ -227,5 +229,7 @@ export const SPECIAL_DOCS: Record<string, string> = {
   or: '(or a b ...) short-circuit.',
   repeat: '(repeat n body...) n is clamped to 10. `i` is bound to the iteration index.',
   each: '(each x list body...) iterate (at most 16 items).',
+  'min-by': '(min-by x list expr) [year 4] the item of list whose expr (with x bound to it) is smallest, or nil; at most 16 items, ties go to the first. E.g. (min-by e (enemies 30) (hp e)).',
+  'max-by': '(max-by x list expr) [year 4] the same, largest.',
   after: '(after secs body...) [year 2] run body later (<=5s, <=3 per cast). Each delayed body is its own atomic cast.',
 };

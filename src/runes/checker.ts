@@ -1,5 +1,5 @@
 import { type Node, RuneError, parse } from './parser.js';
-import { CONSTANTS, type Gate, PRIM_BY_NAME, SPECIAL_FORMS } from './primitives.js';
+import { BY_YEAR, CONSTANTS, type Gate, PRIM_BY_NAME, SPECIAL_FORMS } from './primitives.js';
 
 export interface Analysis {
   program: Node[];
@@ -65,6 +65,14 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
           walk(rest[1], scope);
           const inner = new Set(scope).add(rest[0].v);
           rest.slice(2).forEach((r) => walk(r, inner));
+          return;
+        }
+        case 'min-by':
+        case 'max-by': {
+          minYear = Math.max(minYear, BY_YEAR);
+          if (rest.length !== 3 || rest[0].t !== 'sym') throw new RuneError(`(${name} x list expr)`, n.line, n.col);
+          walk(rest[1], scope);
+          walk(rest[2], new Set(scope).add(rest[0].v));
           return;
         }
         case 'after': {
