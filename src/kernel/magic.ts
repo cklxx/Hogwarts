@@ -1,10 +1,11 @@
 import { SUMMON_KINDS, SUMMON_YEAR, UI_CHARMS, type EffectPrimitive, type Element, type SummonKind, type UiCharm } from '../shared/constants.js';
-import { inZone, ZONES } from '../shared/map.js';
+import { inZone, mulberry32, ZONES } from '../shared/map.js';
+import { UI_CHARM_INFO } from '../shared/reveal.js';
 import { analyze } from '../runes/checker.js';
 import { Env, Interp, type RuneHost, type Value, display, isRef, isVec, ref, vec } from '../runes/interp.js';
 import { type Node, RuneError } from '../runes/parser.js';
 import { type Caps, EFFECT_COST, capsFor } from '../runes/primitives.js';
-import { gasLimit } from './progression.js';
+import { derived, gasLimit } from './progression.js';
 import { describeGlamour, glamourCostArgs, jinxLayer, materialRefusal, nextLook, prankRefusal, prankSecs, PRANK_MIN_S, readGlamour } from './glamour.js';
 import { dist } from './physics.js';
 import type { Pending, Vec2, Wizard } from './types.js';
@@ -22,6 +23,8 @@ export interface CastContext {
   dryRun?: boolean;
   /** Item charms get a 20% discount. */
   discount?: number;
+  /** The mana this transaction may spend and `(mana)` reads (a dry run's delayed block: what is left by then); default the caster's. */
+  mana?: number;
 }
 
 export interface Planned { prim: EffectPrimitive; cost: number; desc: string; apply: () => void }
@@ -34,6 +37,8 @@ export interface CastReport {
   notes: string[];
   gas: number;
   error?: string;
+  /** A dry run with (after ...) blocks: what they would cost together when they fire (each block pays on its own). */
+  delayedMana?: number;
 }
 
 /**
@@ -82,7 +87,8 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
 
   const host: RuneHost = {
     refName,
-    rand: () => world.rand(),
+    // a dry run draws from its own generator: trying a spell out must not move the world's dice
+    rand: ctx.dryRun ? mulberry32(Math.floor(world.now * 1000) ^ 0x5eed) : () => world.rand(),
     query: (name, args, at) => {
       switch (name) {
         // benign creatures are never 'enemies' (so area spells don't curse you by accident); target them explicitly if you must
@@ -95,7 +101,7 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
         case 'wizards': return world.around(w.pos, args[0] as number, (e) => world.wizards.has(e.id), w.id).map((e) => ref(e.id));
         case 'hp': return world.entity((args[0] as { id: string }).id)?.hp ?? 0;
         case 'max-hp': return world.entity((args[0] as { id: string }).id)?.maxHp ?? 0;
-        case 'mana': return w.mana;
+        case 'mana': return ctx.mana ?? w.mana;
         case 'pos': { const p = posOf(args[0], at); return vec(p.x, p.z); }
         case 'dist': return dist(posOf(args[0], at), posOf(args[1], at));
         case 'ahead': {
@@ -197,6 +203,8 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
           const key = String(args[0]) as UiCharm;
           if (!(key in UI_CHARMS)) throw new RuneError(`reveal what? one of :${Object.keys(UI_CHARMS).join(' :')}`, at.line, at.col);
           if (!ctx.free && UI_CHARMS[key] > w.year) throw new RuneError(`:${key} is year-${UI_CHARMS[key]} magic`, at.line, at.col);
+          // an agent sees the corner in MCP look (kernel/reveal.ts), so the report says where
+          if (!ctx.free) notes.push(`reveal :${key} → look.${UI_CHARM_INFO[key].look} (${UI_CHARM_INFO[key].en})`);
           return push({}, `reveal ${key}`, () => world.reveal(w, key));
         }
         case 'chain': {
@@ -315,17 +323,44 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
   const total = ctx.free ? 0 : round(rb.magic.castOverhead + plan.reduce((s, p) => s + p.cost, 0));
   report.mana = total;
   report.effects = plan.map((p) => `${p.desc} (${fmt(round(p.cost))} mana)`);
-  if (pendings.length) report.effects.push(`${pendings.length} delayed block(s)`);
-  if (!ctx.free && total > w.mana) {
-    report.error = `not enough mana: needs ${fmt(total)}, you have ${fmt(w.mana)}`;
+  if (pendings.length && !ctx.dryRun) report.effects.push(`${pendings.length} delayed block(s)`);
+  const have = ctx.mana ?? w.mana;
+  if (!ctx.free && total > have) {
+    report.error = `not enough mana: needs ${fmt(total)}, you have ${fmt(have)}`;
     return report;
   }
   report.ok = true;
-  if (ctx.dryRun) return report;
+  if (ctx.dryRun) {
+    if (pendings.length) planLater(world, w, pendings, report, have - total);
+    return report;
+  }
   w.mana -= total;
   for (const p of plan) p.apply();
   world.pending.push(...pendings);
   return report;
+}
+
+/**
+ * A dry run also plans its (after ...) blocks (only a top-level cast has any: a delayed block cannot schedule), in the
+ * order they fire, each the way the tick will run it — its own transaction and gas, no target, the default aim, the
+ * cast's bindings as the cast left them — against the world as it is now, with the mana left by then (the cast and
+ * the blocks before it paid, regeneration over the delay added). Their plans are dropped like the cast's: nothing
+ * is applied. Lines read "t+1.5s: bolt 12 fire (12 mana)".
+ */
+function planLater(world: World, w: Wizard, pendings: Pending[], report: CastReport, left: number) {
+  const d = derived(w, world.rules);
+  let spent = 0;
+  for (const p of [...pendings].sort((a, b) => a.at - b.at)) {
+    const t = `t+${fmt(round(p.at - world.now))}s: `;
+    const mana = Math.min(d.maxMana, left - spent + d.manaRegen * (p.at - world.now));
+    const r = execute(world, w, p.body, { target: null, aim: world.defaultAim(w), spellName: p.spellName, incantation: p.incantation, depth: p.depth, dryRun: true, mana }, p.env.child());
+    if (!r.ok) report.effects.push(`${t}fizzles: ${r.error}`);
+    else if (!r.effects.length) report.effects.push(`${t}nothing to act on`);
+    else { report.effects.push(...r.effects.map((e) => t + e)); spent += r.mana; }
+    report.notes.push(...r.notes.filter((n) => !n.startsWith('The spell found nothing')).map((n) => t + n));
+  }
+  report.delayedMana = round(spent);
+  report.notes.push('Delayed blocks are planned against the world as it is now; by the time they fire, things may have moved.');
 }
 
 const tagsFor = (ctx: CastContext) => [ctx.incantation, ctx.spellName].join(' | ').slice(0, 200).split(' | ');

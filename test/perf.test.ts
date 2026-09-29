@@ -128,7 +128,7 @@ describe('World spatial queries equal full scans', () => {
     } finally {
       World.verifySpatial = was;
     }
-  });
+  }, 90_000); // heavy: ~5–7 s on an idle box, several times that under a loaded CI runner
 });
 
 describe('zone raster', () => {

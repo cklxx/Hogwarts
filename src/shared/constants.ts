@@ -232,6 +232,9 @@ export const SNITCH_CAP_PER_TERM = 150;
 /** 宵禁: points lost when Filch or Mrs Norris catches you (never below zero), and the grace before they can again. */
 export const CURFEW_PENALTY = 5;
 export const CURFEW_GRACE_S = 20;
+/** 宵禁 pays only a real close call: Filch or Mrs Norris within this many metres, unseen, for this many seconds in all. */
+export const CURFEW_CLOSE_M = 12;
+export const CURFEW_CLOSE_S = 3;
 
 /** 巧克力蛙画片: rarities, and the Galleons a duplicate turns into. */
 export const CARD_RARITIES = ['common', 'rare', 'epic', 'legendary'] as const;
@@ -242,3 +245,16 @@ export const CARD_DROP_PCT_MAX = 20;
 
 /** Stunning a wizard enrolled less than this long ago earns no reputation (stops throwaway-alt farming); also no royalties, no hexes. */
 export const FRESH_SECONDS = 600;
+
+/** The browser's WebSocket carries the key as a subprotocol entry (it cannot set headers): src/server/key.ts. */
+export const WS_PROTOCOL = 'hogwarts';
+export const WS_KEY_PREFIX = 'hw-key.';
+
+/**
+ * The default term: one hour. A 15-minute term (the first default) was too short for anyone to reach the Minister's
+ * bar (100) or the Dark Lord's (150) — an active player earns roughly 2–3 reputation a minute (live server: 37 in a
+ * term) — and it halved everyone's reputation 96 times a day, the absent included. `TERM_SECONDS` overrides it.
+ */
+export const TERM_DEFAULT_S = 3600;
+/** The term length before TERM_DEFAULT_S: a save still on it (and no decree ever changed it) moves to the new default. */
+export const TERM_OLD_DEFAULT_S = 900;

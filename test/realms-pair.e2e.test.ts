@@ -25,7 +25,7 @@ async function call(c: Client, name: string, args: Record<string, unknown> = {})
 }
 async function player(name: string) {
   const { token } = (await (await fetch(`${BASE}/api/enroll`, { method: 'POST', body: JSON.stringify({ name }) })).json()) as { token: string };
-  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
   const welcome = await new Promise<any>((ok) => ws.on('message', (raw) => { const m = JSON.parse(String(raw)); if (m.t === 'welcome') ok(m); }));
   const code = new Promise<string>((ok) => ws.on('message', (raw) => { const m = JSON.parse(String(raw)); if (m.t === 'paircode') ok(m.code); }));
   ws.send(JSON.stringify({ t: 'paircode' }));

@@ -68,7 +68,7 @@ describe('使魔 end to end', () => {
   it('a browser-only player summons the familiar, asks for a spell, and finds it on key 5', async () => {
     const r = await fetch(`${BASE}/api/enroll`, { method: 'POST', body: JSON.stringify({ name: 'Browser Only' }) });
     const { token } = (await r.json()) as { token: string };
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const msgs: any[] = [];
     ws.on('message', (d) => msgs.push(JSON.parse(String(d))));
     const until = async (pred: (m: any) => boolean, ms = 15000) => {

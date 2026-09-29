@@ -110,7 +110,7 @@ export interface FamiliarConfig {
   fallbacks: boolean;
 }
 
-export const FAMILIAR_DEFAULT_MODEL = 'claude-sonnet-5'; // cost-efficient default; set FAMILIAR_MODEL=claude-opus-5-5 for the strongest spell-writer
+export const FAMILIAR_DEFAULT_MODEL = 'claude-sonnet-5-5'; // cost-efficient default; set FAMILIAR_MODEL=claude-opus-5-5 for the strongest spell-writer
 /** Models that take `fallbacks: "default"` (beta server-side-fallback-2026-07-01). */
 const FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5']);
 const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -220,6 +220,12 @@ export interface FamiliarState {
   daily: number;
 }
 
+export interface FamiliarsSave {
+  bonds: { wid: string; kind: FamiliarKind; after: number }[];
+  perWizard: [string, { day: string; n: number }][];
+  global: { day: string; n: number };
+}
+
 interface Bond {
   wid: string;
   kind: FamiliarKind;
@@ -290,6 +296,26 @@ export class Familiars {
     this.unsubscribe();
     for (const b of this.bonds.values()) this.disconnect(b);
     this.bonds.clear();
+  }
+
+  /** What a restart keeps (main.ts writes it next to the world): who has a familiar, of which kind, how far it has
+   * read its human's owls, and today's counts — a restart must neither dismiss familiars nor refill the quotas. */
+  save(): FamiliarsSave {
+    return {
+      bonds: [...this.bonds.values()].filter((b) => b.on).map(({ wid, kind, after }) => ({ wid, kind, after })),
+      perWizard: [...this.perWizard], global: this.global,
+    };
+  }
+
+  /** Back after a restart: familiars come back quietly (no second greeting); owls sent meanwhile are answered. */
+  restore(saved: FamiliarsSave | undefined) {
+    if (!saved) return;
+    for (const [wid, q] of saved.perWizard ?? []) if (q && typeof q.n === 'number') this.perWizard.set(wid, { day: String(q.day), n: q.n });
+    if (saved.global && typeof saved.global.n === 'number') this.global = { day: String(saved.global.day), n: saved.global.n };
+    for (const x of saved.bonds ?? []) {
+      if (!this.world.wizards.has(x.wid) || !Object.hasOwn(FAMILIAR_KINDS, x.kind)) continue;
+      this.bonds.set(x.wid, { wid: x.wid, kind: x.kind, on: true, client: null, server: null, history: [], after: Number(x.after) || 0, pendingSince: null, busy: false, queued: false, dormantTold: false, busyToldAt: -1e12 });
+    }
   }
 
   /** The player summons (on) or dismisses their familiar. `kind` picks owl / cat / toad. */

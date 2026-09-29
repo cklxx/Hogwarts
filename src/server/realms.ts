@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { parsePairCode } from '../kernel/identity.js';
 import { readFileSync } from 'node:fs';
 import { buildId, serverName, startDiscovery } from './discovery.js';
+import { keyOf } from './key.js';
 
 export interface RealmStats { players: number; wizards: number; clients: number; mcp: number }
 
@@ -130,11 +131,6 @@ export function targetRealm(msg: unknown): number | null {
 }
 const isInitialize = (msg: unknown) => !!msg && typeof msg === 'object' && (msg as { method?: unknown }).method === 'initialize';
 
-function tokenOf(req: IncomingMessage, url: URL) {
-  const h = req.headers.authorization;
-  if (h?.toLowerCase().startsWith('bearer ')) return h.slice(7).trim();
-  return (req.headers['x-wizard-token'] as string | undefined) ?? url.searchParams.get('token') ?? undefined;
-}
 
 async function runPrimary() {
   const PORT = Number(process.env.PORT ?? 7777);
@@ -190,7 +186,7 @@ async function runPrimary() {
     const sid = req.headers['mcp-session-id'] as string | undefined;
     const home = sid ? homes.get(sid) ?? realmOf(sid) : null;
     if (home !== null) return home;
-    const tok = tokenOf(req, url);
+    const tok = keyOf(req);
     if (tok) return realmOf(tok) ?? 0;
     if (url.pathname === '/api/enroll' && req.method === 'POST') return leastLoaded();
     const c = cookieRealm(req.headers.cookie);

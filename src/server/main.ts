@@ -26,6 +26,7 @@ import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
 import { serveStatic } from './static.js';
 import { PROTOCOL, buildId, serverName, startDiscovery } from './discovery.js';
+import { keyOf, pickProtocol } from './key.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -60,14 +61,15 @@ function load(): World {
     try {
       const w = World.restore(JSON.parse(readFileSync(DATA, 'utf8')));
       console.log(`[hogwarts] restored ${w.wizards.size} wizards from ${DATA}`);
+      // TERM_SECONDS applies to a restored world too (it used to count only for a fresh one)
+      if (process.env.TERM_SECONDS) w.setTermLength(Number(process.env.TERM_SECONDS));
       return w;
     } catch (e) {
       console.error('[hogwarts] could not restore world, starting fresh:', e);
     }
   }
   const w = new World();
-  if (process.env.TERM_SECONDS) w.rules.terms.lengthSeconds = Math.max(120, Number(process.env.TERM_SECONDS));
-  w.term.endsAt = w.now + w.rules.terms.lengthSeconds;
+  w.setTermLength(Number(process.env.TERM_SECONDS) || w.rules.terms.lengthSeconds);
   return w;
 }
 const world = load();
@@ -76,10 +78,15 @@ warmPathfinding();
 ensureNpcs(world, Number(process.env.NPC_COUNT ?? 4));
 // 校园事件轮盘: EVENT_FIRST_S rolls the first event sooner (demos, e2e tests); the interval itself is a rule (rules.events)
 if (process.env.EVENT_FIRST_S) world.wheel.nextAt = world.now + Math.max(0, Number(process.env.EVENT_FIRST_S) || 0);
+/** Write a file whole or not at all (a crash mid-write leaves the last good copy). */
+function writeAtomic(path: string, data: unknown) {
+  writeFileSync(path + '.tmp', JSON.stringify(data));
+  renameSync(path + '.tmp', path);
+}
 function save() {
   mkdirSync(dirname(DATA), { recursive: true });
-  writeFileSync(DATA + '.tmp', JSON.stringify(world.serialize()));
-  renameSync(DATA + '.tmp', DATA);
+  writeAtomic(DATA, world.serialize());
+  if (familiars) writeAtomic(FAMILIARS_DATA, familiars.save());
 }
 
 // ------------------------------------------------------------------ the clock
@@ -133,8 +140,8 @@ function checkKey(req: IncomingMessage, token: string | undefined) {
   return 'unknown' as const;
 }
 /** The wizard behind a request's key; otherwise answers 401 (wrong key) or 429 (too many wrong keys) and returns undefined. */
-function keyed(req: IncomingMessage, url: URL, res: ServerResponse) {
-  const w = checkKey(req, tokenOf(req, url));
+function keyed(req: IncomingMessage, res: ServerResponse) {
+  const w = checkKey(req, keyOf(req));
   if (w === 'throttled') { json(res, 429, { error: LOGIN_THROTTLED }); return undefined; }
   if (w === 'unknown') { json(res, 401, { error: 'unknown token' }); return undefined; }
   return w;
@@ -154,11 +161,6 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   const s = Buffer.concat(chunks).toString('utf8');
   return s ? JSON.parse(s) : undefined;
 }
-const tokenOf = (req: IncomingMessage, url: URL) => {
-  const h = req.headers.authorization;
-  if (h?.toLowerCase().startsWith('bearer ')) return h.slice(7).trim();
-  return (req.headers['x-wizard-token'] as string | undefined) ?? url.searchParams.get('token') ?? undefined;
-};
 
 // MCP: one transport + one McpServer per MCP session.
 type McpEntry = { transport: StreamableHTTPServerTransport; session: McpSession; seen: number };
@@ -192,16 +194,24 @@ function trimWizard(wid: string) {
   for (const [id, e] of mine.slice(0, Math.max(0, mine.length - (MCP_PER_WIZARD - 1)))) closeMcp(id, e);
 }
 /** MCP sessions bound to a wizard: derived by scanning, never counted (docs/AGENT_LINK.md §A.4). */
-function sessionsOf(wid: string) {
+function sessionsOf(wid: string, activeWithinMs = Infinity) {
   let n = 0;
-  for (const e of mcpSessions.values()) if (e.session.wizardId === wid) n++;
+  const t = Date.now();
+  for (const e of mcpSessions.values()) if (e.session.wizardId === wid && t - e.seen <= activeWithinMs) n++;
   return n;
 }
+/** Your own agent comes first, but only while it is actually there: a session left open and silent this long
+ * (the agent was closed without ending it) no longer keeps your familiar asleep; eviction removes it later. */
+const AGENT_AWAY_MS = 5 * 60_000;
+const FAMILIARS_DATA = join(dirname(DATA), 'familiars.json');
 // 使魔, the built-in agent (familiar.ts): only with ANTHROPIC_API_KEY; otherwise null and invisible.
 const familiarCfg = familiarConfig();
 const familiars = familiarCfg
-  ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: sessionsOf, session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
+  ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: (wid) => sessionsOf(wid, AGENT_AWAY_MS), session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
   : null;
+if (familiars && existsSync(FAMILIARS_DATA)) {
+  try { familiars.restore(JSON.parse(readFileSync(FAMILIARS_DATA, 'utf8'))); } catch (e) { console.error('[familiar] could not restore familiars:', (e as Error).message); }
+}
 if (familiarCfg) console.error(`[familiar] on: model ${familiarCfg.model}, effort ${familiarCfg.effort}, ${familiarCfg.daily}/wizard/day, ${familiarCfg.globalDaily}/day in all, ${familiarCfg.concurrency} at once`);
 /** Close code for a socket whose key was changed (it reconnects only with the new key). */
 const KEY_CHANGED = 4001;
@@ -232,7 +242,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
       return json(res, 400, { jsonrpc: '2.0', error: { code: -32000, message: 'No valid MCP session. Start with initialize.' }, id: null });
     }
     const adopt = adoptedSessionId(req);
-    const token = tokenOf(req, url);
+    const token = keyOf(req);
     // A Bearer key is a login: a wrong one counts as a failed login (and the session starts unbound).
     const keyedBy = token ? checkKey(req, token) : undefined;
     if (keyedBy === 'throttled') return json(res, 429, { jsonrpc: '2.0', error: { code: -32000, message: LOGIN_THROTTLED }, id: null });
@@ -278,14 +288,14 @@ const http = createServer(async (req, res) => {
       }
     }
     if (url.pathname === '/api/me') {
-      const w = keyed(req, url, res);
+      const w = keyed(req, res);
       return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${baseFor(req)}/mcp` }) : undefined;
     }
     // The player's owls to their agent after owl id `since` (default: after what the agent has read), for a
     // stdio bridge's channel push (docs/AGENT_LINK.md §C.4). Read-only, and not presence: polling it neither
     // consumes owls nor keeps the wizard online. `cursor` is what to pass as `since` next time.
     if (url.pathname === '/api/owls' && req.method === 'GET') {
-      const w = keyed(req, url, res);
+      const w = keyed(req, res);
       if (!w) return;
       const raw = url.searchParams.get('since');
       const since = raw !== null && /^\d{1,12}$/.test(raw) ? Number(raw) : undefined;
@@ -431,12 +441,12 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
   }
 }
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, handleProtocols: pickProtocol });
 const clients = new Map<WebSocket, string>();
 http.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname !== '/ws') return socket.destroy();
-  const w = checkKey(req, url.searchParams.get('token') ?? undefined);
+  const w = checkKey(req, keyOf(req));
   if (w === 'throttled') { socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return socket.destroy(); }
   if (w === 'unknown') { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy(); }
   wss.handleUpgrade(req, socket, head, (ws) => {

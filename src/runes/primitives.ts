@@ -200,7 +200,7 @@ export const PRIMS: Prim[] = [
   { name: 'root', kind: 'effect', year: 3, args: [a('at', 'ent'), a('secs', 'num')], doc: 'A bolt that roots the target. Cost: 12*secs. Cap: 1+0.3*year (max 3).' },
   { name: 'nova', kind: 'effect', year: 3, args: [a('radius', 'num'), a('power', 'num'), a('element', 'elem', true)], doc: 'Damage everything harmable around you. Cost: power*(1+0.35*radius). Caps: radius 3+year (max 10), power 8+4*year.' },
   { name: 'patronus', kind: 'effect', year: 3, args: [a('secs', 'num')], doc: 'Expecto Patronum: a silver guardian that burns Dementors near you. Cost: 20+3*secs.' },
-  { name: 'reveal', kind: 'effect', year: 1, args: [a('charm', 'str')], doc: 'Unlock a corner of your sight for good: :tempus (clock, y1), :revelio (your own measure, y1), :point-me (radar, y2), :homenum (who is near, y3). Cost 10.', example: '(reveal :tempus)' },
+  { name: 'reveal', kind: 'effect', year: 1, args: [a('charm', 'str')], doc: 'Unlock a corner of your sight for good: :tempus (clock, y1), :revelio (your own measure, y1), :point-me (radar, y2), :homenum (who is near, y3). Cost 10. Over MCP, look gains a section for each lit corner: tempus, revelio, pointMe, homenum.', example: '(reveal :tempus)' },
   { name: 'chain', kind: 'effect', year: 4, seals: 2, args: [a('at', 'ent'), a('power', 'num'), a('element', 'elem', true)], doc: '[Second Seal] Lightning that strikes a foe then leaps to up to 3 more within 8m, losing 30% each jump. Cost: 2.2*power.', example: '(chain target 20 :lightning)' },
   { name: 'storm', kind: 'effect', year: 7, seals: 4, args: [a('at', 'place'), a('radius', 'num'), a('power', 'num'), a('element', 'elem', true)], doc: '[Fourth Seal] A tempest gathers at a point (<=40m) and breaks 1.5s later on everything harmable within radius (<=10). Cost: power*(1+0.4*radius).', example: '(storm aim 8 40 :lightning)' },
   {
@@ -212,9 +212,12 @@ export const PRIMS: Prim[] = [
 ];
 
 export const PRIM_BY_NAME = new Map(PRIMS.map((p) => [p.name, p]));
-export const SPECIAL_FORMS = ['do', 'let', 'if', 'when', 'unless', 'and', 'or', 'repeat', 'each', 'min-by', 'max-by', 'after'] as const;
-/** The year min-by / max-by are learned: after the third-year exam that is about doing without them (weakest-link). */
-export const BY_YEAR = 4;
+export const SPECIAL_FORMS = ['do', 'let', 'set!', 'if', 'when', 'unless', 'and', 'or', 'repeat', 'each', 'min-by', 'max-by', 'after'] as const;
+/**
+ * The year a special form is learned (unlisted: year 1). min-by / max-by and set! come after the third-year exam
+ * that is about doing without them (weakest-link: "there is no accumulator"), so its hint stays true.
+ */
+export const SPECIAL_YEAR: Partial<Record<(typeof SPECIAL_FORMS)[number], number>> = { after: 2, 'set!': 4, 'min-by': 4, 'max-by': 4 };
 export const CONSTANTS = ['self', 'target', 'aim', 'object', 'true', 'false', 'nil', 'pi'] as const;
 export const ELEMENT_SET = new Set<string>(ELEMENTS);
 export const isEffect = (name: string): name is EffectPrimitive => (EFFECT_PRIMITIVES as readonly string[]).includes(name);
@@ -222,6 +225,7 @@ export const isEffect = (name: string): name is EffectPrimitive => (EFFECT_PRIMI
 export const SPECIAL_DOCS: Record<string, string> = {
   do: '(do e1 e2 ...) evaluate in order, return last.',
   let: '(let name expr) bind name in the current block.',
+  'set!': '(set! name expr) [year 4] change an existing binding (from let, each, repeat\'s i, min-by) in the nearest block that has it; returns the new value. Built-ins (self target aim object true false nil pi, spell words) cannot be changed. E.g. (let n 0) (each e (enemies 20) (set! n (+ n (hp e)))).',
   if: '(if cond then else?)',
   when: '(when cond body...)',
   unless: '(unless cond body...)',
@@ -231,5 +235,5 @@ export const SPECIAL_DOCS: Record<string, string> = {
   each: '(each x list body...) iterate (at most 16 items).',
   'min-by': '(min-by x list expr) [year 4] the item of list whose expr (with x bound to it) is smallest, or nil; at most 16 items, ties go to the first. E.g. (min-by e (enemies 30) (hp e)).',
   'max-by': '(max-by x list expr) [year 4] the same, largest.',
-  after: '(after secs body...) [year 2] run body later (<=5s, <=3 per cast). Each delayed body is its own atomic cast.',
+  after: '(after secs body...) [year 2] run body later (<=5s, <=3 per cast, not inside another after). Each delayed body is its own atomic cast, with the bindings the cast left; simulate shows what each would do as "t+Ns: ...".',
 };

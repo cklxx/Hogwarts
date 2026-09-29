@@ -6,7 +6,7 @@ import {
   DA_JOINT_MIN, DA_JOINT_PCT, DA_JOINT_WINDOW_S, DA_MAX_MEMBERS, DA_QUORUM, DA_REP_CEILING, DA_VETO_WINDOW_S, DA_VETOES_PER_TERM, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP,
   DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT, STUDIED_KEEP, STUDY_DELAY_S, STUDY_KEEP, STUDY_MEMORY_S,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
-  CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, type CupSource, type EventId,
+  CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource, type EventId,
   type CreatureKind, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
 } from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, LAWLESS_ZONE, SPAWN, WORLD_HALF, ZONES, mulberry32, type ZoneId } from '../shared/map.js';
@@ -89,9 +89,11 @@ const ONLINE_GRACE = 300;
 const DANCE_STEP_S = 0.4;
 const DANCE_MAX_RAD = 0.6;
 import { FRESH_SECONDS } from '../shared/constants.js';
+import { UI_CHARM_INFO } from '../shared/reveal.js';
+import { revealView } from './reveal.js';
 export { FRESH_SECONDS };
 /** Curriculum reveal charms and the HUD corner each one unlocks (a slot can be reused once it is). */
-const REVEAL_CHARM: Record<string, string> = { Tempus: 'tempus', Revelio: 'revelio', 'Point Me': 'point-me', 'Homenum Revelio': 'homenum' };
+const REVEAL_CHARM: Record<string, string> = Object.fromEntries(Object.entries(UI_CHARM_INFO).map(([k, v]) => [v.spell, k]));
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
 /** placeName's order: the most specific zone wins. */
@@ -1173,8 +1175,8 @@ export class World {
     if (key === 'revelio') { this.revealSenders(w); this.revealStudies(w); } // Revelio also unmasks who posted you a curse (§B.1), and how their spells work (偷师)
     if (w.ui.includes(key)) return;
     w.ui.push(key);
-    const where = { tempus: 'the top-right corner: the time, and the term', revelio: 'the top-left corner: your own measure', 'point-me': 'the bottom-left corner: a radar that always points north', homenum: 'the bottom-right corner: everyone near you' }[key];
-    this.emit('egg', `✨ A new sense settles into ${where}.`, { to: w.id, zh: `✨ 一种新的感知落在了${({ tempus: '右上角：时间与学期', revelio: '左上角：你自己的斤两', 'point-me': '左下角：永远指北的雷达', homenum: '右下角：身边的每一个人' } as Record<string, string>)[key]}。` });
+    const c = UI_CHARM_INFO[key];
+    this.emit('egg', `✨ A new sense settles into ${c.en}. (MCP: look.${c.look})`, { to: w.id, zh: `✨ 一种新的感知落在了${c.zh}。（MCP：look.${c.look}）` });
   }
 
   /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last. */
@@ -1975,6 +1977,10 @@ export class World {
     if (w.st.disarmedUntil > this.now) return fail('You have been disarmed!');
     if (this.silenced(w)) return fail(SILENCED);
     if (this.now < (w.cooldowns[it.id] ?? 0) || this.now < w.globalCd) return fail(`${it.name} is recharging.`);
+    // an item's charm is a cast like any other: the features' holds (a duel's bow) and the market's bans apply to it
+    for (const f of HOOKS.castBlock) { const why = f.castBlock(this, w); if (why) return fail(why); }
+    const asSpell = { id: it.id, name: it.name, source: it.charm.source } as Spell;
+    if (bannedListing(this, asSpell)) { this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle }); return fail(bannedCastText(this, asSpell, w.handle)); }
     const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     // Charms were validated against the forger's year; the holder's own caps still apply at runtime.
@@ -2184,10 +2190,11 @@ export class World {
     }
     for (const w of this.wizards.values()) {
       const before = w.reputation;
-      w.reputation *= this.rules.terms.reputationDecay;
+      // only those who played this term: the absent keep what they had (a week away no longer means starting over)
+      if (w.npc || w.lastSeenAt >= this.term.startedAt || this.online(w)) w.reputation *= this.rules.terms.reputationDecay;
       w.termReputation = 0;
       // say it: every playtester thought the halving was a bug
-      if (!w.npc && before >= 1) {
+      if (!w.npc && before >= 1 && w.reputation < before) {
         const keep = Math.round(this.rules.terms.reputationDecay * 100);
         this.emit('term', `Term over: your reputation ${Math.round(before)} → ${Math.round(w.reputation)} (${keep}% carries into the next term; the rest was this term's race).`, { to: w.id, zh: `学期结束：你的声望 ${Math.round(before)} → ${Math.round(w.reputation)}（${keep}% 带进下学期，其余是这学期的比赛）。` });
       }
@@ -2197,6 +2204,13 @@ export class World {
   }
 
   forceEndTerm() { this.endTerm(); }
+
+  /** Change the term length now (TERM_SECONDS at start-up, the save migration): the running term ends at its new length, or in a minute. */
+  setTermLength(seconds: number) {
+    const len = Math.max(120, Math.min(86400, Math.round(seconds)));
+    this.rules.terms.lengthSeconds = len;
+    this.term.endsAt = Math.max(this.now + 60, this.term.startedAt + len);
+  }
 
   // ------------------------------------------------------------------ the tick
   tick(dt = TICK) {
@@ -3501,6 +3515,8 @@ export class World {
       schoolEvent: this.lookEvent(w),
       chests: chestsLeft(this).filter((c) => dist(c, w.pos) <= CHEST_SIGHT).map((c) => ({ id: c.id, x: round(c.x), z: round(c.z), dist: round(dist(c, w.pos)), howTo: 'walk within 2.6 m, then open_chest' })),
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
+      // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
+      ...revealView(this, w),
     };
   }
 
@@ -3764,7 +3780,7 @@ export class World {
   // ------------------------------------------------------------------ persistence
   serialize() {
     return {
-      version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
+      version: 2, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       // what each feature keeps across a restart (kernel/features.ts)
       features: Object.fromEntries(HOOKS.save.map((f) => [f.id, f.save(this)])),
       // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
@@ -3786,6 +3802,8 @@ export class World {
       chests: data.flags?.chests ?? { term: 0, opened: {} },
     };
     w.seq = data.seq ?? 0;
+    // v1 saves ran 15-minute terms by default: move them to the new default unless a decree chose the length
+    if ((data.version ?? 1) < 2 && w.rules.terms.lengthSeconds === TERM_OLD_DEFAULT_S && !w.decrees.some((d) => d.changes.some((c) => c.startsWith('terms.lengthSeconds:')))) w.setTermLength(TERM_DEFAULT_S);
     const saved = (data as { features?: Record<string, unknown> }).features ?? {};
     for (const f of HOOKS.load) f.load(w, saved[f.id], data as unknown as Record<string, unknown>); // older saves kept these at the top
     for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {

@@ -36,7 +36,8 @@ HOW A CAST WORKS (the rules that keep custom magic fair)
      or you cannot pay, the spell FIZZLES and costs nothing. Otherwise every effect happens.
   5. Numbers above your year's caps are clamped (you are told in "notes").
   6. Cooldown after a cast = 0.3s + mana/60 seconds. Delayed (after ...) blocks are separate
-     transactions, pay no overhead, and fizzle alone.
+     transactions: each pays its own overhead when it fires, and fizzles alone. simulate_spell
+     plans them too, as lines "t+1.5s: ..." checked against the mana you will have left.
 
 BINDINGS
   self    you              target  the entity you aimed at (or nil)

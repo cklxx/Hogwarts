@@ -12,6 +12,11 @@
  *   QD_CATCH_R of it for QD_CATCH_S catches it, +QD_SNITCH, and the match ends. NPCs fill each
  *   side up to QD_FILL and play (chasers chase and throw, a seeker hunts the Snitch). `quidditch chase` lets an agent
  *   fly on autopilot toward its ball (the Quaffle, or the Snitch for a seeker), throwing when in range.
+ * - A keeper a side (a player who asks, else an NPC, once a side has QD_KEEPER_MIN): reaches QD_KEEP_R for a shot near
+ *   their own hoops (other defenders only QD_TOUCH_R); NPC and autopilot keepers mark the Quaffle along their hoop line.
+ * - The league (QdState.league): every match adds to a season of QD_PAIRS.length terms (each pairing once): 3 points a
+ *   win, 1 a draw, then match points scored as the tie-break; the season's top house takes the Quidditch Cup, announced
+ *   when the next season starts. Standings only: no reward rides on them (the bounded rewards below are the match's).
  * - Leaving the pitch, going offline or being jailed benches you. The Snitch event of the wheel never runs during a match.
  * - Rewards, once, at the whistle (players only, never NPCs): reputation qdRep(goals, caught, won) ≤ QD_REP_MAX, house
  *   points qdCup(team score) ≤ QD_CUP_MAX ('quidditch', under the usual per-wizard term cap), XP, and 20 Galleons for the
@@ -44,6 +49,10 @@ export const QD_PAIRS: readonly [House, House][] = [
 export const QD_START_FRAC = 0.3, QD_CALL_S = 45, QD_PLAY_S = 240, QD_SNITCH_AFTER_S = 60, QD_RESULT_S = 20;
 export const QD_FLY = 1.5, QD_FILL = 3, QD_SIDE_MAX = 7, QD_BENCH_R = 44;
 export const QD_GOAL_LINE_S = 15;
+/** Keepers: a side needs this many to field one; their reach for a shot within QD_KEEP_ZONE of their own hoop line. */
+export const QD_KEEPER_MIN = 3, QD_KEEP_R = 1.8, QD_KEEP_ZONE = 8, QD_TOUCH_R = 1.0;
+/** League: points for a win / a draw. */
+export const QD_WIN_PTS = 3, QD_DRAW_PTS = 1;
 export const QD_GOAL = 10, QD_SNITCH = 150, QD_HOOP_R = 1.6, QD_THROW_V = 16, QD_THROW_MAX = 24, QD_AUTO_THROW = 15;
 export const QD_BLUDGER_V = 7.5, QD_BLUDGER_DMG = 6, QD_BLUDGER_RETARGET_S = 8, QD_BEAT_R = 1.4;
 /** The Snitch: cruising speed; a seeker within QD_DART_R makes it dart off at QD_DART_V (faster than you fly), then it must rest QD_DART_CD_S. */
@@ -64,8 +73,8 @@ export function qdCup(score: number): number {
   return Math.min(QD_CUP_MAX, Math.floor(Math.max(0, score) / 5));
 }
 
-export type QdRole = 'chaser' | 'seeker';
-export interface QdPlayer { side: 0 | 1; role: QdRole; goals: number; chase: boolean; wantSeeker: boolean }
+export type QdRole = 'chaser' | 'seeker' | 'keeper';
+export interface QdPlayer { side: 0 | 1; role: QdRole; goals: number; saves?: number; chase: boolean; wantSeeker: boolean; wantKeeper?: boolean }
 interface Ball { x: number; z: number }
 export interface QdMatch {
   term: number; sides: [House, House]; phase: 'call' | 'play' | 'done';
@@ -81,8 +90,14 @@ export interface QdMatch {
   caughtBy: string | null;
   winner: 0 | 1 | null;
 }
-export interface QdState { match: QdMatch | null; doneTerm: number }
-export const newQd = (): QdState => ({ match: null, doneTerm: 0 });
+/** One house's line in the season's table. */
+export interface QdRow { played: number; won: number; drawn: number; lost: number; pts: number; for: number; against: number }
+export interface QdLeague { season: number; table: Partial<Record<House, QdRow>>; results: { term: number; sides: [House, House]; score: [number, number]; caughtBy: string | null }[]; champions: { season: number; house: House }[] }
+export interface QdState { match: QdMatch | null; doneTerm: number; league: QdLeague }
+export const newLeague = (season = 0): QdLeague => ({ season, table: {}, results: [], champions: [] });
+export const newQd = (): QdState => ({ match: null, doneTerm: 0, league: newLeague() });
+/** The season a term belongs to: QD_PAIRS.length terms, every pairing once. */
+export const qdSeason = (term: number) => Math.floor((Math.max(1, term) - 1) / QD_PAIRS.length);
 
 const d2 = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z);
 const houseZh: Record<House, string> = { Gryffindor: '格兰芬多', Hufflepuff: '赫奇帕奇', Ravenclaw: '拉文克劳', Slytherin: '斯莱特林' };
@@ -122,10 +137,13 @@ export function qdJoin(world: World, wid: string, role?: QdRole) {
   if (!world.isActive(w)) throw new Error('You cannot play while stunned or in Azkaban. 被击晕或在阿兹卡班时不能上场。');
   if (inDuel(world, wid)) throw new Error('You are in the Duelling Club: finish or leave it first (duel_club leave). 你在决斗俱乐部里：先打完或退出（duel_club leave）。');
   const p = m.roster[wid];
-  if (p) { if (role) p.wantSeeker = role === 'seeker'; return qdStatus(world, wid); }
+  if (p) { if (role) { p.wantSeeker = role === 'seeker'; p.wantKeeper = role === 'keeper'; } return qdStatus(world, wid); }
   if (Object.values(m.roster).filter((x) => x.side === side).length >= QD_SIDE_MAX) throw new Error('Your team is full. 你们队满员了。');
-  m.roster[wid] = { side: side as 0 | 1, role: 'chaser', goals: 0, chase: false, wantSeeker: role === 'seeker' };
-  if (m.phase === 'play') { place(world, w, side as 0 | 1); if (role === 'seeker' && !seekerOf(m, side as 0 | 1)) m.roster[wid].role = 'seeker'; }
+  m.roster[wid] = { side: side as 0 | 1, role: 'chaser', goals: 0, chase: false, wantSeeker: role === 'seeker', wantKeeper: role === 'keeper' };
+  if (m.phase === 'play') {
+    place(world, w, side as 0 | 1);
+    if (role && role !== 'chaser' && !roleOf(m, side as 0 | 1, role)) m.roster[wid].role = role;
+  }
   return qdStatus(world, wid);
 }
 
@@ -165,7 +183,7 @@ function launch(m: QdMatch, w: Wizard, to: Vec2) {
   q.x = w.pos.x; q.z = w.pos.z;
 }
 
-function seekerOf(m: QdMatch, side: 0 | 1) { return Object.keys(m.roster).find((id) => m.roster[id].side === side && m.roster[id].role === 'seeker'); }
+function roleOf(m: QdMatch, side: 0 | 1, role: QdRole) { return Object.keys(m.roster).find((id) => m.roster[id].side === side && m.roster[id].role === role); }
 
 function place(world: World, w: Wizard, side: 0 | 1) {
   const e = QD_ENDS[side], n = Object.values(world.qd.match!.roster).filter((x) => x.side === side).length;
@@ -199,11 +217,17 @@ function startPlay(world: World, m: QdMatch) {
       m.roster[w.id] = { side, role: 'chaser', goals: 0, chase: true, wantSeeker: false };
     }
   }
-  // one seeker a side: a player who asked, else an NPC, else the first to join
+  // one seeker a side: a player who asked, else an NPC, else the first to join; then, with enough players, a keeper
+  // the same way (a player who asked, else an NPC; never the last chaser)
   for (const side of [0, 1] as const) {
     const ids = Object.keys(m.roster).filter((id) => m.roster[id].side === side);
-    const pick = ids.find((id) => m.roster[id].wantSeeker && !world.wizards.get(id)?.npc) ?? ids.find((id) => world.wizards.get(id)?.npc) ?? ids[0];
-    if (pick) m.roster[pick].role = 'seeker';
+    const npc = (id: string) => !!world.wizards.get(id)?.npc;
+    const seeker = ids.find((id) => m.roster[id].wantSeeker && !npc(id)) ?? ids.find(npc) ?? ids[0];
+    if (seeker) m.roster[seeker].role = 'seeker';
+    if (ids.length < QD_KEEPER_MIN) continue;
+    const rest = ids.filter((id) => id !== seeker);
+    const keeper = rest.find((id) => m.roster[id].wantKeeper && !npc(id)) ?? rest.find((id) => npc(id) && !m.roster[id].wantSeeker);
+    if (keeper) m.roster[keeper].role = 'keeper';
   }
   const bySide: [number, number] = [0, 0];
   for (const [id, p] of Object.entries(m.roster)) {
@@ -225,6 +249,7 @@ function endPlay(world: World, m: QdMatch) {
   m.until = world.now + QD_RESULT_S;
   m.winner = m.score[0] === m.score[1] ? null : m.score[0] > m.score[1] ? 0 : 1;
   world.qd.doneTerm = m.term;
+  recordLeague(world, m);
   const lines: string[] = [], zh: string[] = [];
   for (const [id, p] of Object.entries(m.roster)) {
     const w = world.wizards.get(id);
@@ -248,6 +273,38 @@ function endPlay(world: World, m: QdMatch) {
   for (const [id, p] of Object.entries(m.roster)) { const w = world.wizards.get(id); if (w && p.chase && w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; } }
 }
 
+// ------------------------------------------------------------------ the league
+const blankRow = (): QdRow => ({ played: 0, won: 0, drawn: 0, lost: 0, pts: 0, for: 0, against: 0 });
+/** The table in order: points, then match points scored minus conceded, then scored. */
+export function standings(l: QdLeague): { house: House; row: QdRow }[] {
+  return (Object.entries(l.table) as [House, QdRow][]).map(([house, row]) => ({ house, row }))
+    .sort((a, b) => b.row.pts - a.row.pts || (b.row.for - b.row.against) - (a.row.for - a.row.against) || b.row.for - a.row.for || a.house.localeCompare(b.house));
+}
+
+/** A new season: crown the last one's leader (announced), then start an empty table. */
+function rollSeason(world: World, season: number) {
+  const l = world.qd.league;
+  if (season <= l.season) return;
+  const top = standings(l)[0];
+  if (top && top.row.played) {
+    l.champions = [...l.champions, { season: l.season, house: top.house }].slice(-12);
+    lee(world, `${top.house} win the Quidditch Cup for season ${l.season + 1}, with ${top.row.pts} points!`, `${houseZh[top.house]}赢得第 ${l.season + 1} 赛季魁地奇杯，积 ${top.row.pts} 分！`);
+  }
+  world.qd.league = { ...newLeague(season), champions: l.champions };
+}
+
+function recordLeague(world: World, m: QdMatch) {
+  rollSeason(world, qdSeason(m.term));
+  const l = world.qd.league;
+  for (const side of [0, 1] as const) {
+    const r = (l.table[m.sides[side]] ??= blankRow());
+    const mine = m.score[side], theirs = m.score[1 - side];
+    r.played++; r.for += mine; r.against += theirs;
+    if (m.winner === null) { r.drawn++; r.pts += QD_DRAW_PTS; } else if (m.winner === side) { r.won++; r.pts += QD_WIN_PTS; } else r.lost++;
+  }
+  l.results = [...l.results, { term: m.term, sides: m.sides, score: [...m.score] as [number, number], caughtBy: m.caughtBy ? world.wizards.get(m.caughtBy)?.name ?? null : null }].slice(-QD_PAIRS.length);
+}
+
 /** 20 Hz, from World.step. */
 export function stepQuidditch(world: World, dt: number) {
   const q = world.qd;
@@ -256,6 +313,7 @@ export function stepQuidditch(world: World, dt: number) {
   if (m && m.phase === 'done' && (world.now >= m.until || m.term !== world.term.n)) { q.match = m = null; }
   const s = schedule(world);
   if (!m) {
+    if (qdSeason(world.term.n) > q.league.season) rollSeason(world, qdSeason(world.term.n)); // crown last season's leader
     if (q.doneTerm === world.term.n || world.now < s.whistle - QD_CALL_S || world.now > s.whistle + 5) return;
     q.match = m = {
       term: world.term.n, sides: qdPairing(world.term.n), phase: 'call', until: s.whistle, startedAt: 0, score: [0, 0], roster: {},
@@ -296,11 +354,18 @@ function stepQuaffle(world: World, m: QdMatch, dt: number) {
     if (tp) for (const h of QD_HOOPS[1 - tp.side]) {
       if (segDist(ax, az, q.x, q.z, h) <= QD_HOOP_R) return goal(world, m, q.thrower!, tp);
     }
-    // a defender (anyone on the other side) who touches it in flight intercepts it
+    // a defender (anyone on the other side) who touches it in flight intercepts it; a keeper near their hoops reaches further
     for (const id of Object.keys(m.roster)) {
-      if (tp && m.roster[id].side === tp.side) continue;
+      const p = m.roster[id];
+      if (tp && p.side === tp.side) continue;
       const w = world.wizards.get(id);
-      if (w && world.isActive(w) && d2(w.pos, q) <= 1.0) { q.carrier = id; q.flying = 0; q.thrower = null; return; }
+      if (!w || !world.isActive(w)) continue;
+      const keeping = p.role === 'keeper' && Math.abs(q.z - QD_HOOPS[p.side][1].z) <= QD_KEEP_ZONE;
+      if (d2(w.pos, q) <= (keeping ? QD_KEEP_R : QD_TOUCH_R)) {
+        q.carrier = id; q.flying = 0; q.thrower = null;
+        if (keeping && tp) { p.saves = (p.saves ?? 0) + 1; if (world.banter(['qd:save', QD_GOAL_LINE_S])) lee(world, `What a save by ${w.name}!`, `${w.name} 一个漂亮的扑救！`); }
+        return;
+      }
     }
     if (d2(q, QD_PITCH) > QD_PITCH.r) { const l = d2(q, QD_PITCH); q.x = QD_PITCH.x + ((q.x - QD_PITCH.x) / l) * QD_PITCH.r; q.z = QD_PITCH.z + ((q.z - QD_PITCH.z) / l) * QD_PITCH.r; q.flying = 0; }
     return;
@@ -465,7 +530,11 @@ function steer(world: World, m: QdMatch) {
     if (!w || !world.isActive(w) || (!w.npc && world.playerSteering(w))) continue;
     let to: Vec2 | null = null;
     if (p.role === 'seeker') to = m.snitch ? { x: m.snitch.x, z: m.snitch.z } : QD_ENDS[p.side];
-    else if (q.carrier === id) {
+    else if (p.role === 'keeper' && q.carrier !== id) {
+      // mark the Quaffle along the hoop line, a little out in front of the middle hoop
+      const mid = QD_HOOPS[p.side][1], out = p.side === 0 ? 3 : -3;
+      to = { x: Math.max(mid.x - 7, Math.min(mid.x + 7, q.x)), z: mid.z + out };
+    } else if (q.carrier === id) {
       const h = [...QD_HOOPS[1 - p.side]].sort((a, b) => d2(w.pos, a) - d2(w.pos, b))[0];
       if (d2(w.pos, h) <= QD_AUTO_THROW) { launch(m, w, h); continue; }
       to = { x: h.x, z: h.z + (p.side === 0 ? -8 : 8) };
@@ -497,14 +566,25 @@ export function qdStatus(world: World, wid: string | null) {
       quaffle: { x: round(m.quaffle.x), z: round(m.quaffle.z), carrier: name(m.quaffle.carrier), flying: m.quaffle.flying > 0 },
       bludgers: m.bludgers.map((b) => ({ x: round(b.x), z: round(b.z), chasing: name(b.target) })),
       snitch: m.snitch ? { x: round(m.snitch.x), z: round(m.snitch.z) } : m.phase === 'play' ? { appearsIn: Math.max(0, Math.ceil(m.snitchAt - world.now)) } : null,
-      roster: Object.entries(m.roster).map(([id, p]) => ({ name: name(id), house: m.sides[p.side], role: p.role, goals: p.goals, npc: !!world.wizards.get(id)?.npc })),
+      roster: Object.entries(m.roster).map(([id, p]) => ({ name: name(id), house: m.sides[p.side], role: p.role, goals: p.goals, ...(p.saves ? { saves: p.saves } : {}), npc: !!world.wizards.get(id)?.npc })),
       caughtBy: name(m.caughtBy), winner: m.winner === null ? null : m.sides[m.winner],
       yourHoops: you ? QD_HOOPS[1 - you.side] : undefined,
     } : null,
     next: m ? null : world.qd.doneTerm === world.term.n || world.now > s.whistle + 5 ? { term: world.term.n + 1, teams: qdPairing(world.term.n + 1) } : { term: world.term.n, teams: next, callsIn: Math.max(0, Math.ceil(s.whistle - QD_CALL_S - world.now)) },
     you: you ? { side: m!.sides[you.side], role: you.role, goals: you.goals, autopilot: you.chase, carrying: m!.quaffle.carrier === wid } : null,
     pitch: QD_PITCH,
+    league: leagueView(world),
     rules: { goal: QD_GOAL, snitch: QD_SNITCH, bludgerDamage: QD_BLUDGER_DMG, reputationMax: QD_REP_MAX, housePointsMax: QD_CUP_MAX, howTo: 'join during the call; touch the Quaffle to take it, throw it (quidditch throw) through a hoop at the other end; a spell that passes a Bludger beats it away; a seeker who stays within 1.5 m of the Snitch for 0.5 s catches it. quidditch chase = autopilot.' },
+  };
+}
+
+/** The season's table for status (and the browser's reply): standings, the last results, past champions. */
+export function leagueView(world: World) {
+  const l = world.qd.league;
+  return {
+    season: l.season + 1, termsPerSeason: QD_PAIRS.length, points: { win: QD_WIN_PTS, draw: QD_DRAW_PTS },
+    table: standings(l).map(({ house, row }) => ({ house, ...row })),
+    results: [...l.results].reverse(), champions: [...l.champions].reverse(),
   };
 }
 
@@ -519,7 +599,7 @@ export function qdWire(world: World) {
     bl: m.phase === 'play' ? m.bludgers.map((b) => [round(b.x), round(b.z)] as [number, number]) : [],
     sn: m.snitch ? [round(m.snitch.x), round(m.snitch.z)] as [number, number] : null,
     sa: m.phase === 'play' && !m.snitch ? Math.max(0, Math.ceil(m.snitchAt - world.now)) : 0,
-    r: Object.entries(m.roster).map(([id, p]) => [h(id), p.side, p.role === 'seeker' ? 1 : 0] as [string, number, number]),
+    r: Object.entries(m.roster).map(([id, p]) => [h(id), p.side, p.role === 'seeker' ? 1 : p.role === 'keeper' ? 2 : 0] as [string, number, number]),
     w: m.phase === 'done' ? m.winner : undefined,
     c: m.caughtBy ? world.wizards.get(m.caughtBy)?.name : undefined,
   };
@@ -529,7 +609,7 @@ const round = (n: number) => Math.round(n * 10) / 10;
 // ------------------------------------------------------------------ the plug (kernel/feature.ts)
 const QD_OPS = ['join', 'leave', 'status', 'throw', 'chase', 'stop'] as const;
 function runOp(world: World, wid: string, a: Record<string, unknown>) {
-  const role = a.role === 'seeker' || a.role === 'chaser' ? a.role : undefined;
+  const role = a.role === 'seeker' || a.role === 'chaser' || a.role === 'keeper' ? a.role : undefined;
   const hoop = a.hoop === 'left' || a.hoop === 'middle' || a.hoop === 'right' ? a.hoop : undefined;
   switch (a.op) {
     case 'join': return qdJoin(world, wid, role);
@@ -546,11 +626,12 @@ export const QD_FEATURE: Feature = {
   init(world) { world.qd = newQd(); },
   step: stepQuidditch,
   wire: { key: 'qd', get: qdWire },
-  // which term already had its match (the match itself is not saved)
-  save: (world) => ({ doneTerm: world.qd.doneTerm }),
+  // which term already had its match, and the league (the match itself is not saved)
+  save: (world) => ({ doneTerm: world.qd.doneTerm, league: world.qd.league }),
   load(world, data, legacy) {
-    const d = (data ?? legacy.quidditch) as { doneTerm?: unknown } | undefined;
+    const d = (data ?? legacy.quidditch) as { doneTerm?: unknown; league?: QdLeague } | undefined;
     if (typeof d?.doneTerm === 'number') world.qd.doneTerm = d.doneTerm;
+    if (d?.league && typeof d.league.season === 'number') world.qd.league = { ...newLeague(d.league.season), ...d.league };
   },
   moveMult: (world, w) => (qdFlying(world, w) ? QD_FLY : 1),
   bolt: (world, p) => { if (world.qd.match) quidditchBolt(world, p); },
@@ -558,8 +639,8 @@ export const QD_FEATURE: Feature = {
   npc: (world, w) => qdPlaying(world, w.id),
   tools: [{
     name: 'quidditch', title: 'Quidditch', cost: 1,
-    description: `魁地奇: one match a term on the pitch (${QD_PITCH.x}, ${QD_PITCH.z}), two houses in turn (status shows who, and when). op "join" (while the match is being called, or during play; role "seeker" to ask to be your side's seeker), "leave", "status" (score, the Quaffle and who carries it, the Bludgers and whom they chase, the Snitch, your hoops), "throw" (the Quaffle you carry, at a hoop at the other end: the nearest, or hoop left/middle/right; through it is +${QD_GOAL}; a defender who touches it in flight intercepts it), "chase" / "stop" (autopilot: fly at your ball — the Quaffle, or the Snitch for a seeker — and throw in range). Players fly ×${QD_FLY} on the pitch; touching the free Quaffle takes it. A Bludger costs ${QD_BLUDGER_DMG} health (never below 1) and the Quaffle; any spell that passes a Bludger beats it away. The Snitch appears after a while and darts off from seekers, but tires: a seeker within ${QD_CATCH_R} m of it for ${QD_CATCH_S} s catches it, +${QD_SNITCH}, and the match ends. At the whistle: up to +${QD_REP_MAX} reputation (goals, the catch, the win), up to +${QD_CUP_MAX} house points from your team's score, XP. NPCs fill each side.`,
-    input: { op: z.enum(QD_OPS).optional(), role: z.enum(['chaser', 'seeker']).optional(), hoop: z.enum(['left', 'middle', 'right']).optional() },
+    description: `魁地奇: one match a term on the pitch (${QD_PITCH.x}, ${QD_PITCH.z}), two houses in turn (status shows who, and when). op "join" (while the match is being called, or during play; role "seeker" or "keeper" to ask for that place on your side), "leave", "status" (score, the Quaffle and who carries it, the Bludgers and whom they chase, the Snitch, your hoops, and the season's league table), "throw" (the Quaffle you carry, at a hoop at the other end: the nearest, or hoop left/middle/right; through it is +${QD_GOAL}; a defender who touches it in flight intercepts it; a keeper near their own hoops reaches ${QD_KEEP_R} m), "chase" / "stop" (autopilot: fly at your ball — the Quaffle, or the Snitch for a seeker — and throw in range). Players fly ×${QD_FLY} on the pitch; touching the free Quaffle takes it. A Bludger costs ${QD_BLUDGER_DMG} health (never below 1) and the Quaffle; any spell that passes a Bludger beats it away. The Snitch appears after a while and darts off from seekers, but tires: a seeker within ${QD_CATCH_R} m of it for ${QD_CATCH_S} s catches it, +${QD_SNITCH}, and the match ends. At the whistle: up to +${QD_REP_MAX} reputation (goals, the catch, the win), up to +${QD_CUP_MAX} house points from your team's score, XP. NPCs fill each side.`,
+    input: { op: z.enum(QD_OPS).optional(), role: z.enum(['chaser', 'seeker', 'keeper']).optional(), hoop: z.enum(['left', 'middle', 'right']).optional() },
     run: runOp,
   }],
   ws: runOp,
