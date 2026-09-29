@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import { tex as fileTex } from './assets';
 
 /**
- * Every texture in the game is painted at startup on a <canvas> — no image assets.
- * Tricks used: seeded noise for variation, a height map reused as bumpMap for fake relief,
- * world-space UVs (see worldUV) so bricks stay brick-sized on any wall, and vertex-colour
- * macro variation on the ground to hide tiling.
+ * Surface textures, painted at startup on a <canvas>. The default storybook look (see STYLE below)
+ * paints them like an illustration: broad brush strokes and soft washes in a small palette per
+ * material. ?style=real swaps in the CC0 photo sets (assets.ts), with the older procedural textures
+ * here as their fallbacks. Tricks used either way: seeded noise for variation, a height map reused
+ * as bumpMap for relief, world-space UVs (see worldUV) so blocks stay block-sized on any wall, and
+ * vertex-colour macro variation on the ground to hide tiling.
  */
 
 let seed = 1337;
@@ -267,13 +269,439 @@ export function cylUV(geo: THREE.BufferGeometry, r: number, h: number, tile: num
   return geo;
 }
 
+
+// ------------------------------------------------------------------ storybook (painted) textures
+/**
+ * The art direction. 'storybook' (default): hand-painted canvas textures in limited palettes, a soft
+ * toon light ramp, a painted sky and ink outlines (render.ts). 'real' (?style=real): the CC0 photo
+ * texture sets and HDRI light the game used before (client/public/textures/CREDITS.md).
+ */
+export const STYLE: 'storybook' | 'real' = typeof location !== 'undefined' && new URLSearchParams(location.search).get('style') === 'real' ? 'real' : 'storybook';
+export const STORYBOOK = STYLE === 'storybook';
+
+/** Mark a material as a character's: it gets the storybook rim light (render.ts; a no-op in ?style=real). */
+export function rimLit<T extends THREE.Material>(m: T): T {
+  if (STORYBOOK && (m as unknown as THREE.MeshStandardMaterial).isMeshStandardMaterial && !m.defines?.STORY_RIM) {
+    m.defines = { ...m.defines, STORY_RIM: '' };
+    m.needsUpdate = true;
+  }
+  return m;
+}
+
+type RGB = [number, number, number];
+const hexRGB = (h: string): RGB => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const paint = (c: RGB, a = 1, k = 1) => `rgba(${c.map((v) => Math.max(0, Math.min(255, Math.round(v * k)))).join(',')},${a})`;
+const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
+const pal = (...h: string[]) => h.map(hexRGB);
+/** Call `draw` at (x, y) and at every wrapped copy that reaches into the S x S tile, so strokes tile seamlessly. */
+function tiled(S: number, x: number, y: number, r: number, draw: (x: number, y: number) => void) {
+  for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+    const X = x + dx, Y = y + dy;
+    if (X + r >= 0 && X - r <= S && Y + r >= 0 && Y - r <= S) draw(X, Y);
+  }
+}
+/** One brush stroke: a slightly curved, round-ended line. */
+function brush(g: CanvasRenderingContext2D, x: number, y: number, len: number, w: number, ang: number, col: string) {
+  const dx = (Math.cos(ang) * len) / 2, dy = (Math.sin(ang) * len) / 2, bend = (rnd() - 0.5) * 0.5;
+  g.strokeStyle = col;
+  g.lineWidth = w;
+  g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(x - dx, y - dy);
+  g.quadraticCurveTo(x - dy * bend, y + dx * bend, x + dx, y + dy);
+  g.stroke();
+}
+/** Many strokes scattered over the tile (wrapping). */
+function strokes(g: CanvasRenderingContext2D, S: number, n: number, cols: RGB[], o: { len: [number, number]; w: [number, number]; ang: () => number; alpha: number; k?: [number, number] }) {
+  for (let i = 0; i < n; i++) {
+    const len = o.len[0] + rnd() * (o.len[1] - o.len[0]), w = o.w[0] + rnd() * (o.w[1] - o.w[0]), a = o.ang();
+    const col = paint(pick(cols), o.alpha * (0.6 + 0.4 * rnd()), o.k ? o.k[0] + rnd() * (o.k[1] - o.k[0]) : 1);
+    tiled(S, rnd() * S, rnd() * S, len, (X, Y) => brush(g, X, Y, len, w, a, col));
+  }
+}
+/** Soft round washes of colour: the painted equivalent of low-frequency value noise. */
+function washes(g: CanvasRenderingContext2D, S: number, n: number, cols: RGB[], r: [number, number], alpha: number) {
+  for (let i = 0; i < n; i++) {
+    const rad = r[0] + rnd() * (r[1] - r[0]), c = pick(cols), a = alpha * (0.5 + 0.5 * rnd());
+    tiled(S, rnd() * S, rnd() * S, rad, (X, Y) => {
+      const gr = g.createRadialGradient(X, Y, 0, X, Y, rad);
+      gr.addColorStop(0, paint(c, a));
+      gr.addColorStop(0.6, paint(c, a * 0.6));
+      gr.addColorStop(1, paint(c, 0));
+      g.fillStyle = gr;
+      g.fillRect(X - rad, Y - rad, rad * 2, rad * 2);
+    });
+  }
+}
+/** Random widths that add up to exactly `total` (so a course of blocks tiles). */
+function spans(total: number, mean: number, jitter: number) {
+  const n = Math.max(1, Math.round(total / mean));
+  const w = Array.from({ length: n }, () => 1 - jitter + rnd() * jitter * 2);
+  const s = w.reduce((a, b) => a + b, 0);
+  return w.map((x) => (x / s) * total);
+}
+
+/**
+ * Painted ashlar: courses of blocks in a limited palette, each block laid in with a few broad
+ * strokes, a lit top edge and a shaded foot (a painted bevel), soft mortar, a little lichen.
+ * The block heights double as a bump map for a hint of relief.
+ */
+function paintedStone(colors: string[], mortar: string, o: { S?: number; rows?: number; lichen?: number; light?: string; shade?: string } = {}) {
+  const S = o.S ?? 512, rows = o.rows ?? 8, bh = S / rows;
+  const [c, g] = canvas(S);
+  const [hc, h] = canvas(S);
+  const P = pal(...colors), lit = hexRGB(o.light ?? '#fff1cf'), dim = hexRGB(o.shade ?? '#4a2f1a');
+  g.fillStyle = mortar;
+  g.fillRect(0, 0, S, S);
+  h.fillStyle = '#000';
+  h.fillRect(0, 0, S, S);
+  const m = Math.max(2, S / 170);
+  for (let r = 0; r < rows; r++) {
+    let x = (r % 2 ? bh * 0.8 : 0) + rnd() * bh * 0.3;
+    for (const bw of spans(S, bh * 1.9, 0.35)) {
+      const base = pick(P), k = 0.9 + rnd() * 0.2, y0 = r * bh + m, hh = bh - m * 2, w = bw - m * 2, hv = (150 + rnd() * 90) | 0;
+      const block = (X: number) => {
+        const x0 = X + m;
+        g.save();
+        g.beginPath();
+        g.roundRect(x0, y0, w, hh, bh * 0.12);
+        g.fillStyle = paint(base, 1, k);
+        g.fill();
+        g.clip();
+        for (let i = 0; i < 6; i++) brush(g, x0 + rnd() * w, y0 + rnd() * hh, w * (0.35 + rnd() * 0.5), hh * (0.2 + rnd() * 0.3), (rnd() - 0.5) * 0.25, paint(base, 0.45, k * (0.84 + rnd() * 0.3)));
+        const lg = g.createLinearGradient(0, y0, 0, y0 + hh);
+        lg.addColorStop(0, paint(lit, 0.42));
+        lg.addColorStop(0.22, paint(lit, 0));
+        lg.addColorStop(0.7, paint(dim, 0));
+        lg.addColorStop(1, paint(dim, 0.42));
+        g.fillStyle = lg;
+        g.fillRect(x0, y0, w, hh);
+        g.restore();
+        h.fillStyle = `rgb(${hv},${hv},${hv})`;
+        h.beginPath();
+        h.roundRect(x0, y0, w, hh, bh * 0.12);
+        h.fill();
+      };
+      const xs = x % S;
+      block(xs);
+      if (xs + bw > S) block(xs - S);
+      x += bw;
+    }
+  }
+  // lichen and weathering dabs, soft value washes over the whole wall
+  strokes(g, S, o.lichen ?? 90, pal('#7d8a46', '#94925a', '#6b7a3e'), { len: [4, 12], w: [2, 5], ang: () => rnd() * 6.28, alpha: 0.35 });
+  washes(g, S, 26, pal('#fff0d0', '#5a3a22'), [S * 0.06, S * 0.18], 0.1);
+  return { map: tex(c), bump: tex(hc, false) };
+}
+
+/** Slate-blue scalloped shingles, each with a lit lower lip; upper courses overlap the lower ones. */
+function paintedSlate() {
+  const S = 256, rows = 8, th = S / rows, tw = S / 8;
+  const [c, g] = canvas(S);
+  g.fillStyle = '#1d2a42';
+  g.fillRect(0, 0, S, S);
+  const P = pal('#3e5e8a', '#48699a', '#34507a', '#5577a6', '#40608e', '#2f4a72');
+  const lip = hexRGB('#9ab6da');
+  const row = (r: number, dy: number) => {
+    for (let i = -1; i < 9; i++) {
+      const x = i * tw + (r % 2 ? tw / 2 : 0), y = r * th + dy, base = pick(P), k = 0.88 + rnd() * 0.24;
+      g.beginPath();
+      g.moveTo(x + 1, y);
+      g.lineTo(x + tw - 1, y);
+      g.lineTo(x + tw - 1, y + th * 0.72);
+      g.quadraticCurveTo(x + tw / 2, y + th * 1.2, x + 1, y + th * 0.72);
+      g.closePath();
+      g.fillStyle = paint(base, 1, k);
+      g.fill();
+      g.save();
+      g.clip();
+      brush(g, x + tw * 0.5, y + th * 0.35, tw * 0.7, th * 0.35, (rnd() - 0.5) * 0.4, paint(base, 0.4, k * 1.12));
+      g.restore();
+      g.strokeStyle = paint(lip, 0.55);
+      g.lineWidth = 1.6;
+      g.beginPath();
+      g.moveTo(x + 3, y + th * 0.78);
+      g.quadraticCurveTo(x + tw / 2, y + th * 1.12, x + tw - 3, y + th * 0.78);
+      g.stroke();
+    }
+  };
+  for (let r = rows - 1; r >= 0; r--) row(r, 0);
+  row(rows - 1, -S); // the bottom course's lips wrap onto the top of the tile
+  washes(g, S, 14, pal('#8fb0dc', '#101a30'), [20, 50], 0.12);
+  return tex(c);
+}
+
+/** Deep green meadow: broad washes of several greens under short upright brush strokes. */
+function paintedGrass() {
+  const S = 512;
+  const [c, g] = canvas(S);
+  g.fillStyle = '#3a6230';
+  g.fillRect(0, 0, S, S);
+  washes(g, S, 70, pal('#2f5728', '#467238', '#2a4d26', '#527c3a', '#365e3a'), [30, 90], 0.45);
+  const up = () => -Math.PI / 2 + (rnd() - 0.5) * 0.9;
+  strokes(g, S, 2600, pal('#2b5024', '#38622e', '#447135', '#52803c'), { len: [8, 20], w: [2.5, 5], ang: up, alpha: 0.55 });
+  strokes(g, S, 900, pal('#6c9a46', '#7fa851', '#5f8c44'), { len: [6, 14], w: [1.5, 3], ang: up, alpha: 0.45 });
+  strokes(g, S, 500, pal('#1f3c1c', '#1a341a'), { len: [6, 12], w: [2, 3.5], ang: up, alpha: 0.4 });
+  // a few painted flowers
+  for (let i = 0; i < 70; i++) {
+    const col = ['#e6dcae', '#d9d2c0', '#b79ad6', '#e0b957'][i % 4];
+    tiled(S, rnd() * S, rnd() * S, 3, (X, Y) => { g.fillStyle = col; g.beginPath(); g.arc(X, Y, 1.6 + rnd(), 0, 7); g.fill(); });
+  }
+  return tex(c);
+}
+
+/** A beaten-earth path strewn with round painted pebbles. */
+function paintedPath() {
+  const S = 256;
+  const [c, g] = canvas(S);
+  const [hc, h] = canvas(S);
+  g.fillStyle = '#a88a62';
+  g.fillRect(0, 0, S, S);
+  h.fillStyle = '#000';
+  h.fillRect(0, 0, S, S);
+  washes(g, S, 30, pal('#b99c70', '#957650', '#c2a77c'), [20, 50], 0.5);
+  const P = pal('#c7ab80', '#b39668', '#d6bf94', '#9f825a', '#bfa47c');
+  for (let i = 0; i < 150; i++) {
+    const r = 4 + rnd() * 8, base = pick(P), a = rnd() * 3;
+    tiled(S, rnd() * S, rnd() * S, r + 2, (X, Y) => {
+      g.fillStyle = 'rgba(80,58,34,0.45)';
+      g.beginPath(); g.ellipse(X + 1, Y + 1.5, r * 1.05, r * 0.82, a, 0, 7); g.fill();
+      g.fillStyle = paint(base);
+      g.beginPath(); g.ellipse(X, Y, r, r * 0.78, a, 0, 7); g.fill();
+      g.fillStyle = 'rgba(255,245,220,0.35)';
+      g.beginPath(); g.ellipse(X - r * 0.25, Y - r * 0.25, r * 0.45, r * 0.3, a, 0, 7); g.fill();
+      h.fillStyle = '#fff';
+      h.beginPath(); h.ellipse(X, Y, r, r * 0.78, a, 0, 7); h.fill();
+    });
+  }
+  strokes(g, S, 200, pal('#6e5234', '#e0cda6'), { len: [3, 8], w: [1, 2.5], ang: () => rnd() * 6.28, alpha: 0.35 });
+  return { map: tex(c), bump: tex(hc, false) };
+}
+
+/** Big courtyard flags: warm grey-honey slabs with lit edges. */
+function paintedFlags() {
+  const S = 512, n = 5, cell = S / n;
+  const [c, g] = canvas(S);
+  g.fillStyle = '#5e4c3a';
+  g.fillRect(0, 0, S, S);
+  const P = pal('#b9a281', '#aa9275', '#c4ae8c', '#a08a6e', '#b39a78');
+  const lit = hexRGB('#fff0d0'), dim = hexRGB('#3e2c1c');
+  for (let r = 0; r < n; r++) {
+    let x = r % 2 ? cell * 0.5 : 0;
+    for (const w of spans(S, cell, 0.3)) {
+      const base = pick(P), k = 0.9 + rnd() * 0.2, y0 = r * cell + 4, hh = cell - 8;
+      const slab = (X: number) => {
+        g.save();
+        g.beginPath();
+        g.roundRect(X + 4, y0, w - 8, hh, 10);
+        g.fillStyle = paint(base, 1, k);
+        g.fill();
+        g.clip();
+        for (let i = 0; i < 7; i++) brush(g, X + rnd() * w, y0 + rnd() * hh, w * (0.3 + rnd() * 0.4), hh * (0.15 + rnd() * 0.25), rnd() * 6.28, paint(base, 0.4, k * (0.85 + rnd() * 0.3)));
+        const lg = g.createLinearGradient(0, y0, 0, y0 + hh);
+        lg.addColorStop(0, paint(lit, 0.3)); lg.addColorStop(0.2, paint(lit, 0)); lg.addColorStop(0.8, paint(dim, 0)); lg.addColorStop(1, paint(dim, 0.35));
+        g.fillStyle = lg;
+        g.fillRect(X, y0, w, hh);
+        g.restore();
+      };
+      const xs = x % S;
+      slab(xs);
+      if (xs + w > S) slab(xs - S);
+      x += w;
+    }
+  }
+  strokes(g, S, 120, pal('#7d8a46', '#6b7a3e'), { len: [4, 10], w: [2, 4], ang: () => rnd() * 6.28, alpha: 0.3 });
+  return tex(c);
+}
+
+/** Dark planks: long grain strokes, a lighter streak or two, dark seams. */
+function paintedWood() {
+  const S = 256, n = 6, pw = S / n;
+  const [c, g] = canvas(S);
+  const P = pal('#5c3c25', '#4e331f', '#66452b', '#553722');
+  for (let i = 0; i < n; i++) {
+    const base = pick(P), k = 0.9 + rnd() * 0.2;
+    g.fillStyle = paint(base, 1, k);
+    g.fillRect(i * pw, 0, pw, S);
+    for (let s = 0; s < 14; s++) {
+      const x = i * pw + 3 + rnd() * (pw - 6), len = S * (0.3 + rnd() * 0.6), y = rnd() * S;
+      const col = rnd() < 0.3 ? paint(hexRGB('#8a603c'), 0.45) : paint(hexRGB('#2c1a0e'), 0.4);
+      const w = 1.5 + rnd() * 3;
+      tiled(S, x, y, len, (X, Y) => brush(g, X, Y, len, w, Math.PI / 2 + (rnd() - 0.5) * 0.04, col));
+    }
+    g.fillStyle = 'rgba(20,10,4,0.7)';
+    g.fillRect(i * pw, 0, 2.5, S);
+    g.fillStyle = 'rgba(255,220,170,0.12)';
+    g.fillRect(i * pw + 2.5, 0, 2, S);
+  }
+  return tex(c);
+}
+
+/** Hogsmeade: cream plaster laid on in strokes, dark timber framing, a warm lit window. */
+function paintedTudor() {
+  const S = 256;
+  const [c, g] = canvas(S);
+  g.fillStyle = '#e4d3ae';
+  g.fillRect(0, 0, S, S);
+  washes(g, S, 20, pal('#f2e4c4', '#cdb88e', '#e9d9b4'), [20, 50], 0.5);
+  strokes(g, S, 260, pal('#efe0bc', '#d6c298'), { len: [10, 26], w: [4, 8], ang: () => (rnd() - 0.5) * 0.6, alpha: 0.35 });
+  const timber = '#4a2f1d';
+  g.fillStyle = timber;
+  for (const x of [0, S / 2 - 7]) g.fillRect(x, 0, 14, S);
+  g.fillRect(0, S / 2 - 7, S, 14);
+  g.lineWidth = 11;
+  g.strokeStyle = timber;
+  g.lineCap = 'butt';
+  g.beginPath(); g.moveTo(7, S / 2); g.lineTo(S / 2, 7); g.moveTo(S / 2, S / 2); g.lineTo(S, S); g.stroke();
+  strokes(g, S, 60, pal('#6a4630', '#2e1c10'), { len: [10, 30], w: [2, 3], ang: () => (rnd() < 0.5 ? 0 : Math.PI / 2), alpha: 0.35 });
+  // a lit window with a painted glow around it
+  const wx = S * 0.62, wy = S * 0.14, ws = S * 0.22;
+  const gl = g.createRadialGradient(wx + ws / 2, wy + ws / 2, 2, wx + ws / 2, wy + ws / 2, ws);
+  gl.addColorStop(0, 'rgba(255,214,140,0.5)'); gl.addColorStop(1, 'rgba(255,214,140,0)');
+  g.fillStyle = gl;
+  g.fillRect(wx - ws / 2, wy - ws / 2, ws * 2, ws * 2);
+  g.fillStyle = '#ffd98a';
+  g.fillRect(wx, wy, ws, ws);
+  g.fillStyle = timber;
+  g.fillRect(wx + ws / 2 - 2, wy, 4, ws);
+  g.fillRect(wx, wy + ws / 2 - 2, ws, 4);
+  return tex(c);
+}
+
+/** Grey-violet rock in broad, faceted diagonal strokes (crags, Azkaban, the Highlands). */
+function paintedRock() {
+  const S = 512;
+  const [c, g] = canvas(S);
+  g.fillStyle = '#8a8288';
+  g.fillRect(0, 0, S, S);
+  washes(g, S, 40, pal('#9a9096', '#716a74', '#a89c90', '#7c7480'), [40, 110], 0.5);
+  strokes(g, S, 700, pal('#9d9398', '#b3a89c', '#7a727c', '#655f6a'), { len: [16, 44], w: [6, 14], ang: () => -0.6 + (rnd() - 0.5) * 0.7, alpha: 0.45 });
+  strokes(g, S, 260, pal('#4e4854', '#57505e'), { len: [10, 30], w: [1.5, 3], ang: () => -0.6 + (rnd() - 0.5) * 1.4, alpha: 0.5 });
+  strokes(g, S, 200, pal('#cbbfae', '#d8ccb8'), { len: [8, 20], w: [2, 4], ang: () => -0.6 + (rnd() - 0.5) * 0.5, alpha: 0.35 });
+  return tex(c);
+}
+
+/** Warm lakeshore sand with soft dabs. */
+function paintedSand() {
+  const S = 256;
+  const [c, g] = canvas(S);
+  g.fillStyle = '#d4bc8c';
+  g.fillRect(0, 0, S, S);
+  washes(g, S, 30, pal('#e0cb9c', '#c2a878', '#d9c49a'), [20, 60], 0.5);
+  strokes(g, S, 500, pal('#e6d3a8', '#b89d6e', '#cdb384'), { len: [4, 12], w: [2, 4], ang: () => (rnd() - 0.5) * 0.8, alpha: 0.45 });
+  return tex(c);
+}
+
+/** Soft painted cloud billboards (4 shapes in a 2 x 2 atlas): red = how lit, alpha = cover. */
+export function paintedClouds() {
+  const S = 512, H = S / 2;
+  const [c, g] = canvas(S);
+  g.clearRect(0, 0, S, S);
+  for (let q = 0; q < 4; q++) {
+    const ox = (q % 2) * H, oy = Math.floor(q / 2) * H;
+    const [pc, p] = canvas(H); // each cloud on its own layer, then stamped into the atlas
+    p.clearRect(0, 0, H, H);
+    // a long, low bank of soft puffs, taller in the middle, with a few small ones breaking the top
+    const puffs = 7 + Math.floor(rnd() * 4);
+    const puff = (x: number, y: number, r: number) => {
+      const gr = p.createRadialGradient(x - r * 0.2, y - r * 0.3, r * 0.05, x, y, r);
+      gr.addColorStop(0, 'rgba(255,0,0,0.95)');
+      gr.addColorStop(0.5, 'rgba(240,0,0,0.8)');
+      gr.addColorStop(1, 'rgba(210,0,0,0)');
+      p.fillStyle = gr;
+      p.beginPath(); p.arc(x, y, r, 0, 7); p.fill();
+    };
+    for (let i = 0; i < puffs; i++) {
+      const t = i / (puffs - 1);
+      const r = H * (0.1 + 0.13 * Math.sin(t * Math.PI) + rnd() * 0.05);
+      puff(H * (0.14 + 0.72 * t) + (rnd() - 0.5) * H * 0.05, H * 0.6 - r * (0.25 + rnd() * 0.35), r);
+    }
+    for (let i = 0; i < 5; i++) puff(H * (0.25 + rnd() * 0.5), H * (0.3 + rnd() * 0.15), H * (0.05 + rnd() * 0.05));
+    // shade the belly (the shader turns low red into the shadow colour) and soften the flat base away
+    p.globalCompositeOperation = 'source-atop';
+    const bg = p.createLinearGradient(0, H * 0.3, 0, H * 0.64);
+    bg.addColorStop(0, 'rgba(90,0,0,0)');
+    bg.addColorStop(1, 'rgba(90,0,0,0.85)');
+    p.fillStyle = bg;
+    p.fillRect(0, H * 0.3, H, H * 0.4);
+    p.globalCompositeOperation = 'destination-out';
+    const cut = p.createLinearGradient(0, H * 0.58, 0, H * 0.68);
+    cut.addColorStop(0, 'rgba(0,0,0,0)');
+    cut.addColorStop(1, 'rgba(0,0,0,1)');
+    p.fillStyle = cut;
+    p.fillRect(0, H * 0.58, H, H * 0.42);
+    p.globalCompositeOperation = 'source-over';
+    g.drawImage(pc, ox, oy);
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+/** A painted moon: a cream disc with soft grey seas, inside a wide pale halo. */
+export function paintedMoon() {
+  const S = 256, R = S * 0.16;
+  const [c, g] = canvas(S);
+  const halo = g.createRadialGradient(S / 2, S / 2, R * 0.8, S / 2, S / 2, S / 2);
+  halo.addColorStop(0, 'rgba(210,222,255,0.55)');
+  halo.addColorStop(0.35, 'rgba(160,180,255,0.16)');
+  halo.addColorStop(1, 'rgba(140,160,255,0)');
+  g.fillStyle = halo;
+  g.fillRect(0, 0, S, S);
+  g.fillStyle = '#fbf3da';
+  g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.fill();
+  g.save();
+  g.beginPath(); g.arc(S / 2, S / 2, R, 0, 7); g.clip();
+  for (let i = 0; i < 7; i++) {
+    g.fillStyle = `rgba(170,165,160,${0.18 + rnd() * 0.2})`;
+    g.beginPath(); g.arc(S / 2 + (rnd() - 0.5) * R * 1.3, S / 2 + (rnd() - 0.5) * R * 1.3, R * (0.12 + rnd() * 0.25), 0, 7); g.fill();
+  }
+  const sh = g.createRadialGradient(S / 2 + R * 0.5, S / 2 + R * 0.3, R * 0.2, S / 2, S / 2, R * 1.1);
+  sh.addColorStop(0, 'rgba(90,100,150,0)');
+  sh.addColorStop(1, 'rgba(90,100,150,0.35)');
+  g.fillStyle = sh;
+  g.fillRect(0, 0, S, S);
+  g.restore();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** The world's surface materials in the current STYLE. */
 export function makeMaterials() {
+  return STORYBOOK ? storybookMaterials() : realMaterials();
+}
+
+function storybookMaterials() {
+  // warm honey stone for the castle, a cooler, darker stone for trim, merlons and window frames
+  const st = paintedStone(['#d8b079', '#cfa46c', '#e2c08c', '#c8995f', '#d5ab74', '#dcb884'], '#6f5236');
+  const dk = paintedStone(['#8f7b66', '#83705d', '#9b8770', '#786653'], '#3d2f24', { S: 256, rows: 4, lichen: 30, light: '#f4e2c4', shade: '#20160e' });
+  const grassTex = paintedGrass();
+  grassTex.repeat.set(52, 52); // ~12 m per tile: big enough for the strokes to read as brushwork
+  const path = paintedPath();
+  const flags = paintedFlags();
+  flags.repeat.set(0.5, 0.5);
+  const sand = paintedSand();
+  sand.repeat.set(30, 30);
+  const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, ...p });
+  return {
+    stone: std({ map: st.map, bumpMap: st.bump, bumpScale: 0.9 }),
+    darkStone: std({ map: dk.map, bumpMap: dk.bump, bumpScale: 0.8 }),
+    roof: std({ map: paintedSlate(), roughness: 0.7 }),
+    grass: std({ map: grassTex, vertexColors: true, roughness: 1 }),
+    path: std({ map: path.map, bumpMap: path.bump, bumpScale: 0.8, roughness: 0.95 }),
+    flagstone: std({ map: flags, roughness: 0.9 }),
+    wood: std({ map: paintedWood(), roughness: 0.85 }),
+    tudor: std({ map: paintedTudor(), roughness: 0.9 }),
+    rock: std({ map: paintedRock(), roughness: 0.95 }),
+    sand: std({ map: sand, roughness: 1 }),
+  };
+}
+
+/** ?style=real: the open-source PBR sets (procedural canvas textures stay as fallbacks). */
+function realMaterials() {
   const st = stone([150, 144, 132]);
-  const dark = stone([112, 106, 98]);
   const cob = cobbles();
   const grassTex = grass();
   grassTex.repeat.set(90, 90);
-  // Open-source PBR sets where we have them (procedural textures stay as fallbacks and for the rest).
   const stoneSet = () => ({
     map: fileTex('stone_color.webp', { fallback: st.map }),
     normalMap: fileTex('stone_normal.webp', { srgb: false }),
@@ -295,6 +723,5 @@ export function makeMaterials() {
     tudor: new THREE.MeshStandardMaterial({ map: tudor(), roughness: 0.9, emissive: 0x000000 }),
     rock: new THREE.MeshStandardMaterial({ map: fileTex('rock_color.webp'), roughness: 0.95 }),
     sand: new THREE.MeshStandardMaterial({ map: fileTex('sand_color.webp', { repeat: 30 }), roughness: 1 }),
-    moss: new THREE.MeshStandardMaterial({ map: fileTex('moss_color.webp'), roughness: 1 }),
   };
 }
