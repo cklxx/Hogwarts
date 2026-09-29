@@ -12,6 +12,7 @@ import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo,
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
 import { PAIR_TTL_S } from '../src/shared/constants';
 import { TIPS } from '../src/lore/memes';
+import * as probe from './perf';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
@@ -138,6 +139,7 @@ function rotateTips(el: HTMLElement, ms: number): () => void {
 // ------------------------------------------------------------------ rendering setup
 const canvas = $<HTMLCanvasElement>('#view');
 const R = createRenderer(canvas);
+probe.attach(R.renderer, R.scene);
 const { scene, camera } = R;
 const world = buildWorld(scene);
 const decor = createDecor(scene, world.bannerSpots);
@@ -183,7 +185,15 @@ function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
   ws.onmessage = (m) => {
+    const tm = probe.begin();
+    onMessage(m);
+    probe.end('msg', tm);
+  };
+  const onMessage = (m: MessageEvent) => {
+    const tp = probe.begin();
     const msg = JSON.parse(m.data);
+    probe.end('parse', tp);
+    probe.wsMessage(m.data.length, msg.t === 'snap');
     if (msg.t === 'welcome') {
       myHandle = msg.handle;
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
@@ -193,7 +203,7 @@ function connect() {
       menuInfo(msg.mcpUrl);
       if (msg.pair?.code) onPairCode(msg.pair);
     }
-    else if (msg.t === 'snap') { if (!snap) setTimeout(() => veil(false), 600); apply(msg.s); }
+    else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') me = msg.s;
     else if (msg.t === 'event') feed(msg.e, true);
     else if (msg.t === 'cast') {
@@ -245,6 +255,7 @@ function apply(s: Snap) {
     if (!m) {
       m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() });
       m.root.add(m.aura);
+      m.root.name = 'wizard';
       m.root.position.set(w.x, 0, w.z);
       scene.add(m.root);
       wizards.set(w.h, m);
@@ -273,6 +284,7 @@ function apply(s: Snap) {
     if (!m) {
       m = Object.assign(makeCreature(c.k), { tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing() });
       m.root.add(m.aura);
+      m.root.name = 'creature';
       m.root.position.set(c.x, 0, c.z);
       scene.add(m.root);
       creatures.set(c.i, m);
@@ -1525,6 +1537,8 @@ addEventListener('keydown', (e) => {
 let prev = performance.now();
 function frame() {
   requestAnimationFrame(frame);
+  probe.frameBegin();
+  let tp = probe.begin();
   const now = performance.now();
   const dt = Math.min(0.1, (now - prev) / 1000);
   prev = now;
@@ -1582,6 +1596,7 @@ function frame() {
   }
   elderGlint.rotation.y += dt * 2;
   elderGlint.position.y = 2.6 + heightAt(elderGlint.position.x, elderGlint.position.z) + Math.sin(clock * 2) * 0.2;
+  probe.end('anim', tp); tp = probe.begin();
 
   // camera follows me
   const my = wizards.get(myHandle);
@@ -1612,6 +1627,7 @@ function frame() {
     world.tick(clock, dt, !snap.willowCalm && [...wizards.values()].some((w) => Math.hypot(w.root.position.x - 45, w.root.position.z) < 9), R.sunDir,
       { hour: snap.hour, banner: look.banner, focus: my?.root.position });
   }
+  probe.end('world', tp); tp = probe.begin();
   particles.setQuality(quality);
   particles.update(dt, camera, R.renderer, R.day);
   // spells light up their surroundings: the pool goes to the bolts nearest the camera
@@ -1619,13 +1635,18 @@ function frame() {
     .map((b) => ({ x: b.position.x, y: b.position.y + 0.2, z: b.position.z, color: (b.userData.color as number) ?? 0xffffff, d: b.position.distanceToSquared(camera.position) }))
     .sort((a, b) => a.d - b.d);
   R.setBoltLights(lit);
+  probe.end('fx', tp); tp = probe.begin();
 
   ctl.update(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
+  probe.end('ctl', tp); tp = probe.begin();
   R.render();
+  probe.end('render', tp);
+  if (snap) probe.mark('firstFrame');
+  probe.frameEnd();
 }
 
-setInterval(hud, 100);
+setInterval(() => { const t = probe.begin(); hud(); probe.end('hud', t); }, 100);
 
 // ------------------------------------------------------------------ boot
 (async () => {
