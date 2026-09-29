@@ -938,6 +938,8 @@ export function createControls(d: ControlsDeps) {
     get selected() { return selected; },
     /** What the spellbook's Simulate/Cast buttons should aim at. */
     targetKey: () => target ?? hovered,
+    /** The locked target only (view.ts fades what hides it and x-rays it). */
+    lockedTarget: () => target,
     keydown, update, hud, castSlot, castKey, castOnSelf, clearTarget, toggleHelp,
     helpOpen: () => !$('#helppanel').hidden,
     notify: (ev: 'book' | 'menu' | 'owl') => tutorial.notify(ev),

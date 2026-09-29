@@ -310,8 +310,8 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   }
   scene.add(clouds);
 
-  // post-processing, rendered into a multisampled HDR target (MSAA survives the composer)
-  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+  // post-processing, rendered into a multisampled HDR target (MSAA survives the composer); stencil: view.ts x-ray
+  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4, stencilBuffer: true });
   const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.45, 1.1);
