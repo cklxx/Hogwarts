@@ -1340,6 +1340,7 @@ function renderBookList() {
   $('#book-list').innerHTML = `<li data-id="" class="tab${!bookSel && !tplKey ? ' sel' : ''}" title="${esc(L('自己写一个', 'write your own'))}">${ic('plus')}${L('新咒语', 'New spell')}</li>`
     + `<li data-tpl="1" class="tab tpl-entry${tplKey ? ' sel' : ''}" title="${esc(L('不用写代码：选一选、拖一拖', 'no code: pick and slide'))}">${ic('scroll')}${L('从模板开始', 'Start from a template')}</li>`
     + `<li data-market="1" class="tab mk-entry" title="${esc(L('别人发布的咒语：抄、改编、发布你自己的', 'spells others published: copy, fork, publish yours'))}">${ic('coin')}${L('咒语集市', 'Spell market')}</li>`
+    + pn.bookTab()
     + bookSpells.map((s) => `<li data-id="${esc(s.id)}" draggable="true" class="${s.id === bookSel ? 'sel' : ''}" title="${esc(spellLabel(s))}"><span class="sp-ic">${ic(spellIcon(s.name, s.effects, s.source))}</span>`
       + `<span class="sp-tx"><b>${s.builtin && lang === 'zh' ? `${esc(spellName(s.name))}<span class="lat">${esc(s.name)}</span>` : `<span class="${isLatin(s.name) ? 'lat' : ''}">${esc(s.name)}</span>`}</b>`
       + `<small>${L(`${YEAR_ZH[s.minYear] ?? s.minYear}年级`, `Year ${s.minYear}`)} · ${s.nodes} ${L('节点', 'nodes')} · ${esc(s.effects.join(', ') || '—')}</small></span>${keys(s)}</li>`).join('');
@@ -1376,6 +1377,7 @@ $('#book-list').addEventListener('click', (e) => {
   if (k) { assignSlot(k.dataset.spell!, Number(k.dataset.slot)); return; }
   const li = t.closest('li') as HTMLElement | null;
   if (!li) return;
+  if (li.dataset.pn) return; // a panel's tab (client/panels: the O.W.L.s), opened by its own listener
   if (li.dataset.market) market.open();
   else if (li.dataset.tpl) openTemplates();
   else loadSpell(li.dataset.id || null);

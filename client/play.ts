@@ -219,7 +219,7 @@ export function nextGoal(s: GoalState): Goal | null {
   };
   if (s.exams && s.exams.open > 0 && s.exams.passed === 0) return {
     key: 'owl', pillar: 2, text: L(`通过一门 O.W.L. 考试（本周 ${s.exams.passed}/${s.exams.of}）`, `Pass an O.W.L. (${s.exams.passed}/${s.exams.of} this week)`),
-    why: L('每周 6 道实战考题：交一段 Runes，隐藏用例像单元测试一样评分，越省节点、gas 和法力分越高。及格给经验、加隆和声望，每题还有排行榜。按 K 或点咒语书上的「考试」书签。', 'Six exams a week: hand in Runes, graded by hidden cases like unit tests; fewer nodes, gas and mana score higher. A pass pays XP, Galleons and reputation, and every exam has a leaderboard. K, or the spellbook\'s O.W.L. ribbon.'),
+    why: L('每周 6 道实战考题：交一段 Runes，隐藏用例像单元测试一样评分，越省节点、gas 和法力分越高。及格给经验、加隆和声望，每题还有排行榜。按 K，或点咒语书里「咒语集市」旁边的「考试」。', 'Six exams a week: hand in Runes, graded by hidden cases like unit tests; fewer nodes, gas and mana score higher. A pass pays XP, Galleons and reputation, and every exam has a leaderboard. K, or the O.W.L. tab in the spellbook beside the market.'),
     act: { open: 'exams' }, actLabel: L('去考试', 'Sit an exam'),
   };
   if (s.darkLord) return {

@@ -138,19 +138,6 @@ export function createPanels(d: PanelDeps) {
     if (t.closest('[data-pn="exams"]')) { exams.toggle(true); return; }
   });
 
-  /** The spellbook's O.W.L. ribbon (a bookmark hanging from the top of the right page). */
-  function bookRibbon() {
-    const book = $('book');
-    if (!book || $('book-owl')) return;
-    const r = document.createElement('button');
-    r.type = 'button';
-    r.id = 'book-owl';
-    r.dataset.pn = 'exams';
-    r.title = L('普通巫师等级考试（K）', 'O.W.L. exams (K)');
-    r.innerHTML = `${ic('scroll', 'mono')}<span>${L('考试', 'O.W.L.')}</span><kbd>K</kbd>`;
-    book.append(r);
-  }
-
   let frameT = 0;
   return {
     /** 10 Hz, from main.ts' hud(). */
@@ -161,7 +148,6 @@ export function createPanels(d: PanelDeps) {
       focus();
       familiarSpots();
       study.update();
-      bookRibbon();
       da.render();
     },
     /** Every frame: the Dark Mark follows its wizard. */
@@ -232,5 +218,7 @@ export function createPanels(d: PanelDeps) {
       return `<p class="pn-links"><button type="button" class="ghost" data-pn="da">${ic('patronus')}${L('邓布利多军', "Dumbledore's Army")} <kbd>J</kbd></button> <button type="button" class="ghost" data-pn="exams">${ic('scroll')}${L('O.W.L. 考试', 'O.W.L. exams')} <kbd>K</kbd></button></p>`;
     },
     ids: ['da', 'exams'],
+    /** The spellbook's O.W.L. tab, next to the 咒语集市 tab (main.ts renderBookList). */
+    bookTab: () => `<li data-pn="exams" class="tab owl-entry" title="${esc(L('普通巫师等级考试：每周 6 道题，交 Runes，隐藏用例评分（K）', 'O.W.L.s: six exams a week, hand in Runes, graded by hidden cases (K)'))}">${ic('scroll')}${L('考试', 'O.W.L.s')}</li>`,
   };
 }
