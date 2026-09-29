@@ -43,6 +43,8 @@ export interface ControlsDeps {
   agent: () => AgentView | null;
   /** Open the Owl Post and mint a pairing code (tutorial step 5). */
   pair: () => void;
+  /** More things the action key (F) can do right here — a hidden chest to open (client/panels/fun.ts) — or null. */
+  extraAction?: () => { label: string; x: number; z: number; y: number; act: () => void } | null;
 }
 
 // ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
@@ -168,7 +170,7 @@ export function curseText(h: HexState | null | undefined): { hexed: boolean; hea
  * One panel at a time: opening `el` closes every other big panel (the sheets). The small modal question
  * (#atask) and the Marauder's Map (a state of the world, not a panel) are left alone.
  */
-export const PANELS = ['book', 'seals', 'board', 'menu', 'owl', 'trunk', 'helppanel', 'da', 'exams'];
+export const PANELS = ['book', 'seals', 'board', 'menu', 'owl', 'trunk', 'helppanel', 'da', 'exams', 'album'];
 export function solo(el: HTMLElement) {
   for (const id of PANELS) { const p = document.getElementById(id); if (p && p !== el) p.hidden = true; }
 }
@@ -490,7 +492,7 @@ export function createControls(d: ControlsDeps) {
         }
       }
     }
-    return null;
+    return d.extraAction?.() ?? null;
   }
   function doAction() {
     const a = findAction();
@@ -860,6 +862,7 @@ export function createControls(d: ControlsDeps) {
     const pillar = (n: string, zh: string, en: string, icon: string) => `<h3 class="pillar"><svg class="ic" aria-hidden="true"><use href="#i-${icon}"/></svg><span class="pl-n">${n}</span>${L(zh, en)}</h3>`;
     $('#helppanel').innerHTML = `<h2><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg><span>${L('操作说明', 'Controls')} <small><kbd>H</kbd></small></span> <button class="x" data-close="helppanel" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
       <p class="help-pillars">${L('三条主线：<b>① 打怪决斗</b>攒经验和声望 · <b>② 写咒语</b>（咒语就是代码，每周考 O.W.L.） · <b>③ 政治</b>：声望第一当魔法部长改规则，也可能成为黑魔王；弱者组成邓布利多军否决法令。禁书区封印是选修。', 'Three paths: <b>① fight and duel</b> for XP and reputation · <b>② write spells</b> (spells are code; weekly O.W.L.s) · <b>③ politics</b>: the top wizard becomes Minister and rewrites the rules, or wears the Dark Mark; the underdogs band into Dumbledore\'s Army and veto decrees. The Restricted Section\'s seals are an elective.')}</p>
+      <p class="help-pillars">${L('<b>学院杯</b>：一学期 15 分钟，顶部是四个学院的比分和倒计时，最后 60 秒「决胜时刻」学院分翻倍；学期末礼堂换上冠军学院的旗帜。<b>校园事件</b>：每 3 分钟出一件事（巨怪、金色飞贼、宵禁、摄魂怪……），右上角的事件条告诉你去哪、做什么。', '<b>The House Cup</b>: a term is 15 minutes; the four houses\' points and the countdown sit at the top, and the last 60 seconds count double; at term end the Great Hall hangs the winner\'s banners. <b>Events</b>: every 3 minutes something happens (a troll, the Golden Snitch, curfew, Dementors…); the slip under the clock says where to go and what to do.')}</p>
       <div class="cols"><div>
       <h3>${L('移动', 'Moving')}</h3><table>
       ${row('W A S D', L('移动（相对镜头方向）；跑动时镜头会慢慢转到你身后', 'Move (relative to the camera); the camera drifts in behind you'))}
@@ -874,7 +877,7 @@ export function createControls(d: ControlsDeps) {
       ${row('1 – 6', L('施放快捷栏咒语。没有目标时自动挑选：攻击咒语 → 前方最近的敌人；治疗 / 护盾 → 你指向的队友或你自己；快快复苏 → 最近倒下的同伴', 'Cast a hotbar spell. With no target it picks one: attacks → nearest foe ahead; heals/shields → the friend you point at, or you; Rennervate → the nearest fallen friend'))}
       ${row('Tab', L('在前方的敌人之间切换目标（先魔物、后巫师，由近及远）', 'Cycle through foes ahead: creatures first, then wizards, nearest first'))}
       ${row(L('Shift + 左键', 'Shift + click'), L('对鼠标所指的地面施放当前咒语', 'Cast your current spell at the ground under the cursor'))}
-      ${row('F', L('交互：扶起身边倒下的同伴、在地标旁阅读书页（屏幕上会出现提示）', 'Interact: revive a fallen friend, read a page at its landmark (a prompt appears)'))}
+      ${row('F', L('交互：扶起身边倒下的同伴、在地标旁阅读书页、打开隐藏宝箱（屏幕上会出现提示）', 'Interact: revive a fallen friend, read a page at its landmark, open a hidden chest (a prompt appears)'))}
       ${row('Esc', L('取消目标（没有目标时打开菜单）', 'Clear the target (opens the menu when there is none)'))}
       ${row('T', L('行囊与商店：用加隆买装备，穿上、卸下、销毁；解除被诅咒物品的粘身', 'Trunk and shop: buy gear with Galleons; equip, unequip, destroy; break a cursed binding'))}
       </table></div><div>
@@ -884,6 +887,7 @@ export function createControls(d: ControlsDeps) {
       ${row('O', L('猫头鹰：和你自己的 Agent（或使魔）私聊、回答它的提问（聊天框里以 @agent 或 @a 开头也行）', 'Owl: talk privately with your agent (or familiar) and answer its questions (or start a chat line with @agent / @a)'))}
       </table>
       ${pillar('③', '政治', 'Politics', 'cup')}<table>
+      ${row('C', L('巧克力蛙画片册：已有的画片、还缺的剪影、集齐一套得称号（画片不卖，只能打怪、事件、宝箱里得到）', 'Chocolate Frog album: the cards you have, silhouettes of the ones you miss, sets that earn titles (never sold: creatures, events and chests)'))}
       ${row('L', L('排行榜：学期末声望第一成为魔法部长（改写规则）；声望 ≥150 的第一名戴上黑魔标记', 'Leaderboard: the top wizard at term end becomes Minister (rewrites the rules); the top one with 150+ wears the Dark Mark'))}
       ${row('J', L('邓布利多军：弱者的联盟，加入、在法令颁布后投票否决、联合守护神', "Dumbledore's Army: the underdogs' union; join, veto a fresh decree, strike together"))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}

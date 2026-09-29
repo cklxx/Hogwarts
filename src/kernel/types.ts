@@ -3,6 +3,7 @@ import type { Node } from '../runes/parser.js';
 import type { Env } from '../runes/interp.js';
 import type { Aura, AuraKind } from './auras.js';
 import type { Glamour } from '../shared/glamour.js';
+import type { CupLedger } from './housecup.js';
 
 export interface Vec2 { x: number; z: number }
 
@@ -181,6 +182,10 @@ export interface Wizard {
   /** 偷师: custom spells of others that hit you recently (≤ STUDY_KEEP, persisted), and the ones you studied (≤ STUDIED_KEEP). */
   studyHits?: StudyHit[];
   studied?: string[];
+  /** 学院杯: this term's house-point ledger (kernel/housecup.ts; persisted, reset by a new term). */
+  cup?: CupLedger;
+  /** 巧克力蛙画片: the cards in this wizard's album (ids from lore/cards.ts; persisted). */
+  cards?: string[];
   /** Not persisted: the player paused their agent (MCP actions refused). */
   agentPaused: boolean;
   /** Not persisted: the agent's last MCP call. */
@@ -241,6 +246,9 @@ export interface Creature {
   /** Conjured creatures: who they serve and when they vanish. */
   owner: string | null;
   until: number;
+  /** 校园事件轮盘: the event instance (kernel/wheel.ts) that brought it, and its damage multiplier (the boosted troll). */
+  ev?: number;
+  dmgMult?: number;
 }
 
 export interface Projectile {
@@ -268,7 +276,7 @@ export interface Pending {
 }
 
 export type EventType = 'system' | 'chat' | 'combat' | 'creature' | 'achievement' | 'decree' | 'term' | 'level' | 'egg' | 'azkaban' | 'elder' | 'forge' | 'cast'
-  | 'owl' | 'ask' | 'curse' | 'dark' | 'da' | 'market';
+  | 'owl' | 'ask' | 'curse' | 'dark' | 'da' | 'market' | 'wheel' | 'card';
 
 export interface WorldEvent {
   id: number;
@@ -285,6 +293,8 @@ export interface WorldEvent {
   from?: 'player' | 'agent';
   /** Owl Post: the owlbox message this event carries (id), its options if it is a question, and what it answers. */
   owl?: { id: number; options?: string[]; expiresAt?: number; re?: number };
+  /** 巧克力蛙画片: the card this private event hands over (the browser flips it over). */
+  card?: string;
 }
 
 /** A WorldEvent as it may be sent to a browser: no `who`. */

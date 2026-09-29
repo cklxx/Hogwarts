@@ -16,6 +16,8 @@ import {
 import { titleIndex } from '../src/lore/titles.js';
 import { World } from '../src/kernel/world.js';
 import { royaltyGrant, royaltyStep } from '../src/kernel/market.js';
+import { cupAward, cupDeduct, cupMult, cupRun, type CupOp } from '../src/kernel/housecup.js';
+import { MEME } from '../src/lore/memes.js';
 import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
 import { mulberry32 } from '../src/shared/map.js';
 import type { Creature, Item, Wizard } from '../src/kernel/types.js';
@@ -38,9 +40,13 @@ type MarketVectors = {
   constants: Record<string, number>; royaltyGrant: [number, number, number, number][];
   days: { cap: number; casts: [number, number, number, number, number][]; earned: number[]; given: [number, number, number, number][] }[];
 };
+type CupVectors = {
+  constants: Record<string, number>; cupMult: [number, number, number, number][]; cupAward: [number, number, number, number, number][];
+  cupDeduct: [number, number, number][]; terms: { cap: number; ops: [number, number, number][]; final: number }[];
+};
 const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.url), 'utf8')) as {
   yearForXp: [number, number][]; titleIndex: [number, number, number, number, number][]; steal: [number, number, number][];
-  agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors;
+  agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors; cup: CupVectors;
 };
 
 describe('Lean conformance vectors', () => {
@@ -183,6 +189,41 @@ describe('Lean conformance vectors: 咒语集市 royalties (royalty_day_capped, 
       // and the proved bounds, on the vectors themselves
       for (const e of day.earned) expect(e).toBeLessThanOrEqual(day.cap);
       for (const [, , g, pg] of day.given) { expect(g).toBeLessThanOrEqual(K.MARKET_AUTHOR_TENTHS); expect(pg).toBeLessThanOrEqual(K.MARKET_PARENT_TENTHS); }
+    }
+  });
+});
+
+describe('Lean conformance vectors: 学院杯 house points (cup_term_bounded, cup_award_capped, cup_deduct_nonneg, cup_mult_bounded)', () => {
+  const C = V.cup;
+  it('every constant is the same number in Lean and in src/shared/constants.ts', () => {
+    expect(C.constants).toEqual({
+      CUP_FINAL_S: K.CUP_FINAL_S, CUP_MULT_DEFAULT: K.CUP_MULT_DEFAULT, CUP_MULT_MAX: K.CUP_MULT_MAX, CUP_CAP_DEFAULT: K.CUP_CAP_DEFAULT,
+      CUP_CAP_MIN: K.CUP_CAP_MIN, CUP_CAP_MAX: K.CUP_CAP_MAX, SNITCH_POINTS: K.SNITCH_POINTS, SNITCH_CAP_PER_TERM: K.SNITCH_CAP_PER_TERM,
+      CURFEW_PENALTY: K.CURFEW_PENALTY, EVENT_MAX_S: K.EVENT_MAX_S, EVENT_INTERVAL_MIN: K.EVENT_INTERVAL_MIN, EVENT_INTERVAL_DEFAULT: K.EVENT_INTERVAL_DEFAULT,
+      EVENT_INTERVAL_MAX: K.EVENT_INTERVAL_MAX, TEN_POINTS_CAP: MEME.HOUSE_POINTS_CAP,
+    });
+    // the rulebook's defaults and bounds are the proved ones
+    const rb = defaultRulebook();
+    expect(rb.terms.finalMinuteMultiplier).toBe(K.CUP_MULT_DEFAULT);
+    expect(rb.terms.wizardPointsCap).toBe(K.CUP_CAP_DEFAULT);
+    expect(rb.events.intervalSeconds).toBe(K.EVENT_INTERVAL_DEFAULT);
+    expect(applyPatch(rb, { terms: { finalMinuteMultiplier: K.CUP_MULT_MAX } }).ok).toBe(true);
+    expect(applyPatch(rb, { terms: { finalMinuteMultiplier: K.CUP_MULT_MAX + 0.01 } }).ok).toBe(false);
+    expect(applyPatch(rb, { terms: { wizardPointsCap: K.CUP_CAP_MIN - 1 } }).ok).toBe(false);
+    expect(applyPatch(rb, { terms: { wizardPointsCap: K.CUP_CAP_MAX } }).ok).toBe(true);
+  });
+  it('cupMult / cupAward / cupDeduct', () => {
+    for (const [l, f, m, v] of C.cupMult) expect([l, f, m, cupMult(l, f, m)]).toEqual([l, f, m, v]);
+    for (const [c, n, cap, m, v] of C.cupAward) expect([c, n, cap, m, cupAward(c, n, cap, m)]).toEqual([c, n, cap, m, v]);
+    for (const [c, n, v] of C.cupDeduct) expect([c, n, cupDeduct(c, n)]).toEqual([c, n, v]);
+  });
+  it('whole terms replayed through cupRun give the same ledger, within [0, cap]', () => {
+    expect(C.terms.length).toBeGreaterThanOrEqual(4);
+    for (const t of C.terms) {
+      const ops: CupOp[] = t.ops.map(([k, n, m]) => (k === 1 ? { k: 'deduct', n } : { k: 'award', n, m }));
+      expect(cupRun(ops, t.cap)).toBe(t.final);
+      expect(t.final).toBeGreaterThanOrEqual(0);
+      expect(t.final).toBeLessThanOrEqual(t.cap);
     }
   });
 });

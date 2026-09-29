@@ -10,7 +10,11 @@ for spec in tla/*.tla; do
   name=$(basename "$spec" .tla)
   printf '%-12s ' "$name"
   out=$(cd tla && java -XX:+UseParallelGC -cp "$JAR" tlc2.TLC -workers auto -deadlock "$name.tla" 2>&1 || true)
-  if grep -q "Model checking completed. No error has been found." <<<"$out"; then
+  if [[ "$name" == *Witness ]]; then
+    # non-vacuity: a *Witness spec's invariant says "this never happens"; it passes when TLC finds the behaviour
+    if grep -q "is violated" <<<"$out"; then echo "OK  (witness found: $(grep -oE 'Invariant [A-Za-z]+' <<<"$out" | head -1))"
+    else echo "FAIL (no witness: the behaviour is unreachable)"; fail=1; fi
+  elif grep -q "Model checking completed. No error has been found." <<<"$out"; then
     echo "OK  $(grep -oE '[0-9]+ distinct states found' <<<"$out" | tail -1)"
   else
     echo "FAIL"; echo "$out" | grep -E "Error|violated" | head -5; fail=1

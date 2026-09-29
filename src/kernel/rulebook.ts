@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import {
+  CARD_DROP_PCT_DEFAULT, CARD_DROP_PCT_MAX, CUP_CAP_DEFAULT, CUP_CAP_MAX, CUP_CAP_MIN, CUP_MULT_DEFAULT, CUP_MULT_MAX, EVENT_IDS, EVENT_INTERVAL_DEFAULT, EVENT_INTERVAL_MAX, EVENT_INTERVAL_MIN,
+} from '../shared/constants.js';
 import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, type EffectPrimitive, type Element, type WildKind } from '../shared/constants.js';
 
 /**
@@ -109,8 +112,25 @@ export const RulebookSchema = z.object({
       lengthSeconds: num(120, 86400, 900, 'Length of a school term; at its end the House Cup is awarded and a Minister chosen'),
       reputationDecay: num(0, 1, 0.5, 'Fraction of reputation that survives the end of term'),
       ministerMinReputation: num(0, 100000, 100, 'Minimum reputation to be appointed Minister for Magic'),
+      finalMinuteMultiplier: num(1, CUP_MULT_MAX, CUP_MULT_DEFAULT, '决胜时刻: house points gained in the last minute of a term are multiplied by this'),
+      wizardPointsCap: z.number().int().min(CUP_CAP_MIN).max(CUP_CAP_MAX).default(CUP_CAP_DEFAULT).describe('Anti-farm: the most house points one wizard can add in a term, from every source together'),
     })
     .prefault({}),
+  events: z
+    .object({
+      enabled: z.boolean().default(true).describe('校园事件轮盘: every intervalSeconds the castle rolls one event from the pool'),
+      intervalSeconds: z.number().int().min(EVENT_INTERVAL_MIN).max(EVENT_INTERVAL_MAX).default(EVENT_INTERVAL_DEFAULT).describe('Seconds between the end of one event and the roll of the next'),
+      pool: z.array(z.enum(EVENT_IDS)).max(EVENT_IDS.length).default([...EVENT_IDS]).describe('Which events may be rolled: troll (地下教室有巨怪), snitch (金色飞贼), curfew (宵禁), dementors (摄魂怪来袭, night only), peeves (皮皮鬼的墨水), room (有求必应屋)'),
+    })
+    .prefault({})
+    .describe('The event wheel (校园事件轮盘)'),
+  cards: z
+    .object({
+      creatureDropPct: num(0, CARD_DROP_PCT_MAX, CARD_DROP_PCT_DEFAULT, 'Chance (%) that a defeated creature leaves a Chocolate Frog card for whoever defeated it'),
+      chestCardPct: num(0, 100, 60, 'Chance (%) that a hidden chest holds a Chocolate Frog card'),
+    })
+    .prefault({})
+    .describe('巧克力蛙画片: Chocolate Frog cards (never sold: only found, earned or dropped)'),
   agents: z
     .object({
       concentration: z.boolean().default(true).describe('专注力: every MCP action tool call spends concentration, which regenerates. Off = agents act as fast as the server allows (fairness becomes a choice). Browser input is never charged.'),

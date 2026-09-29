@@ -6,6 +6,7 @@ import {
   DA_JOINT_MIN, DA_JOINT_PCT, DA_JOINT_WINDOW_S, DA_MAX_MEMBERS, DA_QUORUM, DA_REP_CEILING, DA_VETO_WINDOW_S, DA_VETOES_PER_TERM, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP,
   DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT, STUDIED_KEEP, STUDY_DELAY_S, STUDY_KEEP, STUDY_MEMORY_S,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
+  CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, type CupSource, type EventId,
   type CreatureKind, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
 } from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, LAWLESS_ZONE, SPAWN, WORLD_HALF, ZONES, mulberry32, type ZoneId } from '../shared/map.js';
@@ -47,6 +48,11 @@ import {
   DARK_LORD_YOU, DARK_MARK_SEEN, LAWLESS_ENTER, LAWLESS_LEAVE, STUDIED_YOU, STUDY_READY, STUDY_WAIT, tiredText,
 } from './unfair.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
+import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
+import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
+import { blankWheel, stepWheel, wheelBolt, wheelKissed, wheelRoom, wheelSlain, wheelView, type Outcome, type WheelState } from './wheel.js';
+import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
+import { CARDS } from '../lore/cards.js';
 import { type MarketBook, bannedCastText, bannedListing, blankMarket, marketDecreeErrors, marketDecreeNews, payRoyalty, restoreMarket, rollDay, sanitizeMarket } from './market.js';
 import type {
   Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
@@ -105,6 +111,16 @@ export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: numbe
 
 export interface Statue { name: string; house: House; term: number; inscription: string }
 
+/** 学院杯 ceremony: what the end of a term shows everyone (the snapshot's cup.cer). */
+export interface Ceremony {
+  term: number; until: number; winner: House | null; points: Record<House, number>;
+  mvp: { name: string; house: House; pts: number } | null;
+  duelist: { name: string; house: House; pts: number } | null;
+  hunter: { name: string; house: House; pts: number } | null;
+  hero: { name: string; house: House; pts: number } | null;
+  minister: string | null;
+}
+
 /** The Minister's last decree while the DA may still veto it: the rulebook before it, and the DA members who voted. */
 export interface VetoWindow { term: number; at: number; minister: string; ministerId: string; before: Rulebook; votes: string[]; statue: boolean; decree: number }
 
@@ -156,7 +172,19 @@ export class World {
     /** The term in which the DA last used its veto (DA_VETOES_PER_TERM = 1), and the decree it may still veto. */
     vetoTerm: 0,
     veto: null as VetoWindow | null,
+    /** 隐藏宝箱: which chests were opened this term, and by whom (names). */
+    chests: { term: 0, opened: {} } as { term: number; opened: Record<string, string> },
   };
+  /** 校园事件轮盘 (kernel/wheel.ts): not persisted (a restart drops the running event with the creatures). */
+  wheel: WheelState;
+  /** The last event's outcome, shown on the HUD for a few seconds. */
+  wheelResult: { id: EventId; n: number; outcome: Outcome; hero?: string; until: number } | null = null;
+  /** 学院杯 ceremony: the last term's result card (HUD), until `until`. Not persisted. */
+  ceremony: Ceremony | null = null;
+  /** The term whose 决胜时刻 has been announced. */
+  private finalSaid = 0;
+  /** A second seeded stream for the event wheel, cards and chests, so the main stream (spawns, NPCs) is undisturbed. */
+  private funRng: () => number;
   /** token -> wizard id: byToken is O(1); rebuilt by restore(), maintained by enroll() and rotateToken(). */
   private tokenIndex = new Map<string, string>();
   /** Live pairing codes by body (not persisted: a restart kills them), and each wizard's one live code. */
@@ -195,14 +223,20 @@ export class World {
 
   constructor(opts: WorldOptions = {}) {
     this.rng = mulberry32(opts.seed ?? (Date.now() & 0xffffffff));
+    this.funRng = mulberry32(((opts.seed ?? (Date.now() & 0xffffffff)) ^ 0x5eedf00d) >>> 0);
     this.rules = opts.rules ?? defaultRulebook();
     this.secret = opts.secret ?? process.env.HOGWARTS_SECRET ?? randomBytes(32).toString('hex');
     this.term = { n: 1, startedAt: 0, endsAt: this.rules.terms.lengthSeconds };
     if (opts.tokenPrefix) this.tokenPrefix = opts.tokenPrefix;
+    this.wheel = blankWheel(this.rules.events.intervalSeconds);
   }
 
   // ------------------------------------------------------------------ basics
   rand() { return this.rng(); }
+  /** The event wheel's, the cards' and the chests' own seeded stream (kernel/wheel.ts, kernel/cards.ts). */
+  funRand() { return this.funRng(); }
+  /** A fresh entity id (the event wheel spawns creatures with it). */
+  mintId(prefix: string) { return this.nid(prefix); }
 
   // ------------------------------------------------------------------ memes (lore/memes.ts)
   /**
@@ -224,7 +258,7 @@ export class World {
   private nid(prefix: string) { return `${prefix}${(++this.seq).toString(36)}${Math.floor(this.rng() * 1296).toString(36)}`; }
   onEvent(fn: (e: WorldEvent) => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl'] } = {}) {
+  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string } = {}) {
     const e: WorldEvent = { id: ++this.eventSeq, t: round(this.now), type, text, ...opts };
     this.events.push(e);
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
@@ -1201,7 +1235,7 @@ export class World {
         steal = duelSteal(w.reputation, dark, this.rules.progression.duelRepStealPct, mult);
         w.reputation -= steal;
         gain = this.rules.progression.duelRepBase * mult + steal;
-        this.addRep(kw, gain);
+        this.addRep(kw, gain, 'duels');
       }
       kw.lastDuel[w.id] = this.now;
       const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
@@ -1217,6 +1251,7 @@ export class World {
       this.runLaws('kill', kw, w.id);
     } else {
       const c = by ? this.creatures.get(by) : undefined;
+      if (c?.ev) wheelKissed(this, w, c);
       const pool = CREATURE_STUN[c ? c.kind : 'willow'];
       const q = pool && this.banter([w.npc ? 'stun:npc' : 'stun', w.npc ? MEME.STUN_GAP_S * 4 : MEME.STUN_GAP_S]) ? fill(this.quip(pool, w.handle), { v: w.name }) : null;
       this.emit('combat', `${c ? `${w.name} was overwhelmed by a ${CREATURES[c.kind].name}.` : `${w.name} was flattened by the Whomping Willow.`}${q ? ` ${q.en}` : ''}`, { who: [w.id], zh: `${c ? `${w.name} 被${zhCreature(c.kind)}击倒了。` : `${w.name} 被打人柳拍扁了。`}${q ? q.zh : ''}` });
@@ -1265,11 +1300,14 @@ export class World {
       if (!isKiller && dmg / total < 0.2) continue;
       const share = isKiller ? 1 : 0.5;
       this.gainXp(w, def.xp * pr.xpMultiplier * share * loot);
-      this.addRep(w, def.rep * pr.creatureRepMultiplier * share);
+      this.addRep(w, def.rep * pr.creatureRepMultiplier * share, 'creatures');
       w.galleons += Math.round(def.galleons * pr.galleonMultiplier * share * loot);
       if (isKiller) { w.stats.creatures++; this.grind(w); }
     }
     if (killer && (def.rep >= 10 || c.kind === 'troll')) this.emit('creature', `${killer.name} defeated a ${def.name}!`, { who: [killer.id], zh: `${killer.name} 击败了一只${zhCreature(c.kind)}！` });
+    // 巧克力蛙画片: now and then a wild creature leaves a card behind (rules.cards.creatureDropPct; the fun stream)
+    if (killer && !killer.npc && !c.ev && def.faction === 'hostile' && this.funRand() * 100 < this.rules.cards.creatureDropPct) rollCard(this, killer, 'plain', { zh: `${zhCreature(c.kind)}掉下了一张画片`, en: `The ${def.name} dropped something` });
+    if (c.ev) wheelSlain(this, c);
   }
 
   /** 内卷: MEME.GRIND_KILLS creatures inside MEME.GRIND_WINDOW_S gets a private word, at most every GRIND_GAP_S. */
@@ -1280,9 +1318,94 @@ export class World {
     if (m.kills.length >= MEME.GRIND_KILLS && this.banter([`grind:${w.id}`, MEME.GRIND_GAP_S])) { m.kills = []; this.tell(w, this.quip(GRIND_LINES, w.handle)); }
   }
 
-  addRep(w: Wizard, n: number) {
+  /**
+   * Reputation, and the same amount as house points (学院杯, kernel/housecup.ts): a gain goes through the ledger
+   * (final-minute multiplier, per-wizard cap), a loss comes off it (never below zero).
+   */
+  addRep(w: Wizard, n: number, src: CupSource = 'other') {
     w.reputation = Math.max(0, w.reputation + n);
     w.termReputation += n;
+    if (n > 0) this.cupGain(w, n, src);
+    else if (n < 0) this.cupLose(w, -n);
+  }
+
+  // ------------------------------------------------------------------ 学院杯: the house-point ledger (kernel/housecup.ts)
+  /** This term's ledger of a wizard (a ledger from an older term starts over). */
+  cupOf(w: Wizard): CupLedger {
+    if (!w.cup || w.cup.term !== this.term.n) w.cup = blankLedger(this.term.n);
+    return w.cup;
+  }
+  /** 决胜时刻: the multiplier on a house point gained right now. */
+  cupMultNow() { return cupMult(this.term.endsAt - this.now, CUP_FINAL_S, this.rules.terms.finalMinuteMultiplier); }
+  /** Add house points for a wizard (from `src`): multiplied in the final minute, capped per term. Returns what was added. */
+  cupGain(w: Wizard, n: number, src: CupSource): number {
+    const c = this.cupOf(w);
+    const before = c.pts;
+    c.pts = cupAward(c.pts, n, this.rules.terms.wizardPointsCap, this.cupMultNow());
+    const g = c.pts - before;
+    if (g > 0) c.src[src] = (c.src[src] ?? 0) + g;
+    return Math.round(g * 10) / 10;
+  }
+  /** Take house points away (Filch): never below zero. Returns what was taken. */
+  cupLose(w: Wizard, n: number): number {
+    const c = this.cupOf(w);
+    const before = c.pts;
+    c.pts = cupDeduct(c.pts, n);
+    c.lost = (c.lost ?? 0) + (before - c.pts);
+    return Math.round((before - c.pts) * 10) / 10;
+  }
+  /** Each house's points this term by source (十分梗 as 'ten'). */
+  houseBreakdown(): Record<House, Record<CupSource | 'ten', number>> {
+    const out = Object.fromEntries(HOUSES.map((h) => [h, Object.fromEntries([...CUP_SOURCES, 'ten'].map((k) => [k, 0]))])) as Record<House, Record<CupSource | 'ten', number>>;
+    for (const w of this.wizards.values()) {
+      if (w.cup?.term !== this.term.n) continue;
+      for (const [k, v] of Object.entries(w.cup.src)) out[w.house][k as CupSource] += v ?? 0;
+    }
+    const bonus = this.flags.housePoints;
+    if (bonus?.term === this.term.n) for (const h of HOUSES) out[h].ten += bonus.pts[h] ?? 0;
+    for (const h of HOUSES) for (const k of Object.keys(out[h]) as (CupSource | 'ten')[]) out[h][k] = Math.round(out[h][k]);
+    return out;
+  }
+  private cupEntries(src?: CupSource): CupEntry[] {
+    const out: CupEntry[] = [];
+    for (const w of this.wizards.values()) {
+      if (w.npc || w.cup?.term !== this.term.n) continue;
+      out.push({ id: w.id, name: w.name, house: w.house, handle: w.handle, pts: src ? (w.cup.src[src] ?? 0) : w.cup.pts, createdAt: w.createdAt });
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ 隐藏宝箱 (kernel/cards.ts, shared/chests.ts)
+  /** A chest's contents (the loot table), for a wizard. `card`: a card for certain (the Room of Requirement). */
+  chestLoot(w: Wizard, why: { zh: string; en: string }, card = false) {
+    const out: { card?: string; galleons: number; fragment?: { zh: string; en: string; source: string } } = { galleons: 0 };
+    const u = this.funRand();
+    const pct = this.rules.cards.chestCardPct / 100;
+    if (card || u < pct) out.card = rollCard(this, w, 'plain', why).card.id;
+    else if (u < pct + (1 - pct) * 0.55) out.galleons = 12 + Math.floor(this.funRand() * 24);
+    else {
+      out.fragment = RUNES_FRAGMENTS[Math.floor(this.funRand() * RUNES_FRAGMENTS.length)];
+      out.galleons = 8;
+    }
+    if (!out.card && this.funRand() < 0.25) out.galleons += 10;
+    if (out.galleons) w.galleons += out.galleons;
+    if (out.fragment) this.emit('egg', `📜 ${why.en}: a torn page of Runes. ${out.fragment.en}\n${out.fragment.source}`, { to: w.id, zh: `📜 ${why.zh}：一页残破的如尼文。${out.fragment.zh}\n${out.fragment.source}` });
+    if (out.galleons && !out.card) this.emit('system', `💰 ${why.en}: ${out.galleons} Galleons.`, { to: w.id, zh: `💰 ${why.zh}：${out.galleons} 加隆。` });
+    return out;
+  }
+
+  /** F at a chest: open the nearest closed one within reach (once per chest per term, first come first served). */
+  openChest(wid: string) {
+    const w = this.need(wid);
+    if (!this.isActive(w)) throw new Error('You cannot do that right now. 你现在做不到。');
+    if (this.flags.chests.term !== this.term.n) this.flags.chests = { term: this.term.n, opened: {} };
+    const c = chestNear(this, w);
+    if (!c) throw new Error(`No closed chest within reach (${chestsLeft(this).length} left this term; they refill every term). 附近没有没打开的宝箱（本学期还剩 ${chestsLeft(this).length} 个，每学期刷新）。`);
+    this.flags.chests = { term: this.term.n, opened: { ...this.flags.chests.opened, [c.id]: w.name } };
+    const g = this.cupGain(w, 5, 'chests');
+    this.fx({ k: 'seal', x: c.x, z: c.z, h: w.handle });
+    const loot = this.chestLoot(w, { zh: `${c.zh}的宝箱`, en: `The chest ${c.en.toLowerCase()}` });
+    return { chest: c.id, where: c.en, whereZh: c.zh, housePoints: g, ...loot, left: chestsLeft(this).length };
   }
 
   gainXp(w: Wizard, n: number) {
@@ -1772,7 +1895,8 @@ export class World {
   /** This term's house points: the reputation each house's members earned, plus points wizards awarded ("Ten points to …!"). */
   housePoints(): Record<House, number> {
     const points = Object.fromEntries(HOUSES.map((h) => [h, 0])) as Record<House, number>;
-    for (const w of this.wizards.values()) points[w.house] += Math.max(0, w.termReputation);
+    // each wizard's ledger: 0 ≤ pts ≤ rules.terms.wizardPointsCap (kernel/housecup.ts; Lean cup_term_bounded)
+    for (const w of this.wizards.values()) if (w.cup?.term === this.term.n) points[w.house] += w.cup.pts;
     const bonus = this.flags.housePoints;
     if (bonus?.term === this.term.n) for (const h of HOUSES) points[h] += bonus.pts[h] ?? 0;
     return points;
@@ -1782,7 +1906,15 @@ export class World {
     const points = this.housePoints();
     const best = HOUSES.reduce((a, b) => (points[b] > points[a] ? b : a));
     const winner = points[best] > 0 ? best : null;
-    this.houseCups.push({ term: this.term.n, winner, points });
+    this.houseCups.push({ term: this.term.n, winner, points: Object.fromEntries(HOUSES.map((h) => [h, Math.round(points[h])])) as Record<House, number> });
+    // the ceremony: the MVP (most house points this term; ties go to whoever enrolled first), the best duelist, hunter, event hero
+    const pick = (src?: CupSource) => { const b = termBest(this.cupEntries(src)); return b ? { name: b.name, house: b.house as House, pts: Math.round(b.pts) } : null; };
+    const mvp = pick();
+    this.ceremony = { term: this.term.n, until: this.now + CUP_CEREMONY_S, winner, points: Object.fromEntries(HOUSES.map((h) => [h, Math.round(points[h])])) as Record<House, number>, mvp, duelist: pick('duels'), hunter: pick('creatures'), hero: pick('events'), minister: null };
+    if (winner) {
+      const l = fill(this.quip(CUP_CEREMONY, this.term.n), { house: houseLine(winner), v: mvp?.name ?? '—', n: mvp?.pts ?? 0 });
+      this.emit('term', l.en, { zh: l.zh });
+    }
     for (const w of this.wizards.values()) w.decreeCharges = 0;
     const top = [...this.wizards.values()].filter((w) => !w.npc).sort((a, b) => b.reputation - a.reputation)[0];
     const cupZh = winner ? `${zhHouse(winner)}以 ${Math.round(points[winner])} 分赢得学院杯！城堡挂满了${zhHouse(winner)}的旗帜。` : '没有学院得分。';
@@ -1792,6 +1924,7 @@ export class World {
       top.wasMinister = true;
       this.flags.ministerId = top.id;
       top.titles.push(`Minister for Magic (term ${this.term.n})`);
+      if (this.ceremony) this.ceremony.minister = top.name;
       this.emit('term', `End of term ${this.term.n}. ${cup} ${top.name} (${Math.round(top.reputation)} reputation) is appointed Minister for Magic and may issue ONE decree to rewrite the rules of this world.`, { who: [top.id], zh: `第 ${this.term.n} 学期结束。${cupZh} ${top.name}（声望 ${Math.round(top.reputation)}）被任命为魔法部长，可以颁布一次法令来改写这个世界的规则。` });
       this.emit('term', 'You are Minister for Magic. Use the `decree` MCP tool (try dry_run first) to change the Rulebook — once.', { to: top.id, zh: '你是魔法部长了。用 MCP 的 decree 工具（先 dry_run 预演）改写规则书 —— 只有一次机会。' });
     } else {
@@ -1803,6 +1936,7 @@ export class World {
       w.termReputation = 0;
     }
     this.term = { n: this.term.n + 1, startedAt: this.now, endsAt: this.now + this.rules.terms.lengthSeconds };
+    this.flags.chests = { term: this.term.n, opened: {} }; // every chest refills
   }
 
   forceEndTerm() { this.endTerm(); }
@@ -1901,7 +2035,13 @@ export class World {
       this.pulseCd = 10;
       if (rb.laws.some((l) => l.on === 'pulse')) for (const w of this.wizards.values()) if (this.isActive(w)) this.runLaws('pulse', w);
     }
-    // 6. term
+    // 6. the event wheel (kernel/wheel.ts), the final minute, the term
+    stepWheel(this, dt);
+    if (this.finalSaid !== this.term.n && this.term.endsAt - this.now <= CUP_FINAL_S && this.cupMultNow() > 1) {
+      this.finalSaid = this.term.n;
+      const l = fill(this.quip(FINAL_MINUTE, this.term.n), { n: this.cupMultNow() });
+      this.emit('term', l.en, { zh: l.zh });
+    }
     if (this.now >= this.term.endsAt) this.endTerm();
   }
 
@@ -2105,6 +2245,7 @@ export class World {
           dead = true;
           break;
         }
+        if (this.wheel.active) wheelBolt(this, p); // 金色飞贼 / 皮皮鬼: a spell passing close enough catches or chases
         for (const e of this.around(p.pos, 2.2, () => true, p.owner, 4)) {
           const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
           if (dist(e.pos, p.pos) > r + 0.45) continue;
@@ -2181,7 +2322,7 @@ export class World {
 
   private strike(c: Creature, def: CreatureDef, target: string, sm: number) {
     c.attackCd = def.cooldown;
-    const dealt = this.damage(c.id, target, def.damage * (c.owner ? 1 : sm), 'arcane');
+    const dealt = this.damage(c.id, target, def.damage * (c.owner ? 1 : sm) * (c.dmgMult ?? 1), 'arcane');
     if (dealt <= 0) return;
     const w = this.wizards.get(target);
     if (def.bite) this.applyAura(target, def.bite.aura, def.bite.secs, def.bite.mag, c.id);
@@ -2259,7 +2400,7 @@ export class World {
     const night = this.isNight();
     for (const kind of CREATURE_KINDS) {
       const def = CREATURES[kind];
-      const alive = [...this.creatures.values()].filter((c) => c.kind === kind);
+      const alive = [...this.creatures.values()].filter((c) => c.kind === kind && !c.ev); // an event's creatures are the event's (kernel/wheel.ts)
       const outOfHours = (def.nightOnly && !night) || (def.dayOnly && night);
       if (!rc.enabled[kind] || outOfHours) {
         for (const c of alive) if (!c.target || !rc.enabled[kind]) this.creatures.delete(c.id);
@@ -2332,6 +2473,7 @@ export class World {
         w.eggs.rorCrossings = [...w.eggs.rorCrossings.filter((t) => this.now - t < 30), this.now];
         if (w.eggs.rorCrossings.length >= 3) {
           w.eggs.rorCrossings = [];
+          wheelRoom(this, w); // 校园事件轮盘: while the Room is open, a chest too
           if (!w.items.some((i) => i.unique === 'diadem')) {
             this.giveUnique(w, 'diadem', 'The Lost Diadem of Ravenclaw', 'amulet', { manaRegen: 3, maxMana: 30 }, 'Wit beyond measure is man\'s greatest treasure.');
             this.emit('egg', 'A door appears in the blank wall opposite Barnabas the Barmy. Inside, among a thousand hidden things, a tarnished diadem.', { to: w.id, zh: '傻巴拿巴挂毯对面的空墙上出现了一扇门。在成千上万件藏起来的东西中间，有一顶失去光泽的冠冕。' });
@@ -3051,6 +3193,10 @@ export class World {
     return {
       term: { n: this.term.n, secondsLeft: Math.max(0, Math.round(this.term.endsAt - this.now)) },
       housePoints: Object.fromEntries(Object.entries(points).map(([k, v]) => [k, Math.round(v)])),
+      // 学院杯: where each house's points came from, the final minute, the per-wizard cap (README 学院杯)
+      housePointSources: this.houseBreakdown(),
+      finalMinute: { active: this.cupMultNow() > 1, multiplier: this.rules.terms.finalMinuteMultiplier, lastSeconds: CUP_FINAL_S },
+      wizardPointsCap: this.rules.terms.wizardPointsCap,
       top: [...this.wizards.values()].sort((a, b) => b.reputation - a.reputation).slice(0, 10).map((w, i) => ({
         rank: i + 1, name: w.name, title: this.title(w).zh, house: w.house, year: w.year, reputation: Math.round(w.reputation), online: this.online(w), npc: w.npc || undefined,
       })),
@@ -3144,16 +3290,42 @@ export class World {
       t: round(this.now), hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather, term: { n: this.term.n, left: Math.max(0, Math.round(this.term.endsAt - this.now)) },
       // 黑魔王: the Dark Lord's whereabouts, for everyone (outside the area-of-interest arrays), or null
       dl: this.darkLordView(true),
+      // 学院杯: the four houses' points, the final minute, the ceremony card; 校园事件轮盘: the event (kernel/wheel.ts)
+      cup: this.cupView(),
+      ev: wheelView(this),
       w: ws,
       c: [...this.creatures.values()].map((c) => ({
         i: c.id, k: c.kind, x: round(c.pos.x), z: round(c.pos.z), f: round(c.facing), hp: Math.round(c.hp), m: Math.round(c.maxHp),
         o: c.owner ? this.wizards.get(c.owner)?.handle : undefined, s: auraFlags(c.auras, this.now) + (c.rootedUntil > this.now ? 'R' : ''),
+        ...(c.ev ? { b: 1 } : {}),
       })),
       p: [...this.projectiles.values()].map((p) => ({ i: p.id, k: p.kind, x: round(p.pos.x), z: round(p.pos.z), e: p.element })),
       fx: this.drainFx(),
       elder: this.flags.elderWandHolder ? null : TOMB,
       willowCalm: this.now < this.flags.willowCalmUntil,
       look: this.looks(),
+    };
+  }
+
+  /** The snapshot's `cup`: points per house (HOUSES order), the final minute, the chests still closed, the ceremony. */
+  cupView() {
+    const p = this.housePoints();
+    const left = Math.max(0, Math.round(this.term.endsAt - this.now));
+    const m = this.cupMultNow();
+    const cer = this.ceremony && this.now < this.ceremony.until ? this.ceremony : null;
+    const opened = this.flags.chests.term === this.term.n ? this.flags.chests.opened : {};
+    return { n: this.term.n, left, pts: HOUSES.map((h) => Math.round(p[h])), fm: m > 1 ? m : 0, ch: CHESTS.filter((c) => !opened[c.id]).map((c) => c.id), ...(cer ? { cer } : {}) };
+  }
+
+  /** privateState().fun: your house points this term and where they came from, your album, the curfew grace. */
+  funState(w: Wizard) {
+    const c = w.cup?.term === this.term.n ? w.cup : null;
+    const ev = this.wheel.active;
+    return {
+      pts: Math.round(c?.pts ?? 0), cap: this.rules.terms.wizardPointsCap, lost: Math.round(c?.lost ?? 0),
+      src: Object.fromEntries(Object.entries(c?.src ?? {}).map(([k, v]) => [k, Math.round(v ?? 0)])),
+      cards: w.cards ?? [], total: CARDS.length,
+      curfew: ev?.id === 'curfew' && ev.outcome === 'on' ? { caught: ev.d.caught?.includes(w.id) ?? false, grace: Math.max(0, Math.ceil((ev.d.grace?.[w.id] ?? 0) - this.now)) } : null,
     };
   }
 
@@ -3186,6 +3358,7 @@ export class World {
       hex: this.hexState(w),
       agent: this.agentState(w),
       unfair: this.unfairState(w),
+      fun: this.funState(w),
     };
   }
 
@@ -3287,7 +3460,10 @@ export class World {
     w.flags = {
       ...w.flags, ...data.flags, statues: data.flags?.statues ?? [], curseFoundBy: data.flags?.curseFoundBy ?? null,
       housePoints: data.flags?.housePoints ?? { term: 0, pts: {} },
+      chests: data.flags?.chests ?? { term: 0, opened: {} },
     };
+    w.wheel = blankWheel(w.rules.events.intervalSeconds);
+    w.wheel.nextAt = w.now + w.rules.events.intervalSeconds;
     w.seq = data.seq ?? 0;
     w.owls = { boards: data.owls?.boards ?? {}, bests: data.owls?.bests ?? {} };
     w.market = restoreMarket((data as { market?: unknown }).market);

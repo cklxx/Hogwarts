@@ -198,3 +198,44 @@ export const MARKET_DESC_MAX = 140;
 export const MARKET_LEDGER_MAX = 20000;
 /** Market ids: "m_" and up to 12 base-36 characters. */
 export const MARKET_ID_RE = /^m_[a-z0-9]{1,12}$/;
+
+// ------------------------------------------------------------------ 学院杯 · 事件轮盘 · 巧克力蛙画片 (sprint 1, README 学院杯)
+// One source for the kernel (kernel/housecup.ts, kernel/wheel.ts, kernel/cards.ts), formal/lean/Hogwarts.lean (house-point
+// bounds, compared through formal/vectors.json) and formal/tla/EventWheel.tla.
+
+/** Where a wizard's house points came from this term (十分梗 is a house-level bonus, kept apart in flags.housePoints). */
+export const CUP_SOURCES = ['creatures', 'duels', 'events', 'owls', 'chests', 'other'] as const;
+export type CupSource = (typeof CUP_SOURCES)[number];
+/** 决胜时刻: the last CUP_FINAL_S seconds of a term multiply every house point gained (rules.terms.finalMinuteMultiplier). */
+export const CUP_FINAL_S = 60;
+export const CUP_MULT_DEFAULT = 2;
+/** The constitutional bound on the final-minute multiplier (Lean cup_mult_bounded). */
+export const CUP_MULT_MAX = 3;
+/** Anti-farm: one wizard adds at most rules.terms.wizardPointsCap house points a term (Lean cup_award_capped). */
+export const CUP_CAP_DEFAULT = 400;
+export const CUP_CAP_MIN = 50;
+export const CUP_CAP_MAX = 5000;
+/** How long the House Cup ceremony card stays up after a term ends (seconds). */
+export const CUP_CEREMONY_S = 14;
+
+/** 校园事件轮盘: every rules.events.intervalSeconds (bounds below) the world rolls one event from rules.events.pool. */
+export const EVENT_IDS = ['troll', 'snitch', 'curfew', 'dementors', 'peeves', 'room'] as const;
+export type EventId = (typeof EVENT_IDS)[number];
+export const EVENT_INTERVAL_DEFAULT = 180;
+export const EVENT_INTERVAL_MIN = 60;
+export const EVENT_INTERVAL_MAX = 1800;
+/** The longest any event may run (every event ends by its deadline: EventWheel.tla EndsByDeadline). */
+export const EVENT_MAX_S = 150;
+/** 金色飞贼: points for the catch, and the most snitch points one wizard can take in a term. */
+export const SNITCH_POINTS = 150;
+export const SNITCH_CAP_PER_TERM = 150;
+/** 宵禁: points lost when Filch or Mrs Norris catches you (never below zero), and the grace before they can again. */
+export const CURFEW_PENALTY = 5;
+export const CURFEW_GRACE_S = 20;
+
+/** 巧克力蛙画片: rarities, and the Galleons a duplicate turns into. */
+export const CARD_RARITIES = ['common', 'rare', 'epic', 'legendary'] as const;
+export type CardRarity = (typeof CARD_RARITIES)[number];
+export const CARD_DUP_GALLEONS: Record<CardRarity, number> = { common: 5, rare: 12, epic: 30, legendary: 80 };
+export const CARD_DROP_PCT_DEFAULT = 3;
+export const CARD_DROP_PCT_MAX = 20;
