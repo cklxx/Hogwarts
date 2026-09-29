@@ -367,6 +367,6 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       void sa; void sb;
     }
     expect(Math.min(seen.bit, seen.spared, seen.senderElsewhere, seen.capped, seen.duels)).toBeGreaterThan(20);
-  });
+  }, 90_000); // heavy: ~5–7 s on an idle box, several times that under a loaded CI runner
 });
 
