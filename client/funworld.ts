@@ -1,5 +1,4 @@
-import * as THREE from 'three/webgpu';
-import { StoryStandardMaterial } from './storybook';
+import * as THREE from 'three';
 import { CHESTS } from '../src/shared/chests';
 import { heightAt } from './terrain';
 import { L } from './i18n';
@@ -9,11 +8,10 @@ import type { CupSnap, EvSnap } from './funlogic';
 /**
  * Sprint 1's things in the world (README 校园事件轮盘 / 隐藏宝箱): the Golden Snitch, Filch (with his lantern and the
  * cone it lights) and Mrs Norris, Peeves over his ink, the Room of Requirement's door, and the hidden chests. Each is
- * a small self-contained model in its own function, with node materials (the storybook StoryStandardMaterial and
- * MeshBasicNodeMaterial; no custom shaders), so they draw the same on WebGPU and the WebGL 2 fallback; main.ts adds `group` to the scene and calls `frame` every frame.
+ * a small self-contained model in its own function, with plain standard materials (no custom shaders), so the
+ * renderer's migration can leave them alone; main.ts adds `group` to the scene and calls `frame` every frame.
  */
-const std = (color: number, extra: THREE.MeshStandardMaterialParameters = {}) => new StoryStandardMaterial({ color, roughness: 0.7, ...extra });
-const basic = (p: THREE.MeshBasicMaterialParameters) => new THREE.MeshBasicNodeMaterial(p);
+const std = (color: number, extra: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...extra });
 
 /** The Golden Snitch: a gold ball with two fast silver wings. */
 export function makeSnitch() {
@@ -25,7 +23,7 @@ export function makeSnitch() {
   wingGeo.translate(0.31, 0, 0);
   const wingMat = std(0xf4f1e6, { side: THREE.DoubleSide, transparent: true, opacity: 0.85, emissive: 0x9a8f70, emissiveIntensity: 0.5 });
   const wings = [1, -1].map((s) => { const w = new THREE.Mesh(wingGeo, wingMat); w.scale.x = s; root.add(w); return w; });
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), basic({ color: 0xffd35c, transparent: true, opacity: 0.18, depthWrite: false }));
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffd35c, transparent: true, opacity: 0.18, depthWrite: false }));
   root.add(glow);
   return { root, anim(t: number) { for (const [i, w] of wings.entries()) w.rotation.x = Math.sin(t * 40 + i * Math.PI) * 0.9; glow.scale.setScalar(1 + Math.sin(t * 6) * 0.15); } };
 }
@@ -35,11 +33,11 @@ export function makeFilch() {
   const m = makeWizard('Slytherin', false, 'filch') as WizardModel;
   setWizardLook(m, 'plain:4a3b2c:6b5a3a:3a2e22:d8b89a:ffb040');
   m.body.scale.set(1, 0.92, 1);
-  const lantern = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), basic({ color: 0xffc860 }));
+  const lantern = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), new THREE.MeshBasicMaterial({ color: 0xffc860 }));
   lantern.position.set(0.45, 1.05, -0.3);
   m.body.add(lantern);
   // the cone he sees in: 11 m, ±0.8 rad (kernel/wheel.ts FILCH), drawn flat on the ground
-  const cone = new THREE.Mesh(new THREE.CircleGeometry(11, 24, Math.PI / 2 - 0.8, 1.6), basic({ color: 0xffb040, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
+  const cone = new THREE.Mesh(new THREE.CircleGeometry(11, 24, Math.PI / 2 - 0.8, 1.6), new THREE.MeshBasicMaterial({ color: 0xffb040, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
   cone.rotation.x = -Math.PI / 2;
   cone.position.y = 0.06;
   m.body.add(cone);
@@ -59,7 +57,7 @@ export function makeNorris() {
   head.position.set(0, 0.42, -0.32);
   const earGeo = new THREE.ConeGeometry(0.05, 0.1, 4);
   for (const s of [-1, 1]) { const e = new THREE.Mesh(earGeo, fur); e.position.set(s * 0.07, 0.54, -0.33); root.add(e); }
-  const eyeMat = basic({ color: 0xffe066 });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
   for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), eyeMat); e.position.set(s * 0.05, 0.44, -0.44); root.add(e); }
   const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.5, 5), fur);
   tail.position.set(0, 0.45, 0.38);
@@ -82,7 +80,7 @@ export function makePeeves() {
   m.root.scale.setScalar(0.72);
   m.label.draw(L('皮皮鬼', 'Peeves'), '#ffd9a0', 1);
   m.label.show(true);
-  const ink = new THREE.Mesh(new THREE.CircleGeometry(1, 40), basic({ color: 0x14163a, transparent: true, opacity: 0.55, depthWrite: false }));
+  const ink = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0x14163a, transparent: true, opacity: 0.55, depthWrite: false }));
   ink.rotation.x = -Math.PI / 2;
   return { m, ink };
 }
@@ -98,7 +96,7 @@ export function makeRoomDoor() {
   arch.position.y = 3.2;
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), std(0xd4af37, { metalness: 0.8, roughness: 0.3 }));
   knob.position.set(0.6, 1.5, 0.14);
-  const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 4.4), basic({ color: 0xffd98a, transparent: true, opacity: 0.2, depthWrite: false }));
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 4.4), new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.2, depthWrite: false }));
   glow.position.set(0, 2, -0.12);
   root.add(door, arch, knob, glow);
   return root;
@@ -203,11 +201,6 @@ export function createFunWorld() {
         peeves.ink.position.set(on.x ?? at.px, heightAt(on.x ?? at.px, on.z ?? at.pz) + 0.05, on.z ?? at.pz);
       }
       if (on.id === 'room') door.visible = true;
-    },
-    /** The shader warm-up (main.ts): everything shown for the compile, then hidden again until an event needs it. */
-    warm(on: boolean) {
-      if (!on) { hide(); at.init = ''; return; }
-      for (const o of [snitch.root, filch.root, norris.root, peeves.m.root, peeves.ink, door]) o.visible = true;
     },
     /** The nearest closed chest within reach of `p` (the F prompt). */
     chestNear(p: { x: number; z: number }, open: readonly string[], reach = 2.4) {

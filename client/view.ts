@@ -1,5 +1,4 @@
-import * as THREE from 'three/webgpu';
-import * as TSL from 'three/tsl';
+import * as THREE from 'three';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { HALL_ROOF, INTERIORS, STATIC_COLLIDERS, STATUE_SPOTS, interiorAt, signedDistance, statueViewSolid, viewSolids, type ViewSolid } from '../src/shared/layout';
 import { captureActive } from './capture';
@@ -15,8 +14,8 @@ import { heightAt } from './terrain';
  *     posts and poles and lets them fade; pressed short it climbs over low things, and the closer it is pressed,
  *     the more it takes an over-the-shoulder framing (fully under MIN_ARM), rising up a wall right behind you.
  *  2. Occluders fade. Whatever still stands between the camera and the player (or the locked target) is cut away
- *     around them on screen with a screen-door dither (FADE_MASK: a TSL node set as the material's maskNode, the
- *     same on WebGPU and WebGL 2; fadeMaterial opts a material in), fading in over ~0.2 s.
+ *     around them on screen with a screen-door dither (installViewFade: a small patch of three.js's own shader
+ *     chunks, opted into per material with the VIEW_FADE define), fading in over ~0.2 s.
  *  3. X-ray. The player, the locked target and allies within a few metres who are still hidden get a house-
  *     coloured rim drawn through the walls (a second pass: depth Greater, and stencil so a body never rims itself).
  *  4. Indoors (INTERIORS: the Great Hall) the camera rises and shortens its arm; the roof is hidden (scene.ts).
@@ -381,12 +380,16 @@ export class CameraRig {
   }
 }
 
-// ------------------------------------------------------------------ occluder fading: a screen-door dither (TSL)
-// GPU side of this module: FADE_MASK (the fade, a TSL node every opted-in material carries as its maskNode, fed by
-// the FADE uniforms), the stencil settings in fadeMaterial / bodyStencil, and xrayMaterial (a rim node material with
-// depthFunc Greater + stencil Equal 1; the scene pass has a depth-stencil target, post.ts).
+// ------------------------------------------------------------------ occluder fading: a screen-door dither (shader patch)
+// GPU side of this module, all of it (for the WebGPU/TSL port): VIEW_FADE_GLSL (the fade, installed into three.js's
+// clipping-plane chunks by installViewFade, opted into per material by fadeMaterial's VIEW_FADE define, fed by the
+// FADE uniforms), the stencil settings in fadeMaterial / bodyStencil, and xrayMaterial (a rim ShaderMaterial with
+// depthFunc Greater + stencil Equal 1). In TSL: a node patch on material.fragmentNode's discard (or an
+// outputNode wrapper) reading the same five vec4 uniforms, and a NodeMaterial for the rim; stencil state is
+// the same material properties on WebGPU.
 /**
- * Uniform values shared by every material that opts in (one write per frame reaches all).
+ * Uniform values shared by every material that opts in (plain objects: three.js clones Vector uniforms per
+ * material but shares plain objects, so one write per frame reaches all; see render.ts `shared`).
  *   A, B:  a cut-out (x, y: centre in drawing-buffer pixels from the bottom left; z: radius in px; w: strength 0..1),
  *          A round the player, B round the locked target.
  *   depth: x, y: A's and B's view depth (m); z, w: A's and B's feet height (world y).
@@ -395,34 +398,53 @@ export class CameraRig {
  *   res:   x, y: drawing-buffer size (px); z, w: the camera's near and far.
  */
 const vec4 = () => ({ x: 0, y: 0, z: 0, w: 0 });
-export const FADE = { A: new THREE.Vector4(), B: new THREE.Vector4(), depth: new THREE.Vector4(), cam: new THREE.Vector4(), res: new THREE.Vector4() };
+export const FADE = { A: vec4(), B: vec4(), depth: vec4(), cam: vec4(), res: vec4() };
 
-const T = TSL as unknown as Record<string, any>;
-const U = { A: T.uniform(FADE.A), B: T.uniform(FADE.B), depth: T.uniform(FADE.depth), cam: T.uniform(FADE.cam), res: T.uniform(FADE.res) };
 /**
- * The whole fade, in TSL: a fragment inside a cut-out's circle on screen, nearer the camera than the character by
- * more than ~0.6 m and above its feet, is discarded on a 4x4 ordered-dither pattern whose density is the cut's
- * strength (soft edge, soft in depth). Discarding keeps depth sorting and shadows exactly as they were and costs a
- * few ALU. As a maskNode (false: discard); the shadow map and the mirror draw from other cameras, where it keeps
- * everything. The fragment's place on screen is its own view position projected (the same way as the cut-outs).
+ * The whole fade, in GLSL, run at the top of the fragment shader of every material with the VIEW_FADE define.
+ * A fragment inside a cut-out's circle on screen, nearer the camera than the character by more than ~0.6 m and
+ * above its feet, is discarded on a 4x4 ordered-dither pattern whose density is the cut's strength (soft edge,
+ * soft in depth). Discarding keeps depth sorting and shadows exactly as they were and costs a few ALU. In TSL:
+ * `If( cut.greaterThan( bayer4( screenCoordinate ) ), () => Discard() )` with the same cut() expression.
  */
-const FADE_MASK = T.Fn(() => {
-  const { float, smoothstep, length, max, fract, floor, distance, positionView, positionWorld, cameraPosition, cameraProjectionMatrix, screenCoordinate } = T;
-  const bayer2 = (a0: any) => { const a = floor(a0); return fract(a.x.div(2).add(a.y.mul(a.y).mul(0.75))); };
-  const clip = cameraProjectionMatrix.mul(T.vec4(positionView, 1));
-  const px = clip.xy.div(clip.w).mul(0.5).add(0.5).mul(U.res.xy);
-  const d = positionView.z.negate(), y = positionWorld.y;
-  const cut = (c: any, depth: any, feet: any) => float(1).sub(smoothstep(c.z.mul(0.55), c.z, length(px.sub(c.xy))))
-    .mul(float(1).sub(smoothstep(depth.sub(1.6), depth.sub(0.6), d)))
-    .mul(smoothstep(feet.add(0.2), feet.add(0.6), y))
-    .mul(c.w);
-  const k = max(cut(U.A, U.depth.x, U.depth.z), cut(U.B, U.depth.y, U.depth.w));
-  const dither = bayer2(screenCoordinate.xy.mul(0.5)).mul(0.25).add(bayer2(screenCoordinate.xy));
-  const on = U.A.w.add(U.B.w).greaterThan(0).and(distance(cameraPosition, U.cam.xyz).lessThan(0.01));
-  return on.and(k.mul(0.86).greaterThan(dither)).not();
-})();
+export const VIEW_FADE_GLSL = {
+  pars: /* glsl */ `
+#ifdef VIEW_FADE
+uniform vec4 viewFadeA;
+uniform vec4 viewFadeB;
+uniform vec4 viewFadeDepth;
+uniform vec4 viewFadeCam;
+uniform vec4 viewFadeRes;
+float viewFadeBayer2( vec2 a ) { a = floor( a ); return fract( a.x / 2.0 + a.y * a.y * 0.75 ); }
+float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
+	float k = 1.0 - smoothstep( c.z * 0.55, c.z, length( gl_FragCoord.xy - c.xy ) );
+	k *= 1.0 - smoothstep( depth - 1.6, depth - 0.6, d );
+	k *= smoothstep( feet + 0.2, feet + 0.6, y );
+	return k * c.w;
+}
+#endif
+`,
+  main: /* glsl */ `
+#ifdef VIEW_FADE
+	if ( viewFadeA.w + viewFadeB.w > 0.0 && distance( cameraPosition, viewFadeCam.xyz ) < 0.01 ) {
+		float vfZ = gl_FragCoord.z * 2.0 - 1.0;
+		float vfD = 2.0 * viewFadeRes.z * viewFadeRes.w / ( viewFadeRes.w + viewFadeRes.z - vfZ * ( viewFadeRes.w - viewFadeRes.z ) );
+		vec2 vfN = gl_FragCoord.xy / viewFadeRes.xy * 2.0 - 1.0;
+		vec3 vfV = vec3( vfN.x * viewFadeCam.w * viewFadeRes.x / viewFadeRes.y, vfN.y * viewFadeCam.w, -1.0 ) * vfD;
+		float vfY = cameraPosition.y + ( vec4( vfV, 0.0 ) * viewMatrix ).y;
+		float vfCut = max( viewFadeCut( viewFadeA, viewFadeDepth.x, viewFadeDepth.z, vfD, vfY ), viewFadeCut( viewFadeB, viewFadeDepth.y, viewFadeDepth.w, vfD, vfY ) );
+		if ( vfCut * 0.86 > viewFadeBayer2( 0.5 * gl_FragCoord.xy ) * 0.25 + viewFadeBayer2( gl_FragCoord.xy ) ) discard;
+	}
+#endif
+`,
+};
 
-/** fadeMask's cut in JS (for the ?debug=view audit): the cut at a fragment (px, py) at view depth d, height y. */
+let fadeInstalled = false;
+/**
+ * Appends VIEW_FADE_GLSL to three.js's clipping-plane chunks (in every built-in material, at the top of main())
+ * and gives every built-in material the uniforms. Inert unless a material defines VIEW_FADE. Before the first compile.
+ */
+/** VIEW_FADE_GLSL's viewFadeCut in JS (for the ?debug=view audit): the cut at a fragment (px, py) at view depth d, height y. */
 export function fadeCut(c: { x: number; y: number; z: number; w: number }, depth: number, feet: number, px: number, py: number, d: number, y: number) {
   const ss = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   let k = 1 - ss(c.z * 0.55, c.z, Math.hypot(px - c.x, py - c.y));
@@ -431,15 +453,20 @@ export function fadeCut(c: { x: number; y: number; z: number; w: number }, depth
   return k * c.w;
 }
 
-const fadedMats = new WeakSet<THREE.Material>();
-/**
- * Opt a world material into the fade, and have it mark the stencil (1) so the x-ray pass knows a wall is in front.
- * (A plain three.js material carries the node too: the node renderer copies it over when it converts the material.)
- */
+export function installViewFade() {
+  if (fadeInstalled) return;
+  fadeInstalled = true;
+  const C = THREE.ShaderChunk as unknown as Record<string, string>;
+  C.clipping_planes_pars_fragment += VIEW_FADE_GLSL.pars;
+  C.clipping_planes_fragment += VIEW_FADE_GLSL.main;
+  const U = { viewFadeA: FADE.A, viewFadeB: FADE.B, viewFadeDepth: FADE.depth, viewFadeCam: FADE.cam, viewFadeRes: FADE.res };
+  for (const lib of Object.values(THREE.ShaderLib)) for (const [k, v] of Object.entries(U)) lib.uniforms[k] = { value: v };
+}
+
+/** Opt a world material into the fade, and have it mark the stencil (1) so the x-ray pass knows a wall is in front. */
 export function fadeMaterial(m: THREE.Material) {
-  if (fadedMats.has(m)) return;
-  fadedMats.add(m);
-  (m as THREE.Material & { maskNode: unknown }).maskNode = FADE_MASK;
+  if (m.defines?.VIEW_FADE !== undefined) return;
+  m.defines = { ...m.defines, VIEW_FADE: '' };
   worldStencil(m);
   m.needsUpdate = true;
 }
@@ -453,33 +480,35 @@ const bodyStencil = (m: THREE.Material) => {
 };
 
 // ------------------------------------------------------------------ x-ray silhouettes
-/** One node graph for every x-ray: the colour and the feet height are read from each material (xrayColor, xrayFeet). */
-const XRAY = (() => {
-  const { float, abs, dot, normalView, positionViewDirection, positionWorld, materialReference, Discard, If } = T;
-  const color = materialReference('xrayColor', 'color'), feet = materialReference('xrayFeet', 'float');
-  const f = float(1).sub(abs(dot(normalView, positionViewDirection)));
-  return {
-    color: T.Fn(() => { If(positionWorld.y.lessThan(feet), () => { Discard(); }); return T.vec4(color.mul(f.mul(0.9).add(0.7)), f.mul(f).mul(0.7).add(0.16)); })(),
-  };
-})();
-type XrayMaterial = THREE.MeshBasicNodeMaterial & { xrayColor: THREE.Color; xrayFeet: number };
 /**
  * A rim in `color` drawn only where the body is hidden: depth Greater (behind what is drawn) and stencil == 1
  * (what is drawn there is the world, not a body). Discards below the feet (floors the shoes sink into).
  */
-export function xrayMaterial(color: number): XrayMaterial {
-  const m = new THREE.MeshBasicNodeMaterial({
+function xrayMaterial(color: number) {
+  return new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(color) }, feet: { value: 0 } },
+    vertexShader: /* glsl */ `varying vec3 vN; varying vec3 vV; varying float vY;
+      void main() {
+        vec4 wp = modelMatrix * vec4( position, 1.0 );
+        vY = wp.y;
+        vec4 mv = viewMatrix * wp;
+        vN = normalize( normalMatrix * normal );
+        vV = -mv.xyz;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `uniform vec3 color; uniform float feet; varying vec3 vN; varying vec3 vV; varying float vY;
+      void main() {
+        if ( vY < feet ) discard;
+        float f = 1.0 - abs( dot( normalize( vN ), normalize( vV ) ) );
+        gl_FragColor = vec4( color * ( 0.7 + 0.9 * f ), 0.16 + 0.7 * f * f );
+      }`,
     transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth,
     stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp,
     fog: false,
-  }) as XrayMaterial;
-  m.xrayColor = new THREE.Color(color);
-  m.xrayFeet = 0;
-  m.colorNode = XRAY.color;
-  return m;
+  });
 }
-interface Xray { root: THREE.Object3D; pairs: [THREE.Mesh, THREE.Mesh][]; mat: XrayMaterial; color: number; used: number }
+interface Xray { root: THREE.Object3D; pairs: [THREE.Mesh, THREE.Mesh][]; mat: THREE.ShaderMaterial; color: number; used: number }
 
 // ------------------------------------------------------------------ the integration (main.ts calls createView, then place() each frame)
 type Model = { root: THREE.Object3D };
@@ -487,7 +516,7 @@ interface SnapLite { w: { h: string; ho: House; x: number; z: number; s: string 
 export interface ViewDeps {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
-  renderer: THREE.WebGPURenderer;
+  renderer: THREE.WebGLRenderer;
   /** Meshes under these never fade (the ground the player stands on). */
   ground: THREE.Object3D[];
   wizards: Map<string, Model>;
@@ -507,6 +536,7 @@ const HALL_ROOF_BOX = [HALL_ROOF.x0, HALL_ROOF.x1, HALL_ROOF.z0, HALL_ROOF.z1, H
 const CHARACTERS = /^(crowd|parts|herd:|bolt)/;
 
 export function createView(d: ViewDeps) {
+  installViewFade();
   const world = new ViewWorld(viewSolids(heightAt));
   const rig = new CameraRig(world);
 
@@ -523,8 +553,7 @@ export function createView(d: ViewDeps) {
     bb.setFromObject(m);
     if (bb.max.y - bb.min.y < 0.3) return; // flat: roads, courtyard, floors, water
     for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
-      // (not what draws itself: the sky, clouds, aurora, water, particles, glows mark themselves noFade)
-      if (mat.userData.noFade || (mat as THREE.MeshBasicMaterial).depthTest === false) continue;
+      if ((mat as THREE.ShaderMaterial).isShaderMaterial || (mat as THREE.MeshBasicMaterial).depthTest === false) continue;
       fadeMaterial(mat);
       marked++;
     }
@@ -545,7 +574,7 @@ export function createView(d: ViewDeps) {
   const stats = { frames: 0, ms: 0, max: 0, marked, solids: world.n, occA: false, occB: false, xray: 0 };
 
   /** Screen-space cut-out for a character at feet `p` (chest height), strength s, into u / depth slot. */
-  function cutout(u: { x: number; y: number; z: number; w: number }, p: { x: number; y: number; z: number }, s: number, r: number, slot: 0 | 1, c = d.camera, depthOut: { x: number; y: number; z: number; w: number } = FADE.depth) {
+  function cutout(u: typeof FADE.A, p: { x: number; y: number; z: number }, s: number, r: number, slot: 0 | 1, c = d.camera, depthOut = FADE.depth) {
     tmp.set(p.x, p.y + 1.1, p.z);
     const depth = -tmp2.copy(tmp).applyMatrix4(c.matrixWorldInverse).z;
     tmp.project(c);
@@ -579,8 +608,8 @@ export function createView(d: ViewDeps) {
       x = { root: m.root, pairs, mat, color, used: 0 };
       xrays.set(key, x);
     }
-    if (x.color !== color) { x.color = color; x.mat.xrayColor.setHex(color); }
-    x.mat.xrayFeet = m.root.position.y + 0.25;
+    if (x.color !== color) { x.color = color; (x.mat.uniforms.color.value as THREE.Color).setHex(color); }
+    x.mat.uniforms.feet.value = m.root.position.y + 0.25;
     for (const [src, ghost] of x.pairs) {
       ghost.visible = true;
       if (ghost.geometry !== src.geometry) ghost.geometry = src.geometry; // a glamour swapped it
@@ -672,8 +701,6 @@ export function createView(d: ViewDeps) {
   if (typeof location !== 'undefined' && /[?&](debug=view|capture=1)\b/.test(location.search)) {
     (globalThis as unknown as { __view: unknown }).__view = {
       cam: d.cam,
-      /** the fade's uniforms (a script can set a cut-out by hand while a scripted shot holds the camera) */
-      fade: FADE,
       me: () => d.wizards.get(d.myHandle())?.root.position,
       rig,
       stats: () => ({ ...stats, avgMs: stats.ms / Math.max(1, stats.frames), arm: rig.arm, lift: rig.lift, shoulder: rig.shoulder, indoor: rig.indoor, fadeA, fadeB, interiors: INTERIORS.length }),
@@ -693,7 +720,7 @@ export function createView(d: ViewDeps) {
   function audit(n = 200, seed = 1, old = false) {
     let r = seed >>> 0 || 1;
     const rnd = () => ((r = (Math.imul(r, 48271) >>> 0) % 2147483647) / 2147483647);
-    const faded = (m: THREE.Material) => fadedMats.has(m);
+    const faded = (m: THREE.Material) => m.defines?.VIEW_FADE !== undefined;
     const terrain = new Set<THREE.Object3D>();
     for (const g of d.ground) (g.parent && !(g.parent as THREE.Scene).isScene ? g.parent : g).traverse((o) => terrain.add(o));
     const targets: THREE.Object3D[] = [];

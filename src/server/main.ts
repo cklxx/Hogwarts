@@ -2,10 +2,8 @@
 import { adoptedSessionId, clientIp, realm, realmWorker } from './realms.js';
 import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, renameSync, watchFile, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createServer as createHttpsServer } from 'node:https';
-import type { TLSSocket } from 'node:tls';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -26,7 +24,6 @@ import { SnapshotFanout } from './fanout.js';
 import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
 import { serveStatic } from './static.js';
-import { caPem, certCovers, localHosts, makeCertificate, tlsFiles, tlsPage } from './tls.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -47,55 +44,11 @@ const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://${LAN ?? 'localhost'}:${POR
  * (the browser's address bar / the MCP URL their agent used), so every copied command works from their machine
  * with no manual IP editing. Only well-formed host[:port] values are accepted.
  */
-// ---- HTTPS (browsers expose WebGPU only in a secure context: https:// or localhost). With a certificate in
-// TLS_CERT/TLS_KEY (default data/tls/cert.pem + key.pem, made by `npm run cert`) the same app is also served on
-// HTTPS_PORT (default 7443); MCP stays on plain HTTP so agents need no extra trust setup.
-// Without a certificate of your own, one is made automatically at start-up (openssl: a local CA name-constrained to
-// localhost and private networks, see tls.ts) and refreshed when this machine's LAN addresses change; the /tls page
-// then gives each player a one-line command to trust it. HTTPS=0 turns all of this off.
-const TLS_DIR = join(dirname(process.env.HOGWARTS_DATA ?? join(ROOT, 'data', 'world.json')), 'tls');
-const OWN_CERT = !!process.env.TLS_CERT;
-const TLS_CERT = process.env.TLS_CERT ?? tlsFiles(TLS_DIR).cert;
-const TLS_KEY = process.env.TLS_KEY ?? (OWN_CERT ? join(dirname(TLS_CERT), 'key.pem') : tlsFiles(TLS_DIR).key);
-const HTTPS_PORT = Number(process.env.HTTPS_PORT ?? 7443);
-let caPath: string | undefined = OWN_CERT ? undefined : tlsFiles(TLS_DIR).ca;
-if (process.env.HTTPS !== '0' && !OWN_CERT && realm.mode !== 'worker') {
-  const hosts = localHosts();
-  if (!existsSync(TLS_CERT) || !existsSync(TLS_KEY) || !certCovers(TLS_CERT, hosts)) {
-    try {
-      const made = makeCertificate(TLS_DIR, hosts, false);
-      if (made) { caPath = made.caPath; console.log(`[hogwarts:tls] 已自动生成 HTTPS 证书（${made.via}，覆盖 ${hosts.join(', ')}）${made.renewedCa ? '；本机地址超出原 CA 范围，CA 已更新，玩家需要在 /tls 重新信任一次' : ''}`); }
-    } catch (e) { console.warn('[hogwarts:tls] 自动生成证书失败：', (e as Error).message); }
-  }
-}
-const TLS = process.env.HTTPS !== '0' && existsSync(TLS_CERT) && existsSync(TLS_KEY);
-/**
- * PLAY_HOST: the name players reach the HTTPS game at when TLS_CERT is a publicly trusted certificate for it (e.g.
- * Let's Encrypt for game.example.com, whose DNS points at this LAN address). Then nobody installs anything: play
- * links use it, and a browser that opens the plain-HTTP page is sent there.
- */
-const PLAY_HOST = /^[A-Za-z0-9.\-]+$/.test(process.env.PLAY_HOST ?? '') ? process.env.PLAY_HOST! : undefined;
-const PLAY_ORIGIN = PLAY_HOST && TLS ? `https://${PLAY_HOST}${HTTPS_PORT === 443 ? '' : `:${HTTPS_PORT}`}` : undefined;
-const hostOf = (req: IncomingMessage) => String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim().replace(/:\d+$/, '');
-/** The origin a browser should play on: the HTTPS one when TLS is on (WebGPU), else the one it used. */
-function playBaseFor(req: IncomingMessage): string {
-  if (PLAY_ORIGIN) return PLAY_ORIGIN;
-  if (process.env.PUBLIC_URL || !TLS) return baseFor(req);
-  const h = hostOf(req);
-  return /^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/.test(h) ? `https://${h}:${HTTPS_PORT}` : baseFor(req);
-}
-/** The MCP endpoint to show: always plain HTTP on PORT (agents' HTTP clients need no extra trust setup). */
-function mcpBaseFor(req: IncomingMessage): string {
-  if (process.env.PUBLIC_URL || !(req.socket as TLSSocket).encrypted) return baseFor(req);
-  const h = hostOf(req);
-  return /^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/.test(h) ? `http://${h}:${PORT}` : PUBLIC_URL;
-}
-
 function baseFor(req: IncomingMessage): string {
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL;
   const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim();
   if (!/^[A-Za-z0-9.\-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/.test(host)) return PUBLIC_URL;
-  const proto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https' || (req.socket as TLSSocket).encrypted ? 'https' : 'http';
+  const proto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https' ? 'https' : 'http';
   return `${proto}://${host}`;
 }
 
@@ -262,7 +215,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
     const keyedBy = token ? checkKey(req, token) : undefined;
     if (keyedBy === 'throttled') return json(res, 429, { jsonrpc: '2.0', error: { code: -32000, message: LOGIN_THROTTLED }, id: null });
     const session: McpSession = {
-      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), playUrl: playBaseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req),
+      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req),
       loginFails, forgeFails, sessionsOf, rotated: (wid, tok, keep) => rotated(wid, tok, { keepMcp: keep }),
     };
     if (session.wizardId) world.touch(session.wizardId);
@@ -287,11 +240,6 @@ const http = createServer(async (req, res) => {
       return res.end();
     }
     if (url.pathname === '/mcp') return await handleMcp(req, res, url);
-    // with a trusted certificate (PLAY_HOST), a browser opening the plain-HTTP game goes to the HTTPS one (WebGPU)
-    if (PLAY_ORIGIN && req.method === 'GET' && url.pathname === '/' && !(req.socket as TLSSocket).encrypted && String(req.headers.accept ?? '').includes('text/html')) {
-      res.writeHead(302, { location: `${PLAY_ORIGIN}/${url.search}` });
-      return res.end();
-    }
     if (url.pathname === '/api/enroll' && req.method === 'POST') {
       if (!allowEnrol(req)) return json(res, 429, { error: 'The Sorting Hat needs a rest: too many enrolments from here. Try again in a few minutes.' });
       const b = (await readBody(req)) as { name?: string; house?: string } | undefined;
@@ -302,23 +250,9 @@ const http = createServer(async (req, res) => {
         return json(res, 400, { error: (e as Error).message });
       }
     }
-    // 开启 WebGPU: the CA certificate (never its key) and a page with one-line trust commands (tls.ts)
-    if (url.pathname === '/tls' || url.pathname === '/tls/') {
-      const h = hostOf(req);
-      const ok = /^[A-Za-z0-9.\-]+$/.test(h);
-      const page = tlsPage({ httpBase: ok ? `http://${h}:${PORT}` : PUBLIC_URL, httpsUrl: PLAY_ORIGIN ? `${PLAY_ORIGIN}/` : TLS && ok ? `https://${h}:${HTTPS_PORT}/` : null, hasCa: !PLAY_ORIGIN && !!(caPath && existsSync(caPath)), trusted: !!PLAY_ORIGIN });
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      return res.end(page);
-    }
-    if (url.pathname === '/tls/ca.pem') {
-      const pem = caPath ? caPem(tlsFiles(TLS_DIR), caPath) : null;
-      if (!pem) { res.writeHead(404); return res.end('no CA'); }
-      res.writeHead(200, { 'content-type': 'application/x-pem-file', 'content-disposition': 'attachment; filename="hogwarts-ca.pem"', 'cache-control': 'no-store' });
-      return res.end(pem);
-    }
     if (url.pathname === '/api/me') {
       const w = keyed(req, url, res);
-      return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${mcpBaseFor(req)}/mcp` }) : undefined;
+      return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${baseFor(req)}/mcp` }) : undefined;
     }
     // The player's owls to their agent after owl id `since` (default: after what the agent has read), for a
     // stdio bridge's channel push (docs/AGENT_LINK.md §C.4). Read-only, and not presence: polling it neither
@@ -476,7 +410,7 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${mcpBaseFor(req)}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
@@ -544,19 +478,3 @@ http.listen(PORT, HOST, () => {
   console.log(`[hogwarts] ${PUBLIC_URL}  (MCP: ${PUBLIC_URL}/mcp, WS: /ws)  term ${world.term.n}, ${world.rules.terms.lengthSeconds}s per term${realm.mode === 'worker' ? `  [realm ${realm.id}]` : ''}`);
   realmWorker(http, realmStats);
 });
-if (TLS && realm.mode !== 'worker') {
-  // the same app over TLS: every request and WebSocket upgrade is handed to the plain server's handlers
-  const https = createHttpsServer({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) });
-  https.on('request', (req, res) => http.emit('request', req, res));
-  https.on('upgrade', (req, socket, head) => http.emit('upgrade', req, socket, head));
-  https.on('error', (e) => console.error(`[hogwarts] HTTPS on ${HOST}:${HTTPS_PORT} failed:`, (e as Error).message));
-  https.listen(HTTPS_PORT, HOST, () => console.log(PLAY_ORIGIN
-    ? `[hogwarts] HTTPS（WebGPU 需要）: ${PLAY_ORIGIN}   受信任证书，玩家直接打开即可`
-    : `[hogwarts] HTTPS（WebGPU 需要）: https://${LAN ?? 'localhost'}:${HTTPS_PORT}   每台电脑第一次先打开 http://${LAN ?? 'localhost'}:${PORT}/tls 信任证书`));
-  // renewed certificates (acme.sh / certbot every ~60 days, or a new LAN address) are picked up without a restart
-  watchFile(TLS_CERT, { interval: 60_000 }, () => {
-    try { https.setSecureContext({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) }); console.log('[hogwarts:tls] 证书已更新，已热加载'); } catch (e) { console.warn('[hogwarts:tls] 证书热加载失败：', (e as Error).message); }
-  });
-} else if (!TLS && realm.mode !== 'worker') {
-  console.log(`[hogwarts] 提示：浏览器只在 HTTPS 或 localhost 下提供 WebGPU；这台机器没有 openssl/mkcert，无法自动生成证书。可用 ssh -L ${PORT}:localhost:${PORT} 转发后打开 http://localhost:${PORT}`);
-}

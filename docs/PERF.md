@@ -6,7 +6,7 @@ This page records what was measured, on what, and how, before and after the perf
 `scripts/bench.ts`; you can re-run all of them (see [Reproduce](#reproduce)). The browser client's own pass
 (`wf/fast`: draw calls, lights, level of detail, instancing, AOI in the client, load) is in
 [Client (browser)](#client-browser-wffast), and the move to WebGPU (`wf/webgpu`: TSL, compute, node
-post-processing, both backends measured) in [Client (browser): WebGPU](#client-browser-webgpu-wfwebgpu) at the end.
+post-processing, both backends measured) in [Client (browser): WebGPU](#client-browser-webgpu-wfwebgpu) at the end (since reverted: the client is back on WebGLRenderer).
 
 ## Summary
 
@@ -620,6 +620,8 @@ For "before", check out `c7665c4`, cherry-pick `32c5bbe` (the probe hooks in `cl
 
 
 ## Client (browser): WebGPU (wf/webgpu)
+
+> **Reverted on `wf/webgl`.** The client is back on `WebGLRenderer`. Players who open the game over LAN HTTP get no WebGPU (secure contexts only), and the WebGPU renderer's WebGL 2 fallback was slower than the classic renderer. Same machine (SwiftShader), 1280x720, 'high', `perf-client.ts --spots=crowd,follow --secs=8`: 0.24 / 0.25 fps → **0.54 / 0.49 fps**, first frame 42.3 → **25.0 s**, shader warm-up 18.5 → **0.16 s**, JS 355 → **268 KB**. The notes below record the WebGPU work (merge `205ed7b`) for a possible desktop micro-client.
 
 The owner's ask: 「能极致的使用 webgpu 吗」. This pass moved the client to three.js's `WebGPURenderer` (r186),
 rewrote every shader in TSL, put particles and grass on compute shaders, and rebuilt post-processing as one

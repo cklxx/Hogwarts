@@ -33,12 +33,7 @@ function precompress(): Plugin {
 
 export default defineConfig({
   root: 'client',
-  build: {
-    outDir: OUT, emptyOutDir: true, chunkSizeWarningLimit: 1200,
-    // three.js (the node renderer, TSL and the addons we use: ~75 % of the bytes) in a chunk of its own: it loads in
-    // parallel with the game's code, and a release that changes only the game leaves it cached
-    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'three', test: /node_modules[\\/]three[\\/]/ }] } } },
-  },
+  build: { outDir: OUT, emptyOutDir: true, chunkSizeWarningLimit: 1200 },
   plugins: [precompress()],
   server: {
     port: 5173,
