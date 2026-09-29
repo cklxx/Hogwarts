@@ -144,7 +144,7 @@ async function runPrimary() {
 
   const start = (r: Realm) => {
     const proc = fork(process.argv[1], process.argv.slice(2), {
-      env: { ...process.env, REALM_ID: String(r.id), PORT: '0', HOST: '127.0.0.1', HOGWARTS_DATA: realmDataPath(DATA, r.id), PUBLIC_URL },
+      env: { ...process.env, REALM_ID: String(r.id), PORT: '0', HOST: '127.0.0.1', HOGWARTS_DATA: realmDataPath(DATA, r.id), ...(process.env.PUBLIC_URL ? { PUBLIC_URL } : {}) },
       execArgv: process.execArgv,
     });
     r.proc = proc;

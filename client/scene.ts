@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
@@ -6,9 +7,11 @@ import { tex as fileTex } from './assets';
 import { WIND, createGrass } from './grass';
 import { setWizardDetail } from './models';
 import { SEA_LEVEL, drape, heightAt, makeTerrain } from './terrain';
-import { cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
+import { STORYBOOK, cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
 
 const windTime = { value: 0 };
+/** Storybook forest: deep painted greens and a teal. */
+const FOREST = [0x2e5a2b, 0x3a6a33, 0x255040, 0x42683a, 0x315f3e, 0x2a4e30, 0x38623a, 0x2f5436];
 
 /** A pointed (Gothic) arch, `w` wide and `h` tall, standing on y = 0. */
 function archShape(w: number, h: number, y0 = 0) {
@@ -106,6 +109,55 @@ function pennantGeometry() {
   return g;
 }
 
+/**
+ * Ink for outlines: a dark plum, which the fog fades into the distance. A hull the camera is inside
+ * (the camera does not collide with walls) is dropped, or its back faces would black out the view.
+ */
+const INK = new THREE.MeshBasicMaterial({ color: 0x24161e, side: THREE.BackSide });
+INK.onBeforeCompile = (sh) => {
+  sh.vertexShader = 'attribute vec3 aBoxMin;\nattribute vec3 aBoxMax;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    if ( all( greaterThan( cameraPosition, aBoxMin ) ) && all( lessThan( cameraPosition, aBoxMax ) ) ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );`);
+};
+INK.customProgramCacheKey = () => 'ink-hull';
+/**
+ * A storybook ink outline for static, convex-ish buildings (boxes, towers, cones): each mesh's own
+ * geometry grown by `t` metres about its centre and baked into world space, all merged into ONE mesh
+ * drawn back faces only. Where a silhouette meets the sky or another wall, the rim of the hull shows
+ * as a line; everywhere else the building itself hides it.
+ */
+function inkHull(meshes: THREE.Mesh[], t = 0.14) {
+  const bb = new THREE.Box3(), size = new THREE.Vector3(), c = new THREE.Vector3(), ws = new THREE.Vector3();
+  const m = new THREE.Matrix4(), tmp = new THREE.Matrix4();
+  const geos = meshes.map((mesh) => {
+    mesh.updateWorldMatrix(true, false);
+    const g = mesh.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    bb.copy(g.boundingBox!).getSize(size);
+    bb.getCenter(c);
+    ws.setFromMatrixScale(mesh.matrixWorld);
+    const k = (scale: number, w: number) => (w * scale > 1e-3 ? 1 + (2 * t) / (w * scale) : 1);
+    m.makeTranslation(c.x, c.y, c.z)
+      .multiply(tmp.makeScale(k(ws.x, size.x), k(ws.y, size.y), k(ws.z, size.z)))
+      .multiply(tmp.makeTranslation(-c.x, -c.y, -c.z))
+      .premultiply(mesh.matrixWorld);
+    const x = new THREE.BufferGeometry();
+    x.setAttribute('position', g.getAttribute('position').clone());
+    if (g.index) x.setIndex(g.index.clone());
+    const out = (x.index ? x.toNonIndexed() : x).applyMatrix4(m);
+    out.computeBoundingBox();
+    const n = out.getAttribute('position').count, lo = out.boundingBox!.min, hi = out.boundingBox!.max;
+    const a = new Float32Array(n * 3), b = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a.set([lo.x, lo.y, lo.z], i * 3); b.set([hi.x, hi.y, hi.z], i * 3); }
+    out.setAttribute('aBoxMin', new THREE.BufferAttribute(a, 3));
+    out.setAttribute('aBoxMax', new THREE.BufferAttribute(b, 3));
+    return out;
+  });
+  const hull = new THREE.Mesh(mergeGeometries(geos)!, INK);
+  hull.name = 'ink';
+  hull.matrixAutoUpdate = false;
+  return hull;
+}
+
 export interface WorldScene {
   /** The terrain mesh, for aiming. */
   ground: THREE.Mesh;
@@ -141,7 +193,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   windowMat.roughness = 0.2;
   windowMat.metalness = 0.3;
   const candleMat = glowMat(0xfff1c4);
-  const leaf = new THREE.MeshStandardMaterial({ color: 0x2a4a26, roughness: 1, flatShading: true });
+  const leaf = new THREE.MeshStandardMaterial({ color: STORYBOOK ? 0xffffff : 0x2a4a26, roughness: 1, flatShading: true });
   // tree crowns sway in the wind (more at the top), each tree with its own phase. The lean is worked
   // out in world space (every crown bends downwind, whatever its instance's yaw and scale; bigger
   // crowns move further) and carried back into the crown's own space before instancing applies.
@@ -163,7 +215,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       transformed += (transpose(treeB) * lean) / vec3(dot(treeB[0], treeB[0]), dot(treeB[1], treeB[1]), dot(treeB[2], treeB[2]));`);
   };
   leaf.customProgramCacheKey = () => 'leaf-sway';
-  const trunk = new THREE.MeshStandardMaterial({ color: 0x3d2b1a, roughness: 1 });
+  const trunk = new THREE.MeshStandardMaterial({ color: STORYBOOK ? 0x4a3020 : 0x3d2b1a, roughness: 1 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 });
   const rock = M.rock;
   const marble = new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.25 });
@@ -172,11 +224,17 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     scene.add(o);
     return o;
   };
+  /** Buildings that get an ink outline (storybook, 'high' only; see inkHull). */
+  const inked: THREE.Mesh[] = [];
+  const ink = <T extends THREE.Object3D>(o: T) => {
+    if (STORYBOOK) o.traverse((c) => { if ((c as THREE.Mesh).isMesh) inked.push(c as THREE.Mesh); });
+    return o;
+  };
 
   // ---- terrain: rolling grounds, a lake basin, and the Highlands (flat wherever something is built)
   const terrain = makeTerrain(M.grass, M.rock);
   scene.add(terrain.group);
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ color: 0x0f1f2c, roughness: 0.12, metalness: 0.35 }));
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial(STORYBOOK ? { color: 0x1f4a63, roughness: 0.35, metalness: 0.1 } : { color: 0x0f1f2c, roughness: 0.12, metalness: 0.35 }));
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = SEA_LEVEL;
   scene.add(sea);
@@ -238,8 +296,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         : isHouse ? M.tudor : o.style === 'wood' ? M.wood : M.stone;
       const b = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(w, o.h, d), w, o.h, d, isHouse ? 5 : 4), mat));
       b.position.set(cx, o.h / 2, cz);
+      if (!isGlass) ink(b);
       if (isHouse || o.style === 'wood') {
-        const roof = add(new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.72, o.h * 0.7, 4), M.roof));
+        const roof = ink(add(new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.72, o.h * 0.7, 4), M.roof)));
         roof.position.set(cx, o.h + o.h * 0.35, cz);
         roof.rotation.y = Math.PI / 4;
         roof.scale.set(w / Math.max(w, d), 1, d / Math.max(w, d));
@@ -298,10 +357,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         const shore = new THREE.Mesh(drape(shoreGeo, 0.06), M.sand);
         shore.receiveShadow = true;
         scene.add(shore);
-        const normals = fileTex('water_normal.webp', { srgb: false, fallback: waterNormals() });
+        const normals = STORYBOOK ? waterNormals() : fileTex('water_normal.webp', { srgb: false, fallback: waterNormals() });
         lake = new Water(geo, {
           textureWidth: 512, textureHeight: 512, waterNormals: normals,
-          sunDirection: new THREE.Vector3(0.5, 0.8, 0.2), sunColor: 0xfff1d6, waterColor: 0x0c2a3a, distortionScale: 2.2, fog: true,
+          sunDirection: new THREE.Vector3(0.5, 0.8, 0.2), sunColor: STORYBOOK ? 0xffe0b0 : 0xfff1d6, waterColor: STORYBOOK ? 0x1a4f60 : 0x0c2a3a, distortionScale: STORYBOOK ? 1.4 : 2.2, fog: true,
         });
         lake.rotation.x = -Math.PI / 2;
         lake.position.set(o.x, 0.08, o.z);
@@ -320,9 +379,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         break;
       }
       case 'tower': {
-        const t = add(new THREE.Mesh(cylUV(new THREE.CylinderGeometry(o.r, o.r * 1.06, o.h, 24, 1, true), o.r, o.h, 4), M.stone));
+        const t = ink(add(new THREE.Mesh(cylUV(new THREE.CylinderGeometry(o.r, o.r * 1.06, o.h, 24, 1, true), o.r, o.h, 4), M.stone)));
         t.position.set(o.x, o.h / 2, o.z);
-        const roof = add(new THREE.Mesh(new THREE.ConeGeometry(o.r * 1.3, o.r * 2.8, 24), M.roof));
+        const roof = ink(add(new THREE.Mesh(new THREE.ConeGeometry(o.r * 1.3, o.r * 2.8, 24), M.roof)));
         roof.position.set(o.x, o.h + o.r * 1.4, o.z);
         const spire = add(new THREE.Mesh(new THREE.ConeGeometry(0.12, 2.5, 6), gold), false);
         spire.position.set(o.x, o.h + o.r * 2.8 + 1, o.z);
@@ -357,7 +416,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         }
         arms.position.y = o.h * 0.6;
         g.add(arms);
-        const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(4.2, 1), leaf);
+        // (storybook: the forest's leaf material is white, tinted per instance; the willow has its own green)
+        const willowLeaf = STORYBOOK ? Object.assign(leaf.clone(), { onBeforeCompile: leaf.onBeforeCompile, customProgramCacheKey: leaf.customProgramCacheKey }) : leaf;
+        if (STORYBOOK) willowLeaf.color.set(0x4f7a3a);
+        const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(4.2, 1), willowLeaf);
         crown.position.y = o.h * 0.78;
         g.add(crown);
         g.position.set(o.x, 0, o.z);
@@ -371,9 +433,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         break;
       }
       case 'wood': {
-        const hut = add(new THREE.Mesh(cylUV(new THREE.CylinderGeometry(o.r, o.r, o.h * 0.6, 12), o.r, o.h * 0.6, 3), M.wood));
+        const hut = ink(add(new THREE.Mesh(cylUV(new THREE.CylinderGeometry(o.r, o.r, o.h * 0.6, 12), o.r, o.h * 0.6, 3), M.wood)));
         hut.position.set(o.x, o.h * 0.3, o.z);
-        const roof = add(new THREE.Mesh(new THREE.ConeGeometry(o.r * 1.35, o.h * 0.65, 12), M.roof));
+        const roof = ink(add(new THREE.Mesh(new THREE.ConeGeometry(o.r * 1.35, o.h * 0.65, 12), M.roof)));
         roof.position.set(o.x, o.h * 0.92, o.z);
         const lamp = new THREE.PointLight(0xffb060, 6, 14, 1.6);
         lamp.position.set(o.x, 2.5, o.z + o.r + 0.8);
@@ -396,9 +458,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         break;
       }
       default: {
-        const c = add(new THREE.Mesh(cylUV(new THREE.CylinderGeometry(o.r, o.r * 1.1, o.h, 12), o.r, o.h, 3), M.stone));
+        const c = ink(add(new THREE.Mesh(cylUV(new THREE.CylinderGeometry(o.r, o.r * 1.1, o.h, 12), o.r, o.h, 3), M.stone)));
         c.position.set(o.x, o.h / 2, o.z);
-        const cap = add(new THREE.Mesh(new THREE.BoxGeometry(o.r * 2.6, 0.5, o.r * 2.6), M.darkStone));
+        const cap = ink(add(new THREE.Mesh(new THREE.BoxGeometry(o.r * 2.6, 0.5, o.r * 2.6), M.darkStone)));
         cap.position.set(o.x, o.h + 0.25, o.z);
       }
     }
@@ -423,8 +485,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     rose.position.set(0, 18.4, -39.32);
     const roseRim = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.28, 6, 32), M.darkStone);
     roseRim.position.copy(rose.position);
-    hallRoof.add(new THREE.Mesh(slopes, M.roof), new THREE.Mesh(gables, M.stone), ridge, lantern, fleche, tip, rose, roseRim);
+    const slopeMesh = new THREE.Mesh(slopes, M.roof);
+    hallRoof.add(slopeMesh, new THREE.Mesh(gables, M.stone), ridge, lantern, fleche, tip, rose, roseRim);
     add(hallRoof);
+    if (STORYBOOK) hallRoof.add(inkHull([slopeMesh, lantern, fleche]));
     pennants.push({ x: 0, y: 37, z: -56, len: 3.2 });
     // a lintel over the doors turns the full-height slot into a doorway
     const lintel = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(6.2, 5, 1), 6.2, 5, 1, 4), M.stone));
@@ -463,6 +527,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     g.add(corbel, shaft, cap, roof, fin);
     g.position.set(x, 0, z);
     add(g);
+    ink(shaft); ink(roof); ink(corbel);
     pennants.push({ x, y: H + 3.5 + r * 3.4 + 2, z, len: 2.4 });
     const yaw = Math.atan2(x, z + 88);
     windows.push({ x: x + Math.sin(yaw) * r, y: H - 1.2, z: z + Math.cos(yaw) * r, yaw, w: 0.7, h: 1.5 });
@@ -554,6 +619,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     scene.add(panes, frames);
   }
 
+  // ink outlines round every building: one draw call, shown at 'high'
+  const outline = inked.length ? inkHull(inked) : null;
+  if (outline) scene.add(outline);
+
   // wind-blown grass (and a few wildflowers) around the player; replaces the old static tufts
   const grass = createGrass(scene);
 
@@ -573,7 +642,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), jr() * 6);
       m4.compose(new THREE.Vector3(t.x, gy + t.h * (0.55 + k * 0.25), t.z), q, new THREE.Vector3(t.r * (3.4 - k * 1.1), t.h * (0.55 - k * 0.15), t.r * (3.4 - k * 1.1)));
       crownI.setMatrixAt(i * 2 + k, m4);
-      crownI.setColorAt(i * 2 + k, col.setHSL(0.28 + jr() * 0.08, 0.45, 0.55 + jr() * 0.35));
+      crownI.setColorAt(i * 2 + k, STORYBOOK ? col.set(FOREST[Math.floor(jr() * FOREST.length)]).multiplyScalar(0.85 + jr() * 0.3) : col.setHSL(0.28 + jr() * 0.08, 0.45, 0.55 + jr() * 0.35));
     }
     q.identity();
   });
@@ -649,6 +718,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       grass.setQuality(q);
       frames.geometry = frameGeos[q];
       setWizardDetail(q); // the wizards in the world follow the world's quality
+      if (outline) outline.visible = q === 'high';
       // the lake's mirror pass re-renders the whole scene; freeze it on weak GPUs
       if (lake && lakeReflect) (lake as Water).onBeforeRender = q === 'high' ? lakeReflect : () => {};
     },

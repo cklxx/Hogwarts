@@ -1,6 +1,7 @@
 // First: with REALMS=N this process becomes the front door for N realm processes and never gets past this import.
 import { adoptedSessionId, clientIp, realm, realmWorker } from './realms.js';
 import { randomUUID } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, extname, join, normalize, resolve } from 'node:path';
@@ -27,7 +28,26 @@ const PORT = Number(process.env.PORT ?? 7777);
 const HOST = process.env.HOST ?? '0.0.0.0';
 const DATA = process.env.HOGWARTS_DATA ?? join(ROOT, 'data/world.json');
 const DIST = join(ROOT, 'dist');
-const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://localhost:${PORT}`;
+/** The first LAN IPv4 address of this machine (so links work from other computers), else localhost. */
+function lanAddress(): string | undefined {
+  for (const list of Object.values(networkInterfaces())) for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) return a.address;
+  return undefined;
+}
+const LAN = lanAddress();
+/** Fixed base URL when PUBLIC_URL is set; otherwise links are built from the address each player used (baseFor). */
+const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://${LAN ?? 'localhost'}:${PORT}`;
+/**
+ * The base URL to show a player or agent: PUBLIC_URL when configured, else the host they actually reached us at
+ * (the browser's address bar / the MCP URL their agent used), so every copied command works from their machine
+ * with no manual IP editing. Only well-formed host[:port] values are accepted.
+ */
+function baseFor(req: IncomingMessage): string {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL;
+  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim();
+  if (!/^[A-Za-z0-9.\-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/.test(host)) return PUBLIC_URL;
+  const proto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https' ? 'https' : 'http';
+  return `${proto}://${host}`;
+}
 
 // ------------------------------------------------------------------ world + persistence
 function load(): World {
@@ -203,7 +223,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
     const keyedBy = token ? checkKey(req, token) : undefined;
     if (keyedBy === 'throttled') return json(res, 429, { jsonrpc: '2.0', error: { code: -32000, message: LOGIN_THROTTLED }, id: null });
     const session: McpSession = {
-      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: PUBLIC_URL, ip: clientIp(req), allowEnrol: () => allowEnrol(req),
+      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req),
       loginFails, forgeFails, sessionsOf, rotated: (wid, tok, keep) => rotated(wid, tok, { keepMcp: keep }),
     };
     if (session.wizardId) world.touch(session.wizardId);
@@ -240,7 +260,7 @@ const http = createServer(async (req, res) => {
     }
     if (url.pathname === '/api/me') {
       const w = keyed(req, url, res);
-      return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${PUBLIC_URL}/mcp` }) : undefined;
+      return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${baseFor(req)}/mcp` }) : undefined;
     }
     // The player's owls to their agent after owl id `since` (default: after what the agent has read), for a
     // stdio bridge's channel push (docs/AGENT_LINK.md §C.4). Read-only, and not presence: polling it neither
@@ -380,7 +400,7 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${PUBLIC_URL}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
@@ -444,6 +464,7 @@ function realmStats() {
 // Failing to bind is fatal (the uncaughtException guard above must not keep a deaf process alive).
 http.on('error', (e) => { console.error(`[hogwarts] cannot listen on ${HOST}:${PORT}:`, (e as Error).message); process.exit(1); });
 http.listen(PORT, HOST, () => {
+  if (!process.env.PUBLIC_URL) console.log(`[hogwarts] 本机 http://localhost:${PORT}${LAN ? `   局域网 http://${LAN}:${PORT}（别的电脑用这个；游戏里的连接命令会自动填上玩家实际访问的地址）` : ''}`);
   console.log(`[hogwarts] ${PUBLIC_URL}  (MCP: ${PUBLIC_URL}/mcp, WS: /ws)  term ${world.term.n}, ${world.rules.terms.lengthSeconds}s per term${realm.mode === 'worker' ? `  [realm ${realm.id}]` : ''}`);
   realmWorker(http, realmStats);
 });

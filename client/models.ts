@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { parseGlamourKey, type Glamour, type GlamourMaterial } from '../src/shared/glamour';
+import { STORYBOOK, rimLit } from './textures';
 
 /** A canvas sprite used for name tags, hp bars and speech bubbles. */
 export class Label {
@@ -82,6 +83,9 @@ const SCARF: Record<House, [string, string]> = {
   Slytherin: ['#1a4a2a', '#b9bec4'],
 };
 const SKIN = [0xf2cba8, 0xe6b48c, 0xc98f66, 0x9a6444, 0x6e4530, 0xf6dcc4];
+/** School black. Storybook: a deep indigo charcoal, so robes read as painted cloth rather than holes. */
+const CLOTH = STORYBOOK ? 0x2b2838 : 0x1c1c22, HAT = STORYBOOK ? 0x262334 : 0x17171e, TROUSERS = STORYBOOK ? 0x2e2c38 : 0x24242a;
+const ROBE_RGB = STORYBOOK ? [34, 31, 46] : [26, 26, 32];
 const HAIR = [0x2b1a10, 0x4a2c17, 0x7a4a22, 0xa8561f, 0xd8b56a, 0x141414, 0x6b6b6b];
 const WOOD = [0x4a2e19, 0x6b4526, 0x2d1d12, 0x8a6a45, 0x3a2418];
 
@@ -281,8 +285,7 @@ function robeTex(house: House) {
     const g = c.getContext('2d')!;
     for (let x = 0; x < S; x++) {
       const k = 0.78 + 0.22 * Math.cos((x / S) * Math.PI * 2 * 7);
-      const v = Math.round(26 * k);
-      g.fillStyle = `rgb(${v},${v},${v + 6})`;
+      g.fillStyle = `rgb(${ROBE_RGB.map((c) => Math.round(c * k)).join(',')})`;
       g.fillRect(x, 0, 1, S);
     }
     for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`; g.fillRect(Math.random() * S, Math.random() * S, 1, 3); }
@@ -306,7 +309,7 @@ function robeTex(house: House) {
  * vertex shader swings the lower part by `sway` (x: sideways, z: trailing, y: flare).
  */
 function clothMaterial(house: House, map: THREE.Texture | null, sway: { value: THREE.Vector3 }, vertexColors = false) {
-  const m = new THREE.MeshStandardMaterial({ color: map || vertexColors ? 0xffffff : 0x1c1c22, map, roughness: 0.82, side: THREE.DoubleSide, vertexColors });
+  const m = new THREE.MeshStandardMaterial({ color: map || vertexColors ? 0xffffff : CLOTH, map, roughness: 0.82, side: THREE.DoubleSide, vertexColors });
   const lining = new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.7);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uSway = sway;
@@ -328,6 +331,27 @@ function clothMaterial(house: House, map: THREE.Texture | null, sway: { value: T
   return m;
 }
 const NO_SWAY = { value: new THREE.Vector3() };
+
+/**
+ * Storybook ink outline for a character part (shown at 'high'): the part's own geometry pushed out
+ * along its normals and drawn back faces only, in ink. It thickens a little with distance so the
+ * line stays one or two pixels wide; the robe's copy sways with the robe.
+ */
+function inkMaterial(sway: { value: THREE.Vector3 }) {
+  const m = new THREE.MeshBasicMaterial({ color: 0x1c1018, side: THREE.BackSide });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uSway = sway;
+    sh.vertexShader = 'uniform vec3 uSway;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float swayW = pow(clamp(1.0 - position.y / ${(ROBE_TOP - 0.2).toFixed(2)}, 0.0, 1.0), 1.6);
+      transformed.x += uSway.x * swayW;
+      transformed.z += uSway.z * swayW;
+      transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;
+      float inkD = max(0.0, -(modelViewMatrix * vec4(transformed, 1.0)).z);
+      transformed += normalize(normal) * (0.014 + inkD * 0.0016);`);
+  };
+  m.customProgramCacheKey = () => 'wizard-ink';
+  return m;
+}
 
 const std = (key: string, p: THREE.MeshStandardMaterialParameters) => once(`mat:${key}`, () => new THREE.MeshStandardMaterial(p));
 
@@ -401,7 +425,7 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   const legGeo = once('legGeo', () => {
     const shin = new THREE.CylinderGeometry(0.075, 0.065, 0.76, 8); shin.translate(0, -0.4, 0);
     const shoe = new THREE.SphereGeometry(0.085, 10, 6); shoe.scale(0.85, 0.55, 1.5); shoe.translate(0, -0.78, -0.05);
-    return painted([[shin, 0x24242a], [shoe, 0x0e0d0c]]);
+    return painted([[shin, TROUSERS], [shoe, 0x0e0d0c]]);
   });
   const legs = [-1, 1].map((s) => {
     const leg = new THREE.Mesh(legGeo, legMat);
@@ -439,7 +463,7 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   const hatMat = once('hatMat', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }));
   const hatMesh = hat.add(shadow(new THREE.Mesh(once(`hatGeo:${house}`, () => {
     const band = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); band.translate(0, 0.032, 0);
-    return painted([[hatGeo(), 0x17171e], [brimGeo(), 0x17171e], [band, new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.6)]]);
+    return painted([[hatGeo(), HAT], [brimGeo(), HAT], [band, new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.6)]]);
   }), hatMat))).children.at(-1) as THREE.Mesh;
   head.add(hat);
   rig.add(head);
@@ -449,7 +473,7 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   const armGeo = once(`armGeo:${skinI}`, () => {
     const sleeve = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 12, 1, true); sleeve.translate(0, -0.3, 0);
     const hand = hg.hand.clone(); hand.translate(0, -0.6, 0);
-    return painted([[sleeve, 0x1c1c22], [hand, SKIN[skinI]]]);
+    return painted([[sleeve, CLOTH], [hand, SKIN[skinI]]]);
   });
   const armMeshes: THREE.Mesh[] = [];
   const arm = (s: number) => {
@@ -511,13 +535,28 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
     root.add(ring);
   }
 
+  // ---- storybook ink outlines round the robe, head and hat
+  const inks: THREE.Mesh[] = [];
+  let inkMat: THREE.Material | undefined;
+  if (STORYBOOK) {
+    inkMat = inkMaterial(sway);
+    const still = once('inkStill', () => inkMaterial(NO_SWAY));
+    for (const [part, mat] of [[robe, inkMat], [headMesh, still], [hatMesh, still]] as const) {
+      const hull = new THREE.Mesh(part.geometry, mat);
+      hull.name = 'ink';
+      part.add(hull);
+      inks.push(hull);
+    }
+    root.traverse((o) => { const mm = (o as THREE.Mesh).material; if (mm && !Array.isArray(mm)) rimLit(mm); });
+  }
+
   // ---- animation state
   const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '' };
   const tipColor = new THREE.Color();
   const REST_R = 0.3;
   const dress: Dress = {
     house, skinI, hairI, robe, sway, torso, legs, tails: [tailF, tailB], arms: armMeshes, head: headMesh, hat: hatMesh, wand: wandMesh, glow,
-    orig: new Map(), key: '', applied: '', held: [], own: [], tip: 0xffffff, lumos: 0xfff2c0, first: true,
+    orig: new Map(), key: '', applied: '', held: [], own: [], tip: 0xffffff, lumos: 0xfff2c0, first: true, inks, inkMat,
   };
   return {
     root, body, label, shield, glow, wandTip, root2, patronus, elder, castPending: false, dress,
@@ -525,7 +564,7 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
     update(dt, speed, casting) {
       st.t += dt;
       if (dress.animated) glamTime.value = performance.now() / 1000;
-      if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high'; }
+      if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high'; showInks(dress); }
       // The stride follows ground speed up to GAIT_MAX (beyond it the feet slide a little instead of the
       // legs blurring). Anything faster than GLIDE is not walking but the model catching up after an
       // apparition, a release from Azkaban or a knock-back: hold the standing pose through the glide.
@@ -601,7 +640,10 @@ export interface Dress {
   /** Shared pool entries this wizard holds, and materials only it uses (the robe). */
   held: string[]; own: THREE.Material[];
   tip: number; lumos: number; first: boolean; animated?: boolean;
+  /** Storybook ink outlines ('high' only, hidden on a ghost) and the robe outline's own material. */
+  inks: THREE.Mesh[]; inkMat?: THREE.Material; ghost?: boolean;
 }
+const showInks = (d: Dress) => { for (const x of d.inks) x.visible = detail === 'high' && !d.ghost; };
 
 /** One clock for every animated glamour (starlight, flame, ghost). */
 const glamTime = { value: 0 };
@@ -631,7 +673,7 @@ function glamRobeTex(house: House, robe: number | null, trim: number | null, sca
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const g = c.getContext('2d')!;
-  const base = new THREE.Color(robe ?? 0x1a1a20);
+  const base = new THREE.Color(robe ?? (STORYBOOK ? 0x221f2e : 0x1a1a20));
   for (let x = 0; x < S; x++) {
     const k = 0.78 + 0.22 * Math.cos((x / S) * Math.PI * 2 * 7);
     g.fillStyle = '#' + base.clone().multiplyScalar(k).getHexString();
@@ -777,6 +819,9 @@ export function setWizardLook(m: WizardModel, key: string | undefined): boolean 
   for (const [x, o] of d.orig) { x.material = o.material; x.geometry = o.geometry; }
   if (g) dressUp(d, g, k);
   else { d.tip = 0xffffff; d.lumos = 0xfff2a0; d.glow.color.setHex(0xfff2c0); d.animated = false; }
+  d.ghost = g?.mat === 'ghost';
+  showInks(d);
+  if (STORYBOOK) for (const x of meshes) rimLit(x.material as THREE.Material);
   // take the new before dropping the old, so what both looks share is never rebuilt
   for (const x of held) drop(x);
   for (const x of own) x.dispose();
@@ -788,7 +833,7 @@ function dressUp(d: Dress, g: Glamour, key: string) {
   const cloth = g.robe ?? PRESET_CLOTH[mat] ?? null;
   const trim = g.trim ?? null;
   const lining = trim !== null ? new THREE.Color(trim) : new THREE.Color(HOUSE_COLORS[d.house]).multiplyScalar(0.7);
-  const tint = new THREE.Color(cloth ?? 0x1c1c22);
+  const tint = new THREE.Color(cloth ?? CLOTH);
   const spark = new THREE.Color(g.glow ?? PRESET_SPARK[mat] ?? 0xffffff);
   // robe: its own material (the sway uniform is per wizard) over a shared texture
   const map = take(d, `rt:${d.house}:${cloth}:${trim}:${mat === 'scales'}`, () => glamRobeTex(d.house, cloth, trim, mat === 'scales'));
@@ -801,7 +846,7 @@ function dressUp(d: Dress, g: Glamour, key: string) {
   const armGeo = take(d, `ag:${cloth}:${skin}`, () => {
     const sleeve = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 12, 1, true); sleeve.translate(0, -0.3, 0);
     const hand = headGeo().hand.clone(); hand.translate(0, -0.6, 0);
-    return painted([[sleeve, cloth ?? 0x1c1c22], [hand, skin]]);
+    return painted([[sleeve, cloth ?? CLOTH], [hand, skin]]);
   });
   for (const a of d.arms) { a.material = sleeves; a.geometry = armGeo; }
   if (g.skin !== undefined) {
@@ -812,7 +857,7 @@ function dressUp(d: Dress, g: Glamour, key: string) {
     });
   }
   // hat: crown and brim in the hat colour, the band in the trim; the preset's surface
-  const hatCol = g.hat ?? PRESET_CLOTH[mat] ?? 0x17171e;
+  const hatCol = g.hat ?? PRESET_CLOTH[mat] ?? HAT;
   const band = trim ?? new THREE.Color(HOUSE_COLORS[d.house]).multiplyScalar(0.6).getHex();
   d.hat.geometry = take(d, `hg:${hatCol}:${band}`, () => {
     const b = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); b.translate(0, 0.032, 0);
@@ -832,6 +877,7 @@ export function releaseWizardLook(m: WizardModel) {
   const d = m.dress;
   for (const x of d.held) drop(x);
   for (const x of d.own) x.dispose();
+  d.inkMat?.dispose();
   d.held = [];
   d.own = [];
   d.applied = '';
@@ -1033,6 +1079,7 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
     }
   }
   root.add(label.sprite);
+  if (STORYBOOK) root.traverse((o) => { const mm = (o as THREE.Mesh).material; if (mm && !Array.isArray(mm)) rimLit(mm); });
   return { root, label, anim };
 }
 

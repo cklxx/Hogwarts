@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../src/shared/map';
 import { LAKE, SEA_LEVEL, flatness, surfaceAt } from './terrain';
+import { STORYBOOK } from './textures';
 
 /**
  * A field of GPU-instanced grass around the player: a G x G grid of square chunks, one small
@@ -138,8 +139,12 @@ export function createGrass(scene: THREE.Scene) {
       ` + sh.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>
         float hue = fract(vHue);
-        vec3 gRoot = vec3(0.035, 0.085, 0.018);
-        vec3 gTip = mix(vec3(0.1, 0.25, 0.04), vec3(0.27, 0.32, 0.08), hue * hue * hue);
+        ${STORYBOOK
+          // storybook: the painted meadow's own greens, from its deep strokes up to sunlit yellow-green tips
+          ? `vec3 gRoot = vec3(0.022, 0.055, 0.018);
+        vec3 gTip = mix(vec3(0.06, 0.15, 0.035), vec3(0.16, 0.23, 0.055), hue * hue);`
+          : `vec3 gRoot = vec3(0.035, 0.085, 0.018);
+        vec3 gTip = mix(vec3(0.1, 0.25, 0.04), vec3(0.27, 0.32, 0.08), hue * hue * hue);`}
         diffuseColor.rgb = mix(gRoot, gTip, smoothstep(0.0, 1.0, vTip));
         if (vHue > 1.5) {
           // wildflowers: a coloured head on the tips of the clump
