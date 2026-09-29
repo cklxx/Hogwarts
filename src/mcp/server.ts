@@ -398,6 +398,22 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     return { ...v, time: { ...v.time, remark: world.quip(pool, w.handle, 'look') } };
   }));
 
+  register('dodge', {
+    title: 'Dodge roll',
+    description: 'Roll 4.5 m in a quarter of a second: projectiles and creature claws pass you by while you roll (2.5 s to catch your breath between rolls). Aimed shots (a snare\'s thorns, a troll\'s rock, a duel opponent\'s bolt) fly where you stood. Give a direction as dx/dz (world axes) or `side` relative to where you face. A Protego raised just before a bolt lands (≤ 0.35 s) sends it back instead. Refused while your human is steering.',
+    inputSchema: { dx: z.number().optional(), dz: z.number().optional(), side: z.enum(['left', 'right', 'back', 'forward']).optional() },
+  }, me((wid, a: { dx?: number; dz?: number; side?: 'left' | 'right' | 'back' | 'forward' }) => {
+    const w = world.wizards.get(wid)!;
+    let dx = a.dx ?? 0, dz = a.dz ?? 0;
+    if (a.side) {
+      const fx = Math.sin(w.facing), fz = -Math.cos(w.facing);
+      [dx, dz] = { forward: [fx, fz], back: [-fx, -fz], left: [fz, -fx], right: [-fz, fx] }[a.side];
+    }
+    const r = world.dodge(wid, dx, dz, 'agent');
+    if (!r.ok) throw new Error(r.error);
+    return { rolled: true, readyAgainIn: 2.5 };
+  }));
+
   register('move_to', {
     title: 'Walk somewhere',
     description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. Walking takes real time (~7 m/s): follow with wait(until:"arrived"). Refused while your human is steering.`,

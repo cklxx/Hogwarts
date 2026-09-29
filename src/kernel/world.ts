@@ -73,6 +73,12 @@ export const AGENT_PAUSE_ALLOWED: ReadonlySet<string> = new Set([
 export const AGENT_PAUSED = `Your human has paused you. Until they resume you may only look and talk to them: ${[...AGENT_PAUSE_ALLOWED].join(', ')}.`;
 /** Refusal for an agent's move_to while its player is steering (or just steered, or is walking where they clicked). */
 export const PLAYER_STEERING = 'Your human is steering right now; their hands on the controls come first.';
+/**
+ * 决斗手感: a dodge dashes DODGE_DIST m in DODGE_S s (untouchable by projectiles and claws meanwhile), then
+ * DODGE_CD_S to breathe; a Protego raised at most PERFECT_PROTEGO_S before a bolt lands sends it back; two
+ * wizards' spells within CLASH_R m of each other collide (checked only while there are ≤ CLASH_MAX in flight).
+ */
+export const DODGE_DIST = 4.5, DODGE_S = 0.25, DODGE_CD_S = 2.5, PERFECT_PROTEGO_S = 0.35, CLASH_R = 0.9, CLASH_MAX = 400;
 /** Refusal for an agent's owl when the owlbox is full of its player's owls it has not read yet. */
 export const OWLBOX_UNREAD = 'Your owlbox is full of owls from your human that you have not read. Call listen first.';
 
@@ -977,7 +983,89 @@ export class World {
   shield(src: Wizard, t: Wizard, amount: number, secs: number) {
     t.st.shield = amount * derived(src, this.rules).care;
     t.st.shieldUntil = this.now + secs;
+    t.st.shieldAt = this.now;
     this.fx({ k: 'shield', x: t.pos.x, z: t.pos.z, h: t.handle });
+  }
+
+  // ------------------------------------------------------------------ 决斗手感: dodge, perfect Protego, spell clash
+  /** Is this wizard mid-dodge (projectiles and claws pass them by)? */
+  dodging(id: string) { const w = this.wizards.get(id); return !!w && (w.st.dodgeUntil ?? 0) > this.now; }
+  /**
+   * 翻滚闪避: a short dash (DODGE_DIST metres in DODGE_S) along (dx, dz), or straight ahead; untouchable by
+   * projectiles and creature strikes while it lasts; DODGE_CD_S between dodges. `by` 'agent' yields to a steering
+   * human like every agent move (formal/tla/Control.tla).
+   */
+  dodge(wid: string, dx: number, dz: number, by: 'player' | 'agent' = 'player'): { ok: true } | { ok: false; error: string } {
+    const w = this.need(wid);
+    if (!this.isActive(w)) return { ok: false, error: 'You cannot dodge while stunned or in Azkaban. 被击晕或在阿兹卡班时不能翻滚。' };
+    if (w.st.rootedUntil > this.now) return { ok: false, error: 'You are rooted to the spot. 你被定住了。' };
+    if (by === 'agent' && this.playerSteering(w)) return { ok: false, error: PLAYER_STEERING };
+    const ready = w.st.dodgeReadyAt ?? 0;
+    if (ready > this.now) return { ok: false, error: `Still catching your breath: ${(ready - this.now).toFixed(1)}s. 还在喘气：${(ready - this.now).toFixed(1)} 秒。` };
+    let l = Math.hypot(dx, dz);
+    if (!Number.isFinite(l) || l < 0.01) { dx = Math.sin(w.facing); dz = -Math.cos(w.facing); l = 1; }
+    w.st.dashDx = dx / l; w.st.dashDz = dz / l;
+    w.st.dodgeUntil = this.now + DODGE_S;
+    w.st.dodgeReadyAt = this.now + DODGE_CD_S;
+    w.goal = null; w.route = []; w.goalBy = null;
+    w.stats.dodges = (w.stats.dodges ?? 0) + 1;
+    this.fx({ k: 'dodge', x: w.pos.x, z: w.pos.z, h: w.handle });
+    return { ok: true };
+  }
+  /**
+   * 完美格挡: a bolt or Expelliarmus that meets a Protego raised at most PERFECT_PROTEGO_S ago goes back where it
+   * came from, now the shield-bearer's (so World.canHarm decides, as for any bolt of theirs, whether it may hurt).
+   */
+  private tryReflect(p: Projectile, id: string): boolean {
+    const w = this.wizards.get(id);
+    if (!w || (p.kind !== 'bolt' && p.kind !== 'disarm') || p.owner === w.id || p.tags.includes('reflected')) return false;
+    if (!(w.st.shieldUntil > this.now && w.st.shield > 0 && this.now - (w.st.shieldAt ?? -1e9) <= PERFECT_PROTEGO_S)) return false;
+    const from = this.entity(p.owner);
+    const sp = Math.hypot(p.vel.x, p.vel.z) || this.rules.physics.projectileSpeed;
+    const tx = from ? from.pos.x - w.pos.x : -p.vel.x, tz = from ? from.pos.z - w.pos.z : -p.vel.z;
+    const tl = Math.hypot(tx, tz) || 1;
+    const was = p.owner;
+    p.owner = w.id;
+    p.homing = from ? from.id : null;
+    p.vel = { x: (tx / tl) * sp, z: (tz / tl) * sp };
+    p.pos = { x: w.pos.x + (tx / tl) * 0.9, z: w.pos.z + (tz / tl) * 0.9 };
+    p.ttl = 50 / sp + 0.3;
+    p.tags = [...p.tags, 'reflected'];
+    w.stats.reflects = (w.stats.reflects ?? 0) + 1;
+    this.fx({ k: 'reflect', x: w.pos.x, z: w.pos.z, h: w.handle });
+    const o = this.wizards.get(was);
+    if (this.banter([`reflect:${w.id}`, 4])) this.bubble(w, { zh: '完美格挡！', en: 'Perfect Protego!' }, 2);
+    if (o) this.emit('combat', `${w.name} sent ${o.name}'s spell straight back!`, { who: [w.id, o.id], zh: `${w.name} 把 ${o.name} 的咒语原样弹了回去！` });
+    return true;
+  }
+  /**
+   * 咒语对撞 (Priori Incantatem): two wizards' spells meeting in the air. Bolts: the stronger goes on, weakened by
+   * the other; equal ones cancel. Anything else meeting a bolt cancels with it. Only spells of wizards who may
+   * harm each other (a duel), and never creatures' shots (those are for dodging).
+   */
+  private clashSpells() {
+    if (this.projectiles.size < 2 || this.projectiles.size > CLASH_MAX) return;
+    const ps = [...this.projectiles.values()].filter((p) => this.wizards.has(p.owner));
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i];
+      if (!this.projectiles.has(p.id)) continue;
+      for (let j = i + 1; j < ps.length; j++) {
+        const q = ps[j];
+        if (!this.projectiles.has(q.id) || q.owner === p.owner) continue;
+        if (Math.hypot(p.pos.x - q.pos.x, p.pos.z - q.pos.z) > CLASH_R) continue;
+        if (!this.canHarm(p.owner, q.owner) && !this.canHarm(q.owner, p.owner)) continue;
+        const x = (p.pos.x + q.pos.x) / 2, z = (p.pos.z + q.pos.z) / 2;
+        this.fx({ k: 'clash', x, z, e: p.element });
+        if (p.kind === 'bolt' && q.kind === 'bolt' && p.power !== q.power) {
+          const [win, lose] = p.power > q.power ? [p, q] : [q, p];
+          win.power -= lose.power;
+          this.projectiles.delete(lose.id);
+        } else { this.projectiles.delete(p.id); this.projectiles.delete(q.id); }
+        const a = this.wizards.get(p.owner), b = this.wizards.get(q.owner);
+        if (a && b && this.banter([`clash:${[a.id, b.id].sort().join(':')}`, 6])) this.emit('combat', `Priori Incantatem! ${a.name}'s and ${b.name}'s spells met in mid-air.`, { who: [a.id, b.id], zh: `闪回咒！${a.name} 和 ${b.name} 的咒语在半空撞在了一起。` });
+        if (!this.projectiles.has(p.id)) break;
+      }
+    }
   }
 
   knock(from: Vec2, id: string, force: number) {
@@ -2140,6 +2228,15 @@ export class World {
 
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
     if (w.st.rootedUntil > this.now) return;
+    if ((w.st.dodgeUntil ?? 0) > this.now) {
+      // 翻滚闪避: the dash overrides the keys and any walk while it lasts
+      const v = DODGE_DIST / DODGE_S;
+      w.pos.x += (w.st.dashDx ?? 0) * v * dt;
+      w.pos.z += (w.st.dashDz ?? 0) * v * dt;
+      this.solids.resolve(w.pos, 0.5, bounded);
+      this.moved(w);
+      return;
+    }
     let { dx, dz } = w.input;
     if (w.goal && Math.hypot(dx, dz) < 0.01) {
       while (w.route.length > 1 && dist(w.route[0], w.pos) < 1) w.route.shift();
@@ -2287,6 +2384,8 @@ export class World {
           const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
           if (dist(e.pos, p.pos) > r + 0.45) continue;
           if (!this.canHarm(p.owner, e.id)) continue;
+          if (e.kind === 'wizard' && this.dodging(e.id)) continue; // 翻滚闪避: it flies past
+          if (e.kind === 'wizard' && this.tryReflect(p, e.id)) break; // 完美格挡: back where it came from
           this.hit(p, e.id);
           dead = true;
           break;
@@ -2294,6 +2393,7 @@ export class World {
       }
       if (dead) this.projectiles.delete(p.id);
     }
+    this.clashSpells();
   }
 
   private hit(p: Projectile, id: string) {
@@ -2366,6 +2466,7 @@ export class World {
 
   private strike(c: Creature, def: CreatureDef, target: string, sm: number) {
     c.attackCd = def.cooldown;
+    if (this.dodging(target)) return; // rolled out of the way: the swing misses
     const dealt = this.damage(c.id, target, def.damage * (c.owner ? 1 : sm) * (c.dmgMult ?? 1), 'arcane');
     if (dealt <= 0) return;
     const w = this.wizards.get(target);

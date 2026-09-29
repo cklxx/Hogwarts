@@ -66,7 +66,7 @@ export const LAWLESS_LEAVE: Line = { zh: '你走出了禁林深处，魔法部�
  * identity) are free; so is everything a browser sends.
  */
 export const AGENT_TOOL_COST: Readonly<Record<string, number>> = {
-  cast: 1, use_item: 1, move_to: 1, say: 1, set_hotbar: 1, unlearn_spell: 1, equip_item: 1, unequip_item: 1, destroy_item: 1,
+  cast: 1, use_item: 1, move_to: 1, dodge: 1, say: 1, set_hotbar: 1, unlearn_spell: 1, equip_item: 1, unequip_item: 1, destroy_item: 1,
   forge_spell: 3, forge_item: 3, read_seal_page: 1, break_seal: 2, decree: 1,
   join_dumbledores_army: 1, leave_dumbledores_army: 1, veto_decree: 1, study_spell: 2,
   // 咒语集市 (kernel/market.ts): copying and forking forge a spell, so they cost what a forge does; browsing is free

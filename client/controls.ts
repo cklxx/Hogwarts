@@ -507,6 +507,8 @@ export function createControls(d: ControlsDeps) {
     if (k === 'Tab') { e.preventDefault(); if (!e.repeat) cycleTarget(); return true; }
     if (/^[1-6]$/.test(k)) { castSlot(Number(k) - 1); return true; }
     if (k === 'f' || k === 'F') { if (!e.repeat) doAction(); return true; }
+    // 翻滚闪避 (World.dodge): the way you are running, else straight ahead
+    if (k === ' ') { e.preventDefault(); if (!e.repeat) d.send({ t: 'dodge', dx: moveDx, dz: moveDz }); return true; }
     if (k === 'h' || k === 'H' || k === '?') { if (!e.repeat) toggleHelp(); return true; }
     keys.add(k.toLowerCase());
     return false;
@@ -624,6 +626,8 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ per-frame update (called from main.ts' frame loop)
   let lastInput = '', inputTimer = 0, inputGap = 0, facing = 0;
+  /** The world direction the keys push right now (Space rolls that way, else straight ahead). */
+  let moveDx = 0, moveDz = 0;
   /**
    * Keyboard movement is read relative to the camera as it was when the current key combination began (plus any
    * turning the player does by hand). The automatic drift below turns only the camera, not that basis, so it can swing
@@ -681,6 +685,7 @@ export function createControls(d: ControlsDeps) {
       else if (target) { const q = model(target)!.root.position; facing = Math.atan2(q.x - p.x, -(q.z - p.z)); }
       else if (mouseIn && overCanvas) facing = Math.atan2(aim.x - p.x, -(aim.z - p.z));
     }
+    moveDx = dx; moveDz = dz;
     const key = `${dx.toFixed(2)},${dz.toFixed(2)},${facing.toFixed(1)}`;
     // At most one input per world tick (50 ms), always ending on the latest state: the world reads input once
     // a tick, so more (a 144 Hz display turning the camera sent 144 a second) changed nothing but cost the
@@ -890,6 +895,8 @@ export function createControls(d: ControlsDeps) {
       ${row('C', L('巧克力蛙画片册：已有的画片、还缺的剪影、集齐一套得称号（画片不卖，只能打怪、事件、宝箱里得到）', 'Chocolate Frog album: the cards you have, silhouettes of the ones you miss, sets that earn titles (never sold: creatures, events and chests)'))}
       ${row('L', L('排行榜：学期末声望第一成为魔法部长（改写规则）；声望 ≥150 的第一名戴上黑魔标记', 'Leaderboard: the top wizard at term end becomes Minister (rewrites the rules); the top one with 150+ wears the Dark Mark'))}
       ${row('J', L('邓布利多军：弱者的联盟，加入、在法令颁布后投票否决、联合守护神', "Dumbledore's Army: the underdogs' union; join, veto a fresh decree, strike together"))}
+      ${row(L('空格', 'Space'), L('翻滚闪避：瞄准你的咒语和飞刺会落空；盔甲护身卡在咒语落地前一瞬间举起，能把它弹回去', 'Dodge roll: aimed spells and thorns miss; raise Protego just before a bolt lands to send it back'))}
+      ${row('V', L('看你的 Agent 玩（按键不打断它）', 'Watch your agent play (your keys will not interrupt it)'))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}
       </table>
       <h3>${L('其他', 'Everything else')}</h3><table>

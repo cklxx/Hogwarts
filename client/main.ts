@@ -414,6 +414,14 @@ const GONE_NEAR = 100;
 const PARK_S = 90, PARK_MAX = 96, POOL_MAX = 24;
 let gen = 0;
 const nearMe = (x: number, z: number) => { const me = wizards.get(myHandle)?.root.position; return !me || Math.hypot(x - me.x, z - me.z) < GONE_NEAR; };
+const closeToMe = (x: number, z: number, r: number) => { const p = wizards.get(myHandle)?.root.position; return !!p && Math.hypot(x - p.x, z - p.z) < r; };
+/**
+ * 决斗手感: a short camera shake when you are hit, a spell of yours clashes, or a Protego sends one back. Off with
+ * the system's "reduce motion" setting. `shakeAmp` decays in frame().
+ */
+const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+let shakeAmp = 0;
+const shake = (a: number) => { if (!reduceMotion) shakeAmp = Math.max(shakeAmp, a); };
 
 function apply(s: Snap) {
   snap = s;
@@ -528,7 +536,21 @@ function spawnFx(f: Fx) {
   const gy = heightAt(f.x, f.z);
   const P = particles;
   switch (f.k) {
-    case 'hit': P.sparks(f.x, gy + 1.2, f.z, col, 16 + Math.min(40, (f.n ?? 4) * 2)); if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0')); break;
+    case 'hit': P.sparks(f.x, gy + 1.2, f.z, col, 16 + Math.min(40, (f.n ?? 4) * 2)); if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0')); if (f.h === myHandle) shake(Math.min(0.35, 0.05 + (f.n ?? 4) * 0.015)); break;
+    // 决斗手感 (World.dodge / tryReflect / clashSpells)
+    case 'dodge': P.puff(f.x, gy + 0.3, f.z, { count: 10, color: 0x8a7a64, speed: 2.2, size: 0.6, life: 0.6, drag: 3, grow: 2, radius: 0.4 }); break;
+    case 'reflect':
+      ring(f.x, f.z, 0xffe7a0, 0.6, 2.2, 0.35, 1);
+      P.burst(f.x, gy + 1.2, f.z, { count: 50, color: 0xffe7a0, intensity: 4, whiten: 0.5, speed: 6, size: 0.12, life: 0.45, drag: 3 });
+      floatText(f.x, f.z, L('完美格挡！', 'Perfect Protego!'), '#ffe7a0');
+      if (closeToMe(f.x, f.z, 25)) shake(0.18);
+      break;
+    case 'clash':
+      P.burst(f.x, gy + 1.3, f.z, { count: 80, color: col, intensity: 5, whiten: 0.6, speed: 8, size: 0.14, life: 0.5, drag: 2.5 });
+      ring(f.x, f.z, 0xffffff, 0.3, 3, 0.3, 1.3);
+      floatText(f.x, f.z, L('咒语对撞！', 'Clash!'), '#ffffff');
+      if (closeToMe(f.x, f.z, 25)) shake(0.28);
+      break;
     case 'nova': ring(f.x, f.z, col, 0.5, f.r ?? 5, 0.6); ring(f.x, f.z, 0xffffff, 0.2, (f.r ?? 5) * 0.7, 0.4, 1); P.shockwave(f.x, gy, f.z, f.r ?? 5, col); break;
     case 'heal': column(f.x, f.z, 0x6cff8a, 0.9); P.motes(f.x, gy, f.z, 0x6cff8a); break;
     case 'shield': ring(f.x, f.z, 0x9fd3ff, 1.5, 1.2, 0.5, 1); P.burst(f.x, gy + 1.05, f.z, { count: 40, color: 0x9fd3ff, intensity: 3, whiten: 0.4, radius: 1.2, speed: 0.6, size: 0.14, life: 0.8, drag: 1.5 }); break;
@@ -1912,6 +1934,12 @@ function frame() {
     view.place(t, dt); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
     weatherPts.position.set(t.x, 0, t.z);
   }
+  if (shakeAmp > 0.005) {
+    // after the camera is placed, so the spring arm never learns the jolt
+    camera.position.x += (Math.random() - 0.5) * shakeAmp;
+    camera.position.y += (Math.random() - 0.5) * shakeAmp * 0.6;
+    shakeAmp *= Math.exp(-dt * 14);
+  } else shakeAmp = 0;
 
   // lighting, sky and decorations from the hour, the weather and whatever the last Minister decreed
   if (snap) {

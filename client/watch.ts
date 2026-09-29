@@ -33,7 +33,7 @@ export function spectateQuery(s: NonNullable<Spectate>): string {
 }
 
 /** Messages that move or act for your wizard: observe mode keeps them from taking over from the agent. */
-const ACTING = new Set(['input', 'cast', 'goto', 'chest']);
+const ACTING = new Set(['input', 'cast', 'goto', 'chest', 'dodge']);
 
 export interface AgentCallView { tool: string; ok: boolean; spell?: string; source?: string; ago: number }
 export interface AgentView { goal: string | null; paused: boolean; active: boolean; seen: { client: string; tool: string } | null; log: AgentCallView[] }

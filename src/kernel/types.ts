@@ -84,6 +84,13 @@ export interface WizardStatus {
   silenceBy: 'langlock' | 'bats' | null;
   /** Who sent it (World.jinxBites: the silence rests while the PvP rules would not let them harm you). Never shown. */
   silenceSrc?: string | null;
+  /** 决斗手感: when the current Protego went up (a bolt landing within PERFECT_PROTEGO_S of it is sent back). */
+  shieldAt?: number;
+  /** 翻滚闪避: dashing (and untouchable by projectiles and claws) until then; the next dodge from dodgeReadyAt. */
+  dodgeUntil?: number;
+  dodgeReadyAt?: number;
+  dashDx?: number;
+  dashDz?: number;
 }
 
 /** One message in the private Owl Post between a player and their own agent. */
@@ -135,7 +142,7 @@ export interface Wizard {
   equipped: Partial<Record<ItemSlot, string>>;
   achievements: string[];
   titles: string[];
-  stats: { stuns: number; stunned: number; creatures: number; casts: number; forged: number };
+  stats: { stuns: number; stunned: number; creatures: number; casts: number; forged: number; reflects?: number; dodges?: number };
   st: WizardStatus;
   cooldowns: Record<string, number>;
   globalCd: number;
@@ -319,7 +326,7 @@ export interface WorldEvent {
 export type WireEvent = Omit<WorldEvent, 'who'>;
 
 export interface Fx {
-  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal';
+  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal' | 'dodge' | 'reflect' | 'clash';
   x: number;
   z: number;
   r?: number;

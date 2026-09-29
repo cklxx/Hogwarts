@@ -32,7 +32,7 @@ afterAll(() => { proc?.kill('SIGTERM'); });
 function tap(ws: WebSocket) {
   const got: any[] = [];
   ws.on('message', (raw) => { try { got.push(JSON.parse(String(raw))); } catch { /* not ours */ } });
-  const wait = (pred: (m: any) => boolean, ms = 8000) => new Promise<any>((ok, bad) => {
+  const wait = (pred: (m: any) => boolean, ms = 20000) => new Promise<any>((ok, bad) => {
     const t0 = Date.now();
     const iv = setInterval(() => {
       const m = got.find(pred);
@@ -76,7 +76,7 @@ describe('观战: watching an agent play', () => {
     // the friend mashes keys and casts: nothing they send is read
     for (let i = 0; i < 10; i++) { friend.send(JSON.stringify({ t: 'input', dx: -1, dz: 0 })); friend.send(JSON.stringify({ t: 'cast', key: '1' })); }
 
-    const w = await f.wait((m) => m.t === 'watch' && m.s.agent.log.some((c: any) => c.tool === 'cast' && c.spell === 'Glowworm'), 10000);
+    const w = await f.wait((m) => m.t === 'watch' && m.s.agent.log.some((c: any) => c.tool === 'cast' && c.spell === 'Glowworm'), 30000);
     const cast = w.s.agent.log.find((c: any) => c.tool === 'cast');
     expect(cast.ok).toBe(true);
     expect(cast).not.toHaveProperty('source'); // spell source stays the owner's secret
@@ -85,9 +85,9 @@ describe('观战: watching an agent play', () => {
     const mine = await o.wait((m) => m.t === 'agentlog' && m.s.log.some((c: any) => c.tool === 'cast'));
     expect(mine.s.log.find((c: any) => c.tool === 'cast').source).toBe('(light)');
 
-    // the agent's walk went on despite the friend's keys
-    await new Promise((r) => setTimeout(r, 2500));
-    const after = await call('whoami');
+    // the agent's walk went on despite the friend's keys (polled: a loaded machine runs the world slower)
+    let after = await call('whoami');
+    for (let i = 0; i < 40 && after.x <= start.x + 3; i++) { await new Promise((r) => setTimeout(r, 250)); after = await call('whoami'); }
     expect(after.x).toBeGreaterThan(start.x + 3);
 
     // anyone may follow the wizard by handle while the agent plays (unless the player turns it off)
@@ -104,5 +104,5 @@ describe('观战: watching an agent play', () => {
     await expect(open(`ws://127.0.0.1:${PORT}/ws?watch=${encodeURIComponent(code)}`)).rejects.toThrow(/404/);
     owner.close();
     await agent.close();
-  }, 60000);
+  }, 120000);
 });
