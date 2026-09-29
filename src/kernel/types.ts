@@ -106,6 +106,9 @@ export interface OwlMsg {
 /** What the agent last did (not persisted; `at` is world time). */
 export interface AgentSeen { client: string; tool: string; at: number }
 
+/** One MCP call of a wizard's agent, as a watcher sees it (the arguments are never kept). */
+export interface AgentCall { at: number; tool: string; ok: boolean; spell?: string }
+
 export interface Wizard {
   id: string;
   handle: string;
@@ -190,6 +193,12 @@ export interface Wizard {
   agentPaused: boolean;
   /** Not persisted: the agent's last MCP call. */
   agentSeen: AgentSeen | null;
+  /** Not persisted: the agent's recent MCP calls, newest last (观战: what the agent is doing; World.noteAgentCall). */
+  agentLog?: AgentCall[];
+  /** 观战: the revocable code a watch link carries (never the key); null = no link. Persisted. */
+  watchCode?: string | null;
+  /** 观战: may others watch this wizard while their agent plays (from the leaderboard or nearby)? Default yes. */
+  watchable?: boolean;
   /** Not persisted: who set `goal` (a player's WASD cancels either; pausing the agent cancels the agent's). */
   goalBy?: 'agent' | 'player' | null;
   /** Not persisted: world time the player last steered (WASD, a click walk, reaching its end); PLAYER_GRACE_S. */

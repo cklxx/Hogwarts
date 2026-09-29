@@ -866,3 +866,21 @@ body.touch #tutorial { max-width: calc(100vw - calc(84px * var(--u))); }
 #update-note { position: fixed; top: calc(92px * var(--u)); /* under the House Cup score and the next-event timer */ left: 50%; transform: translateX(-50%); z-index: 6; display: flex; gap: calc(10px * var(--u)); align-items: center;
   padding: calc(6px * var(--u)) calc(14px * var(--u)); background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: calc(4px * var(--u)); font-size: var(--fs-body); box-shadow: 0 2px 10px #0004; animation: fadein .25s var(--ease) both; }
 #update-note button { font: inherit; color: var(--paper); background: var(--wax); border: 0; border-radius: calc(3px * var(--u)); padding: calc(2px * var(--u)) calc(10px * var(--u)); cursor: pointer; }
+
+/* 观战 (client/watch.ts): the agent panel, observe mode, spectators */
+#watchpanel { position: fixed; right: calc(12px * var(--u)); top: calc(96px * var(--u)); z-index: 5; width: min(calc(300px * var(--u)), 42vw);
+  background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: calc(4px * var(--u)); box-shadow: 0 2px 12px #0004; padding: calc(8px * var(--u)) calc(12px * var(--u)); font-size: var(--fs-small, 13px); }
+#watchpanel header { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: var(--fs-body); }
+#watchpanel .ws, #watchpanel .wg, #watchpanel .wb { margin: 4px 0; }
+#watchpanel .wg { color: var(--indigo); }
+#watchpanel .wb span { margin-right: 10px; }
+#watchpanel .wl { list-style: none; margin: 6px 0; padding: 0; border-top: 1px solid var(--rule); }
+#watchpanel .wl li { padding: 4px 0; border-bottom: 1px dotted var(--rule); }
+#watchpanel .wl li.bad .wt { color: var(--vermilion); }
+#watchpanel .wl .wa { float: right; opacity: .65; font-size: .9em; }
+#watchpanel .wl pre { margin: 4px 0 0; padding: 4px 6px; background: #fff8e6; border-radius: 3px; white-space: pre-wrap; word-break: break-word; font-size: .92em; }
+body.observing #view { outline: 3px solid color-mix(in srgb, var(--indigo) 55%, transparent); outline-offset: -3px; }
+body.spectating #bars, body.spectating #agentbox, body.spectating #goal, body.spectating #tutorial, body.spectating #help { display: none !important; }
+.watch-btn { white-space: nowrap; color: var(--wax); text-decoration: none; }
+.watch-btn:hover { text-decoration: underline; }
+#gate a { color: var(--wax); }

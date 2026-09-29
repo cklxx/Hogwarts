@@ -269,6 +269,8 @@ const http = createServer(async (req, res) => {
       return json(res, 200, { owls, cursor: all.at(-1)?.id ?? since ?? w.agentReadUpTo, read: w.agentReadUpTo });
     }
     if (url.pathname === '/api/version') return json(res, 200, version());
+    // 观战: can this link / handle be watched right now? (the page asks before opening the socket, to say why not)
+    if (url.pathname === '/api/watch') { const t = watchTargetFor(url); return t.ok ? json(res, 200, { ok: true, name: t.w.name, handle: t.w.handle, house: t.w.house }) : json(res, 404, { ok: false, error: t.error }); }
     if (url.pathname === '/api/realms') return json(res, 200, { mode: realm.mode, realms: [{ id: realm.id, up: true, ...realmStats(), restarts: 0 }] });
     if (url.pathname === '/api/leaderboard') return json(res, 200, world.leaderboard());
     if (url.pathname === '/api/history') return json(res, 200, HISTORY);
@@ -283,6 +285,7 @@ const http = createServer(async (req, res) => {
 // ------------------------------------------------------------------ WebSocket (3D clients)
 type ClientMsg =
   | { t: 'input'; dx: number; dz: number; f?: number }
+  | { t: 'watchlink' } | { t: 'watchrevoke' } | { t: 'watchable'; on: boolean }
   | { t: 'cast'; key: string; x?: number; z?: number; target?: string }
   | { t: 'chat'; text: string }
   | { t: 'equip'; item: string }
@@ -334,6 +337,10 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
   try {
     switch (m.t) {
       case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
+      // 观战: the owner's watch link (a revocable code, never the key) and whether others may watch their agent
+      case 'watchlink': { const code = world.newWatchCode(wid); reply({ t: 'watchlink', code, watchable: w.watchable !== false }); break; }
+      case 'watchrevoke': world.revokeWatch(wid); reply({ t: 'watchlink', code: null, watchable: w.watchable !== false }); break;
+      case 'watchable': world.setWatchable(wid, !!m.on); reply({ t: 'watchlink', code: w.watchCode ?? null, watchable: w.watchable !== false }); break;
       case 'cast': reply({ t: 'cast', r: world.cast(wid, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'chat': world.say(w, String(m.text ?? '')); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
@@ -401,9 +408,39 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 const clients = new Map<WebSocket, string>();
+/**
+ * 观战 (docs/TODO.md P4): read-only sockets that follow one wizard. `code` = through its owner's watch link (works
+ * while the link stands); otherwise public (`/ws?follow=<handle>`: while the player allows it and their agent plays).
+ * They get the snapshots around that wizard, public events and the watch state (1 Hz); nothing they send is read.
+ */
+const watchers = new Map<WebSocket, { target: string; code: string | null; handle: string }>();
+/** Who `/ws?watch=` or `/ws?follow=` (and GET /api/watch) would show, or why not. */
+function watchTargetFor(url: URL): { ok: true; w: ReturnType<typeof world.need> } | { ok: false; error: string } {
+  const code = url.searchParams.get('watch');
+  if (code !== null) {
+    const w = world.watchTarget(code);
+    return w ? { ok: true, w } : { ok: false, error: 'This watch link no longer works (revoked or replaced). 这个观看链接已失效（被撤销或换了新的）。' };
+  }
+  return world.publicWatch(String(url.searchParams.get('follow') ?? ''));
+}
 http.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname !== '/ws') return socket.destroy();
+  if (url.searchParams.has('watch') || url.searchParams.has('follow')) {
+    const t = watchTargetFor(url);
+    if (!t.ok) { socket.write('HTTP/1.1 404 Not Found\r\n\r\n'); return socket.destroy(); }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      const target = t.w;
+      watchers.set(ws, { target: target.id, code: url.searchParams.get('watch'), handle: target.handle });
+      const recent = world.events.filter((e) => !e.to).slice(-20).map((e) => world.wireEvent(e));
+      ws.send(JSON.stringify({ t: 'watching', s: world.watchState(target.id), events: recent, build: buildId(DIST) }));
+      netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
+      ws.on('message', () => { /* watchers cannot act */ });
+      ws.on('error', () => ws.terminate());
+      ws.on('close', () => { forget(ws); watchers.delete(ws); });
+    });
+    return;
+  }
   const w = checkKey(req, url.searchParams.get('token') ?? undefined);
   if (w === 'throttled') { socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return socket.destroy(); }
   if (w === 'unknown') { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy(); }
@@ -412,7 +449,7 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), watch: { code: w.watchCode ?? null, watchable: w.watchable !== false }, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
@@ -430,6 +467,7 @@ http.on('upgrade', (req, socket, head) => {
 world.onEvent((e) => {
   const msg = Buffer.from(JSON.stringify({ t: 'event', e: world.wireEvent(e) }));
   for (const [ws, wid] of clients) if (!e.to || e.to === wid) enqueue(ws, msg);
+  if (!e.to) for (const ws of watchers.keys()) enqueue(ws, msg);
 });
 
 // Snapshots: built and serialised once per broadcast (fanout.ts). Clients with AOI get the entities
@@ -440,7 +478,7 @@ const fanout = new SnapshotFanout(Number(process.env.AOI_RADIUS ?? 140), Number(
 const AOI_ALL = process.env.AOI_ALL === '1';
 let broadcasts = 0;
 setInterval(() => {
-  if (!clients.size) { world.drainFx(); return; }
+  if (!clients.size && !watchers.size) { world.drainFx(); return; }
   broadcasts++;
   flushInputs();
   fanout.load(world.snapshot());
@@ -453,10 +491,24 @@ setInterval(() => {
     }
     return agents.get(wid) ?? 0;
   };
+  const second = broadcasts % 10 === 0;
+  for (const [ws, v] of watchers) {
+    // a revoked or replaced link, or (public watching) a player who stopped allowing it or whose agent stopped: goodbye
+    const still = v.code !== null ? world.watchTarget(v.code)?.id === v.target : world.publicWatch(v.handle).ok;
+    if (!still) { ws.close(4003, 'watch ended'); watchers.delete(ws); continue; }
+    corked(ws, () => {
+      const w = world.wizards.get(v.target);
+      if (!w || !readyForSnapshot(ws)) return;
+      ws.send(netState(ws).aoi ? fanout.payloadFor(w.pos.x, w.pos.z, netState(ws).anchor) : fanout.fullPayload(), { binary: false });
+      if (second) ws.send(JSON.stringify({ t: 'watch', s: world.watchState(v.target) }));
+    });
+  }
   for (const [ws, wid] of clients) {
     corked(ws, () => {
       const w = world.wizards.get(wid);
       if (!w || !readyForSnapshot(ws)) return;
+      // the owner's own view of what their agent is doing (with spell sources), once a second while it plays
+      if (second && w.agentSeen && world.agentActive(w)) ws.send(JSON.stringify({ t: 'agentlog', s: world.watchState(wid, true).agent }));
       const st = netState(ws);
       ws.send(st.aoi ? fanout.payloadFor(w.pos.x, w.pos.z, st.anchor) : fanout.fullPayload(), { binary: false });
       if (meDue(ws, broadcasts)) {

@@ -135,6 +135,9 @@ export interface WorldOptions {
 /** How long a creature stays after whoever hurt it, and how far from its home and from them it will follow. */
 export const PROVOKED_SECS = 8, PROVOKED_LEASH = 60;
 
+/** 观战: how many of an agent's calls a watcher sees, and how long after its last call an agent counts as playing. */
+export const AGENT_LOG_MAX = 12, AGENT_ACTIVE_S = 120;
+
 export class World {
   rules: Rulebook;
   now = 0;
@@ -143,6 +146,8 @@ export class World {
   creatures = new EntityMap<Creature>();
   /** Prefix for newly minted tokens (set by a realm worker so a front door can route by token). */
   tokenPrefix = '';
+  /** 观战: watch link code → wizard id (World.newWatchCode). */
+  private watchIndex = new Map<string, string>();
   /** Cross-check every spatial query against a full scan (tests / HOGWARTS_VERIFY_SPATIAL=1). Slow. */
   static verifySpatial = process.env.HOGWARTS_VERIFY_SPATIAL === '1';
   private inTick = false;
@@ -2789,6 +2794,64 @@ export class World {
     w.agentSeen = { client: String(client ?? '').slice(0, 40) || 'agent', tool: String(tool ?? '').slice(0, 40), at: this.now };
   }
 
+  // ------------------------------------------------------------------ 观战: watching an agent play (docs/TODO.md P4)
+  /** Record one of the agent's MCP calls for the watch panel: the tool, whether it worked, and for spells the spell's name. */
+  noteAgentCall(wid: string, tool: string, ok: boolean, spell?: string) {
+    const w = this.wizards.get(wid);
+    if (!w) return;
+    const log = (w.agentLog ??= []);
+    log.push({ at: this.now, tool: String(tool).slice(0, 40), ok, ...(spell ? { spell: String(spell).slice(0, 40) } : {}) });
+    if (log.length > AGENT_LOG_MAX) log.splice(0, log.length - AGENT_LOG_MAX);
+  }
+  /** Has this wizard's agent made an MCP call in the last AGENT_ACTIVE_S seconds? */
+  agentActive(w: Wizard) { return !!w.agentSeen && this.now - w.agentSeen.at < AGENT_ACTIVE_S; }
+  /** A fresh watch link code for this wizard (the old one stops working at once). Realm-prefixed like pairing codes. */
+  newWatchCode(wid: string): string {
+    const w = this.need(wid);
+    if (w.watchCode) this.watchIndex.delete(w.watchCode);
+    const realm = this.realmId;
+    let c: string;
+    do c = `${realm === null ? '' : `${realm}-`}${randomBytes(9).toString('base64url')}`; while (this.watchIndex.has(c));
+    w.watchCode = c;
+    this.watchIndex.set(c, w.id);
+    return c;
+  }
+  /** Stop the watch link: whoever is watching through it is disconnected on the next broadcast. */
+  revokeWatch(wid: string) {
+    const w = this.need(wid);
+    if (w.watchCode) this.watchIndex.delete(w.watchCode);
+    w.watchCode = null;
+  }
+  /** The wizard a watch link code shows, or null (unknown or revoked). */
+  watchTarget(code: string): Wizard | null {
+    const id = typeof code === 'string' && code.length <= 40 ? this.watchIndex.get(code) : undefined;
+    return (id && this.wizards.get(id)) || null;
+  }
+  /** May anyone watch `handle` without a link? Only a player who allows it, while their agent is playing. */
+  publicWatch(handle: string): { ok: true; w: Wizard } | { ok: false; error: string } {
+    const w = [...this.wizards.values()].find((x) => x.handle === handle && !x.npc);
+    if (!w) return { ok: false, error: 'No such wizard. 没有这个巫师。' };
+    if (w.watchable === false) return { ok: false, error: `${w.name} does not allow watching. ${w.name} 不让人旁观。` };
+    if (!this.agentActive(w)) return { ok: false, error: `${w.name}'s agent is not playing right now; you can watch while it plays. ${w.name} 的 Agent 现在没在玩，Agent 在玩的时候才能观看。` };
+    return { ok: true, w };
+  }
+  setWatchable(wid: string, on: boolean) { this.need(wid).watchable = !!on; }
+  /**
+   * What a watcher sees of a wizard besides the world: name, house, bars, and the agent's goal and recent calls.
+   * The owner also gets each cast/forged spell's source; other watchers only its name (a spell's source is a
+   * secret in this world: 偷师 shows it once).
+   */
+  watchState(wid: string, owner = false) {
+    const w = this.need(wid);
+    const d = derived(w, this.rules);
+    const log = (w.agentLog ?? []).map((c) => ({ ...c, ago: Math.max(0, Math.round(this.now - c.at)), ...(owner && c.spell ? { source: this.findSpell(w, c.spell)?.source?.slice(0, 600) } : {}) }));
+    return {
+      handle: w.handle, name: w.name, house: w.house, year: w.year, hp: Math.round(w.hp), maxHp: d.maxHp, mana: Math.round(w.mana), maxMana: d.maxMana,
+      x: Math.round(w.pos.x), z: Math.round(w.pos.z), online: this.online(w), watchable: w.watchable !== false,
+      agent: { ...this.agentState(w), active: this.agentActive(w), log },
+    };
+  }
+
   /** The agent's goal note on the player's HUD (≤ 80 characters; empty or null clears it). */
   setAgentGoal(wid: string, goal: string | null) {
     const w = this.need(wid);
@@ -3210,7 +3273,9 @@ export class World {
       finalMinute: { active: this.cupMultNow() > 1, multiplier: this.rules.terms.finalMinuteMultiplier, lastSeconds: CUP_FINAL_S },
       wizardPointsCap: this.rules.terms.wizardPointsCap,
       top: [...this.wizards.values()].sort((a, b) => b.reputation - a.reputation).slice(0, 10).map((w, i) => ({
-        rank: i + 1, name: w.name, title: this.title(w).zh, house: w.house, year: w.year, reputation: Math.round(w.reputation), online: this.online(w), npc: w.npc || undefined,
+        rank: i + 1, name: w.name, handle: w.handle, title: this.title(w).zh, house: w.house, year: w.year, reputation: Math.round(w.reputation), online: this.online(w), npc: w.npc || undefined,
+        // 观战: their agent is playing and they allow watching (the board's 观看 button)
+        watch: (!w.npc && w.watchable !== false && this.agentActive(w)) || undefined,
       })),
       minister: m ? { name: m.name, decreeUnspent: m.decreeCharges > 0 } : null,
       darkLord: this.darkLordView(),
@@ -3459,7 +3524,7 @@ export class World {
       owls: this.owls,
       market: this.market,
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
-      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined, jinxLook: null })),
+      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, agentLog: undefined, goalBy: null, steerAt: undefined, jinxLook: null })),
     };
   }
 
@@ -3492,12 +3557,14 @@ export class World {
           ...blankStatus(), jailedUntil: x.st?.jailedUntil ?? 0, silencedUntil: x.st?.silencedUntil ?? 0, silenceCdUntil: x.st?.silenceCdUntil ?? 0,
           silenceBy: x.st?.silenceBy ?? null, silenceSrc: x.st?.silenceSrc ?? null,
         },
-        agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined,
+        agentPaused: false, agentSeen: null, agentLog: [], goalBy: null, steerAt: undefined,
+        watchCode: typeof x.watchCode === 'string' ? x.watchCode : null, watchable: x.watchable !== false,
         // v0.9 transfiguration: a saved look is data from disk (sanitised); a jinx on it does not outlive a restart
         look: cleanGlamour(x.look), jinxLook: null,
       };
       wz.owlSeq = Math.max(wz.owlSeq, ...wz.owlbox.map((m) => m.id));
       w.tokenIndex.set(wz.token, wz.id);
+      if (wz.watchCode) w.watchIndex.set(wz.watchCode, wz.id);
       if (wz.hexWindow.length || wz.items.some((i) => i.bound)) w.hexed.add(wz.id);
       if (wz.owlbox.some((m) => m.ask && !m.answered)) w.openAsks.add(wz.id);
       if (wz.hp <= 0) {
