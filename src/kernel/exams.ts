@@ -415,7 +415,7 @@ export const EXAMS: ExamDef[] = [
   {
     id: 'double-tap', year: 2, subject: 'dada',
     title: L('双响炮', 'Double Tap'),
-    brief: L('一次施法，击中你锁定的目标恰好两次，第二次至少比第一次晚 1.5 秒。', 'From ONE cast, hit the creature you are targeting exactly twice, the second hit at least 1.5 s after the first.'),
+    brief: L('一次施法，击中你锁定的目标恰好两次，每次至少 5 点伤害（巨怪皮厚，会减伤），第二次至少比第一次晚 1.5 秒。', 'From ONE cast, hit the creature you are targeting exactly twice, each hit dealing at least 5 damage (trolls resist), the second at least 1.5 s after the first.'),
     hint: L('`(after 秒 ...)` 让一段程序稍后运行（它是独立的事务）。', '`(after secs ...)` runs a block later (as its own transaction).'),
     par: { nodes: 11, gas: 8, mana: 24 }, seconds: 4.5,
     cases: [
@@ -589,9 +589,14 @@ function helloCheck(r: Run): Line | null {
   return L(`应该说「${r.s.answer}」，你说的是「${s ?? '（什么也没说）'}」。`, `Expected "${r.s.answer}", you said "${s ?? '(nothing)'}".`);
 }
 
+/** Each of the double tap's hits must really hurt (a power-1 tickle once passed under par). */
+const DOUBLE_TAP_MIN = 5;
 function doubleTap(r: Run): Line | null {
-  const hits = mine(r, 'damage').filter((x) => x.dst === r.s.target && !x.dot && (x.amount ?? 0) > 0).map((x) => x.t);
+  const dmg = mine(r, 'damage').filter((x) => x.dst === r.s.target && !x.dot && (x.amount ?? 0) > 0);
+  const hits = dmg.map((x) => x.t);
   if (hits.length !== 2) return L(`目标被击中了 ${hits.length} 次，要恰好 2 次。`, `The target was hit ${hits.length} time(s); exactly 2 wanted.`);
+  const weak = dmg.find((x) => (x.amount ?? 0) < DOUBLE_TAP_MIN - 1e-6);
+  if (weak) return L(`有一发只造成了 ${fmt(weak.amount ?? 0)} 点伤害；每发至少 ${DOUBLE_TAP_MIN} 点，挠痒痒不算。`, `One hit dealt only ${fmt(weak.amount ?? 0)} damage; each must deal at least ${DOUBLE_TAP_MIN} (a tickle does not count).`);
   const gap = hits[1] - hits[0];
   if (gap < 1.5 - 1e-6) return L(`两次命中只隔了 ${gap.toFixed(2)} 秒。`, `The two hits were only ${gap.toFixed(2)} s apart.`);
   return null;

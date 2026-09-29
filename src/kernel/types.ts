@@ -224,6 +224,12 @@ export interface CreatureDef {
   bite?: { aura: AuraKind; secs: number; mag: number };
   /** Aura granted to wizards standing near it. */
   grace?: { radius: number; mag: number };
+  /**
+   * A shot it fires at a target beyond its melee range: a real projectile (seen, and dodged by moving), aimed where
+   * the target stands. `provoked`: only at someone who hurt it in the last PROVOKED_SECS (a snare does not snipe
+   * passers-by). `root` shots hold instead of hurting (a web).
+   */
+  ranged?: { range: number; power: number; cooldown: number; element: Element; kind: 'bolt' | 'root'; secs?: number; provoked?: boolean };
   spawn: { x: number; z: number; r: number; max: number };
   lore: string;
 }
@@ -249,6 +255,9 @@ export interface Creature {
   /** 校园事件轮盘: the event instance (kernel/wheel.ts) that brought it, and its damage multiplier (the boosted troll). */
   ev?: number;
   dmgMult?: number;
+  /** Hurt by its target until then: it chases (and shoots) further than its aggro range. */
+  provokedUntil?: number;
+  rangedCd?: number;
 }
 
 export interface Projectile {

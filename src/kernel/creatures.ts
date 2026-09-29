@@ -16,17 +16,20 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   snare: {
     kind: 'snare', name: "Devil's Snare", faction: 'hostile', hp: 60, speed: 0, damage: 5, range: 3.5, cooldown: 1.2, aggro: 3.5, radius: 1.2,
     xp: 10, rep: 1, galleons: 1, weak: { fire: 2, light: 3 }, spawn: { x: 41, z: -24, r: 12, max: 4 },
-    lore: 'Roots anything that lingers. Fire or sunlight.',
+    ranged: { range: 48, power: 7, cooldown: 2.2, element: 'arcane', kind: 'bolt', provoked: true },
+    lore: 'Roots anything that lingers, and flings thorns at whoever burns it from afar. Fire or sunlight.',
   },
   spider: {
     kind: 'spider', name: 'Acromantula', faction: 'hostile', hp: 80, speed: 5, damage: 8, range: 2, cooldown: 1.3, aggro: 16, radius: 0.9,
     xp: 40, rep: 4, galleons: 4, weak: { fire: 1.8 }, spawn: { x: 165, z: 15, r: 70, max: 10 }, bite: { aura: 'poison', secs: 4, mag: 3 },
+    ranged: { range: 16, power: 0, cooldown: 6, element: 'arcane', kind: 'root', secs: 1.2 },
     lore: "Aragog's descendants. Their bite is venomous. Hagrid would like you to know they are misunderstood.",
   },
   troll: {
     kind: 'troll', name: 'Mountain Troll', faction: 'hostile', hp: 260, speed: 3, damage: 28, range: 3, cooldown: 2.6, aggro: 14, radius: 1.4,
     xp: 140, rep: 14, galleons: 18, weak: { arcane: 0.6 }, spawn: { x: -50, z: -36, r: 9, max: 2 },
-    lore: 'Twelve feet of granite-grey stupidity. Leviosa their clubs.',
+    ranged: { range: 32, power: 16, cooldown: 4.5, element: 'arcane', kind: 'bolt', provoked: true },
+    lore: 'Twelve feet of granite-grey stupidity; hurt one and it throws rocks. Leviosa their clubs.',
   },
   dementor: {
     kind: 'dementor', name: 'Dementor', faction: 'hostile', hp: 150, speed: 4, damage: 6, range: 6, cooldown: 1, aggro: 25, radius: 0.8,

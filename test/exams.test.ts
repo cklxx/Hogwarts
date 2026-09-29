@@ -43,6 +43,8 @@ const ALSO_WRONG: Record<string, string[]> = {
   'three-pixies': ['(bolt target 16)'],
   triage: ['(each a (allies 20) (heal a 16))'],
   'now-you-see-it': ['(summon :serpent 20) (after 2 (say (count (summons))))'],
+  // the playtest's loophole: two power-1 tickles once beat par
+  'double-tap': ['(bolt target 1) (after 2 (bolt target 1))'],
 };
 
 const SECRET = 'owl-test-secret';

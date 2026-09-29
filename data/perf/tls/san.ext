@@ -1,0 +1,8 @@
+basicConstraints=CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=@alt
+[alt]
+DNS.1 = localhost
+IP.2 = 127.0.0.1
+IP.3 = 192.0.2.2

@@ -132,6 +132,9 @@ export interface WorldOptions {
   tokenPrefix?: string;
 }
 
+/** How long a creature stays after whoever hurt it, and how far from its home and from them it will follow. */
+export const PROVOKED_SECS = 8, PROVOKED_LEASH = 60;
+
 export class World {
   rules: Rulebook;
   now = 0;
@@ -937,7 +940,7 @@ export class World {
   }
 
   // ------------------------------------------------------------------ effects (called by magic.ts)
-  spawnProjectile(w: Wizard, kind: Projectile['kind'], to: Vec2, homing: string | null, power: number, element: Element, secs: number, tags: string[]) {
+  spawnProjectile(w: { id: string; pos: Vec2; facing: number }, kind: Projectile['kind'], to: Vec2, homing: string | null, power: number, element: Element, secs: number, tags: string[]) {
     const dx = to.x - w.pos.x, dz = to.z - w.pos.z;
     const len = Math.hypot(dx, dz) || 1;
     const ux = len > 0.01 ? dx / len : Math.sin(w.facing), uz = len > 0.01 ? dz / len : -Math.cos(w.facing);
@@ -1183,6 +1186,8 @@ export class World {
         c.damageBy[bw.id] = (c.damageBy[bw.id] ?? 0) + a;
       }
       if (srcId && !c.target && !opts.dot) c.target = srcId;
+      // hurt by who it is after: it chases (and, if it can, shoots) well beyond its aggro range for a while
+      if (srcId && c.target === srcId && !opts.dot && !c.owner) c.provokedUntil = this.now + PROVOKED_SECS;
       if (!opts.dot) this.fx({ k: 'hit', x: c.pos.x, z: c.pos.z, e: element, n: Math.round(a) });
       if (c.hp <= 0) this.slay(c);
       return a;
@@ -2306,7 +2311,8 @@ export class World {
       }
       // hostile: keep a valid target (a wizard or someone's summon), else take the nearest in reach
       let t = c.target ? this.entity(c.target) : undefined;
-      if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, c.home) > 45 || dist(t.pos, c.pos) > def.aggro * 2.5)) { t = undefined; c.target = null; }
+      const provoked = (c.provokedUntil ?? 0) > this.now;
+      if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, c.home) > (provoked ? PROVOKED_LEASH : 45) || dist(t.pos, c.pos) > (provoked ? PROVOKED_LEASH : def.aggro * 2.5))) { t = undefined; c.target = null; c.provokedUntil = 0; }
       if (!t) {
         t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id), c.id, 1)[0];
         if (t) c.target = t.id;
@@ -2316,6 +2322,12 @@ export class World {
         c.facing = Math.atan2(t.pos.x - c.pos.x, -(t.pos.z - c.pos.z));
         if (d > def.range * 0.8 && speed > 0 && !rooted) this.stepToward(c, t.pos, speed, dt);
         if (d <= def.range && c.attackCd <= 0) this.strike(c, def, t.id, sm);
+        else if (def.ranged && d > def.range && d <= def.ranged.range && (!def.ranged.provoked || provoked) && (c.rangedCd ?? 0) <= this.now && !this.solids.hitSegment(c.pos.x, c.pos.z, t.pos.x, t.pos.z)) {
+          // a thorn, a rock, a web: aimed where the target stands now, so a wizard who keeps moving dodges it
+          const r = def.ranged;
+          c.rangedCd = this.now + r.cooldown;
+          this.spawnProjectile(c, r.kind, t.pos, null, r.power * sm * (c.dmgMult ?? 1), r.element, r.secs ?? 0, []);
+        }
       } else if (speed > 0 && !rooted) this.wander(c, speed, dt);
     }
   }
