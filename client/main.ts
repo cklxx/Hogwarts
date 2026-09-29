@@ -4,7 +4,7 @@ import { LANDMARKS, OBSTACLES } from '../src/shared/map';
 import { createDecor, type Look } from './decor';
 import { createFx } from './fx';
 import { createWatch, spectateFromUrl, spectateQuery } from './watch';
-import { L, applyStatic, creatureName, houseName, lang, placeName, setLang, spellName, tr } from './i18n';
+import { L, applyStatic, creatureName, houseName, lang, placeName, primName, setLang, simEffect, spellName, tr } from './i18n';
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { createView } from './view';
@@ -41,7 +41,7 @@ interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: str
 interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; du?: DuSnap; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
-  hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self' } | null)[];
+  hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self'; mana?: number | null } | null)[];
   stunned: number; jailed: number; decree: boolean; title: { zh: string; en: string; next: { zh: string; en: string; how: string } | null }; ui: string[]; seals: number; map: { name: string; registry: string; house: string; year: number; where: string; x: number; z: number }[] | null; proclamation: string;
   /** What is hexing you (World.hexState), or null. */
   hex?: HexState | null;
@@ -742,7 +742,7 @@ function hud() {
     const icon = `#i-${s ? spellIcon(s.name, info?.effects, info?.source) : 'wand'}`;
     const use = el.children[4].firstElementChild as SVGUseElement;
     if (use.getAttribute('href') !== icon) use.setAttribute('href', icon);
-    setText(el.children[5], s && manaCost.has(s.name) ? String(manaCost.get(s.name)) : '');
+    setText(el.children[5], s ? String(manaCost.get(s.name) ?? s.mana ?? '') : '');
     el.onclick ??= () => ctl.castSlot(i);
   });
   ctl.hud();
@@ -1197,12 +1197,23 @@ function trackBars() {
   if (h !== barsH && h > 0) { barsH = h; document.documentElement.style.setProperty('--bars-h', `${h}px`); }
   const tl = Math.round($('#topleft').getBoundingClientRect().bottom);
   if (tl !== tlBottom && tl > 0) { tlBottom = tl; document.documentElement.style.setProperty('--tl-bottom', `${tl}px`); }
+  // a portrait phone stacks the top pieces instead of overlaying them (style.css, max-width 520px): each one's
+  // bottom is where the next begins — the cup strip, then the target frame, then the Dark Lord's ribbon / DA card
+  const below = (prev: number, id: string) => { const e = document.getElementById(id); if (!e || e.hidden) return prev; const r = e.getBoundingClientRect(); return r.height > 0 ? Math.max(prev, Math.round(r.bottom)) : prev; };
+  const s1 = below(tl, 'cupstrip'), s2 = below(s1, 'target'), s3 = below(s2, 'pn-top');
+  const sig = `${s1},${s2},${s3}`;
+  if (sig !== stackSig) { stackSig = sig; const st = document.documentElement.style; st.setProperty('--stack-1', `${s1}px`); st.setProperty('--stack-2', `${s2}px`); st.setProperty('--stack-3', `${s3}px`); }
   const tut = $('#tutorial');
   const high = tut.dataset.at === 'topleft' || tut.dataset.at === 'topright';
   const th = !tut.hidden && high && !tut.dataset.over ? Math.round(tut.getBoundingClientRect().height) : 0;
   if (th !== tutH) { tutH = th; document.documentElement.style.setProperty('--tut-h', `${th}px`); }
+  // over an open panel it sits at the very top: the panels that hug the top (the spellbook, the seals) move down by this much
+  const bh = !tut.hidden && tut.dataset.at === 'bottom' && !tut.dataset.over ? Math.round(tut.getBoundingClientRect().height) : 0;
+  if (bh !== tutB) { tutB = bh; document.documentElement.style.setProperty('--tut-b', `${bh}px`); }
+  const oh = !tut.hidden && tut.dataset.over ? Math.round(tut.getBoundingClientRect().bottom) : 0;
+  if (oh !== tutOver) { tutOver = oh; document.documentElement.style.setProperty('--tut-over', `${oh}px`); }
 }
-let tutH = -1;
+let tutH = -1, tutOver = -1, tutB = -1, stackSig = '';
 $('#agentbox').addEventListener('click', (e) => {
   const el = $('#agentbox');
   const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
@@ -1421,7 +1432,7 @@ function renderBookList() {
     + pn.bookTab()
     + bookSpells.map((s) => `<li data-id="${esc(s.id)}" draggable="true" class="${s.id === bookSel ? 'sel' : ''}" title="${esc(spellLabel(s))}"><span class="sp-ic">${ic(spellIcon(s.name, s.effects, s.source))}</span>`
       + `<span class="sp-tx"><b>${s.builtin && lang === 'zh' ? `${esc(spellName(s.name))}<span class="lat">${esc(s.name)}</span>` : `<span class="${isLatin(s.name) ? 'lat' : ''}">${esc(s.name)}</span>`}</b>`
-      + `<small>${L(`${YEAR_ZH[s.minYear] ?? s.minYear}年级`, `Year ${s.minYear}`)} · ${s.nodes} ${L('节点', 'nodes')} · ${esc(s.effects.join(', ') || '—')}</small></span>${keys(s)}</li>`).join('');
+      + `<small>${L(`${YEAR_ZH[s.minYear] ?? s.minYear}年级`, `Year ${s.minYear}`)} · ${s.nodes} ${L('节点', 'nodes')} · ${esc(s.effects.map(primName).join(L('、', ', ')) || '—')}</small></span>${keys(s)}</li>`).join('');
   $('#book-bar').innerHTML = `<span class="bb-h">${L('快捷栏', 'Hotbar')}</span>` + bookBar.map((id, i) => {
     const s = id ? bookSpells.find((x) => x.id === id) : null;
     const nm = s ? (s.builtin ? spellName(s.name) : s.name) : '';
@@ -1494,7 +1505,7 @@ function loadSpell(id: string | null) {
 function showSim(r: { ok: boolean; mana: number; effects: string[]; notes: string[]; gas: number; error?: string; nodes?: number }) {
   const notes = r.notes.map((n) => '  ! ' + tr(n)).join('\n');
   bookOut(r.ok
-    ? `✓ ${L(`会消耗 ${r.mana} 法力`, `Would cast for ${r.mana} mana`)}（${r.gas} gas${r.nodes ? L(`，${r.nodes} 个节点`, `, ${r.nodes} nodes`) : ''}）\n${r.effects.map((e) => '  • ' + e).join('\n') || L('  （无效果）', '  (no effects)')}${notes ? '\n' + notes : ''}`
+    ? `✓ ${L(`会消耗 ${r.mana} 法力`, `Would cast for ${r.mana} mana`)}（${r.gas} gas${r.nodes ? L(`，${r.nodes} 个节点`, `, ${r.nodes} nodes`) : ''}）\n${r.effects.map((e) => '  • ' + simEffect(e)).join('\n') || L('  （无效果）', '  (no effects)')}${notes ? '\n' + notes : ''}`
     : `✗ ${L('失效', 'Fizzles')}：${tr(r.error ?? '')}${r.gas ? L(`（运行了 ${r.gas} gas 之后）`, ` (after ${r.gas} gas)`) : ''}${notes ? '\n' + notes : ''}`, r.ok ? 'good' : 'bad');
 }
 const simulateDraft = () => send({ t: 'simulate', source: $<HTMLTextAreaElement>('#sp-src').value, x: ctl.aim.x, z: ctl.aim.z, target: ctl.targetKey() ?? undefined });

@@ -2,7 +2,7 @@
  * A tiny scripted "agent" that plays over MCP exactly like an LLM agent would:
  *   npm run bot -- "Neville Longbottom"          (enrols a new wizard)
  *   HOGWARTS_TOKEN=... npm run bot                (plays an existing one)
- * It forges its own spell, walks to the creatures, and hunts them.
+ * It forges its own spell, walks to the creatures, and hunts them, paced to its concentration (专注力).
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -13,12 +13,15 @@ const name = process.argv[2] ?? `Bot ${Math.floor(Math.random() * 1000)}`;
 
 const c = new Client({ name: 'hogwarts-bot', version: '0.1.0' });
 await c.connect(new StreamableHTTPClientTransport(url, token ? { requestInit: { headers: { Authorization: `Bearer ${token}` } } } : undefined));
-const call = async (tool: string, args: Record<string, unknown> = {}) => {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// 专注力: action tools spend concentration (about one a second); a tired wand hand says retry_after=N — rest, then retry once
+const call = async (tool: string, args: Record<string, unknown> = {}, retried = false): Promise<{ ok: boolean; data: any }> => {
   const r = (await c.callTool({ name: tool, arguments: args })) as { content: { text: string }[]; isError?: boolean };
   const t = r.content[0]?.text ?? '';
+  const wait = r.isError ? /retry_after=(\d+)/.exec(t) : null;
+  if (wait && !retried) { await sleep(Number(wait[1]) * 1000 + 100); return call(tool, args, true); }
   try { return { ok: !r.isError, data: JSON.parse(t) }; } catch { return { ok: !r.isError, data: t }; }
 };
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 if (!token) {
   const e = await call('enroll', { name });
@@ -47,5 +50,5 @@ for (let i = 0; ; i++) {
   const weak = prey.weakTo.includes('ice') ? 'Glacius' : prey.weakTo.includes('fire') ? 'Incendio' : 'Finisher';
   const r = (await call('cast', { spell: weak, target: prey.id })).data;
   if (!r.ok) await call('cast', { spell: 'Finisher', target: prey.id });
-  await sleep(450);
+  await sleep(1200); // at most ~2 action calls a round: stays inside the concentration regen
 }

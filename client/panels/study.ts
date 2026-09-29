@@ -28,6 +28,8 @@ export function createStudy(d: StudyDeps) {
   /** The request in flight: a copy or a read, and whether the book was closed when it was asked (from the slip). */
   let asked: { copy: boolean; open: boolean } | null = null;
   let lastBlock = '', lastSlip = '';
+  /** 看源码 spends the spell's only study (kernel rule): the first click arms it, a second within 4 s reads. */
+  let armed: { spell: string; from: string; until: number } | null = null;
 
   function act(spell: string, handle: string, copy: boolean) {
     const taken = d.spells().some((s) => s.name.toLowerCase() === spell.toLowerCase());
@@ -38,7 +40,8 @@ export function createStudy(d: StudyDeps) {
   const buttons = (s: StudyEntry, now: number) => {
     const wait = readyIn(s, now);
     const dis = wait > 0 ? ` disabled title="${esc(L(`还要看 ${wait} 秒才能看透`, `${wait}s more before you see how it works`))}"` : '';
-    return `<button type="button" class="ghost" data-study="read" data-spell="${esc(s.spell)}" data-from="${esc(s.handle)}"${dis} title="${esc(L('把源码读进编辑器（每个咒语只能偷师一次）', 'Read its source into the editor (each spell can be studied once)'))}">${ic('eye')}${L('看源码', 'Read the source')}</button>`
+    const sure = armed && armed.spell === s.spell && armed.from === s.handle && performance.now() < armed.until;
+    return `<button type="button" class="${sure ? 'warn' : 'ghost'}" data-study="read" data-spell="${esc(s.spell)}" data-from="${esc(s.handle)}"${dis} title="${esc(L('把源码读进编辑器（每个咒语只能偷师一次）', 'Read its source into the editor (each spell can be studied once)'))}">${ic('eye')}${sure ? L('再点一次：用掉这次偷师', 'Click again: spends the one study') : L('看源码', 'Read the source')}</button>`
       + `<button type="button" data-study="copy" data-spell="${esc(s.spell)}" data-from="${esc(s.handle)}"${dis} title="${esc(L('按你自己的年级上限铸造进咒语书，署上原作者', 'Forged into your book at your own year, credited to its author'))}">${ic('scroll')}${L('抄进咒语书', 'Copy into my book')}</button>`;
   };
 
@@ -89,6 +92,14 @@ export function createStudy(d: StudyDeps) {
     const b = (e.target as HTMLElement).closest('[data-study]') as HTMLButtonElement | null;
     if (!b || b.disabled) return;
     if (b.dataset.study === 'close') { slip = null; renderSlip(); return; }
+    const spell = b.dataset.spell ?? '', from = b.dataset.from ?? '';
+    if (b.dataset.study === 'read' && !(armed && armed.spell === spell && armed.from === from && performance.now() < armed.until)) {
+      armed = { spell, from, until: performance.now() + 4000 };
+      update();
+      setTimeout(update, 4100);
+      return;
+    }
+    armed = null;
     act(b.dataset.spell ?? '', b.dataset.from ?? '', b.dataset.study === 'copy');
     slip = null;
     renderSlip();

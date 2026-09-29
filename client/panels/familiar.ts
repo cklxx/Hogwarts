@@ -16,8 +16,10 @@ export function createFamiliar(d: { send: (o: unknown) => void; state: () => Fam
   let asked = -1e9;
   /** The reply to our last summon/dismiss, until `me` catches up. */
   let replied: FamiliarState | null = null;
+  let repliedAt = -1e9;
 
-  const current = () => d.state() ?? replied;
+  // a fresh reply beats `me`, which lags up to a second: the panel redraws on the reply, and would draw the old state
+  const current = () => (replied && performance.now() - repliedAt < 3000 ? replied : d.state() ?? replied);
   function html(where: 'owl' | 'menu'): string {
     if (available !== true) return '';
     const f = current();
@@ -49,7 +51,7 @@ export function createFamiliar(d: { send: (o: unknown) => void; state: () => Fam
     html, click,
     /** welcome: the server has familiars when it sends welcome.familiar. */
     onWelcome(f: FamiliarState | undefined) { available = !!f; if (f) { replied = f; pick = f.kind; } },
-    onReply(f: FamiliarState) { available = true; replied = f; msg = ''; },
+    onReply(f: FamiliarState) { available = true; replied = f; repliedAt = performance.now(); msg = ''; },
     /** An error right after a summon: "not available" hides the control; anything else is said under it. */
     onError(text: string): boolean {
       if (performance.now() - asked > 3000) return false;

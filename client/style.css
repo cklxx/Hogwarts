@@ -884,3 +884,18 @@ body.spectating #bars, body.spectating #agentbox, body.spectating #goal, body.sp
 .watch-btn { white-space: nowrap; color: var(--wax); text-decoration: none; }
 .watch-btn:hover { text-decoration: underline; }
 #gate a { color: var(--wax); }
+/* the coach mark over an open panel sits at the top: the spellbook and the seals make room under it (--tut-over, main.ts trackBars) */
+body:has(#tutorial[data-over]:not([hidden])) #book { top: calc(var(--tut-over, calc(48px * var(--u))) + calc(8px * var(--u))); height: min(calc(680px * var(--u)), calc(100vh - var(--tut-over, calc(48px * var(--u))) - calc(24px * var(--u)))); }
+body:has(#tutorial[data-over]:not([hidden])) #seals { top: calc(var(--tut-over, calc(48px * var(--u))) + calc(8px * var(--u))); }
+/* a portrait phone: the top pieces stack under your card instead of overlaying it (--stack-n, main.ts trackBars) */
+@media (max-width: 520px) {
+  body #cupstrip { top: calc(var(--tl-bottom, calc(84px * var(--u))) + calc(6px * var(--u))); }
+  #target, body.cup #target, body.cup.boss #target { top: calc(var(--stack-1, var(--tl-bottom, calc(84px * var(--u)))) + calc(6px * var(--u))); }
+  body #pn-top, body.cup #pn-top, body.cup.boss #pn-top { top: calc(var(--stack-2, var(--tl-bottom, calc(84px * var(--u)))) + calc(6px * var(--u))); }
+  #topright { top: calc(var(--stack-3, var(--tl-bottom, calc(110px * var(--u)))) + calc(8px * var(--u))); }
+  body:has(#tutorial:is([data-at="topleft"], [data-at="topright"]):not([hidden]):not([data-over])) #topright { top: calc(var(--stack-3, var(--tl-bottom, calc(110px * var(--u)))) + var(--tut-h, calc(46px * var(--u))) + calc(18px * var(--u))); }
+  #tutorial[data-at="topleft"], #tutorial[data-at="topright"] { top: calc(var(--stack-3, var(--tl-bottom, calc(48px * var(--u)))) + calc(10px * var(--u))); }
+}
+/* a toast never hides behind (or under) the coach mark at the bottom: it rises above it (--tut-b, main.ts trackBars) */
+body:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #toast { bottom: calc(var(--bars-h, calc(150px * var(--u))) + var(--tut-b, calc(56px * var(--u))) + calc(34px * var(--u))); }
+@media (max-width: 520px) { body:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #hotbar > div.sel > span { display: none; } }

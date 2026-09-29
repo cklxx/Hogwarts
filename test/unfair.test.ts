@@ -286,6 +286,9 @@ describe("Dumbledore's Army (邓布利多军)", () => {
     expect(hit(ms[0]) / base).toBeCloseTo(DA_JOINT_PCT / 100, 9);
     expect(hit(out)).toBeCloseTo(base, 9);
     expect(events(w, 'da').some((e) => /Expecto Patronum/.test(e.text) && !e.to)).toBe(true);
+    // the badge: every joint hitter sees it in their own state, however rate-limited the public line is
+    for (const x of ms) expect(w.privateState(x.id).unfair.joint).toBeGreaterThan(0);
+    expect(w.privateState(out.id).unfair.joint).toBe(0);
     for (let n = 0; n < 50; n++) expect(jointPct(n)).toBeLessThanOrEqual(DA_JOINT_PCT);
     // spread out over more than the window: no bonus
     const w2 = mk();
@@ -482,6 +485,8 @@ describe('agent concentration (专注力) — a political knob', () => {
       expect(r.error).toMatch(/wand hand is tired.*持杖手累了.*retry_after=1/s);
     }
     expect(w.spendConcentration(a.id, 'whoami').ok).toBe(true); // reading stays free
+    // a restart does not refill it
+    expect(World.restore(JSON.parse(JSON.stringify(w.serialize()))).focusState(a.id).cur).toBe(0);
     w.now += 3;
     expect(w.focusState(a.id).cur).toBe(3);
     expect(w.spendConcentration(a.id, 'forge_spell')).toMatchObject({ ok: true, cost: AGENT_TOOL_COST.forge_spell, left: 0 });

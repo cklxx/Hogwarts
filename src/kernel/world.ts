@@ -241,6 +241,8 @@ export class World {
   private darkCd = 0;
   private lawlessIn = new Set<string>();
   private jointHits = new Map<string, Map<string, number>>();
+  /** When each DA member last landed a joint-Patronus hit (transient; privateState().unfair.joint). */
+  private jointAt = new Map<string, number>();
   private focus = new Map<string, { pts: number; at: number }>();
 
   constructor(opts: WorldOptions = {}) {
@@ -915,6 +917,7 @@ export class World {
     const report = execute(this, w, program, { target, aim, spellName: spell.name, incantation: spell.incantation, dryRun: opts.dryRun });
     if (opts.dryRun) return report;
     if (report.ok) {
+      if (report.mana > 0) spell.lastMana = Math.round(report.mana);
       w.cooldowns[spell.id] = this.now + 0.3 + report.mana / 60;
       w.globalCd = this.now + 0.25;
       w.stats.casts++;
@@ -953,6 +956,27 @@ export class World {
    * Failures are not cached (they re-run and throw the same error).
    */
   private programs = new Map<string, Node[]>();
+  /**
+   * The mana a spell costs, for the hotbar: what its last cast cost, else a dry run aimed at yourself (cached per
+   * spell and year; the interpreter is pure in a dry run). null when that finds nothing to act on (it depends on
+   * who is around) or the spell does not compile.
+   */
+  manaOf(w: Wizard, s: Spell): number | null {
+    if (s.lastMana) return s.lastMana;
+    const k = `${s.id}|${w.year}`;
+    const hit = this.manaCache.get(k);
+    if (hit !== undefined) return hit;
+    let v: number | null = null;
+    try {
+      const r = execute(this, w, this.compiled(s.source, w), { target: w.id, aim: { ...w.pos }, spellName: s.name, incantation: s.incantation, dryRun: true });
+      v = r.ok && r.mana > 0 ? Math.round(r.mana) : null;
+    } catch { v = null; }
+    if (this.manaCache.size > 4096) this.manaCache.clear();
+    this.manaCache.set(k, v);
+    return v;
+  }
+  private readonly manaCache = new Map<string, number | null>();
+
   private compiled(source: string, w: Wizard): Node[] {
     const max = maxNodes(w.year, this.rules), banned = this.rules.magic.bannedPrimitives;
     const key = `${w.year}|${max}|${w.seals}|${banned.join(',')}|${source}`;
@@ -1115,7 +1139,12 @@ export class World {
 
   nova(w: Wizard, radius: number, power: number, element: Element, tags: string[]) {
     this.fx({ k: 'nova', x: w.pos.x, z: w.pos.z, r: radius, e: element });
-    for (const e of this.around(w.pos, radius, (e) => this.canHarm(w.id, e.id), w.id, 32)) this.damage(w.id, e.id, power, element, tags);
+    for (const e of this.around(w.pos, radius, (e) => this.canHarm(w.id, e.id) && this.inBlast(w.pos, e.pos), w.id, 32)) this.damage(w.id, e.id, power, element, tags);
+  }
+
+  /** An area spell's blast reaches only what no wall stands in front of (the same test a bolt makes). */
+  inBlast(from: Vec2, to: Vec2): boolean {
+    return !this.solids.hitSegment(from.x, from.z, to.x, to.z);
   }
 
   reveal(w: Wizard, key: UiCharm) {
@@ -2187,7 +2216,7 @@ export class World {
       this.storms = this.storms.filter((s) => s.at > this.now);
       for (const s of due) {
         this.fx({ k: 'stormhit', x: s.x, z: s.z, r: s.r, e: s.element });
-        for (const e of this.around(s, s.r, (e) => this.canHarm(s.owner, e.id), s.owner, 32)) this.damage(s.owner, e.id, s.power, s.element, s.tags);
+        for (const e of this.around(s, s.r, (e) => this.canHarm(s.owner, e.id) && this.inBlast(s, e.pos), s.owner, 32)) this.damage(s.owner, e.id, s.power, s.element, s.tags);
       }
     }
     this.stepProjectiles(dt);
@@ -3138,6 +3167,7 @@ export class World {
     const minister = mid ? this.wizards.get(mid) : undefined;
     if (minister && this.isDaMember(minister.id)) this.leaveDaQuietly(minister, { zh: '魔法部长', en: 'Minister for Magic' });
     if (this.flags.da.members.some((id) => !this.wizards.has(id))) this.flags.da.members = this.flags.da.members.filter((id) => this.wizards.has(id));
+    for (const [id, at] of this.jointAt) if (this.now - at > DA_JOINT_BADGE_S) this.jointAt.delete(id);
     for (const [t, m] of this.jointHits) {
       for (const [id, at] of m) if (this.now - at > DA_JOINT_WINDOW_S) m.delete(id);
       if (!m.size) this.jointHits.delete(t);
@@ -3302,6 +3332,7 @@ export class World {
     let n = 0;
     for (const [id, at] of m) { if (this.now - at > DA_JOINT_WINDOW_S || !this.isDaMember(id)) m.delete(id); else n++; }
     const pct = jointPct(n);
+    if (pct > 100) for (const id of m.keys()) this.jointAt.set(id, this.now); // me.unfair.joint: every member in on it, every time (the public line below is rate-limited)
     if (pct > 100 && this.banter([`joint:${dstId}`, 10])) {
       const e = this.entity(dstId);
       if (e) this.fx({ k: 'patronus', x: e.pos.x, z: e.pos.z, r: 6 });
@@ -3599,7 +3630,7 @@ export class World {
       reputation: Math.round(w.reputation), galleons: w.galleons, hp: Math.round(w.hp), maxHp: d.maxHp, mana: Math.round(w.mana), maxMana: d.maxMana,
       hotbar: w.hotbar.map((id) => {
         const s = w.spells.find((x) => x.id === id);
-        return s ? { id: s.id, name: s.name, cd: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)), kind: spellKind(s.effects) } : null;
+        return s ? { id: s.id, name: s.name, cd: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)), kind: spellKind(s.effects), mana: this.manaOf(w, s) } : null;
       }),
       stunned: w.st.stunnedUntil ? Math.max(0, round(w.st.stunnedUntil - this.now)) : 0,
       down: w.st.stunnedUntil ? this.knockedOutBy(w) : null,
@@ -3642,6 +3673,8 @@ export class World {
       study: this.studyable(w).map(({ spell, from, handle, readyAt }) => ({ spell, from, handle, readyAt })),
       focus: this.focusState(w.id),
       lawless: this.inLawless(w.pos),
+      /** Seconds the joint-Patronus badge still shows for you (your last joint hit + DA_JOINT_BADGE_S), else 0. */
+      joint: Math.max(0, round((this.jointAt.get(w.id) ?? -1e9) + DA_JOINT_BADGE_S - this.now)),
     };
   }
 
@@ -3703,6 +3736,8 @@ export class World {
       market: this.market,
       // 决斗俱乐部: only the term's reward ledger (caps and rematch gaps survive a restart; the queue and match do not)
       duelLedger: this.duel.ledger,
+      // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
+      focus: Object.fromEntries(this.focus),
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
       wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, agentLog: undefined, goalBy: null, steerAt: undefined, jinxLook: null })),
     };
@@ -3726,6 +3761,9 @@ export class World {
     const dl = (data as { duelLedger?: { term?: unknown; wins?: unknown; pairs?: unknown } }).duelLedger;
     if (dl && typeof dl.term === 'number') w.duel.ledger = { term: dl.term, wins: { ...(dl.wins as Record<string, number> ?? {}) }, pairs: { ...(dl.pairs as Record<string, number> ?? {}) } };
     w.market = restoreMarket((data as { market?: unknown }).market);
+    for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {
+      if (typeof f?.pts === 'number' && typeof f.at === 'number' && Number.isFinite(f.pts) && Number.isFinite(f.at)) w.focus.set(id, { pts: f.pts, at: f.at });
+    }
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {
@@ -3798,6 +3836,8 @@ const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, 
  * What a hotbar spell is for, read off its effect primitives (Spell.effects), so the browser's smart casting can pick
  * a target: harm aims at a foe, help at a friend or yourself, self needs no target. Harm wins when a spell does both.
  */
+/** How long the joint-Patronus badge stays lit after your last joint hit. */
+const DA_JOINT_BADGE_S = 6;
 const HARM_EFFECTS = new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova']);
 const HELP_EFFECTS = new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend']);
 export const spellKind = (effects: readonly string[]): 'harm' | 'help' | 'self' =>

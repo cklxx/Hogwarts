@@ -91,7 +91,7 @@ export function createPanels(d: PanelDeps) {
     if (u?.lawless) parts.push(`<div class="lawless-label">${ic('arcane')}<span>${esc(LAWLESS_LABEL())}</span></div>`);
     const mini = da.mini();
     if (mini) parts.push(mini);
-    if (performance.now() < jointUntil) parts.push(`<div class="joint">${ic('patronus')}<span><b>${L('联合守护神', 'Joint Patronus')}</b> · ${L('伤害 ×1.25：三名以上成员 4 秒内打中同一个目标', 'damage ×1.25: three or more members hit one target within 4 s')}</span></div>`);
+    if (performance.now() < jointUntil || (u?.joint ?? 0) > 0) parts.push(`<div class="joint">${ic('patronus')}<span><b>${L('联合守护神', 'Joint Patronus')}</b> · ${L('伤害 ×1.25：三名以上成员 4 秒内打中同一个目标', 'damage ×1.25: three or more members hit one target within 4 s')}</span></div>`);
     setHtml(top, parts.join(''));
     da.tick(top);
     top.hidden = !parts.length;

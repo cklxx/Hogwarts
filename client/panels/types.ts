@@ -30,6 +30,8 @@ export interface UnfairState {
   study: StudyEntry[];
   focus: FocusView;
   lawless: boolean;
+  /** Seconds the joint-Patronus badge still shows for you (World.unfairState). */
+  joint?: number;
 }
 
 /** src/server/familiar.ts FamiliarState (me.agent.familiar, welcome.familiar, the {t:'familiar'} reply). */

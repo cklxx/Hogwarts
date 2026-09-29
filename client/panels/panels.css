@@ -247,3 +247,4 @@ textarea.runes:focus { background: rgba(120, 80, 30, .14); border-left-color: va
 #helppanel .help-pillars { max-width: none; margin: 0 0 calc(4px * var(--u)); padding: calc(6px * var(--u)) calc(12px * var(--u)); border-left: calc(3px * var(--u)) solid var(--wax); background: rgba(150, 32, 36, .05); }
 #helppanel .help-pillars b { color: var(--wax); font-weight: 600; }
 #helppanel h3.pillar .pl-n { font: 400 calc(22px * var(--t))/1 var(--brush); color: var(--wax); }
+[data-study].warn { color: var(--wax); box-shadow: inset 0 0 0 calc(1.5px * var(--u)) var(--wax); }

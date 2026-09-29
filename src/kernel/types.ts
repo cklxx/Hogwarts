@@ -23,6 +23,8 @@ export interface Spell {
   origin?: { author: string; handle: string; spell: string; at: number };
   /** 咒语集市: the market listing (and version) this spell was published as, copied from or forked into (kernel/market.ts). */
   market?: { id: string; v: number };
+  /** What the last successful cast cost (the hotbar shows it; World.manaOf estimates it before the first cast). */
+  lastMana?: number;
 }
 
 /** 偷师: a custom spell of another wizard that hit you (the author's registry id is kept server-side only). */

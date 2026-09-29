@@ -1,4 +1,4 @@
-import { ZH_CREATURE, ZH_HOUSE, zhPlace, zhSpell } from '../src/shared/zh';
+import { ZH_CREATURE, ZH_ELEMENT, ZH_HOUSE, zhPlace, zhSpell } from '../src/shared/zh';
 
 /** 中文 is the default; English is one click away (Esc menu). */
 export type Lang = 'zh' | 'en';
@@ -242,3 +242,47 @@ export function tr(msg: string): string {
   if (lang !== 'zh') return s.split('\n').map((l) => splitBi(l)?.en ?? l).join('\n');
   return s.split('\n').map(trLine).join('\n');
 }
+
+const el = (e: string) => ZH_ELEMENT[e] ?? e;
+const SUMMON_ZH: Record<string, string> = { serpent: '大蛇', birds: '飞鸟' };
+/** A simulate / cast effect line (kernel/magic.ts `desc` + " (n mana)") in Chinese; unknown shapes pass through. */
+export function simEffectZh(line: string): string {
+  const m = /^(.*?)(?: \(([\d.]+) mana\))?$/.exec(line)!;
+  const d = m[1], mana = m[2] ? `（${m[2]} 法力）` : '';
+  const R: [RegExp, (...g: string[]) => string][] = [
+    [/^bolt ([\d.]+) (\w+)$/, (p, e) => `魔弹 ${p} 点${el(e)}伤害`],
+    [/^disarm (.+)$/, (t) => `缴械 ${t}`],
+    [/^root (.+) ([\d.]+)s$/, (t, s) => `定身 ${t} ${s} 秒`],
+    [/^heal (.+) ([\d.]+)$/, (t, a) => `治疗 ${t} ${a} 点`],
+    [/^shield (.+) ([\d.]+) for ([\d.]+)s$/, (t, a, s) => `护盾 ${t} ${a} 点，${s} 秒`],
+    [/^haste (.+) x([\d.]+) ([\d.]+)s$/, (t, x, s) => `加速 ${t} ×${x}，${s} 秒`],
+    [/^push (.+) ([\d.]+)m$/, (t, f) => `击退 ${t} ${f} 米`],
+    [/^nova r([\d.]+) ([\d.]+) (\w+)$/, (r, p, e) => `爆发 半径 ${r} 米，${p} 点${el(e)}伤害`],
+    [/^patronus ([\d.]+)s$/, (s) => `守护神 ${s} 秒`],
+    [/^apparate ([\d.]+)m$/, (d2) => `幻影移形 ${d2} 米`],
+    [/^reveal (.+)$/, (k) => `显形 ${k}`],
+    [/^chain (.+) ([\d.]+) (\w+)$/, (t, p, e) => `连锁闪电 ${t} ${p} 点${el(e)}伤害`],
+    [/^storm r([\d.]+) ([\d.]+) (\w+)$/, (r, p, e) => `风暴 半径 ${r} 米，${p} 点${el(e)}伤害`],
+    [/^say "(.*)"$/s, (t) => `说「${t}」`],
+    [/^regen (.+) ([\d.]+)\/s for ([\d.]+)s$/, (t, r, s) => `持续治疗 ${t} 每秒 ${r}，${s} 秒`],
+    [/^cleanse (.+)$/, (t) => `咒立停 ${t}`],
+    [/^revive (.+)$/, (t) => `复苏 ${t}`],
+    [/^mend r([\d.]+) ([\d.]+)$/, (r, a) => `群疗 半径 ${r} 米，${a} 点`],
+    [/^summon (\w+) for ([\d.]+)s$/, (k, s) => `召唤${SUMMON_ZH[k] ?? k} ${s} 秒`],
+    [/^glamour self: (.*)$/s, (x) => `变形术 自己：${x}`],
+    [/^glamour (.+) for ([\d.]+)s: (.*)$/s, (t, s, x) => `变形术 ${t} ${s} 秒：${x}`],
+    [/^lumos$/, () => '荧光闪烁'],
+    [/^(\d+) delayed block\(s\)$/, (n) => `${n} 个延时块`],
+  ];
+  for (const [re, f] of R) { const g = re.exec(d); if (g) return f(...g.slice(1)) + mana; }
+  return line;
+}
+/** The same, in the player's language. */
+export const simEffect = (line: string) => (lang === 'zh' ? simEffectZh(line) : line);
+const PRIM_NAME_ZH: Record<string, string> = {
+  bolt: '魔弹', disarm: '缴械', root: '定身', heal: '治疗', shield: '护盾', haste: '加速', push: '击退', nova: '爆发', patronus: '守护神',
+  apparate: '幻影移形', reveal: '显形', chain: '连锁闪电', storm: '风暴', say: '说话', regen: '持续治疗', cleanse: '咒立停', revive: '复苏', mend: '群疗',
+  summon: '召唤', glamour: '变形术', light: '照明',
+};
+/** An effect primitive's name (Spell.effects) in the player's language. */
+export const primName = (p: string) => L(PRIM_NAME_ZH[p] ?? p, p);
