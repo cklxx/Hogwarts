@@ -42,7 +42,7 @@ with `formal/lean/Hogwarts.lean` through `formal/vectors.json` (`unfair.constant
   veto_decree`; 2 for `break_seal study_spell`; 3 for `forge_spell forge_item`; every other tool 0. The refusal
   text ends with `retry_after=<seconds>`.
 
-## For the client (not wired yet: the kernel exposes it)
+## For the client (drawn by `client/panels/*`: the Dark Mark and compass, the DA panel `J`, 偷师 in the spellbook, the concentration tube, the lawless vignette)
 
 Snapshot (`{ t: 'snap', s }`):
 

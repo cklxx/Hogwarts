@@ -168,7 +168,7 @@ export function curseText(h: HexState | null | undefined): { hexed: boolean; hea
  * One panel at a time: opening `el` closes every other big panel (the sheets). The small modal question
  * (#atask) and the Marauder's Map (a state of the world, not a panel) are left alone.
  */
-export const PANELS = ['book', 'seals', 'board', 'menu', 'owl', 'trunk', 'helppanel'];
+export const PANELS = ['book', 'seals', 'board', 'menu', 'owl', 'trunk', 'helppanel', 'da', 'exams'];
 export function solo(el: HTMLElement) {
   for (const id of PANELS) { const p = document.getElementById(id); if (p && p !== el) p.hidden = true; }
 }
@@ -854,9 +854,12 @@ export function createControls(d: ControlsDeps) {
     if (show) { renderHelp(); solo(el); }
     el.hidden = !show;
   }
+  /** The keys, grouped by the three pillars of play (README 怎么玩): ① fight and duel ② write spells ③ politics. */
   function renderHelp() {
     const row = (k: string, v: string) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`;
+    const pillar = (n: string, zh: string, en: string, icon: string) => `<h3 class="pillar"><svg class="ic" aria-hidden="true"><use href="#i-${icon}"/></svg><span class="pl-n">${n}</span>${L(zh, en)}</h3>`;
     $('#helppanel').innerHTML = `<h2><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg><span>${L('操作说明', 'Controls')} <small><kbd>H</kbd></small></span> <button class="x" data-close="helppanel" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+      <p class="help-pillars">${L('三条主线：<b>① 打怪决斗</b>攒经验和声望 · <b>② 写咒语</b>（咒语就是代码，每周考 O.W.L.） · <b>③ 政治</b>：声望第一当魔法部长改规则，也可能成为黑魔王；弱者组成邓布利多军否决法令。禁书区封印是选修。', 'Three paths: <b>① fight and duel</b> for XP and reputation · <b>② write spells</b> (spells are code; weekly O.W.L.s) · <b>③ politics</b>: the top wizard becomes Minister and rewrites the rules, or wears the Dark Mark; the underdogs band into Dumbledore\'s Army and veto decrees. The Restricted Section\'s seals are an elective.')}</p>
       <div class="cols"><div>
       <h3>${L('移动', 'Moving')}</h3><table>
       ${row('W A S D', L('移动（相对镜头方向）；跑动时镜头会慢慢转到你身后', 'Move (relative to the camera); the camera drifts in behind you'))}
@@ -865,26 +868,32 @@ export function createControls(d: ControlsDeps) {
       ${row('Q / E', L('向左 / 向右转镜头', 'Turn the camera left / right'))}
       ${row(L('滚轮', 'Wheel'), L('拉近 / 拉远', 'Zoom'))}
       </table>
-      <h3>${L('战斗', 'Fighting')}</h3><table>
+      ${pillar('①', '打怪与决斗', 'Fight and duel', 'stupefy')}<table>
       ${row(L('指向', 'Hover'), L('鼠标靠近谁，谁就会被高亮（红 = 敌对，绿 = 友方，黄 = 中立）。NPC 同学是黄色的：不招惹它就不会动手；想和它决斗就先锁定再按数字键', 'Whatever the cursor is near lights up (red foe, green friend, yellow neutral). NPC classmates are yellow: they leave you alone unless attacked; to duel one, target it and press a spell key'))}
       ${row(L('左键 敌人', 'Click foe'), L('锁定它并施放当前的攻击咒语（高亮的快捷栏格子）', 'Target it and cast your current attack spell (the highlighted slot)'))}
       ${row('1 – 6', L('施放快捷栏咒语。没有目标时自动挑选：攻击咒语 → 前方最近的敌人；治疗 / 护盾 → 你指向的队友或你自己；快快复苏 → 最近倒下的同伴', 'Cast a hotbar spell. With no target it picks one: attacks → nearest foe ahead; heals/shields → the friend you point at, or you; Rennervate → the nearest fallen friend'))}
       ${row('Tab', L('在前方的敌人之间切换目标（先魔物、后巫师，由近及远）', 'Cycle through foes ahead: creatures first, then wizards, nearest first'))}
-      ${row('Esc', L('取消目标（没有目标时打开菜单）', 'Clear the target (opens the menu when there is none)'))}
       ${row(L('Shift + 左键', 'Shift + click'), L('对鼠标所指的地面施放当前咒语', 'Cast your current spell at the ground under the cursor'))}
+      ${row('F', L('交互：扶起身边倒下的同伴、在地标旁阅读书页（屏幕上会出现提示）', 'Interact: revive a fallen friend, read a page at its landmark (a prompt appears)'))}
+      ${row('Esc', L('取消目标（没有目标时打开菜单）', 'Clear the target (opens the menu when there is none)'))}
+      ${row('T', L('行囊与商店：用加隆买装备，穿上、卸下、销毁；解除被诅咒物品的粘身', 'Trunk and shop: buy gear with Galleons; equip, unequip, destroy; break a cursed binding'))}
       </table></div><div>
-      <h3>${L('交互与界面', 'Things & panels')}</h3><table>
-      ${row('F', L('交互：在地标旁阅读禁书区的书页、扶起身边倒下的同伴（屏幕上会出现提示）', 'Interact: read a Restricted Section page at its landmark, revive a fallen friend (a prompt appears)'))}
-      ${row('B', L('咒语书：阅读、修改、铸造咒语（咒语就是 Runes 程序）', 'Spellbook: read, edit and forge spells (spells are Runes programs)'))}
-      ${row('R', L('禁书区：四道封印谜题', 'Restricted Section: four seal puzzles'))}
-      ${row('O', L('猫头鹰面板：和你自己的 Agent 私聊、回答它的提问（聊天框里以 @agent 或 @a 开头也行）', 'Owl panel: talk privately with your own agent and answer its questions (or start a chat line with @agent / @a)'))}
-      ${row('T', L('行囊：穿上、卸下、销毁物品；解除被诅咒物品的粘身', 'Trunk: equip, unequip and destroy items; break a cursed binding'))}
-      ${row('L', L('排行榜与学院杯', 'Leaderboard and House Cup'))}
+      ${pillar('②', '写咒语', 'Write spells', 'quill')}<table>
+      ${row('B', L('咒语书：阅读、修改、铸造咒语（咒语就是 Runes 程序；也能从模板拼、让 Agent 帮你写）', 'Spellbook: read, edit and forge spells (Runes programs; or start from a template, or ask your agent)'))}
+      ${row('K', L('O.W.L. 考试：每周 6 道实战考题，交一段 Runes，隐藏用例像单元测试一样评分', 'O.W.L.s: six exams a week; hand in Runes, graded by hidden cases like unit tests'))}
+      ${row('O', L('猫头鹰：和你自己的 Agent（或使魔）私聊、回答它的提问（聊天框里以 @agent 或 @a 开头也行）', 'Owl: talk privately with your agent (or familiar) and answer its questions (or start a chat line with @agent / @a)'))}
+      </table>
+      ${pillar('③', '政治', 'Politics', 'cup')}<table>
+      ${row('L', L('排行榜：学期末声望第一成为魔法部长（改写规则）；声望 ≥150 的第一名戴上黑魔标记', 'Leaderboard: the top wizard at term end becomes Minister (rewrites the rules); the top one with 150+ wears the Dark Mark'))}
+      ${row('J', L('邓布利多军：弱者的联盟，加入、在法令颁布后投票否决、联合守护神', "Dumbledore's Army: the underdogs' union; join, veto a fresh decree, strike together"))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}
-      ${row('Esc', L('猫头鹰邮递：生成配对码把你的 AI Agent 连进来、管理密钥、切换语言', 'Owl Post: a pairing code to connect your AI agent, your key, the language'))}
+      </table>
+      <h3>${L('其他', 'Everything else')}</h3><table>
+      ${row('Esc', L('猫头鹰邮递：生成配对码把你的 AI Agent 连进来、召唤使魔、管理密钥、切换语言', 'Owl Post: a pairing code for your AI agent, a familiar, your key, the language'))}
+      ${row('R', L('禁书区（选修）：四道封印谜题，破解后提高咒语上限', 'Restricted Section (elective): four seal puzzles that raise your spell caps'))}
       ${row('H / ?', L('打开 / 关闭本帮助', 'This help'))}
       </table>
-      <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom.')}</p>
+      <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。考试在咒语书的「考试」书签里，邓布利多军在猫头鹰邮递（信封）里。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom. The exams hang from the spellbook (the O.W.L. ribbon); the DA is in the Owl Post (the letter).')}</p>
       </div></div>
       <p class="row"><button id="help-goal" class="ghost">${L('显示「下一步」提示', 'Show the next-goal line')}</button> <button id="help-tutorial" class="ghost">${L('重新开始新手引导', 'Restart the tutorial')}</button> <button id="help-close">${L('关闭', 'Close')}</button></p>`;
     $('#help-close').onclick = () => toggleHelp(false);
