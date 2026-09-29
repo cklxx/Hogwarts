@@ -15,6 +15,7 @@ import { createEffects } from './effects';
 import { createBoltBatch } from './bolts';
 import { createHerd } from './herd';
 import { createDynRes } from './dynres';
+import { instanceAlike } from './instancer';
 import { captureFocus } from './capture';
 import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
@@ -176,6 +177,8 @@ const decor = createDecor(scene, world.bannerSpots);
   probe.mark('batched');
   if (probe.PERF) console.log(`[perf] static batching: ${b.merged} of ${b.candidates} meshes into ${b.meshes} (${b.moving} move)`);
 }
+// the Great Hall's floating candles (animated by scene.ts): instanced (instancer.ts)
+const candles = instanceAlike(scene, scene.children.filter((o) => o.name === 'candle'));
 // every point light in the world is shown through a fixed number of real lights (lights.ts). The count is
 // part of every lit shader, so it is fixed at start (4 when ?q=low is forced): the automatic switch to 'low'
 // then recompiles nothing.
@@ -568,6 +571,8 @@ document.addEventListener('click', (e) => {
   if (r) ctl.castOnSelf(r.dataset.cast!);
 });
 const setHtml = (el: HTMLElement, html: string) => { if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; } };
+const setText = (el: { textContent: string | null }, t: string) => { if (el.textContent !== t) el.textContent = t; };
+const setStyle = (el: HTMLElement, k: string, v: string) => { if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v); };
 /** Longest cooldown seen per hotbar spell since it was last ready: the sweep's full circle. */
 const cdMax = new Map<string, number>();
 
@@ -613,26 +618,27 @@ function hud() {
   if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => '<div><span></span><b></b><i></i><em></em></div>').join('');
   me.hotbar.forEach((s, i) => {
     const el = hb.children[i] as HTMLElement;
+    // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
     el.classList.toggle('sel', i === ctl.selected);
     el.classList.toggle('empty', !s);
-    el.dataset.kind = s?.kind ?? '';
-    const name = s ? spellName(s.name) : '·';
-    if (el.children[0].textContent !== name) el.children[0].textContent = name;
-    (el.children[1] as HTMLElement).textContent = String(i + 1);
+    const kind = s?.kind ?? '';
+    if (el.dataset.kind !== kind) el.dataset.kind = kind;
+    setText(el.children[0], s ? spellName(s.name) : '·');
+    setText(el.children[1], String(i + 1));
     const cd = s && s.cd > 0 ? s.cd : 0;
     if (s) { if (cd > 0) cdMax.set(s.id, Math.max(cdMax.get(s.id) ?? 0, cd)); else cdMax.delete(s.id); }
-    (el.children[2] as HTMLElement).style.setProperty('--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
-    (el.children[3] as HTMLElement).textContent = cd >= 1 ? String(Math.ceil(cd)) : '';
-    el.onclick = () => ctl.castSlot(i);
+    setStyle(el.children[2] as HTMLElement, '--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
+    setText(el.children[3], cd >= 1 ? String(Math.ceil(cd)) : '');
+    el.onclick ??= () => ctl.castSlot(i);
   });
   ctl.hud();
   const ov = $('#overlay');
-  if (me.jailed) { ov.hidden = false; ov.innerHTML = L(`<div>阿兹卡班<small>摄魂怪会在 <span class="num">${me.jailed.toFixed(0)}</span> 秒后放你出去</small></div>`, `<div>Azkaban<small>The Dementors will release you in <span class="num">${me.jailed.toFixed(0)}</span>s</small></div>`); }
+  if (me.jailed) { ov.hidden = false; setHtml(ov, L(`<div>阿兹卡班<small>摄魂怪会在 <span class="num">${me.jailed.toFixed(0)}</span> 秒后放你出去</small></div>`, `<div>Azkaban<small>The Dementors will release you in <span class="num">${me.jailed.toFixed(0)}</span>s</small></div>`)); }
   else if (me.stunned) {
     ov.hidden = false;
     const slotKey = (n: string) => me!.hotbar.findIndex((s) => s?.name === n) + 1;
     const adv = `<small class="adv">${esc(downAdvice(me.down, slotKey, me.year))}</small>`;
-    ov.innerHTML = L(`<div>被击晕了<small>庞弗雷夫人正在给你治疗…… <span class="num">${me.stunned.toFixed(1)}</span> 秒</small>${adv}</div>`, `<div>Stunned<small>Madam Pomfrey is patching you up… <span class="num">${me.stunned.toFixed(1)}</span>s</small>${adv}</div>`);
+    setHtml(ov, L(`<div>被击晕了<small>庞弗雷夫人正在给你治疗…… <span class="num">${me.stunned.toFixed(1)}</span> 秒</small>${adv}</div>`, `<div>Stunned<small>Madam Pomfrey is patching you up… <span class="num">${me.stunned.toFixed(1)}</span>s</small>${adv}</div>`));
   }
   else ov.hidden = true;
   drawMinimap();
@@ -643,8 +649,8 @@ function hud() {
 }
 const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
-  (b.children[0] as HTMLElement).style.width = `${Math.max(0, Math.min(100, (v / Math.max(1, max)) * 100))}%`;
-  (b.children[1] as HTMLElement).textContent = text;
+  setStyle(b.children[0] as HTMLElement, 'width', `${Math.max(0, Math.min(100, (v / Math.max(1, max)) * 100)).toFixed(2)}%`);
+  setText(b.children[1], text);
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -1614,6 +1620,8 @@ addEventListener('keydown', (e) => {
 // ------------------------------------------------------------------ frame
 let prev = performance.now();
 let frameNo = 0;
+const ORIGIN = new THREE.Vector3();
+const litPool: { x: number; y: number; z: number; color: number; d: number }[] = [], lit: typeof litPool = [];
 function frame() {
   requestAnimationFrame(frame);
   probe.frameBegin();
@@ -1708,7 +1716,7 @@ function frame() {
   // lighting, sky and decorations from the hour, the weather and whatever the last Minister decreed
   if (snap) {
     const look: Look = snap.look ?? DEFAULT_LOOK;
-    R.update(snap.hour, snap.weather, look, my ? my.root.position : new THREE.Vector3());
+    R.update(snap.hour, snap.weather, look, my ? my.root.position : ORIGIN);
     const night = 1 - R.day;
     for (const m of world.nightGlow) m.emissiveIntensity = (0.35 + 3.2 * night) * look.glow;
     decor.update(look, R.day, clock, dt);
@@ -1720,16 +1728,25 @@ function frame() {
       pos.needsUpdate = true;
       (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
     }
-    world.tick(clock, dt, !snap.willowCalm && [...wizards.values()].some((w) => Math.hypot(w.root.position.x - 45, w.root.position.z) < 9), R.sunDir,
+    let nearWillow = false;
+    if (!snap.willowCalm) for (const w of wizards.values()) if (Math.hypot(w.root.position.x - 45, w.root.position.z) < 9) { nearWillow = true; break; }
+    world.tick(clock, dt, nearWillow, R.sunDir,
       { hour: snap.hour, banner: look.banner, focus: my?.root.position });
   }
+  candles.update();
   probe.end('world', tp); tp = probe.begin();
   particles.setQuality(quality);
   particles.update(dt, camera, R.renderer, R.day);
   // spells light up their surroundings: the pool goes to the bolts nearest the camera
-  const lit = [...bolts.values()]
-    .map((b) => ({ x: b.position.x, y: b.position.y + 0.2, z: b.position.z, color: (b.userData.color as number) ?? 0xffffff, d: b.position.distanceToSquared(camera.position) }))
-    .sort((a, b) => a.d - b.d);
+  // (the light budget, lights.ts, then picks among these and every other light)
+  let nl = 0;
+  for (const b of bolts.values()) {
+    const l = (litPool[nl++] ??= { x: 0, y: 0, z: 0, color: 0, d: 0 });
+    l.x = b.position.x; l.y = b.position.y + 0.2; l.z = b.position.z; l.color = (b.userData.color as number) ?? 0xffffff; l.d = b.position.distanceToSquared(camera.position);
+  }
+  lit.length = 0;
+  for (let i = 0; i < nl; i++) lit.push(litPool[i]);
+  lit.sort((a, b) => a.d - b.d);
   R.setBoltLights(lit);
   probe.end('fx', tp); tp = probe.begin();
 

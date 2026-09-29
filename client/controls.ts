@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { CreatureKind, House } from '../src/shared/constants';
 import { LANDMARKS, zonesAt } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
-import { heightAt } from './terrain';
+import { heightAt, rayGround } from './terrain';
 
 /**
  * Player controls: hover picking in screen space, a persistent target, smart casting, click-to-move,
@@ -305,8 +305,7 @@ export function createControls(d: ControlsDeps) {
   function groundAt(px: number, py: number, out: THREE.Vector3) {
     ndc.set((px / d.canvas.clientWidth) * 2 - 1, -(py / d.canvas.clientHeight) * 2 + 1);
     raycaster.setFromCamera(ndc, d.camera);
-    const hits = raycaster.intersectObject(d.ground, false);
-    if (hits.length) return out.copy(hits[0].point);
+    if (rayGround(raycaster.ray, out)) return out;
     const hit = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(groundPlane, hit)) return out.copy(hit);
     return null;
@@ -628,7 +627,7 @@ export function createControls(d: ControlsDeps) {
    * in behind a strafe or a diagonal run without bending the run into a circle. Pressing another key combination
    * re-reads the keys against the camera you now see; the joystick is always read against the live camera.
    */
-  let moveSig = '', moveSince = 0, driftOff = 0;
+  let moveSig = '', moveSince = 0, driftOff = 0, promptW = 0;
   function update(dt: number) {
     index();
     d.camera.updateMatrixWorld();
@@ -729,10 +728,14 @@ export function createControls(d: ControlsDeps) {
     if (action) {
       const sp = screenOf(action.x, action.y, action.z);
       const W = d.canvas.clientWidth, H = d.canvas.clientHeight;
-      const hw = Math.min(W / 2, (pr.offsetWidth || 240) / 2 + 8);
+      // (its width is measured once per label, not every frame: reading it forces a layout)
+      if (!promptW) promptW = pr.offsetWidth || 240;
+      const hw = Math.min(W / 2, promptW / 2 + 8);
       const x = sp ? Math.max(hw, Math.min(W - hw, sp.x)) : W / 2;
       const y = sp ? Math.max(60, Math.min(H - 190, sp.y)) : H - 190;
-      pr.style.left = `${x}px`; pr.style.top = `${y}px`;
+      const left = `${Math.round(x)}px`, top = `${Math.round(y)}px`;
+      if (pr.style.left !== left) pr.style.left = left;
+      if (pr.style.top !== top) pr.style.top = top;
     }
   }
 
@@ -753,7 +756,7 @@ export function createControls(d: ControlsDeps) {
     action = findAction();
     const pr = $('#prompt');
     pr.hidden = !action;
-    if (action && pr.dataset.label !== action.label) { pr.dataset.label = action.label; pr.innerHTML = `<kbd>F</kbd> ${action.label.replace(/^按 F |^F — /, '')}`; }
+    if (action && pr.dataset.label !== action.label) { pr.dataset.label = action.label; pr.innerHTML = `<kbd>F</kbd> ${action.label.replace(/^按 F |^F — /, '')}`; promptW = 0; }
     const tip = $('#tip');
     if (!tip.hidden && tipSlot >= 0) renderTip(tipSlot);
     tutorial.tick();
@@ -797,11 +800,12 @@ export function createControls(d: ControlsDeps) {
       (el.querySelector('.tf-x') as HTMLElement).onclick = () => { target = null; renderTargetFrame(); };
     }
     const set = (sel: string, html: string) => { const n = el.querySelector(sel) as HTMLElement; if (n.innerHTML !== html) n.innerHTML = html; };
-    el.style.setProperty('--rel', REL_CSS[rel]);
+    if (el.style.getPropertyValue('--rel') !== REL_CSS[rel]) el.style.setProperty('--rel', REL_CSS[rel]);
     set('.tf-rel', relText);
     set('.tf-name', name);
     (el.querySelector('.tf-x') as HTMLElement).hidden = !target;
-    (el.querySelector('.tf-bar i') as HTMLElement).style.width = `${(frac * 100).toFixed(1)}%`;
+    const bw = `${(frac * 100).toFixed(1)}%`, bi = el.querySelector('.tf-bar i') as HTMLElement;
+    if (bi.style.width !== bw) bi.style.width = bw;
     set('.tf-bar span', `${Math.round(e.hp)} / ${Math.round(e.m)}`);
     set('.tf-sub', `${sub} · ${Number.isFinite(dist) ? L(`${dist.toFixed(0)} 米`, `${dist.toFixed(0)} m`) : ''}${status.length ? ' · ' + status.join(' ') : ''}`);
   }

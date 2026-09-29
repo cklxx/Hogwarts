@@ -2,7 +2,7 @@
  * Client profiling harness: a busy world, the real server, headless Chromium, fixed camera spots.
  *
  *   npx vite build && npx tsx scripts/perf-client.ts [--port=8820] [--q=high,low] [--secs=8] [--warm=4]
- *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,castle,lake,overview] [--size=1280x720]
+ *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,crowd,castle,lake,overview] [--size=1280x720]
  *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium] [--census] [--shots=dir] [--url=&extra=1]
  *
  * What it does: writes a world save with `--bots` enrolled wizards (`--crowd` of them within 15 m of the courtyard
@@ -45,7 +45,7 @@ const CROWD = Number(opt('crowd', '30'));
 const NPCS = Number(opt('npcs', '12'));
 const AOI = opt('aoi', ''); // '' = the client's default (area of interest since wf/fast), 0 = whole world, 1 = AOI
 const QS = opt('q', 'high,low').split(',');
-const SPOTS = opt('spots', 'follow,castle,lake,overview').split(',');
+const SPOTS = opt('spots', 'follow,crowd,castle,lake,overview').split(',');
 const [VW, VH] = opt('size', '1280x720').split('x').map(Number);
 const LABEL = opt('label', '');
 const OUT = args.get('out');
@@ -199,6 +199,7 @@ async function main() {
 
       for (const spot of SPOTS) {
         await page.evaluate((s: unknown) => { (window as any).__capture = s; }, SHOTS[spot] ?? null);
+        await page.mouse.move(VW * 0.5, VH * 0.42); // the pointer over the view: hover, aim and ground picking run every frame
         await sleep(WARM * 1000);
         const metric = async () => Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]));
         await page.evaluate(() => { (window as any).__perf.reset(); (window as any).__lt.length = 0; Object.assign((window as any).__heap, { grow: 0, drops: 0, dropped: 0 }); });

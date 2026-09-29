@@ -171,3 +171,30 @@ export function drape(geo: THREE.BufferGeometry, lift = 0.04) {
 }
 
 export const landmarkHeight = (id: string) => { const l = LANDMARKS.find((x) => x.id === id); return l ? heightAt(l.x, l.z) : 0; };
+
+/**
+ * Where a ray first meets the inner terrain mesh (±320 m), or false: marched along the height grid the
+ * mesh is built from (surfaceAt: the rendered triangles exactly) instead of testing the mesh's 131 000
+ * triangles — ~0.02 ms instead of several, and controls.ts asks every frame the pointer is over the view.
+ */
+export function rayGround(ray: THREE.Ray, out: THREE.Vector3): boolean {
+  const o = ray.origin, dir = ray.direction, H = INNER / 2;
+  const gap = (t: number) => o.y + dir.y * t - surfaceAt(o.x + dir.x * t, o.z + dir.z * t);
+  const inside = (t: number) => Math.abs(o.x + dir.x * t) <= H && Math.abs(o.z + dir.z * t) <= H;
+  let t = 0, g = gap(0);
+  if (g < 0) return false;
+  for (let i = 0; i < 1000 && t < 3000; i++) {
+    if (dir.y >= 0 && g > 60) return false; // climbing away from the ground
+    const prev = t;
+    t += Math.max(0.2, g * 0.5); // (half the height gap: no step jumps over a slope under ~60°)
+    g = gap(t);
+    if (g <= 0) {
+      let a = prev, b = t;
+      for (let k = 0; k < 20; k++) { const m = (a + b) / 2; if (gap(m) > 0) a = m; else b = m; }
+      if (!inside(b)) return false;
+      out.set(o.x + dir.x * b, o.y + dir.y * b, o.z + dir.z * b);
+      return true;
+    }
+  }
+  return false;
+}
