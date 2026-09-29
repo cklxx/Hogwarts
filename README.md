@@ -73,13 +73,13 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 
 - **它就是另一个 Agent**（`src/server/familiar.ts`）：每个召唤了使魔的巫师有一个进程内 MCP 会话（`createMcpServer` + SDK 的 `InMemoryTransport`，像 Bearer 会话一样绑定该巫师），所以暂停开关、限速、在线状态（HUD 显示「使魔 · 猫头鹰」）等所有规则都和外部 Agent 完全一样。它用 `listen` 收你的猫头鹰，用 `tell_player` 回信。
 - **能做的事**：写、修、解释咒语，给建议。工具白名单（代码强制，不只是提示词）：`whoami` `armory` `grimoire` `look` `simulate_spell` `forge_spell` `set_hotbar` `tell_player` `cast` `hogwarts_a_history`。`cast` 只有在你的原话里要求施法（「施放」「cast」…）时才会执行。没有 `enroll/login/pair/rotate_key/decree/forge_item/move_to`：它不会到处乱跑，也碰不到密钥（它从来看不到密钥，工具结果里出现也会被抹掉）。
-- **只在你召唤后运行**（WS `{t:'familiar', on:true, kind:'owl'|'cat'|'toad'}`，`on:false` 解散）；**你自己的 Agent 一连上，使魔就退下打盹**（外部 Agent 优先）。重启服务器后需要重新召唤。
+- **只在你召唤后运行**（WS `{t:'familiar', on:true, kind:'owl'|'cat'|'toad'}`，`on:false` 解散）；**你自己的 Agent 一连上，使魔就退下打盹**（外部 Agent 优先；那个会话 5 分钟没动静就不算在场，使魔醒来接班）。服务器重启后使魔还在，当天的次数也不会重置（`data/familiars.json`）。
 - 模型：Claude（官方 `@anthropic-ai/sdk`，tool use；系统提示词 + 本年级 Grimoire 走 prompt caching；Opus 5.5 默认开启服务端 refusal fallback）。
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | —— | **不设就没有使魔**：功能完全不可见，猫头鹰面板和以前一样 |
-| `FAMILIAR_MODEL` | `claude-sonnet-5` | 模型 id（默认省钱；要最强写咒水平用 `claude-opus-5-5`） |
+| `FAMILIAR_MODEL` | `claude-sonnet-5-5` | 模型 id（默认省钱；要最强写咒水平用 `claude-opus-5-5`） |
 | `FAMILIAR_EFFORT` | `low` | `low`/`medium`/`high`/`xhigh`/`max`（思考深度与花费） |
 | `FAMILIAR_DAILY` | `30` | 每个巫师每天（UTC）的请求数（一次请求 = 一批连着发的猫头鹰） |
 | `FAMILIAR_GLOBAL_DAILY` | `1000` | 全服每天的请求上限：花费总闸 |

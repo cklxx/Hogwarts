@@ -77,10 +77,15 @@ warmPathfinding();
 ensureNpcs(world, Number(process.env.NPC_COUNT ?? 4));
 // 校园事件轮盘: EVENT_FIRST_S rolls the first event sooner (demos, e2e tests); the interval itself is a rule (rules.events)
 if (process.env.EVENT_FIRST_S) world.wheel.nextAt = world.now + Math.max(0, Number(process.env.EVENT_FIRST_S) || 0);
+/** Write a file whole or not at all (a crash mid-write leaves the last good copy). */
+function writeAtomic(path: string, data: unknown) {
+  writeFileSync(path + '.tmp', JSON.stringify(data));
+  renameSync(path + '.tmp', path);
+}
 function save() {
   mkdirSync(dirname(DATA), { recursive: true });
-  writeFileSync(DATA + '.tmp', JSON.stringify(world.serialize()));
-  renameSync(DATA + '.tmp', DATA);
+  writeAtomic(DATA, world.serialize());
+  if (familiars) writeAtomic(FAMILIARS_DATA, familiars.save());
 }
 
 // ------------------------------------------------------------------ the clock
@@ -188,16 +193,24 @@ function trimWizard(wid: string) {
   for (const [id, e] of mine.slice(0, Math.max(0, mine.length - (MCP_PER_WIZARD - 1)))) closeMcp(id, e);
 }
 /** MCP sessions bound to a wizard: derived by scanning, never counted (docs/AGENT_LINK.md §A.4). */
-function sessionsOf(wid: string) {
+function sessionsOf(wid: string, activeWithinMs = Infinity) {
   let n = 0;
-  for (const e of mcpSessions.values()) if (e.session.wizardId === wid) n++;
+  const t = Date.now();
+  for (const e of mcpSessions.values()) if (e.session.wizardId === wid && t - e.seen <= activeWithinMs) n++;
   return n;
 }
+/** Your own agent comes first, but only while it is actually there: a session left open and silent this long
+ * (the agent was closed without ending it) no longer keeps your familiar asleep; eviction removes it later. */
+const AGENT_AWAY_MS = 5 * 60_000;
+const FAMILIARS_DATA = join(dirname(DATA), 'familiars.json');
 // 使魔, the built-in agent (familiar.ts): only with ANTHROPIC_API_KEY; otherwise null and invisible.
 const familiarCfg = familiarConfig();
 const familiars = familiarCfg
-  ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: sessionsOf, session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
+  ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: (wid) => sessionsOf(wid, AGENT_AWAY_MS), session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
   : null;
+if (familiars && existsSync(FAMILIARS_DATA)) {
+  try { familiars.restore(JSON.parse(readFileSync(FAMILIARS_DATA, 'utf8'))); } catch (e) { console.error('[familiar] could not restore familiars:', (e as Error).message); }
+}
 if (familiarCfg) console.error(`[familiar] on: model ${familiarCfg.model}, effort ${familiarCfg.effort}, ${familiarCfg.daily}/wizard/day, ${familiarCfg.globalDaily}/day in all, ${familiarCfg.concurrency} at once`);
 /** Close code for a socket whose key was changed (it reconnects only with the new key). */
 const KEY_CHANGED = 4001;
