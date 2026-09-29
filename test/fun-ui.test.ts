@@ -54,7 +54,7 @@ describe('the event slip', () => {
       expect(html).toContain(`id="i-${EVENT_INK[id].icon}"`);
       const e = startEvent(w, id)!;
       w.tick(0.05);
-      const ev = w.snapshot().ev as EvSnap;
+      const ev = (w.snapshot() as Record<string, unknown>).ev as EvSnap; // a feature's field (kernel/features.ts)
       expect(ev.id).toBe(id);
       expect(objective(ev).length).toBeGreaterThan(8);
       expect(evTarget(ev)).toBeTruthy();

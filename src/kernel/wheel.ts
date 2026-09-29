@@ -8,7 +8,17 @@ import { CHESTS, rollCard } from './cards.js';
 import { dist } from './physics.js';
 import { findPath } from './pathfind.js';
 import type { Creature, Projectile, Vec2, Wizard } from './types.js';
+import type { Feature } from './feature.js';
 import type { World } from './world.js';
+
+declare module './world.js' {
+  interface World {
+    /** 校园事件轮盘 (this module's Feature): not persisted (a restart drops the running event with its creatures). */
+    wheel: WheelState;
+    /** The last event's outcome, shown on the HUD for a few seconds. */
+    wheelResult: { id: EventId; n: number; outcome: Outcome; hero?: string; until: number } | null;
+  }
+}
 
 /**
  * 校园事件轮盘 — the event wheel (README 校园事件轮盘). Every rules.events.intervalSeconds (start to start, and never
@@ -588,3 +598,14 @@ export function schoolEvents(w: World, wid: string) {
     rules: w.rules.events,
   };
 }
+
+// ------------------------------------------------------------------ the plug (kernel/feature.ts)
+export const WHEEL_FEATURE: Feature = {
+  id: 'wheel',
+  init(world) { world.wheel = blankWheel(world.rules.events.intervalSeconds); world.wheelResult = null; },
+  // after a restart the next event is a whole interval away
+  load(world) { world.wheel.nextAt = world.now + world.rules.events.intervalSeconds; },
+  stepLate: stepWheel,
+  wire: { key: 'ev', get: wheelView },
+  bolt: (world, p) => { if (world.wheel.active) wheelBolt(world, p); }, // 金色飞贼 / 皮皮鬼: a spell passing close enough catches or chases
+};

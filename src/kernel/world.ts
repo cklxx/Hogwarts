@@ -50,9 +50,9 @@ import {
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
 import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
-import { blankWheel, stepWheel, wheelBolt, wheelKissed, wheelRoom, wheelSlain, wheelView, type Outcome, type WheelState } from './wheel.js';
-import { type DuelClub, duelWire, inMatch, newDuelClub, stepDuelClub } from './duelclub.js';
-import { type QdState, QD_FLY, newQd, qdFlying, qdWire, quidditchBolt, stepQuidditch } from './quidditch.js';
+import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
+import { inMatch } from './duelclub.js';
+import { FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
 import { type MarketBook, bannedCastText, bannedListing, blankMarket, marketDecreeErrors, marketDecreeNews, payRoyalty, restoreMarket, rollDay, sanitizeMarket } from './market.js';
@@ -143,7 +143,7 @@ export interface WorldOptions {
 /** How long a creature stays after whoever hurt it, and how far from its home and from them it will follow. */
 export const PROVOKED_SECS = 8, PROVOKED_LEASH = 60;
 
-/** 观战: how many of an agent's calls a watcher sees, and how long after its last call an agent counts as playing. */
+/** 看 Agent 玩: how many of an agent's calls its owner's panel keeps, and how long after its last call an agent counts as playing. */
 export const AGENT_LOG_MAX = 12, AGENT_ACTIVE_S = 120;
 
 /** 熟能生厌 (World.freshness): full rewards for the first GRIND_FREE_KILLS of one creature kind in GRIND_FATIGUE_S seconds, then less, down to GRIND_FLOOR. */
@@ -159,8 +159,6 @@ export class World {
   tokenPrefix = '';
   /** 熟能生厌: recent kill times per wizard and creature kind (World.freshness; transient). */
   private fatigue = new Map<string, Partial<Record<Creature['kind'], number[]>>>();
-  /** 观战: watch link code → wizard id (World.newWatchCode). */
-  private watchIndex = new Map<string, string>();
   /** Cross-check every spatial query against a full scan (tests / HOGWARTS_VERIFY_SPATIAL=1). Slow. */
   static verifySpatial = process.env.HOGWARTS_VERIFY_SPATIAL === '1';
   private inTick = false;
@@ -173,9 +171,6 @@ export class World {
   projectiles = new Map<string, Projectile>();
   pending: Pending[] = [];
   /** 决斗俱乐部 (duelclub.ts): the queue, the match on the stage, and the term's reward ledger (persisted). */
-  duel: DuelClub = newDuelClub();
-  /** 魁地奇 (kernel/quidditch.ts): this term's match. */
-  qd: QdState = newQd();
   events: WorldEvent[] = [];
   term: Term;
   houseCups: { term: number; winner: House | null; points: Record<House, number> }[] = [];
@@ -200,10 +195,6 @@ export class World {
     /** 隐藏宝箱: which chests were opened this term, and by whom (names). */
     chests: { term: 0, opened: {} } as { term: number; opened: Record<string, string> },
   };
-  /** 校园事件轮盘 (kernel/wheel.ts): not persisted (a restart drops the running event with the creatures). */
-  wheel: WheelState;
-  /** The last event's outcome, shown on the HUD for a few seconds. */
-  wheelResult: { id: EventId; n: number; outcome: Outcome; hero?: string; until: number } | null = null;
   /** 学院杯 ceremony: the last term's result card (HUD), until `until`. Not persisted. */
   ceremony: Ceremony | null = null;
   /** The term whose 决胜时刻 has been announced. */
@@ -255,7 +246,8 @@ export class World {
     this.secret = opts.secret ?? process.env.HOGWARTS_SECRET ?? randomBytes(32).toString('hex');
     this.term = { n: 1, startedAt: 0, endsAt: this.rules.terms.lengthSeconds };
     if (opts.tokenPrefix) this.tokenPrefix = opts.tokenPrefix;
-    this.wheel = blankWheel(this.rules.events.intervalSeconds);
+    // the features' own state (kernel/features.ts: the event wheel, the Duelling Club, Quidditch, …)
+    for (const f of FEATURES) f.init?.(this);
   }
 
   // ------------------------------------------------------------------ basics
@@ -896,7 +888,7 @@ export class World {
       return { ...fail(bannedCastText(this, spell, w.handle)), spell: spell.name };
     }
     if (!opts.dryRun) {
-      if (inMatch(this.duel, w.id) && this.duel.match!.phase !== 'fight') return fail('Wait for the countdown to finish. 等倒计时结束再施法。');
+      for (const f of HOOKS.castBlock) { const why = f.castBlock(this, w); if (why) return fail(why); }
       // a machine-readable retry_after (whole seconds, at least 1) like every other "not yet" an agent can get
       const retry = (until: number) => Math.max(1, Math.ceil(until - this.now));
       if (this.now < w.globalCd) return fail(`Too fast — your wand arm needs a moment. 慢一点，持杖手要缓一下。 retry_after=${retry(w.globalCd)}`);
@@ -1039,14 +1031,14 @@ export class World {
   }
 
   heal(src: Wizard, t: Wizard, amount: number) {
-    if (src.id !== t.id && inMatch(this.duel, t.id)) return; // 决斗俱乐部: no help from the crowd
+    if (HOOKS.helpBlock.some((f) => f.helpBlock(this, src, t))) return; // e.g. 决斗俱乐部: no help from the crowd
     const amt = amount * this.rules.combat.healingMultiplier * derived(src, this.rules).care;
     t.hp = Math.min(derived(t, this.rules).maxHp, t.hp + amt);
     this.fx({ k: 'heal', x: t.pos.x, z: t.pos.z, h: t.handle });
   }
 
   shield(src: Wizard, t: Wizard, amount: number, secs: number) {
-    if (src.id !== t.id && inMatch(this.duel, t.id)) return; // 决斗俱乐部: no help from the crowd
+    if (HOOKS.helpBlock.some((f) => f.helpBlock(this, src, t))) return; // e.g. 决斗俱乐部: no help from the crowd
     t.st.shield = amount * derived(src, this.rules).care;
     t.st.shieldUntil = this.now + secs;
     t.st.shieldAt = this.now;
@@ -2238,8 +2230,7 @@ export class World {
     this.now += dt;
     this.syncSolids();
     thinkNpcs(this);
-    stepDuelClub(this);
-    stepQuidditch(this, dt);
+    for (const f of HOOKS.step) f.step(this, dt);
     const rb = this.rules;
     // 1. delayed spell blocks
     if (this.pending.length) {
@@ -2308,8 +2299,8 @@ export class World {
       this.pulseCd = 10;
       if (rb.laws.some((l) => l.on === 'pulse')) for (const w of this.wizards.values()) if (this.isActive(w)) this.runLaws('pulse', w);
     }
-    // 6. the event wheel (kernel/wheel.ts), the final minute, the term
-    stepWheel(this, dt);
+    // 6. the features' late step (the event wheel), the final minute, the term
+    for (const f of HOOKS.stepLate) f.stepLate(this, dt);
     if (this.finalSaid !== this.term.n && this.term.endsAt - this.now <= CUP_FINAL_S && this.cupMultNow() > 1) {
       this.finalSaid = this.term.n;
       const l = fill(this.quip(FINAL_MINUTE, this.term.n), { n: this.cupMultNow() });
@@ -2376,7 +2367,9 @@ export class World {
 
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
     if (w.st.rootedUntil > this.now) return;
-    if (inMatch(this.duel, w.id) && this.duel.match!.phase !== 'fight') return; // 决斗俱乐部: bowing, counting down
+    let mult = 1; // the features' say (决斗俱乐部 holds you still through the bow, 魁地奇 lets you fly)
+    for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
+    if (mult === 0) return;
     if ((w.st.dodgeUntil ?? 0) > this.now) {
       // 翻滚闪避: the dash overrides the keys and any walk while it lasts
       const v = DODGE_DIST / DODGE_S;
@@ -2415,7 +2408,7 @@ export class World {
       const c = Math.cos(a), s = Math.sin(a);
       [dx, dz] = [dx * c - dz * s, dx * s + dz * c];
     }
-    const speed = this.rules.physics.moveSpeed * d.speedMult * haste * moveSlow(auraMag(w.auras, 'chill', this.now), jelly) * (qdFlying(this, w) ? QD_FLY : 1);
+    const speed = this.rules.physics.moveSpeed * d.speedMult * haste * moveSlow(auraMag(w.auras, 'chill', this.now), jelly) * mult;
     const before = { ...w.pos };
     w.pos.x += dx * speed * dt;
     w.pos.z += dz * speed * dt;
@@ -2528,8 +2521,7 @@ export class World {
           dead = true;
           break;
         }
-        if (this.wheel.active) wheelBolt(this, p); // 金色飞贼 / 皮皮鬼: a spell passing close enough catches or chases
-        if (this.qd.match) quidditchBolt(this, p); // 魁地奇: a spell passing a Bludger beats it away
+        for (const f of HOOKS.bolt) f.bolt(this, p); // 金色飞贼 / 皮皮鬼, 魁地奇's Bludgers: a spell passing close by
         for (const e of this.around(p.pos, 2.2, () => true, p.owner, 4)) {
           const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
           if (dist(e.pos, p.pos) > r + 0.45) continue;
@@ -3072,8 +3064,8 @@ export class World {
     w.agentSeen = { client: String(client ?? '').slice(0, 40) || 'agent', tool: String(tool ?? '').slice(0, 40), at: this.now };
   }
 
-  // ------------------------------------------------------------------ 观战: watching an agent play (docs/TODO.md P4)
-  /** Record one of the agent's MCP calls for the watch panel: the tool, whether it worked, and for spells the spell's name. */
+  // ------------------------------------------------------------------ 看 Agent 玩: your wizard moves, you see why
+  /** Record one of the agent's MCP calls for its owner's activity panel: the tool, whether it worked, and for spells the spell's name. */
   noteAgentCall(wid: string, tool: string, ok: boolean, spell?: string) {
     const w = this.wizards.get(wid);
     if (!w) return;
@@ -3083,51 +3075,14 @@ export class World {
   }
   /** Has this wizard's agent made an MCP call in the last AGENT_ACTIVE_S seconds? */
   agentActive(w: Wizard) { return !!w.agentSeen && this.now - w.agentSeen.at < AGENT_ACTIVE_S; }
-  /** A fresh watch link code for this wizard (the old one stops working at once). Realm-prefixed like pairing codes. */
-  newWatchCode(wid: string): string {
-    const w = this.need(wid);
-    if (w.watchCode) this.watchIndex.delete(w.watchCode);
-    const realm = this.realmId;
-    let c: string;
-    do c = `${realm === null ? '' : `${realm}-`}${randomBytes(9).toString('base64url')}`; while (this.watchIndex.has(c));
-    w.watchCode = c;
-    this.watchIndex.set(c, w.id);
-    return c;
-  }
-  /** Stop the watch link: whoever is watching through it is disconnected on the next broadcast. */
-  revokeWatch(wid: string) {
-    const w = this.need(wid);
-    if (w.watchCode) this.watchIndex.delete(w.watchCode);
-    w.watchCode = null;
-  }
-  /** The wizard a watch link code shows, or null (unknown or revoked). */
-  watchTarget(code: string): Wizard | null {
-    const id = typeof code === 'string' && code.length <= 40 ? this.watchIndex.get(code) : undefined;
-    return (id && this.wizards.get(id)) || null;
-  }
-  /** May anyone watch `handle` without a link? Only a player who allows it, while their agent is playing. */
-  publicWatch(handle: string): { ok: true; w: Wizard } | { ok: false; error: string } {
-    const w = [...this.wizards.values()].find((x) => x.handle === handle && !x.npc);
-    if (!w) return { ok: false, error: 'No such wizard. 没有这个巫师。' };
-    if (w.watchable === false) return { ok: false, error: `${w.name} does not allow watching. ${w.name} 不让人旁观。` };
-    if (!this.agentActive(w)) return { ok: false, error: `${w.name}'s agent is not playing right now; you can watch while it plays. ${w.name} 的 Agent 现在没在玩，Agent 在玩的时候才能观看。` };
-    return { ok: true, w };
-  }
-  setWatchable(wid: string, on: boolean) { this.need(wid).watchable = !!on; }
   /**
-   * What a watcher sees of a wizard besides the world: name, house, bars, and the agent's goal and recent calls.
-   * The owner also gets each cast/forged spell's source; other watchers only its name (a spell's source is a
-   * secret in this world: 偷师 shows it once).
+   * 看 Agent 玩: what your agent is doing, for your own screen while you watch your wizard move (V): its goal, and its
+   * recent calls with the source of each spell it cast or forged.
    */
-  watchState(wid: string, owner = false) {
+  agentActivity(wid: string) {
     const w = this.need(wid);
-    const d = derived(w, this.rules);
-    const log = (w.agentLog ?? []).map((c) => ({ ...c, ago: Math.max(0, Math.round(this.now - c.at)), ...(owner && c.spell ? { source: this.findSpell(w, c.spell)?.source?.slice(0, 600) } : {}) }));
-    return {
-      handle: w.handle, name: w.name, house: w.house, year: w.year, hp: Math.round(w.hp), maxHp: d.maxHp, mana: Math.round(w.mana), maxMana: d.maxMana,
-      x: Math.round(w.pos.x), z: Math.round(w.pos.z), online: this.online(w), watchable: w.watchable !== false,
-      agent: { ...this.agentState(w), active: this.agentActive(w), log },
-    };
+    const log = (w.agentLog ?? []).map((c) => ({ ...c, ago: Math.max(0, Math.round(this.now - c.at)), ...(c.spell ? { source: this.findSpell(w, c.spell)?.source?.slice(0, 600) } : {}) }));
+    return { ...this.agentState(w), active: this.agentActive(w), log };
   }
 
   /** The agent's goal note on the player's HUD (≤ 80 characters; empty or null clears it). */
@@ -3503,7 +3458,7 @@ export class World {
    * talking to your human and everything a browser sends are free; a decree can switch it off (rules.agents).
    */
   spendConcentration(wid: string, tool: string): { ok: true; cost: number; left: number } | { ok: false; retryAfter: number; error: string } {
-    const cost = AGENT_TOOL_COST[tool] ?? 0;
+    const cost = AGENT_TOOL_COST[tool] ?? FEATURE_TOOL_COST[tool] ?? 0;
     const a = this.rules.agents;
     if (!cost || !a.concentration || !this.wizards.has(wid)) return { ok: true, cost: 0, left: this.focusState(wid).cur };
     const f = this.focus.get(wid);
@@ -3567,8 +3522,6 @@ export class World {
       wizardPointsCap: this.rules.terms.wizardPointsCap,
       top: [...this.wizards.values()].sort((a, b) => b.reputation - a.reputation).slice(0, 10).map((w, i) => ({
         rank: i + 1, name: w.name, handle: w.handle, title: this.title(w).zh, house: w.house, year: w.year, reputation: Math.round(w.reputation), online: this.online(w), npc: w.npc || undefined,
-        // 观战: their agent is playing and they allow watching (the board's 观看 button)
-        watch: (!w.npc && w.watchable !== false && this.agentActive(w)) || undefined,
       })),
       minister: m ? { name: m.name, decreeUnspent: m.decreeCharges > 0 } : null,
       darkLord: this.darkLordView(),
@@ -3663,10 +3616,8 @@ export class World {
       dl: this.darkLordView(true),
       // 学院杯: the four houses' points, the final minute, the ceremony card; 校园事件轮盘: the event (kernel/wheel.ts)
       cup: this.cupView(),
-      ev: wheelView(this),
       // 决斗俱乐部: the match on the stage (handles, phase, seconds left), for everyone
-      du: duelWire(this),
-      qd: qdWire(this),
+      ...Object.fromEntries(HOOKS.wire.map((f) => [f.wire.key, f.wire.get(this)])),
       w: ws,
       c: [...this.creatures.values()].map((c) => ({
         i: c.id, k: c.kind, x: round(c.pos.x), z: round(c.pos.z), f: round(c.facing), hp: Math.round(c.hp), m: Math.round(c.maxHp),
@@ -3822,10 +3773,8 @@ export class World {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       owls: this.owls,
       market: this.market,
-      // 决斗俱乐部: only the term's reward ledger (caps and rematch gaps survive a restart; the queue and match do not)
-      duelLedger: this.duel.ledger,
-      // 魁地奇: which term already had its match (the match itself is not saved)
-      quidditch: { doneTerm: this.qd.doneTerm },
+      // what each feature keeps across a restart (kernel/features.ts)
+      features: Object.fromEntries(HOOKS.save.map((f) => [f.id, f.save(this)])),
       // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
       focus: Object.fromEntries(this.focus),
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
@@ -3844,15 +3793,11 @@ export class World {
       housePoints: data.flags?.housePoints ?? { term: 0, pts: {} },
       chests: data.flags?.chests ?? { term: 0, opened: {} },
     };
-    w.wheel = blankWheel(w.rules.events.intervalSeconds);
-    w.wheel.nextAt = w.now + w.rules.events.intervalSeconds;
     w.seq = data.seq ?? 0;
     w.owls = { boards: data.owls?.boards ?? {}, bests: data.owls?.bests ?? {} };
-    const dl = (data as { duelLedger?: { term?: unknown; wins?: unknown; pairs?: unknown } }).duelLedger;
-    if (dl && typeof dl.term === 'number') w.duel.ledger = { term: dl.term, wins: { ...(dl.wins as Record<string, number> ?? {}) }, pairs: { ...(dl.pairs as Record<string, number> ?? {}) } };
     w.market = restoreMarket((data as { market?: unknown }).market);
-    const qd = (data as { quidditch?: { doneTerm?: unknown } }).quidditch;
-    if (typeof qd?.doneTerm === 'number') w.qd.doneTerm = qd.doneTerm;
+    const saved = (data as { features?: Record<string, unknown> }).features ?? {};
+    for (const f of HOOKS.load) f.load(w, saved[f.id], data as unknown as Record<string, unknown>); // older saves kept these at the top
     for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {
       if (typeof f?.pts === 'number' && typeof f.at === 'number' && Number.isFinite(f.pts) && Number.isFinite(f.at)) w.focus.set(id, { pts: f.pts, at: f.at });
     }
@@ -3870,13 +3815,11 @@ export class World {
           silenceBy: x.st?.silenceBy ?? null, silenceSrc: x.st?.silenceSrc ?? null,
         },
         agentPaused: false, agentSeen: null, agentLog: [], goalBy: null, steerAt: undefined,
-        watchCode: typeof x.watchCode === 'string' ? x.watchCode : null, watchable: x.watchable !== false,
         // v0.9 transfiguration: a saved look is data from disk (sanitised); a jinx on it does not outlive a restart
         look: cleanGlamour(x.look), jinxLook: null,
       };
       wz.owlSeq = Math.max(wz.owlSeq, ...wz.owlbox.map((m) => m.id));
       w.tokenIndex.set(wz.token, wz.id);
-      if (wz.watchCode) w.watchIndex.set(wz.watchCode, wz.id);
       if (wz.hexWindow.length || wz.items.some((i) => i.bound)) w.hexed.add(wz.id);
       if (wz.owlbox.some((m) => m.ask && !m.answered)) w.openAsks.add(wz.id);
       if (wz.hp <= 0) {

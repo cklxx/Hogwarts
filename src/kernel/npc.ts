@@ -5,7 +5,7 @@ import { CREATURES } from './creatures.js';
 import { dist } from './physics.js';
 import { derived } from './progression.js';
 import type { Wizard } from './types.js';
-import { qdPlaying } from './quidditch.js';
+import { HOOKS } from './features.js';
 import type { World } from './world.js';
 import { npcStock } from './market.js';
 
@@ -68,18 +68,8 @@ export function thinkNpcs(world: World) {
     const p = PERSONAS.find((x) => x.name === w.name)!;
     const d = derived(w, world.rules);
 
-    // 魁地奇 (quidditch.ts): on a team, the match steers you
-    if (qdPlaying(world, w.id) && !(world.duel.match && (world.duel.match.a === w.id || world.duel.match.b === w.id))) continue;
-
-    // 决斗俱乐部 (duelclub.ts): a sparring partner — still until the countdown ends, then only the opponent, gently
-    // (no healing, a Stupefy about every other thought), so a first-year can beat a seventh-year NPC
-    const m = world.duel.match;
-    if (m && (m.a === w.id || m.b === w.id)) {
-      if (m.phase !== 'fight') continue;
-      const opp = world.wizards.get(m.a === w.id ? m.b : m.a);
-      if (opp && world.rand() < 0.5 && w.mana > 10) cast(world, w, 'Stupefy', opp.id);
-      continue;
-    }
+    // a feature driving this NPC right now (the Duelling Club's sparring partner, a Quidditch player): its brain rests
+    if (HOOKS.npc.some((f) => f.npc(world, w))) continue;
 
     // remember whoever hurt me recently (wizards only), for 30s
     const attacker = w.lastHurtBy && world.wizards.get(w.lastHurtBy);

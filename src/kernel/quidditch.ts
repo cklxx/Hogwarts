@@ -17,9 +17,18 @@
  *   points qdCup(team score) ≤ QD_CUP_MAX ('quidditch', under the usual per-wizard term cap), XP, and 20 Galleons for the
  *   catch — Lean `qd_rep_bounded`, `qd_cup_bounded`. One match per term, remembered across a restart (doneTerm).
  */
+import { z } from 'zod';
 import type { House } from '../shared/constants.js';
+import type { Feature } from './feature.js';
 import type { Vec2, Wizard } from './types.js';
 import type { World } from './world.js';
+
+declare module './world.js' {
+  interface World {
+    /** 魁地奇 (this module's Feature): this term's match, and which term already had one. */
+    qd: QdState;
+  }
+}
 
 export const QD_PITCH = { x: 40, z: -150, r: 30 };
 /** The three hoops at each end (src/shared/map.ts): side 0 defends the north end and scores in the south. */
@@ -516,3 +525,42 @@ export function qdWire(world: World) {
   };
 }
 const round = (n: number) => Math.round(n * 10) / 10;
+
+// ------------------------------------------------------------------ the plug (kernel/feature.ts)
+const QD_OPS = ['join', 'leave', 'status', 'throw', 'chase', 'stop'] as const;
+function runOp(world: World, wid: string, a: Record<string, unknown>) {
+  const role = a.role === 'seeker' || a.role === 'chaser' ? a.role : undefined;
+  const hoop = a.hoop === 'left' || a.hoop === 'middle' || a.hoop === 'right' ? a.hoop : undefined;
+  switch (a.op) {
+    case 'join': return qdJoin(world, wid, role);
+    case 'leave': return qdLeave(world, wid);
+    case 'throw': return qdThrow(world, wid, hoop);
+    case 'chase': return qdChase(world, wid, true);
+    case 'stop': return qdChase(world, wid, false);
+    default: return qdStatus(world, wid);
+  }
+}
+
+export const QD_FEATURE: Feature = {
+  id: 'quidditch',
+  init(world) { world.qd = newQd(); },
+  step: stepQuidditch,
+  wire: { key: 'qd', get: qdWire },
+  // which term already had its match (the match itself is not saved)
+  save: (world) => ({ doneTerm: world.qd.doneTerm }),
+  load(world, data, legacy) {
+    const d = (data ?? legacy.quidditch) as { doneTerm?: unknown } | undefined;
+    if (typeof d?.doneTerm === 'number') world.qd.doneTerm = d.doneTerm;
+  },
+  moveMult: (world, w) => (qdFlying(world, w) ? QD_FLY : 1),
+  bolt: (world, p) => { if (world.qd.match) quidditchBolt(world, p); },
+  // on a team, the match steers you (a duel sparring partner is the duel's: DUEL_FEATURE comes first)
+  npc: (world, w) => qdPlaying(world, w.id),
+  tools: [{
+    name: 'quidditch', title: 'Quidditch', cost: 1,
+    description: `魁地奇: one match a term on the pitch (${QD_PITCH.x}, ${QD_PITCH.z}), two houses in turn (status shows who, and when). op "join" (while the match is being called, or during play; role "seeker" to ask to be your side's seeker), "leave", "status" (score, the Quaffle and who carries it, the Bludgers and whom they chase, the Snitch, your hoops), "throw" (the Quaffle you carry, at a hoop at the other end: the nearest, or hoop left/middle/right; through it is +${QD_GOAL}; a defender who touches it in flight intercepts it), "chase" / "stop" (autopilot: fly at your ball — the Quaffle, or the Snitch for a seeker — and throw in range). Players fly ×${QD_FLY} on the pitch; touching the free Quaffle takes it. A Bludger costs ${QD_BLUDGER_DMG} health (never below 1) and the Quaffle; any spell that passes a Bludger beats it away. The Snitch appears after a while and darts off from seekers, but tires: a seeker within ${QD_CATCH_R} m of it for ${QD_CATCH_S} s catches it, +${QD_SNITCH}, and the match ends. At the whistle: up to +${QD_REP_MAX} reputation (goals, the catch, the win), up to +${QD_CUP_MAX} house points from your team's score, XP. NPCs fill each side.`,
+    input: { op: z.enum(QD_OPS).optional(), role: z.enum(['chaser', 'seeker']).optional(), hoop: z.enum(['left', 'middle', 'right']).optional() },
+    run: runOp,
+  }],
+  ws: runOp,
+};

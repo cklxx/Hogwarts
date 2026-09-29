@@ -3,7 +3,7 @@ import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type Hou
 import { LANDMARKS, OBSTACLES } from '../src/shared/map';
 import { createDecor, type Look } from './decor';
 import { createFx } from './fx';
-import { createWatch, spectateFromUrl, spectateQuery } from './watch';
+import { createWatch } from './watch';
 import { L, applyStatic, creatureName, houseName, lang, placeName, primName, setLang, simEffect, spellName, tr } from './i18n';
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
@@ -29,9 +29,7 @@ import * as probe from './perf';
 import { createMarket } from './market';
 import { createPanels, type FamiliarState, type UnfairState } from './panels';
 import { createFun } from './panels/fun';
-import { createDuel, type DuSnap } from './panels/duel';
-import { createQuidditch } from './panels/quidditch';
-import { createQuidditch3d, type QdSnap } from './quidditch3d';
+import { CLIENT_FEATURES } from './features';
 import { createFunWorld } from './funworld';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
@@ -40,7 +38,7 @@ interface SW { h: string; n: string; ho: House; x: number; z: number; f: number;
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string; b?: 1 }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
-interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; du?: DuSnap; qd?: QdSnap; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
+interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
   hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self'; mana?: number | null } | null)[];
@@ -302,8 +300,6 @@ R.resize();
 let snap: Snap | null = null;
 let me: Me | null = null;
 let myHandle = '';
-/** 观战: `#watch=<code>` / `#follow=<handle>` opens this page as a read-only spectator (no login; client/watch.ts). */
-const spectate = spectateFromUrl(location.href);
 let token = '';
 let ws: WebSocket | null = null;
 let wsFails = 0;
@@ -322,7 +318,7 @@ function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   // area-of-interest snapshots (what is near you, see apply); ?aoi=0 asks for the whole world instead
   const aoi = new URLSearchParams(location.search).get('aoi') === '0' ? '' : '&aoi=1';
-  ws = new WebSocket(spectate ? `${proto}://${location.host}/ws?${spectateQuery(spectate)}${aoi}` : `${proto}://${location.host}/ws?token=${encodeURIComponent(token)}${aoi}`);
+  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}${aoi}`);
   ws.onmessage = (m) => {
     const tm = probe.begin();
     onMessage(m);
@@ -334,7 +330,7 @@ function connect() {
     probe.end('parse', tp);
     probe.wsMessage(m.data.length, msg.t === 'snap');
     if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
-    if (watch.onMessage(msg, (h) => { myHandle = h; })) return; // 观战 (client/watch.ts)
+    if (watch.onMessage(msg)) return; // 看 Agent 玩 (client/watch.ts)
     if (msg.t === 'welcome') {
       myHandle = msg.handle;
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
@@ -343,7 +339,6 @@ function connect() {
       for (const e of hist.filter((x) => x.type !== 'owl' && x.type !== 'ask' && !x.to).slice(-2)) feed(e, false);
       menuInfo(msg.mcpUrl);
       onBuild(msg.build);
-      if (msg.watch) watch.onMessage({ t: 'watchlink', ...msg.watch });
       if (msg.pair?.code) onPairCode(msg.pair);
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
@@ -358,8 +353,7 @@ function connect() {
       if (!$('#trunk').hidden) send({ t: 'book' }); // Finite Incantatem / Revelio change what the trunk shows
     }
     else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); market.onBook(); }
-    else if (duel.onMessage(msg)) { /* 决斗俱乐部 (client/panels/duel.ts) */ }
-    else if (quid.onMessage(msg)) { /* 魁地奇 (client/panels/quidditch.ts) */ }
+    else if (feats.some((f) => f.onMessage?.(msg))) { /* a feature's own reply (client/features.ts) */ }
     else if (msg.t === 'market') market.onMessage(msg); // 咒语集市 (client/market.ts)
     else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
     else if (msg.t === 'token') onToken(String(msg.token ?? ''));
@@ -382,11 +376,6 @@ function connect() {
   let opened = false;
   ws.onopen = () => { opened = true; wsFails = 0; probe.mark('wsOpen'); };
   ws.onclose = (ev) => {
-    if (spectate) {
-      if (ev.code === 4003) { toast(L('观看结束了（链接被撤销，或对方的 Agent 停了）。', 'The watch ended (link revoked, or their agent stopped).')); return; }
-      setTimeout(connect, 1500);
-      return;
-    }
     if (ev.code === 4001) { // the key was changed elsewhere
       const t = loadToken();
       if (t && t !== token) { token = t; setTimeout(connect, 300); return; } // another tab of this browser saved the new key
@@ -399,9 +388,9 @@ function connect() {
   };
 }
 const rawSend = (o: unknown) => { if (ws?.readyState === 1) ws.send(JSON.stringify(o)); };
-/** Everything the page sends goes through here: observe mode (and spectating) keeps moves and casts from taking over from the agent. */
+/** Everything the page sends goes through here: observe mode keeps moves and casts from taking over from the agent. */
 const send = (o: unknown) => { if (!watch.blocks(o)) rawSend(o); };
-const watch = createWatch({ send: rawSend, toast: (s) => toast(s), copy: (t, b) => copyText(t, b as HTMLButtonElement) });
+const watch = createWatch({ send: rawSend, toast: (s) => toast(s) });
 
 /**
  * Snapshots are area-of-interest (the server sends what is within ~120-200 m of you, fanout.ts), so things
@@ -764,8 +753,7 @@ function hud() {
   renderGoal();
   pn.hud();
   fun.hud();
-  duel.hud();
-  quid.hud();
+  for (const f of feats) f.hud?.();
   trackBars();
 }
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
@@ -847,8 +835,8 @@ async function showBoard() {
     <p class="hp-line"><b>${L('学院分', 'House points')}:</b> ${Object.entries(lb.housePoints).map(([h, p]) => `<span>${ic(houseIcon(h))}${houseName(h)} <span class="num">${p}</span></span>`).join('')}</p>
     ${pn.boardHtml(lb)}
     <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : ((need: number) => L(`空缺${me ? `——你现在 ${Math.round(me.reputation)} 声望${me.reputation >= need ? '，学期结束时若你最高就当选' : `，还差 ${Math.ceil(need - me.reputation)}`}` : ''}`, `vacant${me ? ` — you have ${Math.round(me.reputation)} reputation${me.reputation >= need ? ': top the board at term end to take office' : `, ${Math.ceil(need - me.reputation)} to go`}` : ''}`))(Number(lb.ministerMinReputation ?? 100))}<br/><small>${L(`每学期结束时，声望最高（至少 ${Number(lb.ministerMinReputation ?? 100)}）的玩家成为魔法部长，可以颁布一道法令改写世界规则；学期结束时每人的声望减半。`, esc(lb.ministerRule))}</small></p>
-    <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th><th></th></tr>
-    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${lb.darkLord?.name === w.name ? `${ic('darkmark')} ` : ''}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td><td>${w.watch && w.handle !== myHandle ? `<a class="watch-btn" href="/#follow=${encodeURIComponent(w.handle)}" target="_blank" rel="noopener" title="${L('看 TA 的 Agent 玩（只读）', 'Watch their agent play (read-only)')}">👁 ${L('观看', 'Watch')}</a>` : ''}</td></tr>`).join('')}</table>
+    <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th></tr>
+    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${lb.darkLord?.name === w.name ? `${ic('darkmark')} ` : ''}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
     ${lb.loopholeFirstFoundBy ? `<p>${ic('star')} ${L('第一个发现韦斯莱漏洞的人', 'First to find the Weasley Loophole')}: <b>${esc(lb.loopholeFirstFoundBy)}</b></p>` : ''}`;
   b.hidden = false;
 }
@@ -897,7 +885,6 @@ function menuInfo(url?: string) {
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
     <p>${L('<b>HTTP 直连 + 配置头</b>（命令里是字面的 <code>${HOGWARTS_TOKEN}</code>，要用单引号；再在 shell profile 里 <code>export HOGWARTS_TOKEN=你的密钥</code>）：', '<b>Direct HTTP with a header</b> (the command holds a literal <code>${HOGWARTS_TOKEN}</code> in single quotes; put <code>export HOGWARTS_TOKEN=&lt;your key&gt;</code> in your shell profile):')}</p>
     <div class="op-cmd"><pre id="op-header">${esc(header)}</pre><button class="ghost" data-copy="op-header">${L('复制', 'Copy')}</button></div>
-    ${watch.menuHtml()}
     <h3>${ic('key')}${L('你的猫头鹰邮递密钥', 'Your Owl Post key')}</h3>
     <div id="op-key"></div>
     <p class="op-registry">${L('你的登记号', 'Your registry number')}: <code>${esc(account.registry || '—')}</code><br/><span class="hint">${L('登记号是魔法部的公开记录，猫头鹰凭它投递包裹。', 'Your registry number is a public Ministry record: owls deliver parcels by it.')}</span></p>
@@ -905,7 +892,6 @@ function menuInfo(url?: string) {
     <div class="op-foot"><span>${L('语言 Language', 'Language 语言')} <button id="lang-zh" class="${lang === 'zh' ? '' : 'ghost'}">中文</button> <button id="lang-en" class="${lang === 'en' ? '' : 'ghost'}">English</button></span>
     <span>${L('界面大小', 'UI size')} ${(['s', 'm', 'l'] as const).map((k) => `<button data-ui="${k}" class="${uiSize === k ? '' : 'ghost'}">${L({ s: '小', m: '标准', l: '大' }[k], { s: 'Small', m: 'Normal', l: 'Large' }[k])}</button>`).join(' ')}</span>
     <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div>`;
-  watch.bindMenu();
   $('#lang-zh').onclick = () => setLang('zh');
   $('#lang-en').onclick = () => setLang('en');
   document.querySelectorAll<HTMLButtonElement>('#menu [data-ui]').forEach((b) => { b.onclick = () => {
@@ -1759,12 +1745,18 @@ const pn = createPanels({
 });
 // ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 · 巧克力蛙画片 · 隐藏宝箱 (client/panels/fun.ts, client/funworld.ts)
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
-const duel = createDuel({ send, toast, du: () => snap?.du, nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?', myHandle: () => myHandle, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw });
-const quid = createQuidditch({ send, toast, qd: () => snap?.qd, myHandle: () => myHandle, myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw });
+// the features (client/features.ts: the Duelling Club, Quidditch, …), all built from the same deps
+const feats = CLIENT_FEATURES.map((mk) => mk({
+  send, toast,
+  wire: <T,>(key: string) => (snap as Record<string, unknown> | null)?.[key] as T | undefined,
+  myHandle: () => myHandle, myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
+  nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?',
+  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0,
+}));
+const lifters = feats.filter((f) => f.lift);
 const funWorld = createFunWorld();
 scene.add(funWorld.group);
-const qd3d = createQuidditch3d((h) => wizards.get(h)?.root.position ?? null, (h) => wizards.get(h)?.body.rotation.y ?? 0);
-scene.add(qd3d.group);
+for (const f of feats) if (f.group) scene.add(f.group);
 /** What a chest held (the card itself arrives as its own event and flips over). */
 function onChest(r: { whereZh?: string; where?: string; housePoints?: number; galleons?: number; card?: string; fragment?: { zh: string; en: string; source: string }; left?: number }) {
   const parts: string[] = [];
@@ -1833,12 +1825,11 @@ addEventListener('keydown', (e) => {
   }
   if (pn.keydown(e)) return; // J 邓布利多军, K O.W.L. (client/panels)
   if (fun.keydown(e)) return; // C 巧克力蛙画片 (client/panels/fun.ts)
-  if (!spectate && !watch.observing() && duel.keydown(e)) return; // G 决斗俱乐部 (client/panels/duel.ts)
-  if (!spectate && !watch.observing() && quid.keydown(e)) return; // P 魁地奇, F shoots while you carry the Quaffle (client/panels/quidditch.ts)
+  if (!watch.observing() && feats.some((f) => f.keydown?.(e))) return; // G 决斗俱乐部, P / F 魁地奇, … (client/features.ts)
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
-  if ((e.key === 'v' || e.key === 'V') && !spectate) { watch.toggleObserving(); return; }
+  if (e.key === 'v' || e.key === 'V') { watch.toggleObserving(); return; }
   if (e.key === 'o' || e.key === 'O') { if (!e.repeat) toggleOwl(); e.preventDefault(); return; }
   if (e.key === 't' || e.key === 'T') { if (!e.repeat) toggleTrunk(); return; }
   if (e.key === 'Enter') { openChat(); e.preventDefault(); return; }
@@ -1891,7 +1882,9 @@ function frame() {
     const px = w.root.position.x, pz = w.root.position.z;
     w.root.position.x += (w.tx - w.root.position.x) * k;
     w.root.position.z += (w.tz - w.root.position.z) * k;
-    w.root.position.y = heightAt(w.root.position.x, w.root.position.z) + qd3d.lift(h); // 魁地奇: riders fly
+    let lift = 0;
+    for (const f of lifters) lift += f.lift!(h); // 魁地奇: riders fly
+    w.root.position.y = heightAt(w.root.position.x, w.root.position.z) + lift;
     const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
     w.body.rotation.y += turn * Math.min(1, dt * 14);
     const speed = dt > 0 ? Math.hypot(w.root.position.x - px, w.root.position.z - pz) / dt : 0;
@@ -2005,7 +1998,7 @@ function frame() {
   ctl.update(dt);
   pn.frame(dt);
   funWorld.frame(dt, snap);
-  qd3d.frame(dt, snap?.qd);
+  for (const f of feats) f.frame?.(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();
@@ -2073,18 +2066,7 @@ const warmed = (async () => {
   probe.mark('boot');
   applyStatic();
   veil(true);
-  if (spectate) {
-    // a spectator: no login; say why not when the link is dead or the player cannot be watched now
-    document.body.classList.add('spectating');
-    const r = await fetch(`/api/watch?${spectateQuery(spectate)}`).then((x) => x.json()).catch(() => ({ ok: false, error: L('连不上服务器。', 'Cannot reach the server.') }));
-    if (!r.ok) {
-      veil(false);
-      $('#gate').hidden = false;
-      $('#gate').innerHTML = `<h1>${L('看不了', 'Cannot watch')}</h1><p class="greet">${esc(tr(String(r.error ?? '')))}</p><p><a href="/">${L('自己去霍格沃茨 →', 'Go to Hogwarts yourself →')}</a></p>`;
-      return;
-    }
-    document.title = L(`观看 ${r.name} · 霍格沃茨`, `Watching ${r.name} · Hogwarts`);
-  } else token = await gate();
+  token = await gate();
   probe.mark('gate');
   $('#gate').hidden = true;
   veil(true);

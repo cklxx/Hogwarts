@@ -15,9 +15,18 @@
  *   DUEL_TERM_CAP rewarded wins per wizard per term — Lean `duel_club_term_bounded`.
  * - The club is closed while the Minister's rules forbid PvP, or while the stage lies in a safe zone.
  */
+import { z } from 'zod';
+import type { Feature } from './feature.js';
 import { qdOnTeam, qdPlaying } from './quidditch.js';
 import type { World } from './world.js';
 import type { Wizard } from './types.js';
+
+declare module './world.js' {
+  interface World {
+    /** 决斗俱乐部 (this module's Feature): the queue, the match, the term's reward ledger. */
+    duel: DuelClub;
+  }
+}
 
 export const DUEL_STAGE = { x: 0, z: -30 };
 export const DUEL_ENDS = [{ x: -7, z: -30 }, { x: 7, z: -30 }] as const;
@@ -229,3 +238,42 @@ export function stepDuelClub(world: World) {
     if (npc) startMatch(world, a, npc, true);
   }
 }
+
+// ------------------------------------------------------------------ the plug (kernel/feature.ts)
+const bowing = (world: World, id: string) => inMatch(world.duel, id) && world.duel.match!.phase !== 'fight';
+const ledgerOf = (x: unknown): DuelLedger | null => {
+  const l = x as { term?: unknown; wins?: unknown; pairs?: unknown } | undefined;
+  return l && typeof l.term === 'number' ? { term: l.term, wins: { ...(l.wins as Record<string, number> ?? {}) }, pairs: { ...(l.pairs as Record<string, number> ?? {}) } } : null;
+};
+const DUEL_OPS = ['join', 'leave', 'status'] as const;
+const runOp = (world: World, wid: string, op: unknown) => (op === 'join' ? duelJoin(world, wid) : op === 'leave' ? duelLeave(world, wid) : duelStatus(world, wid));
+
+export const DUEL_FEATURE: Feature = {
+  id: 'duel',
+  init(world) { world.duel = newDuelClub(); },
+  step: stepDuelClub,
+  wire: { key: 'du', get: duelWire },
+  // only the term's reward ledger: caps and rematch gaps survive a restart; the queue and the match do not
+  save: (world) => world.duel.ledger,
+  load(world, data, legacy) { const l = ledgerOf(data ?? legacy.duelLedger); if (l) world.duel.ledger = l; },
+  moveMult: (world, w) => (bowing(world, w.id) ? 0 : 1),
+  castBlock: (world, w) => (bowing(world, w.id) ? 'Wait for the countdown to finish. 等倒计时结束再施法。' : null),
+  helpBlock: (world, src, dst) => src.id !== dst.id && inMatch(world.duel, dst.id), // no help from the crowd
+  npc(world, w) {
+    // a sparring partner: still until the countdown ends, then only the opponent, gently (no healing, a Stupefy about
+    // every other thought), so a first-year can beat a seventh-year NPC
+    const m = world.duel.match;
+    if (!m || (m.a !== w.id && m.b !== w.id)) return false;
+    if (m.phase !== 'fight') return true;
+    const opp = world.wizards.get(m.a === w.id ? m.b : m.a);
+    if (opp && world.rand() < 0.5 && w.mana > 10) world.cast(w.id, 'Stupefy', { target: opp.id });
+    return true;
+  },
+  tools: [{
+    name: 'duel_club', title: 'Duelling Club', cost: 0,
+    description: `决斗俱乐部 on the Courtyard stage (${DUEL_STAGE.x}, ${DUEL_STAGE.z}): op "join" queues you (two in the queue make a match, the nearest year first; alone for ${DUEL_NPC_AFTER_S}s and an NPC spars with you), "leave" leaves the queue (or forfeits a match), "status" shows the queue, the match (both sides' health) and your rewarded wins this term. A match: placed at the two ends and healed, a bow and a countdown (no moving or casting), then up to ${DUEL_FIGHT_S}s. Only you two can harm each other (whatever your houses); nobody can interfere. Knocked to zero, walked off the stage or gone: the other wins. A win you fought for: +${DUEL_WIN_REP} reputation and XP, at most ${DUEL_TERM_CAP} rewarded wins a term, the same pair once every ${DUEL_PAIR_GAP_S / 60} minutes; NPC sparring pays XP only. dodge, wait until:"incoming" and a well-timed Protego matter here.`,
+    input: { op: z.enum(DUEL_OPS).optional() },
+    run: (world, wid, a) => runOp(world, wid, a.op),
+  }],
+  ws: (world, wid, m) => runOp(world, wid, m.op),
+};

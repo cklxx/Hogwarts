@@ -33,7 +33,7 @@
 | P1 | Tauri 2 壳（`desktop/`）：服务器列表（发现 + 手动输入 + 记住上次，上次的服务器在线就直接进）、直接加载服务器页面（内容永远与服务器同版本）、密钥存系统钥匙串（每个服务器一条，失效随之删除）、F11 全屏、Ctrl+Shift+S 换服务器、外部链接走系统浏览器；GitHub Actions 构建 Windows / macOS / Linux 安装包（不签名） | 已完成：Linux 上端到端实测（Xvfb + Secret Service：自动发现 → 钥匙串登录 → 别处换钥后旧钥删除，`desktop/test-gui.sh`）；Windows / macOS 待真机安装验证 |
 | P2 | 一键连接我的 Agent：`hogwarts-desktop --mcp-stdio` 是 MCP stdio 服务器，转发到服务器 `/mcp`，密钥从钥匙串读；enroll/login/pair/rotate_key 发出的新钥先存钥匙串再从模型看到的文字里抹掉；服务器重启自动重建会话；启动器按钮写入 Claude Desktop 配置（留 .bak）或运行 `claude mcp add`；桌面客户端里的猫头鹰邮递显示这条命令 | 已完成：桥的端到端测试（钥匙串 / 精简环境两种）、Claude Desktop 配置写入、`claude mcp get hogwarts` → Connected（Linux）。待做：真机 Claude Desktop 验收；Rust 桥还没有「猫头鹰推送」（`notifications/claude/channel`） |
 | P3 | 可选：壳内恢复 WebGPU（从 `205ed7b` 取回），浏览器版继续 WebGL | 视真机测量决定 |
-| P4 | **看 Agent 玩（观战）**：观看模式（`V`，按键不接管 Agent，「接管」才接手）；Agent 面板（目标、最近 12 次调用、自己咒语的源码）；观看链接（`/#watch=<码>`，不含密钥，可换新可撤销，撤销后观看者立刻断开，带服务器编号以便多进程路由）；排行榜「观看」（Agent 在玩且对方允许时，`/#follow=<handle>`）；观看者只读（服务器不读它发的任何消息），看不到咒语源码 | 已完成：`test/watch.test.ts`（内核规则）、`test/watch.e2e.test.ts`（Agent + 观看者 + 撤销）、无头浏览器实测 9 项（观看模式下按住 W 不打断 Agent 的寻路、面板有源码、朋友看不到源码和快捷栏、撤销后断开、失效链接说明原因、陌生人按 handle 观看）。未做：观看者的弹幕/表情；回放 |
+| P4 | **看 Agent 玩** | 就是看着自己的巫师在动：观看模式（`V`，按键不接管 Agent，「接管」才接手）+ Agent 面板（目标、最近 12 次调用、它施放的咒语的源码）。观看链接、排行榜「观看」、只读观看者连接已按需求删掉（简化：`wf/plugins`） |
 
 ## 待办（按顺序）
 

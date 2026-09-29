@@ -5,7 +5,8 @@
  */
 import { houseName, L } from '../i18n';
 import { ic } from '../ink';
-import type { QdSnap } from '../quidditch3d';
+import type { ClientFeatureFactory } from '../feature';
+import { createQuidditch3d, type QdSnap } from '../quidditch3d';
 import { bearing, esc, fmtDist } from './logic';
 
 export interface QdDeps {
@@ -95,3 +96,11 @@ export function createQuidditch(d: QdDeps) {
     },
   };
 }
+
+/** Quidditch as a client feature (client/features.ts): the slip and keys, and the match in 3D. */
+export const quidditchFeature: ClientFeatureFactory = (d) => {
+  const qd = () => d.wire<QdSnap>('qd');
+  const ui = createQuidditch({ send: d.send, toast: d.toast, qd, myHandle: d.myHandle, myHouse: d.myHouse, myPos: d.myPos, camYaw: d.camYaw });
+  const world = createQuidditch3d(d.posOf, d.facingOf);
+  return { id: 'quidditch', ...ui, group: world.group, frame: (dt) => world.frame(dt, qd()), lift: world.lift };
+};
