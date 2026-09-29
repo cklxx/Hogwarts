@@ -51,6 +51,7 @@ export const LIMITS: Record<string, [number, number]> = {
   paircode: [0.2, 3],
   rotate: [0.05, 2],
   pause: [1, 5],
+  familiar: [0.5, 3],
   other: [30, 60],
   all: [80, 120],
 };

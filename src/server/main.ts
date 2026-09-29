@@ -15,6 +15,7 @@ import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
 import { FORGE_FAIL_PER_MIN, LOGIN_FAIL_PER_IP_PER_MIN } from '../shared/constants.js';
+import { FAMILIAR_OFF, Familiars, anthropicCreate, familiarConfig } from './familiar.js';
 import { SnapshotFanout } from './fanout.js';
 import { FailWindow } from './limits.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
@@ -157,6 +158,12 @@ function sessionsOf(wid: string) {
   for (const e of mcpSessions.values()) if (e.session.wizardId === wid) n++;
   return n;
 }
+// 使魔, the built-in agent (familiar.ts): only with ANTHROPIC_API_KEY; otherwise null and invisible.
+const familiarCfg = familiarConfig();
+const familiars = familiarCfg
+  ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: sessionsOf, session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
+  : null;
+if (familiarCfg) console.error(`[familiar] on: model ${familiarCfg.model}, effort ${familiarCfg.effort}, ${familiarCfg.daily}/wizard/day, ${familiarCfg.globalDaily}/day in all, ${familiarCfg.concurrency} at once`);
 /** Close code for a socket whose key was changed (it reconnects only with the new key). */
 const KEY_CHANGED = 4001;
 /**
@@ -279,7 +286,9 @@ type ClientMsg =
   | { t: 'paircode' }
   | { t: 'rotate' }
   | { t: 'pause'; on: boolean }
-  | { t: 'destroy'; item: string };
+  | { t: 'destroy'; item: string }
+  // 使魔 (familiar.ts): summon or dismiss the built-in agent
+  | { t: 'familiar'; on: boolean; kind?: string };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -304,6 +313,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'paircode': { const c = world.mintPairCode(wid); reply({ t: 'paircode', code: c.code, expiresIn: c.expiresIn }); break; }
       case 'rotate': rotated(wid, world.rotateToken(wid), { keepWs: ws }); break;
       case 'pause': world.setAgentPaused(wid, m.on === true); break;
+      case 'familiar': if (!familiars) throw new Error(FAMILIAR_OFF); reply({ t: 'familiar', s: familiars.summon(wid, m.on === true, m.kind) }); break;
       case 'book': book(); break;
       case 'simulate': reply({ t: 'sim', r: world.simulate(wid, String(m.source ?? ''), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'forge': {
@@ -346,7 +356,7 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${PUBLIC_URL}/mcp` }));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${PUBLIC_URL}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
@@ -395,7 +405,7 @@ setInterval(() => {
       ws.send(st.aoi ? fanout.payloadFor(w.pos.x, w.pos.z, st.anchor) : fanout.fullPayload(), { binary: false });
       if (meDue(ws, broadcasts)) {
         const s = world.privateState(wid);
-        sendMeIfChanged(ws, JSON.stringify({ t: 'me', s: { ...s, agent: { ...s.agent, sessions: agentSessions(wid) } } }));
+        sendMeIfChanged(ws, JSON.stringify({ t: 'me', s: { ...s, agent: { ...s.agent, sessions: agentSessions(wid), ...(familiars ? { familiar: familiars.stateOf(wid) } : {}) } } }));
       }
     });
   }
