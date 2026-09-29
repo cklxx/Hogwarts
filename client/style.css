@@ -861,3 +861,9 @@ body.touch #tutorial { max-width: calc(100vw - calc(84px * var(--u))); }
 @media (max-height: 620px) {
   #hotbar span { display: none; }
 }
+
+/* "enable WebGPU" hint on http://<LAN IP> (main.ts) */
+#gpu-hint { position: fixed; left: calc(56px * var(--u)); bottom: calc(10px * var(--u)); z-index: 40; padding: 2px 10px; border-radius: 3px;
+  background: rgba(242, 230, 201, .92); color: var(--ink2); font: 400 calc(13.5px * var(--t))/1.6 var(--cjk); box-shadow: var(--shadow); }
+#gpu-hint a { color: var(--wax); text-decoration: none; }
+#gpu-hint button { margin-left: 4px; padding: 0 4px; border: 0; background: none; box-shadow: none; color: var(--ink2); cursor: pointer; }

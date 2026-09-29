@@ -26,6 +26,7 @@ import { SnapshotFanout } from './fanout.js';
 import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
 import { serveStatic } from './static.js';
+import { caPem, certCovers, localHosts, makeCertificate, tlsFiles, tlsPage } from './tls.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -49,9 +50,24 @@ const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://${LAN ?? 'localhost'}:${POR
 // ---- HTTPS (browsers expose WebGPU only in a secure context: https:// or localhost). With a certificate in
 // TLS_CERT/TLS_KEY (default data/tls/cert.pem + key.pem, made by `npm run cert`) the same app is also served on
 // HTTPS_PORT (default 7443); MCP stays on plain HTTP so agents need no extra trust setup.
-const TLS_CERT = process.env.TLS_CERT ?? join(dirname(process.env.HOGWARTS_DATA ?? join(ROOT, 'data', 'world.json')), 'tls', 'cert.pem');
-const TLS_KEY = process.env.TLS_KEY ?? join(dirname(TLS_CERT), 'key.pem');
+// Without a certificate of your own, one is made automatically at start-up (openssl: a local CA name-constrained to
+// localhost and private networks, see tls.ts) and refreshed when this machine's LAN addresses change; the /tls page
+// then gives each player a one-line command to trust it. HTTPS=0 turns all of this off.
+const TLS_DIR = join(dirname(process.env.HOGWARTS_DATA ?? join(ROOT, 'data', 'world.json')), 'tls');
+const OWN_CERT = !!process.env.TLS_CERT;
+const TLS_CERT = process.env.TLS_CERT ?? tlsFiles(TLS_DIR).cert;
+const TLS_KEY = process.env.TLS_KEY ?? (OWN_CERT ? join(dirname(TLS_CERT), 'key.pem') : tlsFiles(TLS_DIR).key);
 const HTTPS_PORT = Number(process.env.HTTPS_PORT ?? 7443);
+let caPath: string | undefined = OWN_CERT ? undefined : tlsFiles(TLS_DIR).ca;
+if (process.env.HTTPS !== '0' && !OWN_CERT && realm.mode !== 'worker') {
+  const hosts = localHosts();
+  if (!existsSync(TLS_CERT) || !existsSync(TLS_KEY) || !certCovers(TLS_CERT, hosts)) {
+    try {
+      const made = makeCertificate(TLS_DIR, hosts, false);
+      if (made) { caPath = made.caPath; console.log(`[hogwarts:tls] 已自动生成 HTTPS 证书（${made.via}，覆盖 ${hosts.join(', ')}）${made.renewedCa ? '；本机地址超出原 CA 范围，CA 已更新，玩家需要在 /tls 重新信任一次' : ''}`); }
+    } catch (e) { console.warn('[hogwarts:tls] 自动生成证书失败：', (e as Error).message); }
+  }
+}
 const TLS = process.env.HTTPS !== '0' && existsSync(TLS_CERT) && existsSync(TLS_KEY);
 const hostOf = (req: IncomingMessage) => String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim().replace(/:\d+$/, '');
 /** The origin a browser should play on: the HTTPS one when TLS is on (WebGPU), else the one it used. */
@@ -272,6 +288,20 @@ const http = createServer(async (req, res) => {
       } catch (e) {
         return json(res, 400, { error: (e as Error).message });
       }
+    }
+    // 开启 WebGPU: the CA certificate (never its key) and a page with one-line trust commands (tls.ts)
+    if (url.pathname === '/tls' || url.pathname === '/tls/') {
+      const h = hostOf(req);
+      const ok = /^[A-Za-z0-9.\-]+$/.test(h);
+      const page = tlsPage({ httpBase: ok ? `http://${h}:${PORT}` : PUBLIC_URL, httpsUrl: TLS && ok ? `https://${h}:${HTTPS_PORT}/` : null, hasCa: !!(caPath && existsSync(caPath)) });
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      return res.end(page);
+    }
+    if (url.pathname === '/tls/ca.pem') {
+      const pem = caPath ? caPem(tlsFiles(TLS_DIR), caPath) : null;
+      if (!pem) { res.writeHead(404); return res.end('no CA'); }
+      res.writeHead(200, { 'content-type': 'application/x-pem-file', 'content-disposition': 'attachment; filename="hogwarts-ca.pem"', 'cache-control': 'no-store' });
+      return res.end(pem);
     }
     if (url.pathname === '/api/me') {
       const w = keyed(req, url, res);
@@ -507,7 +537,7 @@ if (TLS && realm.mode !== 'worker') {
   https.on('request', (req, res) => http.emit('request', req, res));
   https.on('upgrade', (req, socket, head) => http.emit('upgrade', req, socket, head));
   https.on('error', (e) => console.error(`[hogwarts] HTTPS on ${HOST}:${HTTPS_PORT} failed:`, (e as Error).message));
-  https.listen(HTTPS_PORT, HOST, () => console.log(`[hogwarts] HTTPS（WebGPU 需要）: https://${LAN ?? 'localhost'}:${HTTPS_PORT}   证书 ${TLS_CERT}`));
+  https.listen(HTTPS_PORT, HOST, () => console.log(`[hogwarts] HTTPS（WebGPU 需要）: https://${LAN ?? 'localhost'}:${HTTPS_PORT}   每台电脑第一次先打开 http://${LAN ?? 'localhost'}:${PORT}/tls 信任证书`));
 } else if (!TLS && realm.mode !== 'worker') {
-  console.log(`[hogwarts] 提示：浏览器只在 HTTPS 或 localhost 下提供 WebGPU。用局域网 IP 访问时请运行 npm run cert 生成证书后重启，或用 ssh -L ${PORT}:localhost:${PORT} 转发后打开 http://localhost:${PORT}`);
+  console.log(`[hogwarts] 提示：浏览器只在 HTTPS 或 localhost 下提供 WebGPU；这台机器没有 openssl/mkcert，无法自动生成证书。可用 ssh -L ${PORT}:localhost:${PORT} 转发后打开 http://localhost:${PORT}`);
 }

@@ -55,7 +55,7 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 
 浏览器只在 **HTTPS 或 localhost** 下提供 WebGPU。用 `http://10.x.x.x:7777` 这类局域网地址打开时会自动退回 WebGL 2。三种办法：
 
-1. **一次性配好 HTTPS（推荐）**：在服务器上运行 `npm run cert`，然后重启服务器。脚本优先用 mkcert，没有就用 openssl 建一个本地 CA，证书放在 `data/tls/`（已在 `.gitignore` 里）。服务器会**另外**在 `https://<IP>:7443` 提供游戏（`HTTPS_PORT` 可改）；MCP 仍走 `http://<IP>:7777/mcp`，Agent 不用额外配置。在每台玩游戏的电脑上信任一次 `data/tls/ca.pem`（或 mkcert 的根证书），之后浏览器没有警告，WebGPU 可用。也可以用自己的证书：`TLS_CERT=… TLS_KEY=…`。
+1. **HTTPS（推荐，服务器已自动配好）**：服务器启动时自动生成证书（有 openssl 即可，放在 `data/tls/`，已在 `.gitignore` 里），并**另外**在 `https://<IP>:7443` 提供游戏（`HTTPS_PORT` 可改，`HTTPS=0` 关闭）。每台玩游戏的电脑第一次先打开 `http://<IP>:7777/tls`，复制页面上对应系统的一行命令执行（下载并信任本服务器的 CA；信任根证书需要系统管理员确认，所以这一步没法替你点），重启浏览器后打开 `https://<IP>:7443`。这个 CA 带名称约束，只能签 localhost、局域网地址和这台服务器自己的地址，签不了公网网站；私钥不出服务器。游戏在 WebGL 2 下也会在角落提示「开启 WebGPU →」。MCP 仍走 `http://<IP>:7777/mcp`。想用 mkcert 的 CA 或加主机名：`npm run cert -- my-devbox.lan`；用自己的证书：`TLS_CERT=… TLS_KEY=…`。
 2. **SSH 端口转发**：`ssh -L 7777:localhost:7777 开发机`，然后打开 `http://localhost:7777`。
 3. **Chrome 临时办法**：`chrome://flags/#unsafely-treat-insecure-origin-as-secure` 里填入 `http://<IP>:7777`。
 

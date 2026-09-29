@@ -16,7 +16,7 @@ let proc: ChildProcess;
 
 async function startServer() {
   proc = spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {
-    env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', HOGWARTS_DATA: DATA, PUBLIC_URL: BASE },
+    env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', HTTPS: '0', HOGWARTS_DATA: DATA, PUBLIC_URL: BASE },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise<void>((ok, bad) => {

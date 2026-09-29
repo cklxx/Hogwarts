@@ -162,6 +162,18 @@ const canvas = $<HTMLCanvasElement>('#view');
 probe.mark('script');
 const R = await createRenderer(canvas);
 probe.attach(R.renderer, R.scene, { backend: R.backend, fallback: R.fallbackReason, particles: () => particles, grass: () => world.grass });
+// On http://<LAN IP> the browser offers no WebGPU (secure contexts only): a quiet link to the one-step fix (/tls).
+if (R.backend === 'webgl' && location.protocol === 'http:' && !/^(localhost|127\.|\[::1\])/.test(location.hostname) && !('gpu' in navigator)) {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('hogwarts.gpuHint') === '0'; } catch { /* private mode */ }
+  if (!dismissed) {
+    const a = document.createElement('div');
+    a.id = 'gpu-hint';
+    a.innerHTML = `<a href="/tls" target="_blank" rel="noopener">${L('当前 WebGL 2 · 开启 WebGPU →', 'WebGL 2 · enable WebGPU →')}</a> <button type="button" aria-label="close">×</button>`;
+    a.querySelector('button')!.onclick = () => { a.remove(); try { localStorage.setItem('hogwarts.gpuHint', '0'); } catch { /* ignore */ } };
+    document.body.appendChild(a);
+  }
+}
 probe.mark('renderer');
 // Shader errors are checked in development only: the check reads the compile status back from the GPU,
 // which waits for every command queued before it (a stall per program, and it defeats parallel compiling).

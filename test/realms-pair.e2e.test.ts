@@ -35,7 +35,7 @@ async function player(name: string) {
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hogwarts-realms-'));
   proc = spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {
-    env: { ...process.env, REALMS: '2', PORT: String(PORT), HOST: '127.0.0.1', HOGWARTS_DATA: join(dir, 'world.json'), PUBLIC_URL: BASE },
+    env: { ...process.env, REALMS: '2', PORT: String(PORT), HOST: '127.0.0.1', HTTPS: '0', HOGWARTS_DATA: join(dir, 'world.json'), PUBLIC_URL: BASE },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const t0 = Date.now();
