@@ -108,3 +108,52 @@ The body-separation pass, the swept bolts and the extra colliders cost less than
 grid saves (a circle of radius <= 1.6 m now looks at the colliders filed under one 8 m cell, instead of
 the 3x3 neighbourhood of 16 m cells). Bolts now stop on tree trunks and posts they used to pass, so a few
 fewer are in flight (660 vs 703 at 2 000 wizards). The A* bake (grid + swept steps) takes ~70 ms at startup.
+
+## The camera
+
+The third-person camera (`client/view.ts`) uses a 3D version of the same layout: `viewSolids()` in
+`src/shared/layout.ts` stands every footprint up to its drawn height and adds what the kernel ignores because
+it is above head height: roofs (tower and hut cones, the Great Hall's gable, and the houses' four-sided roofs,
+which scene.ts draws as a scaled, turned cone: a rhombus that overhangs a long house's ends by up to a metre),
+as stacks of prisms each as wide as the shape at its foot; battlements, the corbelled turrets (`TURRETS`), the
+lintel, pillar caps, pinnacles, and tree crowns (marked *soft*). 720 prisms in a 12 m grid; a sweep allocates
+nothing.
+
+- **Spring arm.** Each frame the arm from the orbit centre (1.5 m over the feet) to where the camera wants
+  to be is swept as a 0.3 m sphere through the hard prisms (walls, roofs, towers, houses, the hut, tree trunks,
+  pillars, statues; not crowns) and over the terrain. The camera snaps in front of the first hit at once and
+  eases back out (~1.5 s) once it lets go; in open space it is exactly where it always was, zoom included.
+  Only posts and poles thinner than 0.6 m (torches, hoop poles) let it pass behind (they fade). Pressed short,
+  it first tries to climb (at most 31° more pitch) if that frees 6 m of arm, which clears low things (the tomb,
+  a roof's edge); whatever arm is left then sets the framing: from 4.5 m down to 2.5 m it moves over your
+  right shoulder and looks on past you; with a wall right behind you (under 1.6 m) it rises up the wall and
+  looks down at you. The view's centre never strays more than 14° from your head, and your own name plate
+  fades out under 5 m.
+- **Fading.** When a wall, roof or crown still stands between the camera and you (or your locked target) — or
+  the camera is in the leaves — a circle round you on screen is cut through everything nearer the camera than
+  you by more than ~0.6 m and above your feet, with a 4x4 screen-door dither over ~0.2 s. It is a discard at
+  the top of the fragment shader (`VIEW_FADE_GLSL`, appended to three.js's clipping-plane chunks, opted into
+  per material with the `VIEW_FADE` define), so it works on the merged static batches (`batch.ts` keeps the
+  materials), instanced trees, the storybook shading and the merged ink outline alike, and depth and shadows
+  are unchanged. The terrain, grass, roads and floors never fade; characters are never marked.
+- **X-ray.** You, your locked target and up to four allies (your house) within 12 m, while something hides
+  them, get a house-coloured rim drawn through walls: a second pass of their meshes with depth *Greater* and a
+  stencil test (world materials write 1, bodies write 0), so a body never rims itself. The composer's render
+  target has a stencil buffer for this. The rim meshes are children of the model's own meshes (so they follow
+  its animation, and a part drawn instanced by `partbatch.ts` still has its rim); wizards drawn as the far
+  crowd (`crowd.ts`) and far herds are never x-rayed (your target and allies within 12 m are always full models).
+- **Indoors.** `INTERIORS` (the Great Hall, doorway included) hides its roof (`scene.ts`), and the camera's
+  arm shortens to 11 m and its pitch range moves up to 36°–81°; outside it eases back.
+- A scripted shot (`?capture=1`) drives the camera itself: no arm, no fading, no x-ray. `?debug=view` exposes
+  `window.__view` (the orbit, the rig, timings, and the audit below).
+
+**Audit** (`npx vite build && npx tsx scripts/view-audit.ts --n=1000 --seed=3`): 1 000 random spots around
+the castle, in the Great Hall, round Hogsmeade and in the Forest, random yaw, pitch 0.1–1.1 and zoom 3.5–23 m;
+after 1.5 s, rays from the camera to the wizard's head, chest and knees through the scene's own static meshes
+(merged batches, instanced trees, terrain), passing what the fade dithers away. Head or chest seen: **100 %**
+(97.1 % without the fade); the camera before view.ts: 91.7 % (castle 291/313, forest 180/210, Hogsmeade
+323/327, Great Hall 123/150). `test/view.test.ts` checks the same on the layout (1 500 spots: never inside
+anything hard, nothing hard between the camera and your head, your head within 14° of the view's centre).
+
+Cost: 15–30 µs per frame in Node, 1.3–3 µs in Chromium, for the arm, the climb search and four occlusion
+sweeps (random spots in the forest, the castle and Hogsmeade; `test/view.test.ts` fails above 0.3 ms).

@@ -144,6 +144,7 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
 
   // ---- aurora: an animated curtain far to the north
   const auroraMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  auroraMat.userData.noFade = true;
   const aurora_ = { time: uniform(0), strength: uniform(0) };
   auroraMat.colorNode = Fn(() => {
     const v = uv(), time = aurora_.time;

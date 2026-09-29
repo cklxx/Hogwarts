@@ -850,3 +850,14 @@ body.touch #tutorial { max-width: calc(100vw - calc(84px * var(--u))); }
   .sheet, #book { animation: none; }
   .rune, #prompt, #veil .spark { animation: none; }
 }
+
+/* Short or narrow windows: keep the dock slim so it never covers the wizard. The full key line collapses
+   to the "H 帮助" tab (the tutorial coach marks already name the keys), and hotbar labels hide below 620 px. */
+@media (max-height: 700px), (max-width: 1100px) {
+  #help.full { position: absolute; left: 100%; bottom: calc(6px * var(--u)); margin: 0 0 0 calc(6px * var(--u)); padding: 0; border-top: 0; white-space: nowrap; line-height: 1.6; }
+  #help.full .keys { display: none; }
+  #help.full .mini { display: inline-block; }
+}
+@media (max-height: 620px) {
+  #hotbar span { display: none; }
+}

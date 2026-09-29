@@ -11,6 +11,12 @@ interface Shot { pos?: [number, number, number]; look?: [number, number, number]
 const ON = typeof location !== 'undefined' && new URLSearchParams(location.search).get('capture') === '1';
 const shot = (): Shot | null => (ON ? ((globalThis as { __capture?: Shot }).__capture ?? null) : null);
 
+/** A scripted shot is driving the camera (view.ts then leaves it alone: no spring arm, fades or x-rays). */
+export function captureActive(): boolean {
+  const s = shot();
+  return !!(s?.pos && s.look);
+}
+
 /** Points `camera` along the scripted shot, if any. Returns true when this frame is not to be drawn. */
 export function captureCamera(camera: THREE.PerspectiveCamera): boolean {
   const s = shot();

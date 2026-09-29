@@ -31,7 +31,11 @@ export interface Post {
 
 export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, storybook: boolean, o: { fxaaAtLow?: boolean } = {}): Post {
   const pipeline = new THREE.RenderPipeline(renderer);
-  const scenePass = pass(scene, camera, { samples: 4 });
+  // depth + stencil (view.ts: the world marks the stencil, x-ray rims draw only where a wall hides a body)
+  const depth = new THREE.DepthTexture(1, 1);
+  depth.format = THREE.DepthStencilFormat;
+  depth.type = THREE.UnsignedInt248Type;
+  const scenePass = pass(scene, camera, { samples: 4, stencilBuffer: true, depthTexture: depth });
   const color = scenePass.getTextureNode('output');
   const bloomPass = bloom(color, 0.6, 0.45, 1.1);
   const grade = { tint: uniform(new THREE.Color(1, 1, 1)), saturation: uniform(1.08), vignette: uniform(0.32) };

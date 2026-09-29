@@ -30,6 +30,7 @@ function skyMaterial() {
   const c = () => uniform(new THREE.Color());
   const u = { zenith: c(), mid: c(), horizon: c(), ground: c(), sunColor: c(), sunDir: uniform(new THREE.Vector3(0, 1, 0)), sunDisc: uniform(1) };
   const m = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, fog: false });
+  m.userData.noFade = true; // (view.ts: never dithered away round the player)
   // on the far plane: drawn only where nothing else is
   m.vertexNode = Fn(() => { const p = modelViewProjection; return vec4(p.xy, p.w.mul(0.99999), p.w); })();
   m.colorNode = Fn(() => {
@@ -89,6 +90,7 @@ function cloudLayer() {
   g.setIndex(idx);
   const u = { lit: uniform(new THREE.Color(1, 1, 1)), shade: uniform(new THREE.Color(0.7, 0.75, 0.85)), opacity: uniform(0.9) };
   const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, fog: false });
+  mat.userData.noFade = true;
   const corner2 = attribute('aCorner', 'vec2');
   mat.vertexNode = Fn(() => {
     const mv = modelViewMatrix.mul(vec4(positionLocal, 1)).toVar();
@@ -265,7 +267,8 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
   }
   scene.add(clouds);
 
-  // post-processing (post.ts): scene into a multisampled HDR target, bloom, grade, tone mapping
+  // post-processing (post.ts): scene into a multisampled HDR target (with a stencil: view.ts x-ray), bloom, grade,
+  // tone mapping
   const post = createPost(renderer, scene, camera, STORYBOOK);
   const bloom = post.bloom, grade = post.grade;
 

@@ -31,6 +31,7 @@ export function createBillboards(scene: THREE.Scene, map: THREE.Texture, o: { ma
   geo.setAttribute('iSize', iSize);
   geo.instanceCount = 0;
   const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: o.blending ?? THREE.AdditiveBlending, fog: true });
+  mat.userData.noFade = true;
   // (turned to the camera in world space, not in view space, so the fog sees where the quad really is)
   const size = attribute('iSize', 'vec2');
   mat.positionNode = facingCorner(attribute('iPos', 'vec3'), size.x, size.y);

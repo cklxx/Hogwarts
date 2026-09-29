@@ -6,6 +6,7 @@ import { createFx, createWeather } from './fx';
 import { L, applyStatic, creatureName, houseName, lang, placeName, setLang, spellName, tr } from './i18n';
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
+import { createView } from './view';
 import { heightAt } from './terrain';
 import { disposeCreature, disposeWizard, farColors, makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
 import { createLightBudget } from './lights';
@@ -187,7 +188,7 @@ const uiSizes = { s: 0.85, m: 1, l: 1.15 } as const;
 let uiSize: keyof typeof uiSizes = (() => { try { const v = localStorage.getItem(UI_KEY); return v === 's' || v === 'l' ? v : 'm'; } catch { return 'm'; } })();
 function applyUiScale() {
   const phone = innerWidth < 820 || innerHeight < 500;
-  const base = phone ? 1 : Math.max(0.74, Math.min(1.1, Math.min(innerWidth / 1600, innerHeight / 900)));
+  const base = phone ? 1 : Math.max(0.66, Math.min(1.1, Math.min(innerWidth / 1600, innerHeight / 900)));
   const u = base * uiSizes[uiSize];
   document.documentElement.style.setProperty('--u', u.toFixed(3));
   document.documentElement.style.setProperty('--t', (0.5 + 0.5 * u).toFixed(3));
@@ -1610,6 +1611,9 @@ const ctl = createControls({
   agent: agentNow,
   pair: pairNow,
 });
+// the camera keeps out of walls, fades what hides you, x-rays you and your allies (view.ts)
+const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), cam: {
+  get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; }, get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; }, get dist() { return camDist; }, set dist(v: number) { camDist = v; } } });
 // ------------------------------------------------------------------ chat: the line appears on Enter and goes away when it is empty
 const chatBox = $<HTMLInputElement>('#chat');
 function openChat() { chatBox.hidden = false; chatBox.focus(); }
@@ -1781,10 +1785,7 @@ function frame() {
   const my = wizards.get(myHandle);
   if (my) {
     const t = my.root.position;
-    camera.position.set(t.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist, 1.5 + Math.sin(camPitch) * camDist, t.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist);
-    camera.position.y += t.y;
-    camera.position.y = Math.max(camera.position.y, heightAt(camera.position.x, camera.position.z) + 1.5);
-    camera.lookAt(t.x, t.y + 1.25, t.z); // aim a little below the head so the wizard sits above the dock and coach marks
+    view.place(t, dt); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
     weather.points.position.set(t.x, 0, t.z);
   }
 

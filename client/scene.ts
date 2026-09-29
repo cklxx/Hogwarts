@@ -3,7 +3,7 @@ import * as TSL from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
-import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_DOOR, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS } from '../src/shared/layout';
+import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_DOOR, HALL_LINTEL, HALL_ROOF, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS, TURRETS, interiorAt } from '../src/shared/layout';
 import { tex as fileTex } from './assets';
 import { WIND, createGrass } from './grass';
 import { setWizardDetail } from './models';
@@ -180,6 +180,13 @@ function waterMaterial(normals: THREE.Texture, sunColorHex: number, waterColorHe
   // reuses the scene pass's pipelines instead of compiling every material a second time on first sight of the lake)
   const mirror = reflector({ resolutionScale: 0.5, samples: 4 });
   const mirrorUV = mirror.uvNode;
+  // (and with a stencil, like the scene pass: the world's materials write it for view.ts's x-ray, and a pipeline
+  // with stencil state must draw into a target that has one)
+  {
+    const refl = mirror.reflector as { getRenderTarget(c: THREE.Camera): THREE.RenderTarget };
+    const get = refl.getRenderTarget.bind(refl);
+    refl.getRenderTarget = (c) => { const rt = get(c); rt.stencilBuffer = true; return rt; };
+  }
   const noise = Fn(([uv]: any[]) => {
     const uv0 = div(uv, 103).add(vec2(div(time, 17), div(time, 29)));
     const uv1 = div(uv, 107).sub(vec2(div(time, -19), div(time, 31)));
@@ -188,6 +195,7 @@ function waterMaterial(normals: THREE.Texture, sunColorHex: number, waterColorHe
     return add(texture(normals, uv0), texture(normals, uv1), texture(normals, uv2), texture(normals, uv3)).mul(0.5).sub(1);
   });
   const material = new THREE.MeshBasicNodeMaterial({ fog: true });
+  material.userData.noFade = true;
   material.colorNode = Fn(() => {
     const n = noise(positionWorld.xz);
     const surfaceNormal = normalize(n.xzy.mul(vec3(1.5, 1, 1.5)));
@@ -522,7 +530,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   // Its ceiling is bewitched to look like the sky, so the roof is hidden while you are inside.
   const hallRoof = new THREE.Group();
   {
-    const { slopes, gables } = gableRoof(-13.8, 13.8, -72.6, -39.4, 14, 10);
+    const { slopes, gables } = gableRoof(HALL_ROOF.x0, HALL_ROOF.x1, HALL_ROOF.z0, HALL_ROOF.z1, HALL_ROOF.y, HALL_ROOF.rise);
     const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 33.2), M.darkStone);
     ridge.position.set(0, 24, -56);
     const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 3, 8), M.darkStone);
@@ -541,8 +549,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     if (STORYBOOK) hallRoof.add(inkHull([slopeMesh, lantern, fleche]));
     pennants.push({ x: 0, y: 37, z: -56, len: 3.2 });
     // a lintel over the doors turns the full-height slot into a doorway
-    const lintel = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(6.2, 5, 1), 6.2, 5, 1, 4), M.stone));
-    lintel.position.set(0, 11.5, -40.5);
+    const LT = HALL_LINTEL;
+    const lintel = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(LT.w, LT.h, LT.d), LT.w, LT.h, LT.d, 4), M.stone));
+    lintel.position.set(LT.x, LT.y, LT.z);
     const D = HALL_DOOR;
     const doorArch = add(new THREE.Mesh(new THREE.ExtrudeGeometry((() => { const sh = archShape(D.outer, D.h, -0.2); sh.holes.push(archHole(D.hole, D.holeH)); return sh; })(), { depth: D.depth, bevelEnabled: false, curveSegments: 10 }), M.darkStone));
     doorArch.position.set(D.x, 0, D.z);
@@ -583,7 +592,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     const yaw = Math.atan2(x, z + 88);
     windows.push({ x: x + Math.sin(yaw) * r, y: H - 1.2, z: z + Math.cos(yaw) * r, yaw, w: 0.7, h: 1.5 });
   };
-  for (const sx of [-1, 1]) { turret(sx * 30, -72, 26); turret(sx * 30, -112, 26); turret(sx * 13, -64, 18, 1.6); }
+  for (const t of TURRETS) turret(t.x, t.z, t.H, t.r);
 
   // Clock Tower faces: a stone stage with a cream dial whose hands show the in-game hour
   const hourHands: THREE.Object3D[] = [], minuteHands: THREE.Object3D[] = [];
@@ -802,7 +811,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       if (env.focus) {
         grass.update(t, env.focus);
         const f = env.focus;
-        hallRoof.visible = !(f.x > -13.5 && f.x < 13.5 && f.z > -72.5 && f.z < -39.5);
+        hallRoof.visible = interiorAt(f.x, f.z) !== 0; // (layout INTERIORS; view.ts treats it the same way)
       }
       if (env.hour !== undefined) {
         for (const m of hourHands) m.rotation.z = -((env.hour % 12) / 12) * Math.PI * 2;

@@ -392,6 +392,7 @@ const shieldUniforms = { uTime: uniform(0) };
 function shieldMat() {
   if (_shieldMat) return _shieldMat;
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  m.userData.noFade = true;
   const p = positionGeometry;
   const f = pow(float(1).sub(abs(dot(normalView, positionViewDirection))), 2.2);
   const bands = smoothstep(0.85, 1, sin(p.y.mul(16).sub(shieldUniforms.uTime.mul(4)))).mul(0.5);

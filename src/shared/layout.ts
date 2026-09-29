@@ -132,3 +132,121 @@ export function colliderCorners(c: Collider): [number, number][] {
     return [c.x + lx * cs + lz * sn, c.z - lx * sn + lz * cs] as [number, number];
   });
 }
+
+// ---- what the camera sees as solid (client/view.ts) ---------------------------------------------------------
+//
+// The colliders above are footprints at walking height. The third-person camera also needs to know how TALL
+// each thing is and what stands on top of it (roofs, battlements, turrets, tree crowns), so it can keep out of
+// walls, look over a low wall, and fade whatever still hides you. These are the drawn shapes of scene.ts,
+// simplified to vertical prisms: a footprint standing from y0 to y1 metres. Cones and pyramids (roofs, crowns)
+// are stacks of prisms that shrink as they rise, each as wide as the shape at its foot (never inside the drawing).
+
+/** A thing in 3D for the camera. `soft`: leaves and branches (faded when in the way; the camera passes through
+ *  them). `roof`: part of interior i's roof (hidden while the player is inside, so never in the way then). */
+export interface ViewSolid { c: Collider | Diamond; y0: number; y1: number; soft?: boolean; roof?: number }
+/**
+ * The foot of a house's four-sided roof as scene.ts draws it (ConeGeometry with 4 segments, scaled to the house,
+ * then turned 45°): a rhombus whose corners are `hu` out along its own x and `hv` out along its own z, turned by
+ * `yaw` (as an `obox`). On a long house it overhangs the ends by a metre or more.
+ */
+export interface Diamond { kind: 'diamond'; x: number; z: number; hu: number; hv: number; yaw: number; style: Style; label?: string }
+
+/**
+ * Rooms you can walk into that have a roof (scene.ts hides the roof while you are inside; the camera rises and
+ * shortens its arm there). [x0, z0, x1, z1] is the floor, doorway included; `h` is the height of the eaves.
+ */
+export const INTERIORS: { label: string; x0: number; z0: number; x1: number; z1: number; h: number }[] = [
+  { label: 'The Great Hall', x0: -12, z0: -72, x1: 12, z1: -39.5, h: 14 },
+];
+/** The interior (index into INTERIORS) that (x, z) is in, or -1. */
+export function interiorAt(x: number, z: number): number {
+  for (let i = 0; i < INTERIORS.length; i++) {
+    const r = INTERIORS[i];
+    if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) return i;
+  }
+  return -1;
+}
+
+/** The Great Hall's slate roof (scene.ts gableRoof): eaves at y, ridge (along z) `rise` higher. Roof of interior 0. */
+export const HALL_ROOF = { x0: -13.8, x1: 13.8, z0: -72.6, z1: -39.4, y: 14, rise: 10 };
+/** The lintel over the Great Hall's doors (scene.ts): w x h x d, centred at (x, y, z). */
+export const HALL_LINTEL = { x: 0, y: 11.5, z: -40.5, w: 6.2, h: 5, d: 1 };
+/** Corner turrets corbelled out from the castle walls (scene.ts turret): shaft radius r, shaft centre at height H. */
+export const TURRETS: { x: number; z: number; H: number; r: number }[] = [-1, 1].flatMap((sx) => [
+  { x: sx * 30, z: -72, H: 26, r: 1.9 }, { x: sx * 30, z: -112, H: 26, r: 1.9 }, { x: sx * 13, z: -64, H: 18, r: 1.6 },
+]);
+
+/**
+ * Every static thing the camera should know about, in 3D. `ground(x, z)` is the terrain height at a tree's
+ * foot (buildings stand on flattened ground at y = 0); leave it out for flat ground. Statues: statueViewSolid.
+ */
+export function viewSolids(ground: (x: number, z: number) => number = () => 0): ViewSolid[] {
+  const out: ViewSolid[] = [];
+  const put = (c: Collider | Diamond, y0: number, y1: number, extra?: Partial<ViewSolid>) => { out.push({ c, y0, y1, ...extra }); };
+  /** A cone or pyramid from y0 (footprint at(1)) to its tip at y1, as n prisms each as wide as its foot. */
+  const taper = (at: (k: number) => Collider | Diamond, y0: number, y1: number, n = 3, extra?: Partial<ViewSolid>) => {
+    for (let i = 0; i < n; i++) put(at(1 - i / n), y0 + ((y1 - y0) * i) / n, y0 + ((y1 - y0) * (i + 1)) / n, extra);
+  };
+  const boxAt = (cx: number, cz: number, hx: number, hz: number, style: Style, label?: string) => box(cx - hx, cz - hz, cx + hx, cz + hz, 0, style, label);
+  for (const o of OBSTACLES) {
+    const c = colliderOf(o);
+    if (o.kind === 'box') {
+      const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2, hx = (o.x1 - o.x0) / 2, hz = (o.z1 - o.z0) / 2;
+      if (o.style === 'house' || o.style === 'wood') {
+        put(c, 0, o.h);
+        // the roof: ConeGeometry(0.72 max(w, d), 0.7 h, 4) scaled by (w, d) / max(w, d), turned 45°
+        const r = Math.max(hx, hz) * 2 * 0.72, m = Math.max(hx, hz);
+        taper((k) => ({ kind: 'diamond', x: cx, z: cz, hu: r * (hx / m) * k, hv: r * (hz / m) * k, yaw: Math.PI / 4, style: o.style, label: o.label }), o.h, o.h * 1.7);
+      } else put(c, 0, o.h > 15 ? o.h + 1.6 : o.h); // keep and wings: battlements on top
+      continue;
+    }
+    switch (o.style) {
+      case 'water': break;
+      case 'tree': {
+        const g = ground(o.x, o.z);
+        put(c, g, g + o.h * 0.4); // the trunk
+        // two crowns (scene.ts forest): a cone 3.4 r wide from 0.275 h to 0.825 h, one 2.3 r wide from 0.6 h to h
+        const crown = (r: number) => disc(o.x, o.z, r, 0, 'tree');
+        put(crown(o.r * 3.4), g + o.h * 0.275, g + o.h * 0.6, { soft: true });
+        put(crown(o.r * 2.3), g + o.h * 0.6, g + o.h * 0.8, { soft: true });
+        put(crown(o.r * 1.2), g + o.h * 0.8, g + o.h, { soft: true });
+        break;
+      }
+      case 'tower':
+        put(c, 0, o.h);
+        taper((k) => disc(o.x, o.z, o.r * 1.3 * k, 0, o.style, o.label), o.h, o.h + o.r * 2.8);
+        break;
+      case 'wood': // Hagrid's hut: a drum 0.6 h tall under a cone 1.35 r wide
+        put(c, 0, o.h * 0.6);
+        taper((k) => disc(o.x, o.z, o.r * 1.35 * k, 0, o.style, o.label), o.h * 0.595, o.h * 1.245);
+        break;
+      case 'willow': // the trunk; the crown (an icosahedron r 4.2) and the whirling arms are soft
+        put(c, 0, o.h * 0.6);
+        put(disc(o.x, o.z, 6, 0, 'willow'), o.h * 0.6 - 3.5, o.h * 0.78 + 4.2, { soft: true });
+        break;
+      case 'hoop':
+        put(c, 0, o.h);
+        put(disc(o.x, o.z, 1.8, 0, 'hoop'), o.h, o.h + 3.4, { soft: true }); // the ring
+        break;
+      case 'rock': // a hexagonal cone, 4 r across at the foot, 2 r at the top
+        taper((k) => disc(o.x, o.z, o.r * (2 + 2 * k) * 0.93, 0, o.style, o.label), 0, o.h);
+        break;
+      case 'tomb': put(c, 0, o.h); break;
+      default: // courtyard pillars and their caps
+        put(c, 0, o.h);
+        put(boxAt(o.x, o.z, o.r * 1.3, o.r * 1.3, o.style), o.h, o.h + 0.5);
+    }
+  }
+  for (const c of props()) put(c, 0, c.label === 'Buttress' ? c.h + 3.4 : c.h); // buttresses carry pinnacles
+  const L = HALL_LINTEL;
+  put(boxAt(L.x, L.z, L.w / 2, L.d / 2, 'stone', 'Lintel'), L.y - L.h / 2, L.y + L.h / 2);
+  const R = HALL_ROOF, rcx = (R.x0 + R.x1) / 2, rcz = (R.z0 + R.z1) / 2;
+  taper((k) => boxAt(rcx, rcz, ((R.x1 - R.x0) / 2) * k, (R.z1 - R.z0) / 2, 'stone', 'Great Hall roof'), R.y, R.y + R.rise, 3, { roof: 0 });
+  for (const t of TURRETS) {
+    put(disc(t.x, t.z, t.r, 0, 'tower', 'Turret'), t.H - 6.2, t.H + 3.5);
+    taper((k) => disc(t.x, t.z, t.r * 1.32 * k, 0, 'tower', 'Turret'), t.H + 3.5, t.H + 3.5 + t.r * 3.4, 2);
+  }
+  return out;
+}
+/** Minister's statue i for the camera (plinth and figure). */
+export const statueViewSolid = (i: number): ViewSolid => ({ c: statueCollider(i), y0: 0, y1: STATUE.h });

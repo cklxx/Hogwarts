@@ -107,6 +107,7 @@ export class Pool {
     this.geo.setAttribute('position', quad.getAttribute('position'));
     this.geo.setAttribute('uv', quad.getAttribute('uv'));
     this.material = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false });
+    this.material.userData.noFade = true;
     this.mesh = new THREE.Mesh(this.geo, this.material);
     this.mesh.frustumCulled = false; // positions live on the GPU
     this.mesh.renderOrder = additive ? 5 : 4;
