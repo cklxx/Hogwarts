@@ -202,7 +202,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 5000);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 5000);
   scene.fog = new THREE.FogExp2(0x9fb8d9, 0.003);
 
   const pmrem = new THREE.PMREMGenerator(renderer);

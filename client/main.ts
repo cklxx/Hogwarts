@@ -181,6 +181,21 @@ const decor = createDecor(scene, world.bannerSpots);
 }
 // the Great Hall's floating candles (animated by scene.ts): instanced (instancer.ts)
 const candles = instanceAlike(scene, scene.children.filter((o) => o.name === 'candle'));
+// UI scale: boxes (--u) follow the window (1600x900 = 1), text (--t) shrinks half as much so it stays readable;
+// phones keep their own layout (1). The 界面大小 setting in the Owl Post multiplies it (小 0.85 / 标准 1 / 大 1.15).
+const UI_KEY = 'hogwarts.ui';
+const uiSizes = { s: 0.85, m: 1, l: 1.15 } as const;
+let uiSize: keyof typeof uiSizes = (() => { try { const v = localStorage.getItem(UI_KEY); return v === 's' || v === 'l' ? v : 'm'; } catch { return 'm'; } })();
+function applyUiScale() {
+  const phone = innerWidth < 820 || innerHeight < 500;
+  const base = phone ? 1 : Math.max(0.74, Math.min(1.1, Math.min(innerWidth / 1600, innerHeight / 900)));
+  const u = base * uiSizes[uiSize];
+  document.documentElement.style.setProperty('--u', u.toFixed(3));
+  document.documentElement.style.setProperty('--t', (0.5 + 0.5 * u).toFixed(3));
+}
+applyUiScale();
+addEventListener('resize', applyUiScale);
+
 // Quality: ?q=low|high forces it; phones and tablets (a coarse pointer on a small screen) start at 'low';
 // otherwise the first seconds are measured and a slow machine drops to 'low' (see frame()).
 const forcedQ = new URLSearchParams(location.search).get('q');
@@ -283,7 +298,7 @@ const actors = new THREE.Group();
 actors.name = 'actors';
 scene.add(actors);
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
-let camYaw = 0, camPitch = 0.45, camDist = 14;
+let camYaw = 0, camPitch = 0.34, camDist = 8.5; // closer third-person framing: the wizard fills about a fifth of the screen height
 let clock = 0;
 
 // ------------------------------------------------------------------ network
@@ -796,9 +811,16 @@ function menuInfo(url?: string) {
     <p class="op-registry">${L('你的登记号', 'Your registry number')}: <code>${esc(account.registry || '—')}</code><br/><span class="hint">${L('登记号是魔法部的公开记录，猫头鹰凭它投递包裹。', 'Your registry number is a public Ministry record: owls deliver parcels by it.')}</span></p>
     <p id="op-msg" class="hint"></p>
     <div class="op-foot"><span>${L('语言 Language', 'Language 语言')} <button id="lang-zh" class="${lang === 'zh' ? '' : 'ghost'}">中文</button> <button id="lang-en" class="${lang === 'en' ? '' : 'ghost'}">English</button></span>
+    <span>${L('界面大小', 'UI size')} ${(['s', 'm', 'l'] as const).map((k) => `<button data-ui="${k}" class="${uiSize === k ? '' : 'ghost'}">${L({ s: '小', m: '标准', l: '大' }[k], { s: 'Small', m: 'Normal', l: 'Large' }[k])}</button>`).join(' ')}</span>
     <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div>`;
   $('#lang-zh').onclick = () => setLang('zh');
   $('#lang-en').onclick = () => setLang('en');
+  document.querySelectorAll<HTMLButtonElement>('#menu [data-ui]').forEach((b) => { b.onclick = () => {
+    uiSize = b.dataset.ui as keyof typeof uiSizes;
+    try { localStorage.setItem(UI_KEY, uiSize); } catch { /* private mode */ }
+    applyUiScale();
+    document.querySelectorAll<HTMLButtonElement>('#menu [data-ui]').forEach((x) => x.classList.toggle('ghost', x !== b));
+  }; });
   $('#logout').onclick = () => { dropToken(); location.reload(); };
   $('#close-menu').onclick = () => { $('#menu').hidden = true; };
   lastPairHtml = lastKeyHtml = '';
@@ -1769,7 +1791,7 @@ function frame() {
     camera.position.set(t.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist, 1.5 + Math.sin(camPitch) * camDist, t.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist);
     camera.position.y += t.y;
     camera.position.y = Math.max(camera.position.y, heightAt(camera.position.x, camera.position.z) + 1.5);
-    camera.lookAt(t.x, t.y + 1.8, t.z);
+    camera.lookAt(t.x, t.y + 1.25, t.z); // aim a little below the head so the wizard sits above the dock and coach marks
     weatherPts.position.set(t.x, 0, t.z);
   }
 

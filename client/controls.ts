@@ -534,7 +534,7 @@ export function createControls(d: ControlsDeps) {
     }
   });
   addEventListener('mouseout', (e) => { if (!e.relatedTarget) mouseIn = false; });
-  d.canvas.addEventListener('wheel', (e) => { d.cam.dist = Math.max(5, Math.min(40, d.cam.dist + e.deltaY * 0.01)); }, { passive: true });
+  d.canvas.addEventListener('wheel', (e) => { d.cam.dist = Math.max(3.5, Math.min(40, d.cam.dist + e.deltaY * 0.01)); }, { passive: true });
 
   /** Left click / tap: a foe → target it and cast the attack spell; a friend → target it; the ground → walk there. Shift: cast at the ground. */
   function primaryAt(px: number, py: number, shift = false) {
@@ -576,7 +576,7 @@ export function createControls(d: ControlsDeps) {
       e.preventDefault();
       if (e.touches.length === 2 && stickId === null) {
         const p = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        if (pinch) d.cam.dist = Math.max(5, Math.min(40, d.cam.dist - (p - pinch) * 0.05));
+        if (pinch) d.cam.dist = Math.max(3.5, Math.min(40, d.cam.dist - (p - pinch) * 0.05));
         pinch = p; lookMoved = true;
         return;
       }
