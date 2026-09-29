@@ -43,6 +43,8 @@ describe('the Duelling Club', () => {
     expect(a.hp).toBe(w.derivedOf(a).maxHp);
     const spell = a.spells[0];
     expect(w.cast(a.id, spell.id, { target: b.id }).ok).toBe(false); // bowing
+    w.forgeItem(a.id, a.id, { name: 'Spark Wand', slot: 'wand', charm: '(bolt aim 6 :fire)' });
+    expect(w.useItem(a.id, 'Spark Wand').error).toMatch(/countdown|倒计时/); // an item's charm waits too
     w.setInput(a.id, 1, 0);
     run(w, 1);
     expect(a.pos).toEqual(DUEL_ENDS[0]);

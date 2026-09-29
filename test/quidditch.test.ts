@@ -1,8 +1,8 @@
 /** 魁地奇 (src/kernel/quidditch.ts): schedule, the balls, the Snitch, bounded rewards. */
 import { describe, expect, it } from 'vitest';
 import {
-  QD_BLUDGER_DMG, QD_CALL_S, QD_CUP_MAX, QD_FLY, QD_GOAL, QD_HOOPS, QD_PITCH, QD_REP_MAX, QD_SNITCH, QD_START_FRAC,
-  qdChase, qdCup, qdJoin, qdLeave, qdPairing, qdRep, qdStatus, qdThrow, quidditchBolt,
+  QD_BLUDGER_DMG, QD_CALL_S, QD_CUP_MAX, QD_FLY, QD_GOAL, QD_HOOPS, QD_KEEP_R, QD_PAIRS, QD_PITCH, QD_REP_MAX, QD_SNITCH, QD_START_FRAC, QD_TOUCH_R, QD_WIN_PTS,
+  qdChase, qdCup, qdJoin, qdLeave, qdPairing, qdRep, qdSeason, qdStatus, qdThrow, quidditchBolt, standings,
 } from '../src/kernel/quidditch.js';
 import { ensureNpcs } from '../src/kernel/npc.js';
 import { World } from '../src/kernel/world.js';
@@ -157,6 +157,64 @@ describe('Quidditch', () => {
     expect(back.qd.doneTerm).toBe(w.term.n);
   });
 
+  it('a keeper: named when a side has three, reaches further for a shot at their own hoops, and an NPC keeper marks the Quaffle', () => {
+    const w = mk(6);
+    const a = player(w, 'Katie', 'Gryffindor'), k = player(w, 'Miles', 'Slytherin');
+    toCall(w); qdJoin(w, a.id); qdJoin(w, k.id, 'keeper'); toPlay(w);
+    const m = w.qd.match!;
+    m.bludgers = [];
+    expect(m.roster[k.id].role).toBe('keeper'); // asked, and Slytherin has three with the NPCs
+    expect(Object.values(m.roster).filter((p) => p.side === 0 && p.role === 'keeper')).toHaveLength(1); // an NPC keeper for Gryffindor
+    expect(qdStatus(w, k.id).you?.role).toBe('keeper');
+    for (const [id, p] of Object.entries(m.roster)) if (id !== a.id && id !== k.id) { p.chase = false; w.wizards.get(id)!.pos = { x: 20, z: -150 }; } // just the two of them
+    run(w, 1.2);
+    a.pos = { x: m.quaffle.x, z: m.quaffle.z };
+    run(w, 0.1);
+    expect(m.quaffle.carrier).toBe(a.id);
+    // a shot at the middle hoop passes 1.5 m from the keeper: beyond a defender's touch, inside a keeper's reach
+    const hoop = QD_HOOPS[1][1];
+    a.pos = { x: 40, z: hoop.z - 12 };
+    k.pos = { x: 41.5, z: hoop.z - 3 };
+    expect(1.5).toBeGreaterThan(QD_TOUCH_R);
+    expect(1.5).toBeLessThan(QD_KEEP_R);
+    run(w, 0.05);
+    qdThrow(w, a.id, 'middle');
+    run(w, 1.2);
+    expect(m.quaffle.carrier).toBe(k.id);
+    expect(m.score).toEqual([0, 0]);
+    expect(m.roster[k.id].saves).toBe(1);
+    // an NPC keeper on autopilot keeps to its hoop line, following the Quaffle across
+    const npcKeeper = Object.entries(m.roster).find(([, p]) => p.side === 0 && p.role === 'keeper')![0];
+    m.roster[npcKeeper].chase = true;
+    const nk = w.wizards.get(npcKeeper)!;
+    run(w, 3);
+    expect(Math.abs(nk.pos.z - (QD_HOOPS[0][1].z + 3))).toBeLessThan(4);
+  });
+
+  it('the league: every match counts toward a season of six terms; the leader takes the Cup; kept across a restart', () => {
+    const w = mk(4);
+    expect(QD_PAIRS).toHaveLength(6);
+    expect([qdSeason(1), qdSeason(6), qdSeason(7)]).toEqual([0, 0, 1]);
+    const a = player(w, 'Harry', 'Gryffindor');
+    toCall(w); qdJoin(w, a.id, 'seeker'); toPlay(w);
+    const m = w.qd.match!;
+    m.bludgers = []; m.snitchAt = w.now;
+    run(w, 0.1);
+    for (let i = 0; i < 40 && w.qd.match?.phase === 'play'; i++) { a.pos = { x: m.snitch!.x, z: m.snitch!.z }; w.tick(); }
+    expect(m.winner).toBe(0);
+    const table = standings(w.qd.league);
+    expect(table[0]).toMatchObject({ house: 'Gryffindor', row: { played: 1, won: 1, pts: QD_WIN_PTS } });
+    expect(table[1]).toMatchObject({ house: 'Slytherin', row: { played: 1, lost: 1, pts: 0 } });
+    expect(qdStatus(w, a.id).league).toMatchObject({ season: 1, table: [{ house: 'Gryffindor', pts: QD_WIN_PTS }, { house: 'Slytherin' }] });
+    const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    expect(standings(back.qd.league)[0].row.pts).toBe(QD_WIN_PTS);
+    // the next season: Gryffindor are crowned, the table starts empty
+    w.term.n = QD_PAIRS.length + 1;
+    run(w, 0.1);
+    expect(w.qd.league).toMatchObject({ season: 1, table: {}, champions: [{ season: 0, house: 'Gryffindor' }] });
+    expect(w.events.some((e) => e.type === 'quidditch' && /魁地奇杯/.test(e.zh ?? ''))).toBe(true);
+  });
+
   it('rewards are bounded: qdRep ≤ QD_REP_MAX, qdCup ≤ QD_CUP_MAX, both monotone', () => {
     for (let g = 0; g < 40; g++) {
       for (const c of [false, true]) for (const won of [false, true]) {
@@ -208,5 +266,15 @@ describe('the Quidditch slip (client/panels/quidditch.ts) reads what the kernel 
     expect(l.mine).toBe(true);
     expect(l.title).toMatch(/格兰芬多 0 : 0 斯莱特林/);
     expect(l.sub).toMatch(/F 射门/);
+  });
+});
+
+describe('the Quidditch slip reads the keeper and the league', () => {
+  it('names the keeper role and sums up the table in one line', async () => {
+    const { qdLine, leagueLine } = await import('../client/panels/quidditch.js');
+    const qd = { s: ['Gryffindor', 'Slytherin'] as [string, string], sc: [0, 0] as [number, number], ph: 'play' as const, t: 100, q: null, bl: [], sn: null, sa: 10, r: [['me', 1, 2] as [string, number, number]] };
+    expect(qdLine(qd, 'me', 'Slytherin')?.sub).toMatch(/守门员|Keeper/);
+    expect(leagueLine(undefined)).toBe('');
+    expect(leagueLine({ season: 2, table: [{ house: 'Gryffindor', pts: 3, played: 1 }, { house: 'Slytherin', pts: 0, played: 1 }] })).toMatch(/2.*3.*0/);
   });
 });
