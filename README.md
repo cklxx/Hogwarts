@@ -111,6 +111,7 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 | Runes | `src/runes/*` | 咒语语言：`parser` → `checker`（作用域、元数、年级门槛、复杂度）→ `interp`（gas 计量）。一张原语表 `primitives.ts` 同时驱动校验、成本、年级门槛和文档 |
 | 施法事务 | `src/kernel/magic.ts` | 程序在只读视图上运行，**只规划**效果；通过全部检查才一次性提交 |
 | 共享地图 | `src/shared/map.ts` | 障碍物/区域/地标；服务器碰撞与客户端建模读同一份数据 |
+| 碰撞 | `src/shared/layout.ts` · `src/kernel/physics.ts` | 实心物体的唯一数据源（城堡、塔、树干、火把柱、长桌、雕像……）：内核碰撞、A* 网格、弹道拦截和客户端摆放都读它；巫师与生物之间柔性分离；`?debug=colliders` 显示碰撞体。见 [docs/COLLISION.md](docs/COLLISION.md) |
 | MCP | `src/mcp/server.ts` | 每个 MCP 会话绑定一个巫师；`grimoire` 从原语表自动生成 |
 
 ## 规则
