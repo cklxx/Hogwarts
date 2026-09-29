@@ -3,14 +3,18 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
-import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_DOOR, HALL_LINTEL, HALL_ROOF, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS, TURRETS, interiorAt } from '../src/shared/layout';
+import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_CANDLES, HALL_DOOR, HALL_LINTEL, HALL_ROOF, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS, TURRETS, interiorAt } from '../src/shared/layout';
 import { tex as fileTex } from './assets';
 import { WIND, createGrass } from './grass';
 import { setWizardDetail } from './models';
 import { SEA_LEVEL, drape, heightAt, makeTerrain } from './terrain';
 import { STORYBOOK, cylUV, glowSprite, makeMaterials, waterNormals, worldUV } from './textures';
+import { dissolvable } from './view';
 
 const windTime = { value: 0 };
+/** Seconds the Great Hall's roof takes to dissolve as you step in (and to come back as you leave). */
+const ROOF_FADE = 0.3;
+const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Storybook forest: deep painted greens and a teal. */
 const FOREST = [0x2e5a2b, 0x3a6a33, 0x255040, 0x42683a, 0x315f3e, 0x2a4e30, 0x38623a, 0x2f5436];
 
@@ -100,6 +104,37 @@ function gableRoof(x0: number, x1: number, z0: number, z1: number, y: number, ri
   gables.computeVertexNormals();
   return { slopes, gables };
 }
+/**
+ * A forest crown in a unit box (y -0.5..0.5, radius 1 at the foot; scene.ts scales it to 3.4 r wide from 0.275 h
+ * to h, inside layout.ts's soft crown solids): three stacked tiers with notched, drooping hems, `aTone` shading them
+ * darker toward the ground. With `ink` each tier also gets the storybook outline in the same geometry: a copy a few
+ * centimetres larger turned inside out (only its far side draws, a rim where it meets the sky or another crown),
+ * aTone 0 (the leaf shader draws it in INK's colour). So the forest stays one instanced draw call with or without ink.
+ */
+function crownGeometry(ink: boolean) {
+  const TIERS = [[-0.5, 0.11, 1, 0.84], [-0.19, 0.33, 0.76, 0.95], [0.06, 0.5, 0.5, 1.06]]; // foot y, top y, radius, tone
+  const SEGS = 8, DROOP = 0.035, GROW = 0.035; // (unit: ~0.15 m on a 4.4 m crown)
+  const parts: THREE.BufferGeometry[] = [];
+  const tier = ([y0, y1, r, tone]: number[], k: number, grow: number) => {
+    const lo = y0 - grow * 0.35, hi = y1 + grow * 0.6;
+    const g = new THREE.ConeGeometry(r + grow, hi - lo, SEGS, 1);
+    g.translate(0, (lo + hi) / 2, 0);
+    const p = g.getAttribute('position');
+    for (let i = 0; i < p.count; i++) {
+      if (p.getY(i) > lo + 1e-4) continue;
+      // the hem: every other point of the foot ring hangs lower (the side's ring and the cap's alike)
+      p.setY(i, lo - DROOP * r * (1 - Math.cos(4 * Math.atan2(p.getX(i), p.getZ(i)))) / 2);
+    }
+    g.rotateY(k * 0.37); // (the tiers' notches do not line up)
+    if (grow) { const ix = g.index!; for (let i = 0; i < ix.count; i += 3) { const b = ix.getX(i + 1); ix.setX(i + 1, ix.getX(i + 2)); ix.setX(i + 2, b); } }
+    g.setAttribute('aTone', new THREE.Float32BufferAttribute(new Array(p.count).fill(grow ? 0 : tone), 1));
+    parts.push(g);
+  };
+  TIERS.forEach((t, k) => tier(t, k, 0));
+  if (ink) TIERS.forEach((t, k) => tier(t, k, GROW));
+  return mergeGeometries(parts)!;
+}
+
 /** A pennant: a long tapering triangle along +x from the pole, subdivided so it can ripple. */
 function pennantGeometry() {
   const g = new THREE.PlaneGeometry(1, 1, 10, 1);
@@ -126,7 +161,7 @@ INK.customProgramCacheKey = () => 'ink-hull';
  * drawn back faces only. Where a silhouette meets the sky or another wall, the rim of the hull shows
  * as a line; everywhere else the building itself hides it.
  */
-function inkHull(meshes: THREE.Mesh[], t = 0.14) {
+function inkHull(meshes: THREE.Mesh[], t = 0.14, mat: THREE.Material = INK) {
   const bb = new THREE.Box3(), size = new THREE.Vector3(), c = new THREE.Vector3(), ws = new THREE.Vector3();
   const m = new THREE.Matrix4(), tmp = new THREE.Matrix4();
   const geos = meshes.map((mesh) => {
@@ -153,7 +188,7 @@ function inkHull(meshes: THREE.Mesh[], t = 0.14) {
     out.setAttribute('aBoxMax', new THREE.BufferAttribute(b, 3));
     return out;
   });
-  const hull = new THREE.Mesh(mergeGeometries(geos)!, INK);
+  const hull = new THREE.Mesh(mergeGeometries(geos)!, mat);
   hull.name = 'ink';
   hull.matrixAutoUpdate = false;
   return hull;
@@ -198,10 +233,21 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   // tree crowns sway in the wind (more at the top), each tree with its own phase. The lean is worked
   // out in world space (every crown bends downwind, whatever its instance's yaw and scale; bigger
   // crowns move further) and carried back into the crown's own space before instancing applies.
+  // `aTone` (crownGeometry) shades each tier; 0 marks the crown's ink outline, drawn unlit in INK's colour and
+  // dropped while the camera is inside the crown (from within the leaves its inside would black out the view).
   leaf.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = windTime;
     sh.uniforms.uWind = { value: WIND };
-    sh.vertexShader = 'uniform float uTime; uniform vec2 uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+    sh.uniforms.uInk = { value: INK.color };
+    sh.fragmentShader = 'uniform vec3 uInk; varying float vTone;\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= max(vTone, 0.0);')
+      .replace('#include <opaque_fragment>', 'outgoingLight = mix(uInk, outgoingLight, step(0.01, vTone));\n  #include <opaque_fragment>');
+    sh.vertexShader = 'uniform float uTime; uniform vec2 uWind; attribute float aTone; varying float vTone;\n' + sh.vertexShader
+      .replace('#include <project_vertex>', `#include <project_vertex>
+      vTone = aTone;
+      vec3 treeCam = (transpose(treeB) * (cameraPosition - treePos)) / vec3(dot(treeB[0], treeB[0]), dot(treeB[1], treeB[1]), dot(treeB[2], treeB[2]));
+      if (aTone < 0.01 && length(treeCam.xz) < 1.15 && abs(treeCam.y) < 0.62) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
       #ifdef USE_INSTANCING
         mat4 treeM = instanceMatrix;
       #else
@@ -420,7 +466,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
         // (storybook: the forest's leaf material is white, tinted per instance; the willow has its own green)
         const willowLeaf = STORYBOOK ? Object.assign(leaf.clone(), { onBeforeCompile: leaf.onBeforeCompile, customProgramCacheKey: leaf.customProgramCacheKey }) : leaf;
         if (STORYBOOK) willowLeaf.color.set(0x4f7a3a);
-        const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(4.2, 1), willowLeaf);
+        const crownGeo = new THREE.IcosahedronGeometry(4.2, 1);
+        crownGeo.setAttribute('aTone', new THREE.Float32BufferAttribute(new Array(crownGeo.getAttribute('position').count).fill(1), 1)); // (the leaf shader's tier shade)
+        const crown = new THREE.Mesh(crownGeo, willowLeaf);
         crown.position.y = o.h * 0.78;
         g.add(crown);
         g.position.set(o.x, 0, o.z);
@@ -470,26 +518,35 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   // ---- castle detail: the Great Hall's roof, buttresses, turrets, pennants, clock faces, arched windows
   const Y = new THREE.Vector3(0, 1, 0);
   // the Great Hall: a steep slate roof between stone gables, a flèche on the ridge, a rose window over the door.
-  // Its ceiling is bewitched to look like the sky, so the roof is hidden while you are inside.
+  // Its ceiling is bewitched to look like the sky, so the roof dissolves while you are inside (its own copies of
+  // the materials, on the view fade's dither: view.ts dissolvable).
   const hallRoof = new THREE.Group();
+  const roofFade: { value: number }[] = [];
   {
+    const own = new Map<THREE.Material, THREE.Material>();
+    const mine = <T extends THREE.Material>(m: T): T => {
+      if (!own.has(m)) { const d = dissolvable(m); own.set(m, d.mat); roofFade.push(d.k); }
+      return own.get(m) as T;
+    };
     const { slopes, gables } = gableRoof(HALL_ROOF.x0, HALL_ROOF.x1, HALL_ROOF.z0, HALL_ROOF.z1, HALL_ROOF.y, HALL_ROOF.rise);
-    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 33.2), M.darkStone);
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 33.2), mine(M.darkStone));
     ridge.position.set(0, 24, -56);
-    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 3, 8), M.darkStone);
+    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 3, 8), mine(M.darkStone));
     lantern.position.set(0, 25, -56);
-    const fleche = new THREE.Mesh(new THREE.ConeGeometry(1.25, 8, 8), M.roof);
+    const fleche = new THREE.Mesh(new THREE.ConeGeometry(1.25, 8, 8), mine(M.roof));
     fleche.position.set(0, 30.5, -56);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 1.6, 6), gold);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 1.6, 6), mine(gold));
     tip.position.set(0, 35.2, -56);
-    const rose = new THREE.Mesh(new THREE.CircleGeometry(2.3, 32), windowMat);
+    const rose = new THREE.Mesh(new THREE.CircleGeometry(2.3, 32), mine(windowMat));
     rose.position.set(0, 18.4, -39.32);
-    const roseRim = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.28, 6, 32), M.darkStone);
+    const roseRim = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.28, 6, 32), mine(M.darkStone));
     roseRim.position.copy(rose.position);
-    const slopeMesh = new THREE.Mesh(slopes, M.roof);
-    hallRoof.add(slopeMesh, new THREE.Mesh(gables, M.stone), ridge, lantern, fleche, tip, rose, roseRim);
+    const slopeMesh = new THREE.Mesh(slopes, mine(M.roof));
+    hallRoof.add(slopeMesh, new THREE.Mesh(gables, mine(M.stone)), ridge, lantern, fleche, tip, rose, roseRim);
     add(hallRoof);
-    if (STORYBOOK) hallRoof.add(inkHull([slopeMesh, lantern, fleche]));
+    if (STORYBOOK) hallRoof.add(inkHull([slopeMesh, lantern, fleche], 0.14, mine(INK)));
+  }
+  {
     pennants.push({ x: 0, y: 37, z: -56, len: 3.2 });
     // a lintel over the doors turns the full-height slot into a doorway
     const LT = HALL_LINTEL;
@@ -630,8 +687,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   const grass = createGrass(scene);
 
   // ---- the Forbidden Forest: instanced, with per-tree colour jitter
+  // (a crown per tree: three tiers, and at 'high' in the storybook their ink outline, in one geometry)
+  const crownGeos = { low: crownGeometry(false), high: crownGeometry(STORYBOOK) };
   const trunkI = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.5, 1, 6), trunk, trees.length);
-  const crownI = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7, 2), leaf, trees.length * 2);
+  const crownI = new THREE.InstancedMesh(crownGeos.high, leaf, trees.length);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const col = new THREE.Color();
@@ -641,12 +700,10 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     const gy = heightAt(t.x, t.z);
     m4.compose(new THREE.Vector3(t.x, gy + t.h * 0.2, t.z), q, new THREE.Vector3(t.r, t.h * 0.4, t.r));
     trunkI.setMatrixAt(i, m4);
-    for (let k = 0; k < 2; k++) {
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), jr() * 6);
-      m4.compose(new THREE.Vector3(t.x, gy + t.h * (0.55 + k * 0.25), t.z), q, new THREE.Vector3(t.r * (3.4 - k * 1.1), t.h * (0.55 - k * 0.15), t.r * (3.4 - k * 1.1)));
-      crownI.setMatrixAt(i * 2 + k, m4);
-      crownI.setColorAt(i * 2 + k, STORYBOOK ? col.set(FOREST[Math.floor(jr() * FOREST.length)]).multiplyScalar(0.85 + jr() * 0.3) : col.setHSL(0.28 + jr() * 0.08, 0.45, 0.55 + jr() * 0.35));
-    }
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), jr() * 6);
+    m4.compose(new THREE.Vector3(t.x, gy + t.h * 0.6375, t.z), q, new THREE.Vector3(t.r * 3.4, t.h * 0.725, t.r * 3.4));
+    crownI.setMatrixAt(i, m4);
+    crownI.setColorAt(i, STORYBOOK ? col.set(FOREST[Math.floor(jr() * FOREST.length)]).multiplyScalar(0.85 + jr() * 0.3) : col.setHSL(0.28 + jr() * 0.08, 0.45, 0.55 + jr() * 0.35));
     q.identity();
   });
   trunkI.castShadow = crownI.castShadow = true;
@@ -656,14 +713,14 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   // ---- the Great Hall: floating candles (with glow sprites) and house tables
   const candleGlow = new THREE.SpriteMaterial({ map: glowSprite('rgba(255,220,150,1)', 'rgba(255,180,80,0)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
   const candleGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.5, 6);
-  for (let i = 0; i < 48; i++) {
+  for (const c of HALL_CANDLES) {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(candleGeo, candleMat));
     const s = new THREE.Sprite(candleGlow);
     s.scale.setScalar(1.1);
     s.position.y = 0.35;
     g.add(s);
-    g.position.set(-10 + (i % 8) * 2.9, 8 + Math.sin(i) * 0.6, -69 + Math.floor(i / 8) * 5);
+    g.position.set(c.x, c.y, c.z);
     g.name = 'candle';
     scene.add(g);
   }
@@ -714,12 +771,14 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     grass.group.visible = was;
   });
   let bannerKey: House | null | undefined;
+  let roofK = -1;
   return {
     ground: terrain.ground,
     nightGlow, bannerSpots, lake, chimneys,
     setQuality(q) {
       grass.setQuality(q);
       frames.geometry = frameGeos[q];
+      crownI.geometry = crownGeos[q];
       setWizardDetail(q); // the wizards in the world follow the world's quality
       if (outline) outline.visible = q === 'high';
       // the lake's mirror pass re-renders the whole scene; freeze it on weak GPUs
@@ -730,7 +789,12 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       if (env.focus) {
         grass.update(t, env.focus);
         const f = env.focus;
-        hallRoof.visible = interiorAt(f.x, f.z) !== 0; // (layout INTERIORS; view.ts treats it the same way)
+        // the roof dissolves in ROOF_FADE s as you step in (layout INTERIORS; view.ts treats it the same way), and
+        // back as you leave; at once on the first frame, and with the system's "reduce motion"
+        const gone = interiorAt(f.x, f.z) === 0 ? 1 : 0;
+        roofK = roofK < 0 || REDUCED ? gone : Math.min(1, Math.max(0, roofK + (gone ? dt : -dt) / ROOF_FADE));
+        for (const k of roofFade) k.value = roofK;
+        hallRoof.visible = roofK < 1;
       }
       if (env.hour !== undefined) {
         for (const m of hourHands) m.rotation.z = -((env.hour % 12) / 12) * Math.PI * 2;

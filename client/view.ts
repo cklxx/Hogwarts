@@ -18,7 +18,9 @@ import { heightAt } from './terrain';
  *     chunks, opted into per material with the VIEW_FADE define), fading in over ~0.2 s.
  *  3. X-ray. The player, the locked target and allies within a few metres who are still hidden get a house-
  *     coloured rim drawn through the walls (a second pass: depth Greater, and stencil so a body never rims itself).
- *  4. Indoors (INTERIORS: the Great Hall) the camera rises and shortens its arm; the roof is hidden (scene.ts).
+ *  4. Indoors (INTERIORS: the Great Hall) the camera rises and shortens its arm; the roof dissolves on the same
+ *     dither over ~0.3 s (scene.ts, `dissolvable`). The hall's floating candles are soft solids: they never stop the
+ *     arm, but one between you and the camera turns the cut-out on, and their glows fade in it (`fadeGlow`).
  *
  * Pure parts (ViewWorld, CameraRig) have no DOM and are unit-tested (test/view.test.ts); `?debug=view` adds
  * window.__view with an audit that ray-casts the real scene (scripts/view-audit.ts runs it headless).
@@ -415,6 +417,7 @@ uniform vec4 viewFadeB;
 uniform vec4 viewFadeDepth;
 uniform vec4 viewFadeCam;
 uniform vec4 viewFadeRes;
+uniform float viewFadeSelf;
 float viewFadeBayer2( vec2 a ) { a = floor( a ); return fract( a.x / 2.0 + a.y * a.y * 0.75 ); }
 float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
 	float k = 1.0 - smoothstep( c.z * 0.55, c.z, length( gl_FragCoord.xy - c.xy ) );
@@ -426,6 +429,7 @@ float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
 `,
   main: /* glsl */ `
 #ifdef VIEW_FADE
+	float viewFadeK = viewFadeSelf;
 	if ( viewFadeA.w + viewFadeB.w > 0.0 && distance( cameraPosition, viewFadeCam.xyz ) < 0.01 ) {
 		float vfZ = gl_FragCoord.z * 2.0 - 1.0;
 		float vfD = 2.0 * viewFadeRes.z * viewFadeRes.w / ( viewFadeRes.w + viewFadeRes.z - vfZ * ( viewFadeRes.w - viewFadeRes.z ) );
@@ -433,8 +437,17 @@ float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
 		vec3 vfV = vec3( vfN.x * viewFadeCam.w * viewFadeRes.x / viewFadeRes.y, vfN.y * viewFadeCam.w, -1.0 ) * vfD;
 		float vfY = cameraPosition.y + ( vec4( vfV, 0.0 ) * viewMatrix ).y;
 		float vfCut = max( viewFadeCut( viewFadeA, viewFadeDepth.x, viewFadeDepth.z, vfD, vfY ), viewFadeCut( viewFadeB, viewFadeDepth.y, viewFadeDepth.w, vfD, vfY ) );
-		if ( vfCut * 0.86 > viewFadeBayer2( 0.5 * gl_FragCoord.xy ) * 0.25 + viewFadeBayer2( gl_FragCoord.xy ) ) discard;
+		viewFadeK = max( viewFadeK, vfCut * 0.86 );
 	}
+	#ifndef VIEW_FADE_ALPHA
+	if ( viewFadeK > 0.0 && viewFadeK > viewFadeBayer2( 0.5 * gl_FragCoord.xy ) * 0.25 + viewFadeBayer2( gl_FragCoord.xy ) ) discard;
+	#endif
+#endif
+`,
+  /** VIEW_FADE_ALPHA (glows, fadeGlow): the fade scales the alpha instead of dithering, after the colour is worked out. */
+  alpha: /* glsl */ `
+#ifdef VIEW_FADE_ALPHA
+	gl_FragColor.a *= 1.0 - viewFadeK;
 #endif
 `,
 };
@@ -459,8 +472,35 @@ export function installViewFade() {
   const C = THREE.ShaderChunk as unknown as Record<string, string>;
   C.clipping_planes_pars_fragment += VIEW_FADE_GLSL.pars;
   C.clipping_planes_fragment += VIEW_FADE_GLSL.main;
-  const U = { viewFadeA: FADE.A, viewFadeB: FADE.B, viewFadeDepth: FADE.depth, viewFadeCam: FADE.cam, viewFadeRes: FADE.res };
-  for (const lib of Object.values(THREE.ShaderLib)) for (const [k, v] of Object.entries(U)) lib.uniforms[k] = { value: v };
+  for (const lib of Object.values(THREE.ShaderLib)) Object.assign(lib.uniforms, fadeUniforms());
+}
+/** The fade's uniforms: the shared cut-outs, and the material's own dissolve (a number: three.js copies it per material). */
+const fadeUniforms = () => ({ viewFadeA: { value: FADE.A }, viewFadeB: { value: FADE.B }, viewFadeDepth: { value: FADE.depth }, viewFadeCam: { value: FADE.cam }, viewFadeRes: { value: FADE.res }, viewFadeSelf: { value: 0 } });
+
+/**
+ * A copy of `m` that dissolves by itself on the same dither (a Great Hall roof that fades as you step in): set
+ * `k.value` from 0 (whole) to 1 (gone). It shares `m`'s shader program (nothing new to compile), with its own
+ * viewFadeSelf uniform. Opted into the fade, so the occluder cut-outs apply to it as well.
+ */
+export function dissolvable<T extends THREE.Material>(m: T): { mat: T; k: { value: number } } {
+  const mat = m.clone() as T, k = { value: 0 };
+  const base = m.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => { base.call(m, sh, r); sh.uniforms.viewFadeSelf = k; };
+  mat.customProgramCacheKey = () => m.customProgramCacheKey();
+  fadeMaterial(mat);
+  return { mat, k };
+}
+
+/**
+ * Opt a ShaderMaterial of camera-facing glows (billboards.ts) into the fade: inside a cut-out its alpha fades
+ * (a dither would speckle a soft glow). Its fragment shader must set gl_FragColor and end with main's brace.
+ */
+export function fadeGlow(m: THREE.ShaderMaterial) {
+  if (m.defines?.VIEW_FADE !== undefined) return;
+  m.defines = { ...m.defines, VIEW_FADE: '', VIEW_FADE_ALPHA: '' };
+  Object.assign(m.uniforms, fadeUniforms());
+  m.fragmentShader = VIEW_FADE_GLSL.pars + m.fragmentShader.replace(/void main\(\)\s*\{/, (h) => h + VIEW_FADE_GLSL.main).replace(/\}\s*$/, VIEW_FADE_GLSL.alpha + '}');
+  m.needsUpdate = true;
 }
 
 /** Opt a world material into the fade, and have it mark the stencil (1) so the x-ray pass knows a wall is in front. */
@@ -534,6 +574,8 @@ const ALLY_RANGE = 12, MAX_ALLIES = 4;
 const HALL_ROOF_BOX = [HALL_ROOF.x0, HALL_ROOF.x1, HALL_ROOF.z0, HALL_ROOF.z1, HALL_ROOF.y - 0.01] as const;
 /** Instanced stand-ins for characters and spells (crowd.ts, partbatch.ts, herd.ts, bolts.ts): never faded. */
 const CHARACTERS = /^(crowd|parts|herd:|bolt)/;
+/** The glows of static things (instancer.ts: the Great Hall's candles): faded by alpha (fadeGlow). */
+const GLOWS = /^glow:/;
 
 export function createView(d: ViewDeps) {
   installViewFade();
@@ -553,7 +595,8 @@ export function createView(d: ViewDeps) {
     bb.setFromObject(m);
     if (bb.max.y - bb.min.y < 0.3) return; // flat: roads, courtyard, floors, water
     for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
-      if ((mat as THREE.ShaderMaterial).isShaderMaterial || (mat as THREE.MeshBasicMaterial).depthTest === false) continue;
+      if ((mat as THREE.ShaderMaterial).isShaderMaterial) { if (GLOWS.test(o.name)) fadeGlow(mat as THREE.ShaderMaterial); continue; }
+      if ((mat as THREE.MeshBasicMaterial).depthTest === false) continue;
       fadeMaterial(mat);
       marked++;
     }
