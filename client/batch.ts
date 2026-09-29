@@ -29,7 +29,8 @@ export function mergeStatic(scene: THREE.Scene, roots: Iterable<THREE.Object3D>,
     if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || (m as unknown as { isBatchedMesh?: boolean }).isBatchedMesh) return;
     if (Array.isArray(m.material) || m.children.length || m.onBeforeRender !== plainBefore || m.customDepthMaterial || m.customDistanceMaterial) return;
     const g = m.geometry;
-    if (!g || Object.keys(g.morphAttributes).length || g.groups.length > 1 || !g.getAttribute('position')) return;
+    // (groups only matter with an array of materials, excluded above: a Box's six are drawn as one anyway)
+    if (!g || Object.keys(g.morphAttributes).length || !g.getAttribute('position')) return;
     if (Object.values(g.attributes).some((a) => (a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute)) return;
     if ((m.material as THREE.Material).transparent) return; // (merging would change how they sort)
     if (skip(m)) return;
@@ -73,6 +74,7 @@ export function mergeStatic(scene: THREE.Scene, roots: Iterable<THREE.Object3D>,
     const indexed = list.every((m) => m.geometry.index);
     const geos = list.map((m) => {
       let g = m.geometry.clone();
+      g.clearGroups();
       if (!indexed && g.index) g = g.toNonIndexed();
       g.applyMatrix4(m.matrixWorld);
       // a mirrored transform flips the winding: flip it back so the faces keep facing out

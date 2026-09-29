@@ -32,6 +32,8 @@ export class Label {
     this.last = key;
     this.paint(name, color, hpFrac, say, extra);
   }
+  /** Free the tag's texture and material (the sprite's geometry is three.js's shared quad). */
+  dispose() { this.tex.dispose(); this.sprite.material.dispose(); }
   /** Show or hide the tag (painting what it was last told to say, if that changed while hidden). */
   show(on: boolean) {
     if (this.sprite.visible === on) return;
@@ -88,6 +90,11 @@ export interface WizardModel {
    * is true. Returns true on the frame the wand is thrust forward (the moment to flash the tip).
    */
   update(dt: number, speed: number, casting: boolean): boolean;
+  /**
+   * Middle distance (main.ts level of detail): leave out what is a pixel or two from there — the scarf
+   * tails, the wand and its tip (unless it is lit or casting) — 5 of the ~17 draw calls.
+   */
+  setMid(mid: boolean): void;
 }
 
 // ---- wizard parts: geometry and materials are built once and shared by every wizard
@@ -566,7 +573,7 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   }
 
   // ---- animation state
-  const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '' };
+  const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '', mid: false };
   const tipColor = new THREE.Color();
   const REST_R = 0.3;
   const dress: Dress = {
@@ -576,10 +583,15 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   return {
     root, body, label, shield, glow, wandTip, root2, patronus, elder, castPending: false, dress,
     tipHex: (lit) => (lit ? dress.lumos : dress.tip),
+    setMid(mid) {
+      if (mid === st.mid) return;
+      st.mid = mid;
+      tailF.visible = tailB.visible = detail === 'high' && !mid;
+    },
     update(dt, speed, casting) {
       st.t += dt;
       if (dress.animated) glamTime.value = performance.now() / 1000;
-      if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high'; showInks(dress); }
+      if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high' && !st.mid; showInks(dress); }
       // The stride follows ground speed up to GAIT_MAX (beyond it the feet slide a little instead of the
       // legs blurring). Anything faster than GLIDE is not walking but the model catching up after an
       // apparition, a release from Azkaban or a knock-back: hold the standing pose through the glide.
@@ -628,12 +640,40 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
       const lumos = glow.intensity > 0 ? 1 : 0;
       tipGlow.material.color.copy(tipColor).multiplyScalar(0.5 + 3 * flare + 1.5 * lumos);
       tipGlow.scale.setScalar(0.16 + 0.9 * flare + 0.5 * lumos);
+      wand.visible = !st.mid || lumos > 0 || st.cast >= 0;
       if (shield.visible) { shield.scale.setScalar(1 + 0.02 * Math.sin(st.t * 5)); shieldUniforms.uTime.value = performance.now() / 1000; }
       if (root2.visible) root2.rotation.z += dt * 2;
       if (elder.visible) { elder.rotation.y += dt * 2; elder.position.y = 2.9 + Math.sin(st.t * 2) * 0.08; }
       return fire;
     },
   };
+}
+
+// ------------------------------------------------------------------ freeing models
+/**
+ * Free what a model owns on the GPU: its own materials and geometries, its name tag, its lights. What
+ * models share (the once() cache, the glamour pool, the shield material, three.js's sprite quad) stays.
+ */
+function disposeOwned(root: THREE.Object3D, keep: Set<unknown>) {
+  root.traverse((o) => {
+    if ((o as THREE.Light).isLight) { (o as THREE.Light).dispose(); return; }
+    const x = o as THREE.Mesh;
+    if (!x.material) return;
+    for (const mat of [x.material].flat()) if (!keep.has(mat)) mat.dispose();
+    if (!(o as THREE.Sprite).isSprite && x.geometry && !keep.has(x.geometry)) x.geometry.dispose();
+  });
+}
+const sharedParts = () => new Set<unknown>([...cache.values(), _shieldMat]);
+/** A wizard gone for good (see main.ts: models of wizards that merely walked out of view are kept a while). */
+export function disposeWizard(m: WizardModel) {
+  releaseWizardLook(m);
+  m.label.dispose();
+  disposeOwned(m.root, sharedParts());
+}
+/** A creature model no pool wants any more (every creature builds its own parts). */
+export function disposeCreature(c: { root: THREE.Object3D; label: Label }) {
+  c.label.dispose();
+  disposeOwned(c.root, new Set([glowTex()]));
 }
 
 // ------------------------------------------------------------------ the far wizard (crowd.ts)
@@ -1156,6 +1196,8 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
 }
 
 let _glow: THREE.Texture | null = null;
+/** A soft white radial glow (sprites, bolts.ts). */
+export const glowTexture = () => glowTex();
 function glowTex() {
   if (_glow) return _glow;
   const c = document.createElement('canvas');
@@ -1191,17 +1233,14 @@ export function setAuraRing(ring: THREE.Mesh, flags: string, t: number) {
 
 export const boltColor = (kind: string, e: Element) => (kind === 'disarm' ? 0xff3b3b : kind === 'root' ? 0x9fe8ff : ELEMENT_COLORS[e]);
 
-/** A spell in flight: a white-hot core inside two element-coloured glows (the trail is GPU particles, see fx.ts). */
+/**
+ * A spell in flight. Its white-hot core and two element-coloured glows are drawn for all bolts at once
+ * (bolts.ts); this object carries the position, the colour and, for Rooting, the spinning ring.
+ */
 export function makeBolt(kind: string, e: Element): THREE.Object3D {
   const color = boltColor(kind, e);
   const g = new THREE.Group();
-  // HDR colours (> 1) so the bloom pass makes spells glow
-  const core = new THREE.Mesh(once('boltCore', () => new THREE.SphereGeometry(0.13, 10, 8)), once('boltCoreMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(8) })));
-  const inner = new THREE.Sprite(once(`boltIn:${color}`, () => new THREE.SpriteMaterial({ map: glowTex(), color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.3).multiplyScalar(5), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
-  inner.scale.setScalar(1.0);
-  const outer = new THREE.Sprite(once(`boltOut:${color}`, () => new THREE.SpriteMaterial({ map: glowTex(), color: new THREE.Color(color).multiplyScalar(1.6), transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })));
-  outer.scale.setScalar(2.4);
-  g.add(core, inner, outer);
+  g.name = 'bolt';
   if (kind === 'root') {
     const ring = new THREE.Mesh(once('boltRing', () => new THREE.TorusGeometry(0.42, 0.04, 6, 24)), once('boltRingMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9fe8ff).multiplyScalar(3) })));
     ring.name = 'spin';

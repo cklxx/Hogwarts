@@ -43,7 +43,7 @@ const WARM = Number(opt('warm', '4'));
 const BOTS = Number(opt('bots', '60'));
 const CROWD = Number(opt('crowd', '30'));
 const NPCS = Number(opt('npcs', '12'));
-const AOI = opt('aoi', '0') === '1';
+const AOI = opt('aoi', ''); // '' = the client's default (area of interest since wf/fast), 0 = whole world, 1 = AOI
 const QS = opt('q', 'high,low').split(',');
 const SPOTS = opt('spots', 'follow,castle,lake,overview').split(',');
 const [VW, VH] = opt('size', '1280x720').split('x').map(Number);
@@ -116,6 +116,23 @@ const INIT = `
 `;
 
 interface Row { [k: string]: string | number }
+interface Profile { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; hitCount?: number; children?: number[] }[]; samples: number[]; timeDeltas: number[] }
+/** Top functions by self time (and the whole-profile total) from a CDP CPU profile. */
+function printProfile(p: Profile, what: string) {
+  const byId = new Map(p.nodes.map((n) => [n.id, n]));
+  const self = new Map<number, number>();
+  for (let i = 0; i < p.samples.length; i++) self.set(p.samples[i], (self.get(p.samples[i]) ?? 0) + (p.timeDeltas[i] ?? 0) / 1000);
+  const agg = new Map<string, number>();
+  let total = 0;
+  for (const [id, ms] of self) {
+    const f = byId.get(id)!.callFrame;
+    const k = `${f.functionName || '(anon)'} ${f.url.split('/').pop()}:${f.lineNumber + 1}`;
+    agg.set(k, (agg.get(k) ?? 0) + ms);
+    total += ms;
+  }
+  console.log(`  cpu profile (${what}): ${total.toFixed(0)} ms sampled`);
+  for (const [k, ms] of [...agg].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`    ${ms.toFixed(1).padStart(8)} ms  ${k}`);
+}
 
 async function main() {
   const { chromium } = await import(pathToFileURL(PW).href);
@@ -144,7 +161,7 @@ async function main() {
       await Promise.all(workers.map((wk) => ask(wk, 'connect', 'connected')));
       for (const wk of workers) wk.postMessage({ cmd: 'drive' });
     }
-    console.log(`world: ${BOTS} bots (${CROWD} at the spawn), ${NPCS} NPCs, ${w.creatures} creatures at start; client aoi=${AOI ? 1 : 0}; ${VW}x${VH}; ${SECS}s per spot after ${WARM}s`);
+    console.log(`world: ${BOTS} bots (${CROWD} at the spawn), ${NPCS} NPCs, ${w.creatures} creatures at start; client aoi=${AOI || 'default'}; ${VW}x${VH}; ${SECS}s per spot after ${WARM}s`);
 
     for (const q of QS) {
       const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
@@ -166,13 +183,17 @@ async function main() {
         bytes[ext] = (bytes[ext] ?? 0) + e.encodedDataLength;
         total += e.encodedDataLength;
       });
+      if (args.has('profile')) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 500 }); await cdp.send('Profiler.start'); }
       const t0 = Date.now();
-      await page.goto(`${base}/?perf=1&capture=1&q=${q}${EXTRA}${AOI ? '&aoi=1' : ''}#k=${w.viewer}`, { waitUntil: 'load' });
+      await page.goto(`${base}/?perf=1&capture=1&q=${q}${EXTRA}${AOI ? `&aoi=${AOI}` : ''}#k=${w.viewer}`, { waitUntil: 'load' });
       const loadMs = Date.now() - t0;
       await page.waitForFunction(() => (window as any).__perf?.marks?.firstFrame, null, { timeout: 180_000, polling: 250 });
       const marks = await page.evaluate(() => (window as any).__perf.marks);
+      if (args.has('profile')) printProfile(((await cdp.send('Profiler.stop')) as { profile: Profile }).profile, 'load');
+      const lm = Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]));
+      console.log(`  load main thread: task ${Math.round(lm.TaskDuration * 1000)} ms, script ${Math.round(lm.ScriptDuration * 1000)} ms, layout ${Math.round(lm.LayoutDuration * 1000)} ms, style ${Math.round(lm.RecalcStyleDuration * 1000)} ms`);
       await sleep(1500); // HDRIs and textures that arrive after the first frame
-      const load = { q, loadEventMs: loadMs, firstSnapMs: Math.round(marks.firstSnap), firstFrameMs: Math.round(marks.firstFrame), totalKB: Math.round(total / 1024), ...Object.fromEntries(Object.entries(bytes).map(([k, v]) => [`KB_${k}`, Math.round(v / 1024)])) };
+      const load = { q, loadEventMs: loadMs, ...Object.fromEntries(Object.entries(marks as Record<string, number>).map(([k, v]) => [`${k}Ms`, Math.round(v)])), totalKB: Math.round(total / 1024), ...Object.fromEntries(Object.entries(bytes).map(([k, v]) => [`KB_${k}`, Math.round(v / 1024)])) };
       console.log(`\nload (q=${q}):`, JSON.stringify(load));
       if (OUT) appendFileSync(OUT, JSON.stringify({ kind: 'load', label: LABEL, ...load }) + '\n');
 
@@ -181,10 +202,12 @@ async function main() {
         await sleep(WARM * 1000);
         const metric = async () => Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]));
         await page.evaluate(() => { (window as any).__perf.reset(); (window as any).__lt.length = 0; Object.assign((window as any).__heap, { grow: 0, drops: 0, dropped: 0 }); });
+        if (args.get('profile') === 'spot') { await cdp.send('Profiler.start'); }
         const m0 = await metric();
         const w0 = Date.now();
         await sleep(SECS * 1000);
         const m1 = await metric();
+        if (args.get('profile') === 'spot') printProfile(((await cdp.send('Profiler.stop')) as { profile: Profile }).profile, spot);
         const wall = (Date.now() - w0) / 1000;
         const r = await page.evaluate(() => { const p = (window as any).__perf; return { frames: p.frames, counters: p.counters, info: p.info(), lt: (window as any).__lt, heap: (window as any).__heap, passes: p.passes, census: p.census() }; });
         if (args.has('census')) {

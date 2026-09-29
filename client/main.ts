@@ -7,11 +7,14 @@ import { L, applyStatic, creatureName, houseName, lang, placeName, setLang, spel
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { heightAt } from './terrain';
-import { farColors, makeAuraRing, makeBolt, makeCreature, makeWizard, releaseWizardLook, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
+import { disposeCreature, disposeWizard, farColors, makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
 import { createLightBudget } from './lights';
 import { createCrowd } from './crowd';
 import { mergeStatic } from './batch';
 import { createEffects } from './effects';
+import { createBoltBatch } from './bolts';
+import { createHerd } from './herd';
+import { createDynRes } from './dynres';
 import { captureFocus } from './capture';
 import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
@@ -147,14 +150,22 @@ probe.mark('script');
 const R = createRenderer(canvas);
 probe.attach(R.renderer, R.scene);
 probe.mark('renderer');
+// Shader errors are checked in development only: the check reads the compile status back from the GPU,
+// which waits for every command queued before it (a stall per program, and it defeats parallel compiling).
+R.renderer.debug.checkShaderErrors = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
+// The sun's shadow map is redrawn every other frame (see frame()): the light's shadow matrix is only
+// updated with it, so what is drawn always matches the map; a moving wizard's shadow lags one frame.
+R.renderer.shadowMap.autoUpdate = false;
 const { scene, camera } = R;
 const sceneBefore = new Set(scene.children);
 const world = buildWorld(scene);
+/** What buildWorld added (decor.ts animates its own things from the Minister's look: never batched). */
+const worldRoots = scene.children.filter((o) => !sceneBefore.has(o));
 const decor = createDecor(scene, world.bannerSpots);
 // the world's static meshes, merged per material (batch.ts): exercise the world's own animation to find what moves
 {
   const sun = new THREE.Vector3(0.4, 0.6, 0.3).normalize(), at = new THREE.Vector3();
-  const b = mergeStatic(scene, scene.children.filter((o) => !sceneBefore.has(o)), (step) => {
+  const b = mergeStatic(scene, worldRoots, (step) => {
     for (const [t, hour, x, z] of [[0, 3.2, 0, -56], [6.1, 9.7, 0, 0], [13.9, 15.1, 120, 90], [27.3, 21.4, -110, 40]]) {
       world.tick(t, 0.05, t > 10, sun, { hour, banner: t > 10 ? 'Gryffindor' : null, focus: at.set(x, 0, z) });
       step();
@@ -162,27 +173,66 @@ const decor = createDecor(scene, world.bannerSpots);
     world.setQuality('low'); step();
     world.setQuality('high'); step();
   }, { exclude: [world.ground.parent ?? world.ground] });
+  probe.mark('batched');
   if (probe.PERF) console.log(`[perf] static batching: ${b.merged} of ${b.candidates} meshes into ${b.meshes} (${b.moving} move)`);
 }
-// every point light in the world is shown through a fixed number of real lights (lights.ts)
-const lights = createLightBudget(scene, 8);
+// every point light in the world is shown through a fixed number of real lights (lights.ts). The count is
+// part of every lit shader, so it is fixed at start (4 when ?q=low is forced): the automatic switch to 'low'
+// then recompiles nothing.
+const lights = createLightBudget(scene, new URLSearchParams(location.search).get('q') === 'low' ? 4 : 6);
 lights.adopt(scene);
 // far wizards: one instanced crowd instead of full models (crowd.ts)
 const crowd = createCrowd(scene);
+// far creatures: one instanced statue per kind (herd.ts)
+const herd = createHerd(scene);
 /**
- * Level of detail, in metres from the camera: full wizard models nearer than `wizard` (the instanced crowd
+ * Level of detail, in metres from the camera: full wizard models nearer than `wizard` (without the scarf
+ * tails and the unlit wand beyond `mid`; the instanced crowd
  * beyond, with a few metres of hysteresis), name tags nearer than `label` (and always on your target),
  * creatures drawn nearer than `creature` and animated nearer than `anim`.
  */
-const LOD = { high: { wizard: 42, label: 45, creature: 170, anim: 70 }, low: { wizard: 24, label: 30, creature: 110, anim: 45 } };
-if (new URLSearchParams(location.search).get('lod') === '0') for (const l of Object.values(LOD)) Object.assign(l, { wizard: 1e9, label: 1e9, creature: 1e9, anim: 1e9 }); // (for comparisons)
+const LOD = { high: { mid: 22, wizard: 42, label: 45, creature: 170, anim: 70 }, low: { mid: 14, wizard: 24, label: 30, creature: 110, anim: 45 } };
+if (new URLSearchParams(location.search).get('lod') === '0') for (const l of Object.values(LOD)) Object.assign(l, { mid: 1e9, wizard: 1e9, label: 1e9, creature: 1e9, anim: 1e9 }); // (for comparisons)
 probe.mark('world');
 if (/[?&]debug=colliders\b/.test(location.search)) void import('./debug').then((d) => d.showColliders(scene, () => snap?.look?.statues.length ?? 0));
 // Quality: ?q=low|high forces it; otherwise measure the first seconds and drop to low if slow.
 const forcedQ = new URLSearchParams(location.search).get('q');
 let quality: 'low' | 'high' = forcedQ === 'low' ? 'low' : 'high';
-const applyQuality = (q: 'low' | 'high') => { quality = q; R.setQuality(q); world.setQuality(q); lights.setSlots(q === 'low' ? 4 : 8); };
+const params = new URLSearchParams(location.search);
+const capturing = params.get('capture') === '1';
+/**
+ * Dynamic resolution (dynres.ts) within each quality's range: 'high' renders at up to the screen's pixel
+ * ratio (at most 2) and may go down to 60 % of 1x; 'low' between 0.5 and 0.75. ?dyn=0 (and the promo
+ * capture) keep the fixed ratio.
+ */
+const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? [0.5, 0.75] : [0.6 * Math.min(1, devicePixelRatio), Math.min(2, devicePixelRatio)]);
+const dyn = params.get('dyn') === '0' || capturing ? null : createDynRes({
+  min: ratioRange(quality)[0], max: ratioRange(quality)[1],
+  apply: (r) => { R.renderer.setPixelRatio(r); R.composer.setPixelRatio(r); R.resize(); },
+});
+const applyQuality = (q: 'low' | 'high') => { quality = q; R.setQuality(q); world.setQuality(q); lighterLake(); dyn?.range(...ratioRange(q)); };
+/**
+ * The lake's mirror re-renders the scene from below the water every frame. Wrap whatever scene.ts installed
+ * (it swaps the hook with the quality): leave wizards, creatures and spells out of the mirror (the instanced
+ * far crowd still shows), and refresh it every other frame (the ripples hide the difference).
+ */
+function lighterLake() {
+  const lake = world.lake;
+  if (!lake || (lake.onBeforeRender as { lighter?: boolean }).lighter) return;
+  const mirror = lake.onBeforeRender;
+  let n = 0;
+  const hook = ((...a: Parameters<typeof mirror>) => {
+    if (n++ % 2) return;
+    const was = actors.visible;
+    actors.visible = false;
+    mirror.apply(lake, a);
+    actors.visible = was;
+  }) as typeof mirror & { lighter?: boolean };
+  hook.lighter = true;
+  lake.onBeforeRender = hook;
+}
 applyQuality(quality);
+probe.mark('quality');
 const perf = { frames: 0, time: 0, done: !!forcedQ };
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
 const weatherPts = new THREE.Points(
@@ -208,8 +258,12 @@ let myHandle = '';
 let token = '';
 let ws: WebSocket | null = null;
 let wsFails = 0;
-const wizards = new Map<string, WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number }>();
-const creatures = new Map<string, ReturnType<typeof makeCreature> & { tx: number; tz: number; tf: number; aura: THREE.Mesh }>();
+const wizards = new Map<string, WizardEntry>();
+const creatures = new Map<string, CreatureEntry>();
+/** Wizards, creatures and spells in flight (left out of the lake's reflection). */
+const actors = new THREE.Group();
+actors.name = 'actors';
+scene.add(actors);
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
 let camYaw = 0, camPitch = 0.45, camDist = 14;
 let clock = 0;
@@ -217,7 +271,9 @@ let clock = 0;
 // ------------------------------------------------------------------ network
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
+  // area-of-interest snapshots (what is near you, see apply); ?aoi=0 asks for the whole world instead
+  const aoi = new URLSearchParams(location.search).get('aoi') === '0' ? '' : '&aoi=1';
+  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}${aoi}`);
   ws.onmessage = (m) => {
     const tm = probe.begin();
     onMessage(m);
@@ -280,22 +336,44 @@ function connect() {
 }
 const send = (o: unknown) => { if (ws?.readyState === 1) ws.send(JSON.stringify(o)); };
 
+/**
+ * Snapshots are area-of-interest (the server sends what is within ~120-200 m of you, fanout.ts), so things
+ * leave and come back as you travel. Nothing is rebuilt for that: a wizard who leaves is parked (kept, out of
+ * the scene) and comes back as the same model; a creature's model goes back to a pool of its kind; only a
+ * creature or spell that vanishes near you (inside the always-sent 120 m) died or struck, and gets its puff
+ * or burst. Parked wizards not seen for a while, and pooled models beyond what a pool keeps, are freed.
+ */
+type WizardEntry = WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
+type CreatureEntry = ReturnType<typeof makeCreature> & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number };
+const parked = new Map<string, { m: WizardEntry; at: number }>();
+const herdPool = new Map<CreatureKind, CreatureEntry[]>();
+/** Things that vanish nearer than this (m) to you vanished for real (the server always sends everything within 120 m). */
+const GONE_NEAR = 100;
+const PARK_S = 90, PARK_MAX = 96, POOL_MAX = 24;
+let gen = 0;
+const nearMe = (x: number, z: number) => { const me = wizards.get(myHandle)?.root.position; return !me || Math.hypot(x - me.x, z - me.z) < GONE_NEAR; };
+
 function apply(s: Snap) {
   snap = s;
-  const seenW = new Set<string>();
+  const g = ++gen;
   for (const w of s.w) {
-    seenW.add(w.h);
     let m = wizards.get(w.h);
     if (!m) {
-      m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() });
-      m.root.add(m.aura);
-      m.root.name = 'wizard';
-      m.root.position.set(w.x, 0, w.z);
-      m.label.sprite.visible = false; // (the frame's level of detail shows it when near)
+      const p = parked.get(w.h);
+      if (p) { parked.delete(w.h); m = p.m; }
+      else {
+        m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() }) as WizardEntry;
+        m.root.add(m.aura);
+        m.root.name = 'wizard';
+        m.label.sprite.visible = false; // (the frame's level of detail shows it when near)
+      }
+      m.root.position.set(w.x, heightAt(w.x, w.z), w.z);
+      m.far = undefined;
       lights.add(m.glow);
-      scene.add(m.root);
+      actors.add(m.root);
       wizards.set(w.h, m);
     }
+    m.seen = g;
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
     const extra = (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
@@ -311,44 +389,60 @@ function apply(s: Snap) {
     if (setWizardLook(m, w.g)) { const p = m.root.position; particles.burst(p.x, p.y + 1.1, p.z, { count: 60, color: m.tipHex(false), intensity: 3, whiten: 0.5, radius: 0.8, speed: 1.2, up: 1.4, size: 0.12, life: 0.9, drag: 1.5 }); particles.motes(p.x, p.y, p.z, m.tipHex(false), 30); }
     (m.wandTip.material as THREE.MeshBasicMaterial).color.setHex(w.s.includes('D') ? 0x444444 : m.tipHex(w.s.includes('L')));
   }
-  for (const [h, m] of wizards) if (!seenW.has(h)) { releaseWizardLook(m); lights.remove(m.glow); scene.remove(m.root); wizards.delete(h); }
+  const now = performance.now() / 1000;
+  for (const [h, m] of wizards) if (m.seen !== g) {
+    lights.remove(m.glow);
+    actors.remove(m.root);
+    wizards.delete(h);
+    parked.set(h, { m, at: now });
+  }
+  if (parked.size) for (const [h, p] of parked) if (now - p.at > PARK_S || parked.size > PARK_MAX) { parked.delete(h); disposeWizard(p.m); }
 
-  const seenC = new Set<string>();
   for (const c of s.c) {
-    seenC.add(c.i);
     let m = creatures.get(c.i);
     if (!m) {
-      m = Object.assign(makeCreature(c.k), { tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing() });
-      m.root.add(m.aura);
-      m.root.name = 'creature';
-      m.root.position.set(c.x, 0, c.z);
-      m.label.sprite.visible = false;
-      scene.add(m.root);
+      m = herdPool.get(c.k)?.pop();
+      if (!m) {
+        m = Object.assign(makeCreature(c.k), { k: c.k, tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing() }) as CreatureEntry;
+        m.root.add(m.aura);
+        m.root.name = 'creature';
+        m.label.sprite.visible = false;
+      }
+      m.root.position.set(c.x, heightAt(c.x, c.z), c.z);
+      m.root.rotation.y = -c.f;
+      actors.add(m.root);
       creatures.set(c.i, m);
     }
+    m.seen = g;
     m.tx = c.x; m.tz = c.z; m.tf = c.f;
     const mine = c.o === myHandle;
     const benign = c.k === 'unicorn' || c.k === 'phoenix';
     m.label.draw(c.o ? `${creatureName(c.k, NAMES[c.k])} (${mine ? L('你的', 'yours') : L('召唤物', 'conjured')})` : creatureName(c.k, NAMES[c.k]), mine ? '#b8ffb8' : c.o ? '#ffd9a0' : benign ? '#ffffff' : '#ffdddd', c.hp / c.m);
     setAuraRing(m.aura, c.s + (mine ? 'g' : ''), clock);
   }
-  for (const [i, m] of creatures) if (!seenC.has(i)) {
-    puff(m.root.position.x, m.root.position.z, 0x333333);
-    particles.puff(m.root.position.x, m.root.position.y + 1, m.root.position.z, { count: 14, color: 0x2a282c, speed: 2, up: 0.8, size: 1, life: 1.4, drag: 2.5, grow: 2.5, radius: 0.6 });
-    scene.remove(m.root); creatures.delete(i);
+  for (const [i, m] of creatures) if (m.seen !== g) {
+    const p = m.root.position;
+    if (nearMe(p.x, p.z)) {
+      puff(p.x, p.z, 0x333333);
+      particles.puff(p.x, p.y + 1, p.z, { count: 14, color: 0x2a282c, speed: 2, up: 0.8, size: 1, life: 1.4, drag: 2.5, grow: 2.5, radius: 0.6 });
+    }
+    actors.remove(m.root);
+    creatures.delete(i);
+    let pool = herdPool.get(m.k);
+    if (!pool) herdPool.set(m.k, (pool = []));
+    if (pool.length < POOL_MAX) { m.label.show(false); pool.push(m); } else disposeCreature(m);
   }
 
-  const seenP = new Set<string>();
   for (const p of s.p) {
-    seenP.add(p.i);
     let b = bolts.get(p.i);
-    if (!b) { b = makeBolt(p.k, p.e); b.position.set(p.x, 1.3, p.z); b.userData.color = p.k === 'disarm' ? 0xff3b3b : p.k === 'root' ? 0x9fe8ff : ELEMENT_COLORS[p.e]; scene.add(b); bolts.set(p.i, b); }
+    if (!b) { b = makeBolt(p.k, p.e); b.position.set(p.x, 1.3, p.z); b.userData.color = p.k === 'disarm' ? 0xff3b3b : p.k === 'root' ? 0x9fe8ff : ELEMENT_COLORS[p.e]; actors.add(b); bolts.set(p.i, b); }
+    b.userData.seen = g;
     b.tx = p.x; b.tz = p.z;
   }
-  for (const [i, b] of bolts) if (!seenP.has(i)) {
-    particles.burst(b.position.x, b.position.y, b.position.z, { count: 14, color: b.userData.color ?? 0xffffff, intensity: 4, whiten: 0.5, speed: 3.5, size: 0.18, life: 0.4, gravity: 4, drag: 2.5 });
+  for (const [i, b] of bolts) if (b.userData.seen !== g) {
+    if (nearMe(b.position.x, b.position.z)) particles.burst(b.position.x, b.position.y, b.position.z, { count: 14, color: b.userData.color ?? 0xffffff, intensity: 4, whiten: 0.5, speed: 3.5, size: 0.18, life: 0.4, gravity: 4, drag: 2.5 });
     particles.forget(b);
-    scene.remove(b); bolts.delete(i);
+    actors.remove(b); bolts.delete(i);
   }
 
   for (const f of s.fx) spawnFx(f);
@@ -364,6 +458,7 @@ const tmpTip = new THREE.Vector3();
 // pooled spell effects (effects.ts)
 const fxm = createEffects(scene);
 const { ring, puff, column, floatText, lightning } = fxm;
+const boltBatch = createBoltBatch(scene);
 
 function spawnFx(f: Fx) {
   const col = f.e ? ELEMENT_COLORS[f.e] : 0xffffff;
@@ -1426,6 +1521,7 @@ function toggleMenu() {
   rotateArmed = false;
   if (!m.hidden) { ctl.notify('menu'); if (!$('#op-pair')) menuInfo(); renderMenuLive(); }
 }
+probe.mark("preControls");
 const ctl = createControls({
   canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,
   snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast,
@@ -1517,12 +1613,14 @@ addEventListener('keydown', (e) => {
 
 // ------------------------------------------------------------------ frame
 let prev = performance.now();
+let frameNo = 0;
 function frame() {
   requestAnimationFrame(frame);
   probe.frameBegin();
   let tp = probe.begin();
   const now = performance.now();
   const dt = Math.min(0.1, (now - prev) / 1000);
+  if (snap) dyn?.frame(now - prev);
   prev = now;
   clock += dt;
   if (!perf.done && snap) {
@@ -1558,6 +1656,7 @@ function frame() {
       w.castPending = false;
       continue;
     }
+    w.setMid(!mine && !focused && d > lod.mid);
     if (w.update(dt, speed, w.castPending)) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
     w.castPending = false;
     if (w.patronus.visible) {
@@ -1566,24 +1665,30 @@ function frame() {
     }
   }
   crowd.end(quality === 'high');
+  herd.begin();
   for (const [i, c] of creatures) {
     c.root.position.x += (c.tx - c.root.position.x) * k;
     c.root.position.z += (c.tz - c.root.position.z) * k;
     c.root.position.y = heightAt(c.root.position.x, c.root.position.z);
     c.root.rotation.y = -c.tf;
     const d = Math.hypot(c.root.position.x - cam.x, c.root.position.y - cam.y, c.root.position.z - cam.z);
-    c.root.visible = d < lod.creature || i === focusKey;
-    c.label.show(i === focusKey || d < lod.label);
-    if (d < lod.anim) c.anim(clock);
+    const focused = i === focusKey;
+    // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
+    c.root.visible = focused || d < lod.anim;
+    c.label.show(focused || d < lod.label);
+    if (c.root.visible) c.anim(clock);
+    else if (d < lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
   }
+  herd.end();
   for (const b of bolts.values()) {
     b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, k * 2);
     b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, k * 2);
     b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
     particles.trail(b, b.position, b.userData.color ?? 0xffffff);
-    const spin = b.getObjectByName('spin');
+    const spin = b.children[0];
     if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
   }
+  boltBatch.update(bolts.values());
   fxm.update(dt);
   elderGlint.rotation.y += dt * 2;
   elderGlint.position.y = 2.6 + heightAt(elderGlint.position.x, elderGlint.position.z) + Math.sin(clock * 2) * 0.2;
@@ -1632,6 +1737,7 @@ function frame() {
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();
+  R.renderer.shadowMap.needsUpdate = capturing || (++frameNo & 1) === 1;
   R.render();
   probe.end('render', tp);
   if (snap) probe.mark('firstFrame');
@@ -1640,8 +1746,51 @@ function frame() {
 
 setInterval(() => { const t = probe.begin(); hud(); probe.end('hud', t); }, 100);
 
+// ------------------------------------------------------------------ shader warm-up
+/**
+ * Compile every shader the game will need while the veil and the gate are up, without blocking (three.js
+ * compileAsync, KHR_parallel_shader_compile where the browser has it): the world, a wizard, each kind of
+ * creature (near and far), the crowd, bolts, effects, name tags. Otherwise each of them compiles on the frame
+ * it first appears, a visible hitch (and the first frame alone compiled ~70 programs). The warm-up models are
+ * kept (their materials keep the programs alive); the creatures go to the pools.
+ */
+const warmed = (async () => {
+  await new Promise((r) => setTimeout(r, 0));
+  const t0 = performance.now();
+  const g = new THREE.Group();
+  g.position.set(0, -200, 0);
+  const w = makeWizard('Gryffindor', false, 'warm-up');
+  w.label.draw('warm-up', '#fff', 1);
+  w.root.add(makeAuraRing());
+  g.add(w.root, makeBolt('root', 'fire'));
+  const kinds = Object.keys(NAMES) as CreatureKind[];
+  const made: CreatureEntry[] = [];
+  for (const k of kinds) {
+    const c = Object.assign(makeCreature(k), { k, tx: 0, tz: 0, tf: 0, aura: makeAuraRing() }) as CreatureEntry;
+    c.root.add(c.aura);
+    c.root.name = 'creature';
+    c.label.sprite.visible = false;
+    g.add(c.root);
+    made.push(c);
+    herd.put(k, g.position, 0);
+  }
+  herd.end();
+  crowd.begin(); crowd.put(0, -200, 0, 0, 0, 0x222222, 0xffffff); crowd.end(true);
+  const far = 3000;
+  ring(far, far, 0xffffff, 1, 2, 0.1); puff(far, far, 0xffffff); column(far, far, 0xffffff, 0.1); floatText(far, far, '1', '#fff'); lightning([far, far, far + 1, far], 0xffffff);
+  scene.add(g);
+  try { await R.renderer.compileAsync(scene, camera); } catch { /* compile on first use, as before */ }
+  scene.remove(g);
+  herd.begin(); herd.end();
+  crowd.begin(); crowd.end(false);
+  for (const c of made) { g.remove(c.root); const pool = herdPool.get(c.k) ?? []; pool.push(c); herdPool.set(c.k, pool); }
+  if (probe.PERF) console.log(`[perf] shaders warmed in ${(performance.now() - t0).toFixed(0)} ms (${(R.renderer.info.programs ?? []).length} programs)`);
+  probe.mark('warm');
+})();
+
 // ------------------------------------------------------------------ boot
 (async () => {
+  probe.mark('boot');
   applyStatic();
   veil(true);
   token = await gate();
@@ -1651,6 +1800,7 @@ setInterval(() => { const t = probe.begin(); hud(); probe.end('hud', t); }, 100)
   setTimeout(() => veil(false), 20000); // never hide the castle for long, snapshot or not
   $('#hud').hidden = false;
   connect();
+  await warmed;
   frame();
 })();
 

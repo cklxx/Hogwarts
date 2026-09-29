@@ -55,6 +55,13 @@ export function attach(renderer: THREE.WebGLRenderer, scene?: THREE.Scene) {
   state.scene = scene ?? null;
   renderer.info.autoReset = false;
   // draw calls per pass (shadow maps render through renderBufferDirect, not render(): they land in the next pass)
+  const sm = renderer.shadowMap as unknown as { render: (...a: unknown[]) => void };
+  const shadow = sm.render.bind(sm);
+  sm.render = (...a: unknown[]) => {
+    const c0 = renderer.info.render.calls;
+    shadow(...a);
+    state.passes['shadow-map'] = (state.passes['shadow-map'] ?? 0) + renderer.info.render.calls - c0;
+  };
   const render = renderer.render.bind(renderer);
   renderer.render = (sc, cam) => {
     const c0 = renderer.info.render.calls;
@@ -152,7 +159,7 @@ function overlay() {
     const js = fr.reduce((a, f) => a + f.js, 0) / fr.length;
     const last = fr[fr.length - 1];
     const i = api.info();
-    const text = `${(1000 / mean).toFixed(0)} fps  ${mean.toFixed(1)} / ${worst.toFixed(0)} ms\nJS ${js.toFixed(2)} ms/frame\n${last.calls} calls  ${(last.tris / 1000).toFixed(0)}k tris\n${i?.programs ?? 0} programs  ${i?.textures ?? 0} tex`;
+    const text = `${(1000 / mean).toFixed(0)} fps  ${mean.toFixed(1)} / ${worst.toFixed(0)} ms  ${state.renderer?.getPixelRatio().toFixed(2)}x\nJS ${js.toFixed(2)} ms/frame\n${last.calls} calls  ${(last.tris / 1000).toFixed(0)}k tris\n${i?.programs ?? 0} programs  ${i?.textures ?? 0} tex`;
     if (el.textContent !== text) el.textContent = text;
   }, 500);
 }
