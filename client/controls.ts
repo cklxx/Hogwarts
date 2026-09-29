@@ -620,7 +620,7 @@ export function createControls(d: ControlsDeps) {
   }
 
   // ------------------------------------------------------------------ per-frame update (called from main.ts' frame loop)
-  let lastInput = '', inputTimer = 0, facing = 0;
+  let lastInput = '', inputTimer = 0, inputGap = 0, facing = 0;
   /**
    * Keyboard movement is read relative to the camera as it was when the current key combination began (plus any
    * turning the player does by hand). The automatic drift below turns only the camera, not that basis, so it can swing
@@ -679,8 +679,12 @@ export function createControls(d: ControlsDeps) {
       else if (mouseIn && overCanvas) facing = Math.atan2(aim.x - p.x, -(aim.z - p.z));
     }
     const key = `${dx.toFixed(2)},${dz.toFixed(2)},${facing.toFixed(1)}`;
+    // At most one input per world tick (50 ms), always ending on the latest state: the world reads input once
+    // a tick, so more (a 144 Hz display turning the camera sent 144 a second) changed nothing but cost the
+    // server a message each (docs/PERF.md). A change is sent at once when 50 ms have passed since the last.
     inputTimer -= dt;
-    if (key !== lastInput || inputTimer <= 0) { d.send({ t: 'input', dx, dz, f: facing }); lastInput = key; inputTimer = 0.25; }
+    inputGap -= dt;
+    if ((key !== lastInput && inputGap <= 0) || inputTimer <= 0) { d.send({ t: 'input', dx, dz, f: facing }); lastInput = key; inputTimer = 0.25; inputGap = 0.05; }
 
     // destination: arrive, get stuck, or get knocked out
     if (dest && p) {

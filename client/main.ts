@@ -16,6 +16,7 @@ import { createBoltBatch } from './bolts';
 import { createHerd } from './herd';
 import { createDynRes } from './dynres';
 import { instanceAlike } from './instancer';
+import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
 import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
@@ -179,13 +180,20 @@ const decor = createDecor(scene, world.bannerSpots);
 }
 // the Great Hall's floating candles (animated by scene.ts): instanced (instancer.ts)
 const candles = instanceAlike(scene, scene.children.filter((o) => o.name === 'candle'));
+// Quality: ?q=low|high forces it; phones and tablets (a coarse pointer on a small screen) start at 'low';
+// otherwise the first seconds are measured and a slow machine drops to 'low' (see frame()).
+const forcedQ = new URLSearchParams(location.search).get('q');
+const handheld = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches && Math.max(screen.width, screen.height) < 1100;
+const startQuality: 'low' | 'high' = forcedQ === 'low' || (forcedQ !== 'high' && handheld) ? 'low' : 'high';
 // every point light in the world is shown through a fixed number of real lights (lights.ts). The count is
-// part of every lit shader, so it is fixed at start (4 when ?q=low is forced): the automatic switch to 'low'
-// then recompiles nothing.
-const lights = createLightBudget(scene, new URLSearchParams(location.search).get('q') === 'low' ? 4 : 6);
+// part of every lit shader, so it is fixed at start (4 when starting at 'low'): the automatic switch to
+// 'low' then recompiles nothing.
+const lights = createLightBudget(scene, startQuality === 'low' ? 4 : 6);
 lights.adopt(scene);
 // far wizards: one instanced crowd instead of full models (crowd.ts)
 const crowd = createCrowd(scene);
+// near wizards' shared parts (legs, arms, heads, hats, ...): instanced across all of them (partbatch.ts)
+const parts = createPartBatcher(scene);
 // far creatures: one instanced statue per kind (herd.ts)
 const herd = createHerd(scene);
 /**
@@ -195,12 +203,13 @@ const herd = createHerd(scene);
  * creatures drawn nearer than `creature` and animated nearer than `anim`.
  */
 const LOD = { high: { mid: 22, wizard: 42, label: 45, creature: 170, anim: 70 }, low: { mid: 14, wizard: 24, label: 30, creature: 110, anim: 45 } };
-if (new URLSearchParams(location.search).get('lod') === '0') for (const l of Object.values(LOD)) Object.assign(l, { mid: 1e9, wizard: 1e9, label: 1e9, creature: 1e9, anim: 1e9 }); // (for comparisons)
+// ?lod=0 (comparisons) and the offline promo renderer (?capture=1 without the ?perf=1 probe, which only steers
+// the camera) draw every model in full, as does the lake's mirror and the shadow map every frame
+const fullDetail = new URLSearchParams(location.search).get('lod') === '0' || (new URLSearchParams(location.search).get('capture') === '1' && !probe.PERF);
+if (fullDetail) for (const l of Object.values(LOD)) Object.assign(l, { mid: 1e9, wizard: 1e9, label: 1e9, creature: 1e9, anim: 1e9 });
 probe.mark('world');
 if (/[?&]debug=colliders\b/.test(location.search)) void import('./debug').then((d) => d.showColliders(scene, () => snap?.look?.statues.length ?? 0));
-// Quality: ?q=low|high forces it; otherwise measure the first seconds and drop to low if slow.
-const forcedQ = new URLSearchParams(location.search).get('q');
-let quality: 'low' | 'high' = forcedQ === 'low' ? 'low' : 'high';
+let quality: 'low' | 'high' = startQuality;
 const params = new URLSearchParams(location.search);
 const capturing = params.get('capture') === '1';
 /**
@@ -213,7 +222,12 @@ const dyn = params.get('dyn') === '0' || capturing ? null : createDynRes({
   min: ratioRange(quality)[0], max: ratioRange(quality)[1],
   apply: (r) => { R.renderer.setPixelRatio(r); R.composer.setPixelRatio(r); R.resize(); },
 });
-const applyQuality = (q: 'low' | 'high') => { quality = q; R.setQuality(q); world.setQuality(q); lighterLake(); dyn?.range(...ratioRange(q)); };
+const applyQuality = (q: 'low' | 'high') => {
+  quality = q; R.setQuality(q); world.setQuality(q); lighterLake(); dyn?.range(...ratioRange(q));
+  // multisampling: 4x at 'high', 2x at 'low' (half the resolve bandwidth; weak GPUs are fill-bound)
+  const samples = q === 'low' ? 2 : 4;
+  for (const rt of [R.composer.renderTarget1, R.composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
+};
 /**
  * The lake's mirror re-renders the scene from below the water every frame. Wrap whatever scene.ts installed
  * (it swaps the hook with the quality): leave wizards, creatures and spells out of the mirror (the instanced
@@ -225,7 +239,7 @@ function lighterLake() {
   const mirror = lake.onBeforeRender;
   let n = 0;
   const hook = ((...a: Parameters<typeof mirror>) => {
-    if (n++ % 2) return;
+    if (n++ % 2 && !fullDetail) return;
     const was = actors.visible;
     actors.visible = false;
     mirror.apply(lake, a);
@@ -236,7 +250,7 @@ function lighterLake() {
 }
 applyQuality(quality);
 probe.mark('quality');
-const perf = { frames: 0, time: 0, done: !!forcedQ };
+const perf = { frames: 0, time: 0, done: !!forcedQ || startQuality === 'low' };
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
 const weatherPts = new THREE.Points(
   new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 3000 * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 40 : (Math.random() - 0.5) * 120)), 3)),
@@ -1642,6 +1656,7 @@ function frame() {
   // level of detail from last frame's camera (it moves a fraction of a metre per frame)
   const lod = LOD[quality], cam = camera.position, focusKey = ctl.targetKey();
   crowd.begin();
+  parts.begin();
   for (const [h, w] of wizards) {
     const px = w.root.position.x, pz = w.root.position.z;
     w.root.position.x += (w.tx - w.root.position.x) * k;
@@ -1656,6 +1671,10 @@ function frame() {
     w.far = !mine && !focused && d > lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
     w.body.visible = !w.far;
     w.label.show(focused || (!w.far && d < lod.label));
+    if (w.patronus.visible) {
+      w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
+      particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
+    }
     if (w.far) {
       // the crowd's walk: a bob twice per stride while moving
       w.bob = ((w.bob ?? 0) + dt * Math.min(speed, 9) * 1.3) % Math.PI;
@@ -1665,14 +1684,14 @@ function frame() {
       continue;
     }
     w.setMid(!mine && !focused && d > lod.mid);
-    if (w.update(dt, speed, w.castPending)) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
+    const fire = w.update(dt, speed, w.castPending);
     w.castPending = false;
-    if (w.patronus.visible) {
-      w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
-      particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
-    }
+    w.root.updateMatrixWorld();
+    parts.add(w.root);
+    if (fire) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
   }
   crowd.end(quality === 'high');
+  parts.end();
   herd.begin();
   for (const [i, c] of creatures) {
     c.root.position.x += (c.tx - c.root.position.x) * k;
@@ -1754,7 +1773,7 @@ function frame() {
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();
-  R.renderer.shadowMap.needsUpdate = capturing || (++frameNo & 1) === 1;
+  R.renderer.shadowMap.needsUpdate = fullDetail || (++frameNo & 1) === 1;
   R.render();
   probe.end('render', tp);
   if (snap) probe.mark('firstFrame');
@@ -1780,6 +1799,8 @@ const warmed = (async () => {
   w.label.draw('warm-up', '#fff', 1);
   w.root.add(makeAuraRing());
   g.add(w.root, makeBolt('root', 'fire'));
+  g.updateMatrixWorld(true);
+  parts.begin(); parts.add(w.root); parts.end();
   const kinds = Object.keys(NAMES) as CreatureKind[];
   const made: CreatureEntry[] = [];
   for (const k of kinds) {
@@ -1800,6 +1821,7 @@ const warmed = (async () => {
   scene.remove(g);
   herd.begin(); herd.end();
   crowd.begin(); crowd.end(false);
+  parts.begin(); parts.end();
   for (const c of made) { g.remove(c.root); const pool = herdPool.get(c.k) ?? []; pool.push(c); herdPool.set(c.k, pool); }
   if (probe.PERF) console.log(`[perf] shaders warmed in ${(performance.now() - t0).toFixed(0)} ms (${(R.renderer.info.programs ?? []).length} programs)`);
   probe.mark('warm');

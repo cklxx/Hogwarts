@@ -368,7 +368,11 @@ function inkMaterial(sway: { value: THREE.Vector3 }) {
       transformed.x += uSway.x * swayW;
       transformed.z += uSway.z * swayW;
       transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;
-      float inkD = max(0.0, -(modelViewMatrix * vec4(transformed, 1.0)).z);
+      vec4 inkP = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        inkP = instanceMatrix * inkP; // (drawn instanced by partbatch.ts)
+      #endif
+      float inkD = max(0.0, -(modelViewMatrix * inkP).z);
       transformed += normalize(normal) * (0.014 + inkD * 0.0016);`);
   };
   m.customProgramCacheKey = () => 'wizard-ink';
@@ -571,6 +575,9 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
     }
     root.traverse((o) => { const mm = (o as THREE.Mesh).material; if (mm && !Array.isArray(mm)) rimLit(mm); });
   }
+  // parts whose geometry and material are shared between wizards: drawn instanced across all near wizards
+  // (partbatch.ts). The robe (its own sway), its outline and the wand tip (its own colour) are drawn one by one.
+  for (const m of [torso, ...legs, tailF, tailB, headMesh, hatMesh, ...armMeshes, wandMesh, ...inks.slice(1)]) m.userData.batch = true;
 
   // ---- animation state
   const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '', mid: false };

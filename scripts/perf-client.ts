@@ -61,6 +61,8 @@ const SHOTS: Record<string, { pos: [number, number, number]; look: [number, numb
   lake: { pos: [-55, 10, 10], look: [-110, 0, 45] },
   overview: { pos: [0, 150, 170], look: [0, 0, -20] },
   crowd: { pos: [8, 14, 45], look: [0, 1, -22] },
+  /** (a look at your own wizard up close: not in the default set) */
+  close: { pos: [2.2, 2.0, -12.6], look: [0, 1.1, -16] },
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
