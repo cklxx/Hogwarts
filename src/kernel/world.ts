@@ -31,7 +31,9 @@ import type { OwlBook } from './exams.js';
 import { OWL_ACHIEVEMENTS } from '../lore/exams.js';
 import { lookOf } from './glamour.js';
 import { cleanGlamour, glamourKey, type Glamour } from '../shared/glamour.js';
-import { dist, resolve, solidAt } from './physics.js';
+import { Solids, dist } from './physics.js';
+import { Separator } from './separation.js';
+import { statueCollider } from '../shared/layout.js';
 import { findPath } from './pathfind.js';
 import { thinkNpcs } from './npc.js';
 import { EntityMap } from './spatial.js';
@@ -124,6 +126,12 @@ export class World {
   /** Cross-check every spatial query against a full scan (tests / HOGWARTS_VERIFY_SPATIAL=1). Slow. */
   static verifySpatial = process.env.HOGWARTS_VERIFY_SPATIAL === '1';
   private inTick = false;
+  /** Everything solid as this world sees it: the shared static layout plus its Ministers' statues. */
+  readonly solids = new Solids();
+  /** The statue list the solids were last built from (flags.statues is replaced, never mutated). */
+  private statueRef: Statue[] | null = null;
+  /** Seconds a wizard walking to a goal has made no headway, and how often it re-planned (transient). */
+  private stuck = new Map<string, { t: number; replans: number }>();
   projectiles = new Map<string, Projectile>();
   pending: Pending[] = [];
   events: WorldEvent[] = [];
@@ -629,7 +637,7 @@ export class World {
     while (mine.length >= max && mine.length) this.dismiss(mine.shift()!);
     const def = CREATURES[kind];
     const pos = { x: owner.pos.x + Math.sin(owner.facing) * 1.5, z: owner.pos.z - Math.cos(owner.facing) * 1.5 };
-    resolve(pos, def.radius);
+    this.solids.resolve(pos, def.radius);
     const c: Creature = {
       id: this.nid('s'), kind, pos, home: { ...pos }, hp: def.hp, maxHp: def.hp, facing: owner.facing, target: null, attackCd: 0.5,
       rootedUntil: 0, wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: owner.id, until: this.now + secs,
@@ -894,6 +902,12 @@ export class World {
       id: this.nid('b'), owner: w.id, kind, pos: { x: w.pos.x + ux * 0.8, z: w.pos.z + uz * 0.8 }, vel: { x: ux * speed, z: uz * speed },
       power, element, ttl: 50 / speed + 0.3, homing, secs, tags,
     };
+    // cast with your nose to a wall (or a torch post between you and the wand tip): the bolt starts in it
+    if (this.solids.hitSegment(w.pos.x, w.pos.z, p.pos.x, p.pos.z)) {
+      const t = Math.min(1, this.solids.hitT + 0.02);
+      p.pos.x = w.pos.x + ux * 0.8 * t;
+      p.pos.z = w.pos.z + uz * 0.8 * t;
+    }
     this.projectiles.set(p.id, p);
   }
 
@@ -915,10 +929,12 @@ export class World {
     const dx = e.pos.x - from.x, dz = e.pos.z - from.z;
     const len = Math.hypot(dx, dz) || 1;
     const steps = Math.ceil(force);
+    const cr = this.creatures.get(id);
+    const r = cr ? CREATURES[cr.kind].radius : 0.5;
     for (let i = 0; i < steps; i++) {
       e.pos.x += (dx / len) * (force / steps);
       e.pos.z += (dz / len) * (force / steps);
-      resolve(e.pos, 0.5);
+      if (!cr || !CREATURES[cr.kind].flying) this.solids.resolve(e.pos, r);
     }
     this.moved(e);
   }
@@ -1054,7 +1070,8 @@ export class World {
   apparate(w: Wizard, to: Vec2) {
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
     w.pos = { ...to };
-    resolve(w.pos, 0.5);
+    this.syncSolids();
+    this.solids.resolve(w.pos, 0.5);
     this.moved(w);
     w.goal = null;
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
@@ -1301,6 +1318,7 @@ export class World {
     this.fx({ k: 'azkaban', x: w.pos.x, z: w.pos.z });
     w.st.jailedUntil = this.now + 45;
     w.pos = { x: AZKABAN.x + (this.rng() - 0.5) * 6, z: AZKABAN.z + (this.rng() - 0.5) * 6 };
+    this.solids.resolve(w.pos, 0.5, false); // not inside the rock
     this.moved(w);
     w.goal = null;
     const lost = Math.round(w.reputation * 0.25);
@@ -1666,7 +1684,9 @@ export class World {
     if (!goal) return null;
     if (w.st.jailedUntil) throw new Error('The walls of Azkaban are thick.');
     const to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
-    const route = findPath(w.pos, to);
+    this.syncSolids();
+    const route = findPath(w.pos, to, this.solids);
+    this.stuck.delete(w.id);
     if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
     w.route = route;
     w.goal = route[route.length - 1];
@@ -1784,8 +1804,22 @@ export class World {
     try { this.step(dt); } finally { this.inTick = false; }
   }
 
+  /** The statues are colliders too: rebuild this world's dynamic colliders whenever the list changes. */
+  private syncSolids() {
+    if (this.flags.statues === this.statueRef) return;
+    this.statueRef = this.flags.statues;
+    this.solids.setDynamic(this.flags.statues.map((_, i) => statueCollider(i)));
+    // a statue that rises where someone stands shoves them off its plinth (walkers are only resolved as they move)
+    for (const c of this.solids.dynamic) {
+      const at = c.kind === 'box' ? { x: (c.x0 + c.x1) / 2, z: (c.z0 + c.z1) / 2 } : c;
+      for (const w of this.nearWizards(at, 4)) { this.solids.resolve(w.pos, 0.5, !w.st.jailedUntil); this.moved(w); }
+      for (const k of this.nearCreatures(at, 6)) if (!CREATURES[k.kind].flying) { this.solids.resolve(k.pos, CREATURES[k.kind].radius); this.moved(k); }
+    }
+  }
+
   private step(dt: number) {
     this.now += dt;
+    this.syncSolids();
     thinkNpcs(this);
     const rb = this.rules;
     // 1. delayed spell blocks
@@ -1842,6 +1876,7 @@ export class World {
     this.stepProjectiles(dt);
     // 4. creatures, willow, spawns
     this.stepCreatures(dt);
+    this.separate();
     this.stepWillow(dt);
     this.spawnCd -= dt;
     if (this.spawnCd <= 0) { this.spawnCd = 2; this.spawnCreatures(); this.elderWandUpkeep(); }
@@ -1952,14 +1987,72 @@ export class World {
       const ox = w.pos.x - AZKABAN.x, oz = w.pos.z - AZKABAN.z, ol = Math.hypot(ox, oz);
       if (ol > 8) { w.pos.x = AZKABAN.x + (ox / ol) * 8; w.pos.z = AZKABAN.z + (oz / ol) * 8; }
     }
-    resolve(w.pos, 0.5, bounded);
+    this.solids.resolve(w.pos, 0.5, bounded);
     // Agents walking into walls: slide sideways a little so they don't get stuck forever.
     if (w.goal && dist(before, w.pos) < speed * dt * 0.2) {
       w.pos.x += -dz * speed * dt;
       w.pos.z += dx * speed * dt;
-      resolve(w.pos, 0.5, bounded);
+      this.solids.resolve(w.pos, 0.5, bounded);
     }
+    if (w.goal) this.unstick(w, dist(before, w.pos) / (speed * dt), dt);
     this.moved(w);
+  }
+
+  /**
+   * A walk to a goal that makes no headway (a crowd, a statue that rose on the route, a corner the string-
+   * pulled route clips) re-plans from where the walker stands after a second; after three re-plans it gives up.
+   */
+  private unstick(w: Wizard, headway: number, dt: number) {
+    const s = this.stuck.get(w.id);
+    if (headway > 0.3) { if (s) s.t = 0; return; }
+    const st = s ?? { t: 0, replans: 0 };
+    if (!s) this.stuck.set(w.id, st);
+    st.t += dt;
+    if (st.t < 1) return;
+    st.t = 0;
+    const goal = w.goal!;
+    const route = st.replans < 3 ? findPath(w.pos, goal, this.solids) : null;
+    st.replans++;
+    if (route?.length) { w.route = route; w.goal = route[route.length - 1]; return; }
+    w.goal = null; w.route = []; w.goalBy = null;
+    this.stuck.delete(w.id);
+  }
+
+  /**
+   * Soft separation: wizards and walking creatures do not stand in one another (separation.ts). Overlapping
+   * pairs are pushed apart by most of their overlap per tick, shared by mass (area: a troll shoves a pixie,
+   * not the other way round). The rooted and Devil's Snare do not budge; flying things (Dementors, Fawkes,
+   * conjured birds) pass over everyone; the stunned lie where they fell. Safe zones change nothing here:
+   * bodies are bodies. Nobody is shoved into a wall, and wild creatures are never shoved into a safe zone.
+   */
+  private sep = new Separator();
+  private sepEnts: (Wizard | Creature)[] = [];
+  private separate() {
+    const s = this.sep, ents = this.sepEnts;
+    s.reserve(this.wizards.size + this.creatures.size);
+    let n = 0;
+    for (const w of this.wizards.values()) {
+      if (!this.isActive(w)) continue;
+      s.X[n] = w.pos.x; s.Z[n] = w.pos.z; s.R[n] = 0.5; s.M[n] = w.st.rootedUntil > this.now ? Infinity : 0.25;
+      ents[n++] = w;
+    }
+    for (const c of this.creatures.values()) {
+      const def = CREATURES[c.kind];
+      if (def.flying || c.hp <= 0) continue;
+      s.X[n] = c.pos.x; s.Z[n] = c.pos.z; s.R[n] = def.radius; s.M[n] = def.speed === 0 || c.rootedUntil > this.now ? Infinity : def.radius * def.radius;
+      ents[n++] = c;
+    }
+    s.n = n;
+    if (n < 2 || !s.solve()) return;
+    for (let i = 0; i < n; i++) {
+      const px = s.PX[i], pz = s.PZ[i];
+      if (px === 0 && pz === 0) continue;
+      const e = ents[i], x = e.pos.x, z = e.pos.z;
+      e.pos.x += px; e.pos.z += pz;
+      this.solids.resolve(e.pos, s.R[i]);
+      if (!('house' in e) && !e.owner && this.inSafe(e.pos)) { e.pos.x = x; e.pos.z = z; continue; }
+      this.moved(e);
+    }
   }
 
   private stepProjectiles(dt: number) {
@@ -1981,10 +2074,15 @@ export class World {
       const steps = 3;
       let dead = p.ttl <= 0;
       for (let s = 0; s < steps && !dead; s++) {
+        const ax = p.pos.x, az = p.pos.z;
         p.pos.x += (p.vel.x * dt) / steps;
         p.pos.z += (p.vel.z * dt) / steps;
-        const wall = solidAt(p.pos);
+        // the whole sub-step's path, not just where it ends: a fast bolt never tunnels through a thin wall
+        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z);
         if (wall) {
+          const t = this.solids.hitT;
+          p.pos.x = ax + (p.pos.x - ax) * t;
+          p.pos.z = az + (p.pos.z - az) * t;
           if (wall.style === 'willow' && p.kind === 'root') {
             this.flags.willowCalmUntil = this.now + 30;
             const ow = this.wizards.get(p.owner);
@@ -2137,7 +2235,7 @@ export class World {
     c.pos.x += (dx / l) * s;
     c.pos.z += (dz / l) * s;
     c.facing = Math.atan2(dx, -dz);
-    if (!CREATURES[c.kind].flying) resolve(c.pos, CREATURES[c.kind].radius);
+    if (!CREATURES[c.kind].flying) this.solids.resolve(c.pos, CREATURES[c.kind].radius);
     // wild creatures never wander into safe zones
     if (!c.owner && this.inSafe(c.pos)) { c.pos.x -= (dx / l) * s; c.pos.z -= (dz / l) * s; }
     this.moved(c);
@@ -2161,7 +2259,7 @@ export class World {
         const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * def.spawn.r;
         const p = { x: def.spawn.x + Math.cos(a) * r, z: def.spawn.z + Math.sin(a) * r };
         const q = { ...p };
-        resolve(q, def.radius);
+        this.solids.resolve(q, def.radius);
         if (!def.flying && dist(p, q) > 0.01) continue;
         if (this.inSafe(p) || this.within(p, 'great_hall') || (def.faction === 'hostile' && this.within(p, 'courtyard'))) continue;
         if (def.faction === 'hostile' && [...this.nearWizards(p, 8)].some((w) => this.isActive(w) && dist(w.pos, p) < 8)) continue;

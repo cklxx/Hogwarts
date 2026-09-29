@@ -2,9 +2,9 @@
 import { adoptedSessionId, clientIp, realm, realmWorker } from './realms.js';
 import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { dirname, extname, join, normalize, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -21,6 +21,7 @@ import { FAMILIAR_OFF, Familiars, anthropicCreate, familiarConfig } from './fami
 import { SnapshotFanout } from './fanout.js';
 import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
+import { serveStatic } from './static.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -147,20 +148,6 @@ const tokenOf = (req: IncomingMessage, url: URL) => {
   return (req.headers['x-wizard-token'] as string | undefined) ?? url.searchParams.get('token') ?? undefined;
 };
 
-const MIME: Record<string, string> = { '.webp': 'image/webp', '.hdr': 'application/octet-stream', '.md': 'text/markdown; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
-function serveStatic(res: ServerResponse, path: string) {
-  if (!existsSync(DIST)) {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end('<h1>Hogwarts server is running</h1><p>No client build found. Run <code>npm run build</code>, or use <code>npm run dev</code> and open the Vite URL.</p><p>MCP endpoint: <code>/mcp</code></p>');
-    return;
-  }
-  let file = normalize(join(DIST, path === '/' ? 'index.html' : path));
-  if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html');
-  // the fonts are large and never change under the same name: let the browser keep them
-  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream', ...(extname(file) === '.woff2' ? { 'cache-control': 'public, max-age=604800' } : {}) });
-  res.end(readFileSync(file));
-}
-
 // MCP: one transport + one McpServer per MCP session.
 type McpEntry = { transport: StreamableHTTPServerTransport; session: McpSession; seen: number };
 const mcpSessions = new Map<string, McpEntry>();
@@ -280,7 +267,7 @@ const http = createServer(async (req, res) => {
     if (url.pathname === '/api/leaderboard') return json(res, 200, world.leaderboard());
     if (url.pathname === '/api/history') return json(res, 200, HISTORY);
     if (url.pathname === '/api/rules') return json(res, 200, { rules: world.rules, decrees: world.decrees });
-    return serveStatic(res, url.pathname);
+    return serveStatic(DIST, req, res, url.pathname);
   } catch (e) {
     console.error(e);
     if (!res.headersSent) json(res, 500, { error: String(e) });

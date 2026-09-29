@@ -20,10 +20,27 @@ export class Label {
     this.sprite.scale.set(4.8 * scale, 1.5 * scale, 1);
     this.sprite.renderOrder = 10;
   }
+  private pending: [string, string, number, string | undefined, string] | null = null;
+  /**
+   * Set what the tag says. Painting the canvas and uploading it (512 x 160 RGBA) is the costly part, so it
+   * happens only when something changed, and for a hidden tag (far away, see main.ts) only once it is shown.
+   */
   draw(name: string, color: string, hpFrac: number, say?: string, extra = '') {
     const key = `${name}|${color}|${hpFrac.toFixed(2)}|${say}|${extra}`;
-    if (key === this.last) return;
+    if (key === this.last) { this.pending = null; return; }
+    if (!this.sprite.visible) { this.pending = [name, color, hpFrac, say, extra]; return; }
     this.last = key;
+    this.paint(name, color, hpFrac, say, extra);
+  }
+  /** Free the tag's texture and material (the sprite's geometry is three.js's shared quad). */
+  dispose() { this.tex.dispose(); this.sprite.material.dispose(); }
+  /** Show or hide the tag (painting what it was last told to say, if that changed while hidden). */
+  show(on: boolean) {
+    if (this.sprite.visible === on) return;
+    this.sprite.visible = on;
+    if (on && this.pending) { const p = this.pending; this.pending = null; this.draw(...p); }
+  }
+  private paint(name: string, color: string, hpFrac: number, say: string | undefined, extra: string) {
     const c = this.ctx;
     c.clearRect(0, 0, 512, 160);
     if (say) {
@@ -73,6 +90,11 @@ export interface WizardModel {
    * is true. Returns true on the frame the wand is thrust forward (the moment to flash the tip).
    */
   update(dt: number, speed: number, casting: boolean): boolean;
+  /**
+   * Middle distance (main.ts level of detail): leave out what is a pixel or two from there — the scarf
+   * tails, the wand and its tip (unless it is lit or casting) — 5 of the ~17 draw calls.
+   */
+  setMid(mid: boolean): void;
 }
 
 // ---- wizard parts: geometry and materials are built once and shared by every wizard
@@ -346,7 +368,11 @@ function inkMaterial(sway: { value: THREE.Vector3 }) {
       transformed.x += uSway.x * swayW;
       transformed.z += uSway.z * swayW;
       transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;
-      float inkD = max(0.0, -(modelViewMatrix * vec4(transformed, 1.0)).z);
+      vec4 inkP = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        inkP = instanceMatrix * inkP; // (drawn instanced by partbatch.ts)
+      #endif
+      float inkD = max(0.0, -(modelViewMatrix * inkP).z);
       transformed += normalize(normal) * (0.014 + inkD * 0.0016);`);
   };
   m.customProgramCacheKey = () => 'wizard-ink';
@@ -549,9 +575,12 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
     }
     root.traverse((o) => { const mm = (o as THREE.Mesh).material; if (mm && !Array.isArray(mm)) rimLit(mm); });
   }
+  // parts whose geometry and material are shared between wizards: drawn instanced across all near wizards
+  // (partbatch.ts). The robe (its own sway), its outline and the wand tip (its own colour) are drawn one by one.
+  for (const m of [torso, ...legs, tailF, tailB, headMesh, hatMesh, ...armMeshes, wandMesh, ...inks.slice(1)]) m.userData.batch = true;
 
   // ---- animation state
-  const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '' };
+  const st = { speed: 0, phase: (h % 100) / 16, t: (h % 1000) / 100, cast: -1, flashed: true, detail: '', mid: false };
   const tipColor = new THREE.Color();
   const REST_R = 0.3;
   const dress: Dress = {
@@ -561,10 +590,15 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   return {
     root, body, label, shield, glow, wandTip, root2, patronus, elder, castPending: false, dress,
     tipHex: (lit) => (lit ? dress.lumos : dress.tip),
+    setMid(mid) {
+      if (mid === st.mid) return;
+      st.mid = mid;
+      tailF.visible = tailB.visible = detail === 'high' && !mid;
+    },
     update(dt, speed, casting) {
       st.t += dt;
       if (dress.animated) glamTime.value = performance.now() / 1000;
-      if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high'; showInks(dress); }
+      if (st.detail !== detail) { st.detail = detail; tailF.visible = tailB.visible = detail === 'high' && !st.mid; showInks(dress); }
       // The stride follows ground speed up to GAIT_MAX (beyond it the feet slide a little instead of the
       // legs blurring). Anything faster than GLIDE is not walking but the model catching up after an
       // apparition, a release from Azkaban or a knock-back: hold the standing pose through the glide.
@@ -613,12 +647,97 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
       const lumos = glow.intensity > 0 ? 1 : 0;
       tipGlow.material.color.copy(tipColor).multiplyScalar(0.5 + 3 * flare + 1.5 * lumos);
       tipGlow.scale.setScalar(0.16 + 0.9 * flare + 0.5 * lumos);
+      wand.visible = !st.mid || lumos > 0 || st.cast >= 0;
       if (shield.visible) { shield.scale.setScalar(1 + 0.02 * Math.sin(st.t * 5)); shieldUniforms.uTime.value = performance.now() / 1000; }
       if (root2.visible) root2.rotation.z += dt * 2;
       if (elder.visible) { elder.rotation.y += dt * 2; elder.position.y = 2.9 + Math.sin(st.t * 2) * 0.08; }
       return fire;
     },
   };
+}
+
+// ------------------------------------------------------------------ freeing models
+/**
+ * Free what a model owns on the GPU: its own materials and geometries, its name tag, its lights. What
+ * models share (the once() cache, the glamour pool, the shield material, three.js's sprite quad) stays.
+ */
+function disposeOwned(root: THREE.Object3D, keep: Set<unknown>) {
+  root.traverse((o) => {
+    if ((o as THREE.Light).isLight) { (o as THREE.Light).dispose(); return; }
+    const x = o as THREE.Mesh;
+    if (!x.material) return;
+    for (const mat of [x.material].flat()) if (!keep.has(mat)) mat.dispose();
+    if (!(o as THREE.Sprite).isSprite && x.geometry && !keep.has(x.geometry)) x.geometry.dispose();
+  });
+}
+const sharedParts = () => new Set<unknown>([...cache.values(), _shieldMat]);
+/** A wizard gone for good (see main.ts: models of wizards that merely walked out of view are kept a while). */
+export function disposeWizard(m: WizardModel) {
+  releaseWizardLook(m);
+  m.label.dispose();
+  disposeOwned(m.root, sharedParts());
+}
+/** A creature model no pool wants any more (every creature builds its own parts). */
+export function disposeCreature(c: { root: THREE.Object3D; label: Label }) {
+  c.label.dispose();
+  disposeOwned(c.root, new Set([glowTex()]));
+}
+
+// ------------------------------------------------------------------ the far wizard (crowd.ts)
+/**
+ * A wizard seen from afar, in one low-poly mesh in the rest pose (~230 triangles against ~9 000 up
+ * close): closed robe and sleeves, head, pointed hat and brim, the scarf at the neck. It is drawn
+ * instanced (crowd.ts), so every far wizard together costs one draw call (two with the ink outline).
+ * `aTint` says what colours each vertex: 1 = the robe (per instance: the house black or a glamour's
+ * robe), 2 = the trim (per instance: the house scarf colour or a glamour's trim), 0 = its own colour.
+ */
+export function farWizardGeometry() {
+  return once('farWizardGeo', () => {
+    const parts: [THREE.BufferGeometry, number, number][] = []; // geometry, own colour, tint
+    const robe = rings(ROBE.map(([r, y]) => ({ r, y })), 10);
+    robe.deleteAttribute('uv');
+    parts.push([robe, 0xffffff, 1]);
+    const hem = new THREE.CylinderGeometry(0.575, 0.585, 0.06, 10, 1, true); hem.translate(0, 0.06, 0);
+    parts.push([hem, 0xffffff, 2]);
+    const scarf = new THREE.TorusGeometry(0.135, 0.058, 4, 8); scarf.rotateX(Math.PI / 2); scarf.translate(0, 1.52, 0);
+    parts.push([scarf, 0xffffff, 2]);
+    const head = new THREE.SphereGeometry(0.215, 8, 6); head.scale(1, 1.06, 0.98); head.translate(0, 1.71, 0);
+    parts.push([head, SKIN[1], 0]);
+    const crown = new THREE.ConeGeometry(0.225, 0.68, 8, 1, true); crown.translate(0, 0.34, 0);
+    const brim = new THREE.CylinderGeometry(0.42, 0.4, 0.03, 10); brim.translate(0, 0.01, 0);
+    for (const g of [crown, brim]) { g.rotateZ(0.06); g.rotateX(0.24); g.translate(0, 1.87, 0.03); parts.push([g, 0xffffff, 1]); }
+    for (const s of [-1, 1]) {
+      const sleeve = new THREE.CylinderGeometry(0.075, 0.15, 0.6, 6, 1, true); sleeve.translate(0, -0.3, 0);
+      sleeve.rotateZ(s < 0 ? -0.12 : 0.1); sleeve.rotateX(s < 0 ? 0.06 : 0.3); sleeve.translate(s * 0.29, 1.41, 0);
+      parts.push([sleeve, 0xffffff, 1]);
+    }
+    const c = new THREE.Color();
+    const geo = mergeGeometries(parts.map(([g0, col, tint]) => {
+      const g = g0.index ? g0.toNonIndexed() : g0;
+      g.deleteAttribute('uv');
+      if (!g.getAttribute('normal')) g.computeVertexNormals();
+      const n = g.getAttribute('position').count;
+      c.set(col);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: n * 3 }, (_, i) => (i % 3 === 0 ? c.r : i % 3 === 1 ? c.g : c.b)), 3));
+      g.setAttribute('aTint', new THREE.Float32BufferAttribute(new Array(n).fill(tint), 1));
+      return g;
+    }))!;
+    geo.computeBoundingSphere();
+    return geo;
+  });
+}
+const farCache = new Map<string, { robe: number; trim: number }>();
+/** The colours a far wizard is drawn in: robe and trim, from the house and the glamour worn (if any). */
+export function farColors(m: WizardModel): { robe: number; trim: number } {
+  const d = m.dress, k = `${d.house}|${d.key}`;
+  let v = farCache.get(k);
+  if (!v) {
+    const g = parseGlamourKey(d.key);
+    const scarf = new THREE.Color(SCARF[d.house][0]).getHex();
+    v = { robe: g?.robe ?? (g ? PRESET_CLOTH[g.mat] : undefined) ?? CLOTH, trim: g?.trim ?? scarf };
+    farCache.set(k, v);
+  }
+  return v;
 }
 
 // ------------------------------------------------------------------ transfiguration of self (glamour)
@@ -1084,6 +1203,8 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
 }
 
 let _glow: THREE.Texture | null = null;
+/** A soft white radial glow (sprites, bolts.ts). */
+export const glowTexture = () => glowTex();
 function glowTex() {
   if (_glow) return _glow;
   const c = document.createElement('canvas');
@@ -1119,17 +1240,14 @@ export function setAuraRing(ring: THREE.Mesh, flags: string, t: number) {
 
 export const boltColor = (kind: string, e: Element) => (kind === 'disarm' ? 0xff3b3b : kind === 'root' ? 0x9fe8ff : ELEMENT_COLORS[e]);
 
-/** A spell in flight: a white-hot core inside two element-coloured glows (the trail is GPU particles, see fx.ts). */
+/**
+ * A spell in flight. Its white-hot core and two element-coloured glows are drawn for all bolts at once
+ * (bolts.ts); this object carries the position, the colour and, for Rooting, the spinning ring.
+ */
 export function makeBolt(kind: string, e: Element): THREE.Object3D {
   const color = boltColor(kind, e);
   const g = new THREE.Group();
-  // HDR colours (> 1) so the bloom pass makes spells glow
-  const core = new THREE.Mesh(once('boltCore', () => new THREE.SphereGeometry(0.13, 10, 8)), once('boltCoreMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(8) })));
-  const inner = new THREE.Sprite(once(`boltIn:${color}`, () => new THREE.SpriteMaterial({ map: glowTex(), color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.3).multiplyScalar(5), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
-  inner.scale.setScalar(1.0);
-  const outer = new THREE.Sprite(once(`boltOut:${color}`, () => new THREE.SpriteMaterial({ map: glowTex(), color: new THREE.Color(color).multiplyScalar(1.6), transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })));
-  outer.scale.setScalar(2.4);
-  g.add(core, inner, outer);
+  g.name = 'bolt';
   if (kind === 'root') {
     const ring = new THREE.Mesh(once('boltRing', () => new THREE.TorusGeometry(0.42, 0.04, 6, 24)), once('boltRingMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9fe8ff).multiplyScalar(3) })));
     ring.name = 'spin';
