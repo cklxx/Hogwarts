@@ -1,4 +1,14 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import * as TSL from 'three/tsl';
+
+const T = TSL as unknown as Record<string, any>;
+const { Fn, vec4, attribute, texture, uv, positionLocal, cameraWorldMatrix } = T;
+
+/** The world-space corner of a camera-facing quad: `centre` plus the quad's own corner along the camera's right and up. */
+export const facingCorner = Fn(([centre, sx, sy]: any[]) => {
+  const right = cameraWorldMatrix.element(0).xyz, up = cameraWorldMatrix.element(1).xyz;
+  return centre.add(right.mul(positionLocal.x.mul(sx))).add(up.mul(positionLocal.y.mul(sy)));
+});
 
 /**
  * Many camera-facing textured quads in one draw call: what a Sprite per glow used to cost one draw call
@@ -20,26 +30,13 @@ export function createBillboards(scene: THREE.Scene, map: THREE.Texture, o: { ma
   geo.setAttribute('iCol', iCol);
   geo.setAttribute('iSize', iSize);
   geo.instanceCount = 0;
-  const mat = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: map } }]),
-    transparent: true, depthWrite: false, blending: o.blending ?? THREE.AdditiveBlending, fog: true,
-    vertexShader: `attribute vec3 iPos; attribute vec4 iCol; attribute vec2 iSize; varying vec2 vUv; varying vec4 vCol;
-      #include <fog_pars_vertex>
-      void main() {
-        vec4 mvPosition = modelViewMatrix * vec4( iPos, 1.0 );
-        mvPosition.xy += position.xy * iSize;
-        vUv = uv; vCol = iCol;
-        gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
-      }`,
-    fragmentShader: `uniform sampler2D map; varying vec2 vUv; varying vec4 vCol;
-      #include <fog_pars_fragment>
-      void main() {
-        vec4 t = texture2D( map, vUv );
-        gl_FragColor = vec4( vCol.rgb * t.rgb, vCol.a * t.a );
-        #include <fog_fragment>
-      }`,
-  });
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: o.blending ?? THREE.AdditiveBlending, fog: true });
+  mat.userData.noFade = true;
+  // (turned to the camera in world space, not in view space, so the fog sees where the quad really is)
+  const size = attribute('iSize', 'vec2');
+  mat.positionNode = facingCorner(attribute('iPos', 'vec3'), size.x, size.y);
+  const col = attribute('iCol', 'vec4'), t = texture(map, uv());
+  mat.colorNode = vec4(col.rgb.mul(t.rgb), col.a.mul(t.a));
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
   mesh.name = o.name ?? 'billboards';

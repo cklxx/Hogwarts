@@ -36,7 +36,7 @@ export function createEffects(scene: THREE.Scene) {
   const fade = (() => {
     const c = document.createElement('canvas');
     c.width = 4; c.height = 64;
-    const g = c.getContext('2d')!;
+    const g = c.getContext('2d', { willReadFrequently: true })!;
     const gr = g.createLinearGradient(0, 0, 0, 64);
     gr.addColorStop(0, 'rgb(0,0,0)'); gr.addColorStop(0.55, 'rgb(40,40,40)'); gr.addColorStop(0.9, 'rgb(200,200,200)'); gr.addColorStop(1, 'rgb(255,255,255)');
     g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
@@ -59,7 +59,7 @@ export function createEffects(scene: THREE.Scene) {
     if (t) { textTex.delete(key); textTex.set(key, t); return t; }
     const c = document.createElement('canvas');
     c.width = 128; c.height = 64;
-    const g = c.getContext('2d')!;
+    const g = c.getContext('2d', { willReadFrequently: true })!;
     g.font = 'bold 44px Georgia'; g.textAlign = 'center';
     g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(text, 64, 48);
     g.fillStyle = color; g.fillText(text, 64, 48);

@@ -19,15 +19,17 @@ export function tex(path: string, opts: { srgb?: boolean; repeat?: number; fallb
   return t;
 }
 
-/** Two Poly Haven HDRIs pre-filtered for image-based lighting: a bright quarry by day, a moonless golf course by night. */
-export function loadEnvironments(renderer: THREE.WebGLRenderer, onReady: (day: THREE.Texture, night: THREE.Texture) => void) {
-  const pmrem = new THREE.PMREMGenerator(renderer);
+/**
+ * Two Poly Haven HDRIs for image-based lighting: a bright quarry by day, a moonless golf course by night. Handed
+ * over as they are (equirectangular); render.ts pre-filters the one it needs into its environment texture.
+ */
+export function loadEnvironments(onReady: (day: THREE.Texture, night: THREE.Texture) => void) {
   const hdr = new HDRLoader();
   const out: Record<string, THREE.Texture> = {};
   const done = (k: string, t: THREE.Texture) => {
-    out[k] = pmrem.fromEquirectangular(t).texture;
-    t.dispose();
-    if (out.day && out.night) { onReady(out.day, out.night); pmrem.dispose(); }
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    out[k] = t;
+    if (out.day && out.night) onReady(out.day, out.night);
   };
   hdr.load('/hdri/quarry_01_1k.hdr', (t) => done('day', t), undefined, () => {});
   hdr.load('/hdri/moonless_golf_1k.hdr', (t) => done('night', t), undefined, () => {});

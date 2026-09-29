@@ -15,7 +15,7 @@ const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 const canvas = (size = 512) => {
   const c = document.createElement('canvas');
   c.width = c.height = size;
-  return [c, c.getContext('2d')!] as const;
+  return [c, c.getContext('2d', { willReadFrequently: true })!] as const;
 };
 function tex(c: HTMLCanvasElement, srgb = true) {
   const t = new THREE.CanvasTexture(c);
@@ -273,16 +273,20 @@ export function cylUV(geo: THREE.BufferGeometry, r: number, h: number, tile: num
 // ------------------------------------------------------------------ storybook (painted) textures
 /**
  * The art direction. 'storybook' (default): hand-painted canvas textures in limited palettes, a soft
- * toon light ramp, a painted sky and ink outlines (render.ts). 'real' (?style=real): the CC0 photo
+ * toon light ramp, a painted sky and ink outlines (storybook.ts, render.ts). 'real' (?style=real): the CC0 photo
  * texture sets and HDRI light the game used before (client/public/textures/CREDITS.md).
  */
 export const STYLE: 'storybook' | 'real' = typeof location !== 'undefined' && new URLSearchParams(location.search).get('style') === 'real' ? 'real' : 'storybook';
 export const STORYBOOK = STYLE === 'storybook';
 
-/** Mark a material as a character's: it gets the storybook rim light (render.ts; a no-op in ?style=real). */
+/**
+ * Mark a material as a character's: it gets the storybook rim light (storybook.ts reads `storyRim`, which is
+ * also part of the material's shader cache key; a no-op in ?style=real).
+ */
 export function rimLit<T extends THREE.Material>(m: T): T {
-  if (STORYBOOK && (m as unknown as THREE.MeshStandardMaterial).isMeshStandardMaterial && !m.defines?.STORY_RIM) {
-    m.defines = { ...m.defines, STORY_RIM: '' };
+  const r = m as unknown as { isMeshStandardMaterial?: boolean; isMeshStandardNodeMaterial?: boolean; storyRim?: number };
+  if (STORYBOOK && (r.isMeshStandardMaterial || r.isMeshStandardNodeMaterial) && !r.storyRim) {
+    r.storyRim = 1;
     m.needsUpdate = true;
   }
   return m;

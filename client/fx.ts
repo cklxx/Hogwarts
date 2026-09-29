@@ -1,21 +1,36 @@
-import * as THREE from 'three';
-import { WIND } from './grass';
+import * as THREE from 'three/webgpu';
+import * as TSL from 'three/tsl';
+import { facingCorner } from './billboards';
+import { COMPUTE, onBeforeFrame } from './gpu';
+import { WIND, gpuGround } from './grass';
 import { STORYBOOK } from './textures';
 
 /** Chimney smoke and dust: warm grey, or (storybook) a soft painted lilac-grey that sits in the palette. */
 const SMOKE = STORYBOOK ? 0xb0a6b6 : 0x9a948c, DUST = STORYBOOK ? 0xa08c78 : 0x8a8070;
 
+const T = TSL as unknown as Record<string, any>;
+const { Fn, vec2, vec3, vec4, float, uint, uniform, attribute, varying, If, Return, exp, max, min, mix, pow, smoothstep, length, abs,
+  uv, instanceIndex, instancedArray, storage, reference, positionView, modelViewMatrix, Discard } = T;
+
 /**
- * GPU particles. Each pool is ONE THREE.Points draw call over a ring buffer: a particle is written
- * once when it is emitted (spawn position, velocity, colour, birth time, life, size, gravity, drag)
- * and the vertex shader integrates its motion analytically from its age, so the CPU never touches
- * a live particle again. Only the slots written this frame are uploaded (addUpdateRange).
+ * GPU particles. Each pool is ONE draw call over a ring buffer of camera-facing quads: a particle is
+ * written once, when it is emitted (spawn position, velocity, colour, birth time, life, size, growth,
+ * gravity, drag), and the GPU does everything after that; the CPU never touches a live particle again.
+ * Only the ring-buffer slots written this frame are uploaded.
+ *
+ * - **WebGPU**: a compute shader simulates every particle that can still be alive (storage buffers of
+ *   position and velocity: drag, gravity, and sparks that bounce off the ground, read from the terrain's
+ *   height texture), and only that window of the ring is drawn. Budget: 98 304 glow + 32 768 smoke
+ *   particles at 'high' (a quarter at 'low').
+ * - **WebGL 2**: the vertex shader integrates the motion analytically from the particle's age (the same
+ *   drag and gravity; no ground contact), over the whole ring: 16 384 glow + 4 096 smoke.
  *
  * Two pools: `glow` (additive, HDR colours so the bloom pass picks them up: sparks, trails, motes)
  * and `smoke` (alpha-blended, lit by the time of day: chimney smoke, dust, apparition puffs).
  */
 
-const STRIDE = 15; // pos3 vel3 col3 time4(birth, life, size, grow) phys2(gravity, drag)
+/** Floats per particle: pos3 birth | vel3 life | col3 size | grow gravity drag - (four vec4). */
+const STRIDE = 16;
 
 export interface EmitOpts {
   count?: number;
@@ -55,103 +70,174 @@ const white = new THREE.Color(1, 1, 1);
 const tmpV = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 
-class Pool {
-  readonly points: THREE.Points;
-  readonly material: THREE.ShaderMaterial;
-  private data: Float32Array;
-  private buf: THREE.InterleavedBuffer;
+/** Particle budgets: [glow, smoke] per backend and quality. */
+export const BUDGET = { webgpu: { high: [98304, 32768], low: [24576, 8192] }, webgl: { high: [16384, 4096], low: [16384, 4096] } } as const;
+
+/** Where a frame's particles went in the ring, and when the last of them dies. */
+interface Span { start: number; n: number; death: number }
+
+export class Pool {
+  readonly mesh: THREE.Mesh;
+  readonly material: THREE.MeshBasicNodeMaterial;
+  readonly gpu: boolean;
+  capacity: number;
+  private data!: Float32Array;
+  private spawn!: THREE.BufferAttribute;
+  private geo: THREE.InstancedBufferGeometry;
   private head = 0;
   private frameStart = 0;
   private written = 0;
+  private frameDeath = 0;
+  /** When the last particle written so far dies (nothing is drawn after that). */
+  private lastDeath = 0;
+  private primed = false;
+  private spans: Span[] = [];
+  private u = { time: uniform(0), prev: uniform(0), dt: uniform(0), light: uniform(1), start: uniform(0, 'uint'), cap: uniform(1, 'uint'), count: uniform(0, 'uint'), px: uniform(0.001) };
+  private sim: any = null;
+  private scene: THREE.Scene;
   time = 0;
-  constructor(scene: THREE.Scene, readonly capacity: number, additive: boolean) {
+  /** Particles drawn (and, on WebGPU, simulated) in the last frame: the live window of the ring. */
+  drawn = 0;
+  constructor(scene: THREE.Scene, capacity: number, readonly additive: boolean) {
+    this.scene = scene;
+    this.gpu = COMPUTE();
+    this.capacity = capacity;
+    const quad = new THREE.PlaneGeometry(1, 1);
+    this.geo = new THREE.InstancedBufferGeometry();
+    this.geo.index = quad.index;
+    this.geo.setAttribute('position', quad.getAttribute('position'));
+    this.geo.setAttribute('uv', quad.getAttribute('uv'));
+    this.material = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false });
+    this.material.userData.noFade = true;
+    this.mesh = new THREE.Mesh(this.geo, this.material);
+    this.mesh.frustumCulled = false; // positions live on the GPU
+    this.mesh.renderOrder = additive ? 5 : 4;
+    this.mesh.name = additive ? 'fx-glow' : 'fx-smoke';
+    this.allocate(capacity);
+    scene.add(this.mesh);
+    // (hidden while nothing lives, but compiled with the rest by render.ts's warm-up)
+    this.mesh.userData.warmVisible = true;
+    if (this.gpu) onBeforeFrame((renderer) => {
+      if (!this.sim) return;
+      // the first frame after (re)allocation runs the simulation once over one long-dead particle: its compute
+      // pipeline is built then (the warm-up frame), not on the frame the first spark flies
+      if (!this.primed) { this.primed = true; renderer.compute(this.sim, 1); }
+      if (!this.drawn || !this.mesh.visible) return;
+      renderer.compute(this.sim, this.drawn); // (one thread per particle in the live window)
+    });
+  }
+
+  /** (Re)build the buffers and shaders for `capacity` particles (a quality change: live particles are dropped). */
+  allocate(capacity: number) {
+    this.capacity = capacity;
     this.data = new Float32Array(capacity * STRIDE);
     // everything starts long dead
-    for (let i = 0; i < capacity; i++) { this.data[i * STRIDE + 9] = -1e6; this.data[i * STRIDE + 10] = 0.001; }
-    this.buf = new THREE.InterleavedBuffer(this.data, STRIDE);
-    this.buf.setUsage(THREE.DynamicDrawUsage);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.InterleavedBufferAttribute(this.buf, 3, 0));
-    geo.setAttribute('aVel', new THREE.InterleavedBufferAttribute(this.buf, 3, 3));
-    geo.setAttribute('aColor', new THREE.InterleavedBufferAttribute(this.buf, 3, 6));
-    geo.setAttribute('aTime', new THREE.InterleavedBufferAttribute(this.buf, 4, 9));
-    geo.setAttribute('aPhys', new THREE.InterleavedBufferAttribute(this.buf, 2, 13));
-    this.material = new THREE.ShaderMaterial({
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uScale: { value: 500 }, uLight: { value: 1 } }]),
-      defines: additive ? { ADDITIVE: '' } : {},
-      vertexShader: /* glsl */ `
-        uniform float uTime; uniform float uScale;
-        attribute vec3 aVel; attribute vec3 aColor; attribute vec4 aTime; attribute vec2 aPhys;
-        varying vec3 vColor; varying float vAlpha;
-        #include <fog_pars_vertex>
-        void main() {
-          float age = uTime - aTime.x;
-          float life = aTime.y;
-          if (age < 0.0 || age > life) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vColor = vec3(0.0); vAlpha = 0.0; return; }
-          float k = max(aPhys.y, 0.001);
-          float f = (1.0 - exp(-k * age)) / k;            // ∫ e^{-kt}: drag slows the launch velocity
-          vec3 p = position + aVel * f;
-          p.y -= aPhys.x * (age - f) / k;                 // gravity against the same drag
-          float t = age / life;
-          vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-          gl_PointSize = min(512.0, aTime.z * mix(1.0, aTime.w, t) * uScale / max(0.2, -mvPosition.z));
-          #ifdef ADDITIVE
-            vAlpha = smoothstep(0.0, 0.06, t) * (1.0 - t) * (1.0 - t);
-          #else
-            vAlpha = smoothstep(0.0, 0.15, t) * (1.0 - smoothstep(0.4, 1.0, t));
-          #endif
-          vColor = aColor;
-          #include <fog_vertex>
-        }`,
-      fragmentShader: /* glsl */ `
-        uniform float uLight;
-        varying vec3 vColor; varying float vAlpha;
-        #include <fog_pars_fragment>
-        void main() {
-          float d = length(gl_PointCoord - 0.5) * 2.0;
-          if (d > 1.0 || vAlpha <= 0.0) discard;
-          #ifdef ADDITIVE
-            float a = pow(1.0 - d, 1.8) + 0.6 * pow(max(0.0, 1.0 - d * 2.5), 2.0); // soft halo + hot core
-            vec3 col = vColor;
-          #else
-            float a = pow(1.0 - d, 1.3) * 0.55;
-            vec3 col = vColor * uLight;
-          #endif
-          float fogF = 0.0;
-          #ifdef USE_FOG
-            #ifdef FOG_EXP2
-              fogF = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
-            #else
-              fogF = smoothstep(fogNear, fogFar, vFogDepth);
-            #endif
-          #endif
-          #ifdef ADDITIVE
-            gl_FragColor = vec4(col * (1.0 - fogF), a * vAlpha);
-          #else
-            gl_FragColor = vec4(mix(col, fogColor, fogF), a * vAlpha);
-          #endif
-        }`,
-      transparent: true,
-      depthWrite: false,
-      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-      fog: true,
-    });
-    this.points = new THREE.Points(geo, this.material);
-    this.points.frustumCulled = false; // positions live in the shader
-    this.points.renderOrder = additive ? 5 : 4;
-    scene.add(this.points);
+    for (let i = 0; i < capacity; i++) { this.data[i * STRIDE + 3] = -1e6; this.data[i * STRIDE + 7] = 0.001; }
+    this.head = this.frameStart = this.written = 0;
+    this.lastDeath = 0;
+    this.spans = [];
+    this.primed = false;
+    this.u.cap.value = capacity;
+    const u = this.u;
+    let slot: any, p0: any, v0: any, cs: any, gp: any, centre: any;
+    if (this.gpu) {
+      this.spawn = new THREE.StorageBufferAttribute(this.data, 4);
+      const spawn = storage(this.spawn, 'vec4', capacity * 4).toReadOnly();
+      const state = instancedArray(capacity * 2, 'vec4');
+      const { groundAt } = gpuGround();
+      // simulate the window [start, start + count) of the ring
+      this.sim = Fn(() => {
+        If(instanceIndex.greaterThanEqual(u.count), () => { Return(); });
+        const i = instanceIndex.add(u.start).mod(u.cap);
+        const a = spawn.element(i.mul(4)), b = spawn.element(i.mul(4).add(1)), d = spawn.element(i.mul(4).add(3));
+        const age = u.time.sub(a.w);
+        If(age.lessThan(0).or(age.greaterThan(b.w)), () => { Return(); });
+        const k = max(d.z, 0.001), g = d.y;
+        const pos = state.element(i.mul(2)), vel = state.element(i.mul(2).add(1));
+        If(a.w.greaterThan(u.prev), () => {
+          // born since the last step: exactly where the analytic motion has it now
+          const f = float(1).sub(exp(k.negate().mul(age))).div(k);
+          const p = a.xyz.add(b.xyz.mul(f)).toVar();
+          p.y.subAssign(g.mul(age.sub(f)).div(k));
+          pos.assign(vec4(p, 0));
+          vel.assign(vec4(b.xyz.mul(exp(k.negate().mul(age))).sub(vec3(0, g.mul(float(1).sub(exp(k.negate().mul(age)))).div(k), 0)), 0));
+        }).Else(() => {
+          const e = exp(k.negate().mul(u.dt));
+          const v1 = vel.xyz.mul(e).sub(vec3(0, g.mul(float(1).sub(e)).div(k), 0)).toVar();
+          const p1 = pos.xyz.add(vel.xyz.add(v1).mul(u.dt.mul(0.5))).toVar();
+          // falling sparks and embers land and bounce on the ground (inside the terrain's fine grid)
+          If(g.greaterThan(0.5).and(abs(p1.x).lessThan(318)).and(abs(p1.z).lessThan(318)), () => {
+            const h = groundAt(p1.x, p1.z).x.add(0.03);
+            If(p1.y.lessThan(h).and(v1.y.lessThan(0)), () => {
+              p1.y.assign(h);
+              v1.assign(vec3(v1.x.mul(0.6), v1.y.mul(-0.35), v1.z.mul(0.6)));
+            });
+          });
+          pos.assign(vec4(p1, 0));
+          vel.assign(vec4(v1, 0));
+        });
+      })().compute(capacity, [64]);
+      slot = instanceIndex.add(u.start).mod(u.cap);
+      p0 = spawn.element(slot.mul(4));
+      v0 = spawn.element(slot.mul(4).add(1));
+      cs = spawn.element(slot.mul(4).add(2));
+      gp = spawn.element(slot.mul(4).add(3));
+      centre = state.element(slot.mul(2)).xyz;
+    } else {
+      const buf = new THREE.InstancedInterleavedBuffer(this.data, STRIDE);
+      buf.setUsage(THREE.DynamicDrawUsage);
+      this.spawn = buf as unknown as THREE.BufferAttribute;
+      for (const [name, off] of [['aP', 0], ['aV', 4], ['aC', 8], ['aG', 12]] as const) this.geo.setAttribute(name, new THREE.InterleavedBufferAttribute(buf, 4, off));
+      p0 = attribute('aP', 'vec4'); v0 = attribute('aV', 'vec4'); cs = attribute('aC', 'vec4'); gp = attribute('aG', 'vec4');
+      // the motion from the particle's age: ∫ e^{-kt} for the launch velocity under drag, gravity against the same drag
+      centre = Fn(() => {
+        const age = u.time.sub(p0.w), k = max(gp.z, 0.001);
+        const f = float(1).sub(exp(k.negate().mul(age))).div(k);
+        const p = p0.xyz.add(v0.xyz.mul(f)).toVar();
+        p.y.subAssign(gp.y.mul(age.sub(f)).div(k));
+        return p;
+      })();
+    }
+    const age = u.time.sub(p0.w), life = v0.w;
+    const t = age.div(life);
+    const alive = age.greaterThanEqual(0).and(age.lessThanEqual(life));
+    // size in metres (a point of `size` world units, as the old gl_PointSize rule), at most 512 pixels
+    const depth = max(modelViewMatrix.mul(vec4(centre, 1)).z.negate(), 0.2);
+    const size = min(cs.w.mul(mix(float(1), gp.x, t)), u.px.mul(512).mul(depth));
+    const s = alive.select(size, 0);
+    this.material.positionNode = facingCorner(centre, s, s);
+    const vAlpha = varying(alive.select(this.additive ? smoothstep(0, 0.06, t).mul(float(1).sub(t)).mul(float(1).sub(t)) : smoothstep(0, 0.15, t).mul(float(1).sub(smoothstep(0.4, 1, t))), 0));
+    const vColor = varying(cs.xyz);
+    const fog = this.scene.fog as THREE.FogExp2;
+    this.material.colorNode = Fn(() => {
+      const r = length(uv().sub(0.5)).mul(2);
+      If(r.greaterThan(1).or(vAlpha.lessThanEqual(0)), () => { Discard(); });
+      // exp² fog on the particle's own depth
+      const density = reference('density', 'float', fog);
+      const z = positionView.z.negate();
+      const fogF = float(1).sub(exp(density.mul(density).mul(z).mul(z).negate()));
+      if (this.additive) {
+        const a = pow(float(1).sub(r), 1.8).add(pow(max(0, float(1).sub(r.mul(2.5))), 2).mul(0.6)); // soft halo + hot core
+        return vec4(vColor.mul(float(1).sub(fogF)), a.mul(vAlpha));
+      }
+      const a = pow(float(1).sub(r), 1.3).mul(0.55);
+      return vec4(mix(vColor.mul(u.light), reference('color', 'color', fog), fogF), a.mul(vAlpha));
+    })();
+    this.material.needsUpdate = true;
+    this.geo.instanceCount = this.gpu ? 0 : capacity;
   }
+
   /** Write one particle. */
   put(x: number, y: number, z: number, vx: number, vy: number, vz: number, c: THREE.Color, life: number, size: number, grow: number, gravity: number, drag: number) {
     const o = this.head * STRIDE, d = this.data;
-    d[o] = x; d[o + 1] = y; d[o + 2] = z;
-    d[o + 3] = vx; d[o + 4] = vy; d[o + 5] = vz;
-    d[o + 6] = c.r; d[o + 7] = c.g; d[o + 8] = c.b;
-    d[o + 9] = this.time; d[o + 10] = life; d[o + 11] = size; d[o + 12] = grow;
-    d[o + 13] = gravity; d[o + 14] = drag;
+    d[o] = x; d[o + 1] = y; d[o + 2] = z; d[o + 3] = this.time;
+    d[o + 4] = vx; d[o + 5] = vy; d[o + 6] = vz; d[o + 7] = life;
+    d[o + 8] = c.r; d[o + 9] = c.g; d[o + 10] = c.b; d[o + 11] = size;
+    d[o + 12] = grow; d[o + 13] = gravity; d[o + 14] = drag;
     this.head = (this.head + 1) % this.capacity;
     this.written++;
+    if (this.time + life > this.frameDeath) this.frameDeath = this.time + life;
+    if (this.frameDeath > this.lastDeath) this.lastDeath = this.frameDeath;
   }
   emit(x: number, y: number, z: number, o: EmitOpts, n: number) {
     const base = tmpC.set(o.color).multiplyScalar(o.intensity ?? 1);
@@ -180,25 +266,48 @@ class Pool {
       this.put(px, py, pz, vx, vy, vz, c, Math.max(0.05, life), size, o.grow ?? 0.3, o.gravity ?? 0, o.drag ?? 0.5);
     }
   }
-  /** Advance time and upload only the ring-buffer slots written since the last frame. */
-  flush(dt: number, scale: number, light: number) {
+  /**
+   * Advance time, upload only the ring-buffer slots written since the last frame, and (WebGPU) work out the
+   * window of the ring that can still be alive: that much is simulated and drawn. `px` is the size of a
+   * pixel one metre from the camera (for the 512-pixel cap).
+   */
+  flush(dt: number, px: number, light: number) {
+    this.u.prev.value = this.time;
     this.time += dt;
-    const u = this.material.uniforms;
-    u.uTime.value = this.time;
-    u.uScale.value = scale;
-    u.uLight.value = light;
-    const n = this.written;
-    if (!n) return;
-    const cap = this.capacity;
-    if (n >= cap) this.buf.addUpdateRange(0, cap * STRIDE);
-    else if (this.frameStart + n <= cap) this.buf.addUpdateRange(this.frameStart * STRIDE, n * STRIDE);
-    else {
-      this.buf.addUpdateRange(this.frameStart * STRIDE, (cap - this.frameStart) * STRIDE);
-      this.buf.addUpdateRange(0, (this.frameStart + n - cap) * STRIDE);
+    const u = this.u;
+    u.time.value = this.time;
+    u.dt.value = dt;
+    u.px.value = px;
+    u.light.value = light;
+    const n = this.written, cap = this.capacity;
+    if (n) {
+      const buf = this.spawn as unknown as { addUpdateRange(a: number, b: number): void; clearUpdateRanges(): void; needsUpdate: boolean };
+      buf.clearUpdateRanges();
+      if (n >= cap) buf.addUpdateRange(0, cap * STRIDE);
+      else if (this.frameStart + n <= cap) buf.addUpdateRange(this.frameStart * STRIDE, n * STRIDE);
+      else {
+        buf.addUpdateRange(this.frameStart * STRIDE, (cap - this.frameStart) * STRIDE);
+        buf.addUpdateRange(0, (this.frameStart + n - cap) * STRIDE);
+      }
+      buf.needsUpdate = true;
+      this.spans.push({ start: this.frameStart, n: Math.min(n, cap), death: this.frameDeath });
     }
-    this.buf.needsUpdate = true;
     this.written = 0;
+    this.frameDeath = 0;
     this.frameStart = this.head;
+    this.mesh.visible = this.time < this.lastDeath;
+    if (!this.gpu) { this.drawn = this.mesh.visible ? cap : 0; return; }
+    // frames whose particles are all dead leave the window from the old end
+    while (this.spans.length && this.spans[0].death < this.time) this.spans.shift();
+    let count = 0;
+    for (const s of this.spans) count += s.n;
+    count = Math.min(count, cap);
+    const start = this.spans.length ? this.spans[0].start : this.head;
+    // (a window that wrapped all the way round is the whole ring, starting anywhere)
+    u.start.value = count >= cap ? 0 : start;
+    u.count.value = count;
+    this.geo.instanceCount = count;
+    this.drawn = count;
   }
 }
 
@@ -209,14 +318,26 @@ function randomUnit(v: THREE.Vector3) {
 
 export type Particles = ReturnType<typeof createFx>;
 
+/** The size of one pixel one metre in front of `camera` (metres), on the renderer's drawing buffer. */
+const size2 = new THREE.Vector2();
+export function pixelSize(camera: THREE.PerspectiveCamera, renderer: THREE.WebGPURenderer) {
+  renderer.getDrawingBufferSize(size2);
+  return (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / Math.max(1, size2.y);
+}
+
 /**
  * The game's particle effects. At 'low' quality every effect emits 40% of its particles (trails are
  * laid down more sparsely, chimney smoke puffs are fewer and bigger).
  */
 export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
-  const glow = new Pool(scene, 14000, true);
-  const smoke = new Pool(scene, 2400, false);
+  // (?particles=N: N glow + N/4 smoke on either backend, e.g. the same budget for a side-by-side measurement)
+  const forced = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('particles')) : 0;
+  const fixed = forced > 0 ? [Math.round(forced), Math.round(forced / 4)] as const : null;
+  const budget = fixed ? { high: fixed, low: fixed } : COMPUTE() ? BUDGET.webgpu : BUDGET.webgl;
+  const glow = new Pool(scene, budget.high[0], true);
+  const smoke = new Pool(scene, budget.high[1], false);
   let density = 1;
+  let quality: 'low' | 'high' = 'high';
   const N = (n: number) => Math.max(1, Math.round(n * density));
   const trails = new WeakMap<object, { x: number; y: number; z: number; acc: number; frame: number }>();
   let frameNo = 0;
@@ -226,7 +347,16 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
 
   const api = {
     glow, smoke,
-    setQuality(q: 'low' | 'high') { density = q === 'low' ? 0.4 : 1; },
+    /** Particle capacity: [glow, smoke]. */
+    get budget() { return [glow.capacity, smoke.capacity]; },
+    setQuality(q: 'low' | 'high') {
+      density = q === 'low' ? 0.4 : 1;
+      if (q === quality) return;
+      quality = q;
+      const [g, s] = budget[q];
+      if (g !== glow.capacity) glow.allocate(g);
+      if (s !== smoke.capacity) smoke.allocate(s);
+    },
     burst(x: number, y: number, z: number, o: EmitOpts) { glow.emit(x, y, z, o, N(o.count ?? 20)); },
     puff(x: number, y: number, z: number, o: EmitOpts) { smoke.emit(x, y, z, o, N(o.count ?? 10)); },
 
@@ -311,13 +441,42 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
         }
       });
     },
-    update(dt: number, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, day: number) {
+    update(dt: number, camera: THREE.PerspectiveCamera, renderer: THREE.WebGPURenderer, day: number) {
       frameNo++;
       api.tickSmoke(dt, camera);
-      const scale = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-      glow.flush(dt, scale, 1);
-      smoke.flush(dt, scale, 0.18 + 0.82 * day);
+      const px = pixelSize(camera, renderer);
+      glow.flush(dt, px, 1);
+      smoke.flush(dt, px, 0.18 + 0.82 * day);
     },
   };
   return api;
+}
+
+/**
+ * Rain and snow round the player: 3 000 streaks placed by the vertex shader (each falls from its own height
+ * and wraps round a 40 m column; the CPU used to move every one of them every frame). Put `points` at the
+ * player each frame and call update().
+ */
+export function createWeather(scene: THREE.Scene, n = 3000) {
+  const home = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) home.set([(Math.random() - 0.5) * 120, Math.random() * 40, (Math.random() - 0.5) * 120], i * 3);
+  const fallen = uniform(0), size = uniform(0.15);
+  const m = new THREE.PointsNodeMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, sizeAttenuation: true });
+  const h = T.instancedBufferAttribute(new THREE.InstancedBufferAttribute(home, 3));
+  m.positionNode = vec3(h.x, T.mod(h.y.sub(fallen), 40), h.z);
+  m.sizeNode = size;
+  const points = new THREE.Sprite(m as unknown as THREE.SpriteMaterial);
+  points.count = n;
+  points.frustumCulled = false;
+  points.visible = false;
+  scene.add(points);
+  return {
+    points,
+    update(weather: string, dt: number) {
+      points.visible = weather === 'rain' || weather === 'snow';
+      if (!points.visible) return;
+      fallen.value = (fallen.value + (weather === 'rain' ? 30 : 3) * dt) % 4000;
+      size.value = weather === 'rain' ? 0.08 : 0.2;
+    },
+  };
 }

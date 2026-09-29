@@ -129,7 +129,8 @@ async function worker(n: number, jobs: Job[], port: number, token: string, hello
   const chromium = await loadPlaywright();
   const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium',
-    args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
+    // WebGPU (Dawn on SwiftShader's Vulkan) and WebGL 2 (ANGLE on SwiftShader): the game uses WebGPU and falls back by itself
+    args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
   try {
     const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1, ignoreHTTPSErrors: true, locale: 'zh-CN' });
