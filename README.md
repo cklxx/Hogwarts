@@ -24,6 +24,8 @@ npm start            # http://localhost:7777   MCP: http://localhost:7777/mcp
 claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" http://localhost:7777/mcp
 ```
 
+（服务器在别的机器上？不用手改地址：游戏里「猫头鹰邮递」给出的命令会自动填上你实际访问的 IP/域名；服务器启动时也会打印局域网地址。公网部署可设 `PUBLIC_URL`。）
+
 然后进游戏按 `Esc`（猫头鹰邮递）→ **生成配对码**，对 Agent 说一句：*"连上霍格沃茨，配对码 ABC-DEF"*。
 stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它从模型看到的文本里抹掉；服务器重启时自动重连。配对码 6 位、180 秒、只能用一次、失败限速。
 
