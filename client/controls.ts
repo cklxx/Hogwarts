@@ -38,7 +38,7 @@ export interface ControlsDeps {
   /** Live view of main.ts' camera orbit. */
   cam: { yaw: number; pitch: number; dist: number };
   toast: (text: string) => void;
-  panels: { book: () => void; menu: () => void; owl: () => void; trunk: () => void };
+  panels: { book: () => void; menu: () => void; owl: (force?: boolean) => void; trunk: () => void };
   /** The player's agent as the HUD sees it (me.agent), or null before the first 'me'. */
   agent: () => AgentView | null;
   /** Open the Owl Post and mint a pairing code (tutorial step 5). */
@@ -875,7 +875,7 @@ export function createControls(d: ControlsDeps) {
     slotOf: (name) => (d.me()?.hotbar.findIndex((s) => s?.name === name) ?? -1),
     openMenu: () => d.panels.menu(),
     openBook: () => d.panels.book(),
-    openOwl: () => d.panels.owl(),
+    openOwl: () => d.panels.owl(true),
     pair: () => d.pair(),
     agent: d.agent,
   });

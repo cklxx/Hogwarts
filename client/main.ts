@@ -65,6 +65,7 @@ async function gate(): Promise<string> {
   }
   return new Promise((done) => {
     const err = $('#gate-err');
+    try { if (sessionStorage.getItem('hogwarts.keyChanged')) { sessionStorage.removeItem('hogwarts.keyChanged'); err.textContent = L('你的猫头鹰邮递密钥已在别处更换（比如你的 Agent 调用了 rotate_key）。请用新密钥登录：用 stdio 桥的话它在 ~/.hogwarts/credentials.json。', 'Your Owl Post key was changed elsewhere (for example your agent called rotate_key). Log in with the new key; with the stdio bridge it is in ~/.hogwarts/credentials.json.'); } } catch { /* ignore */ }
     $('#gate-go').onclick = async () => {
       const r = await fetch('/api/enroll', { method: 'POST', body: JSON.stringify({ name: $<HTMLInputElement>('#gate-name').value, house: $<HTMLSelectElement>('#gate-house').value }) });
       const j = await r.json().catch(() => ({ error: 'The owl got lost. Try again.' }));
@@ -171,7 +172,13 @@ function connect() {
   };
   let opened = false;
   ws.onopen = () => { opened = true; wsFails = 0; };
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
+    if (ev.code === 4001) { // the key was changed elsewhere
+      const t = loadToken();
+      if (t && t !== token) { token = t; setTimeout(connect, 300); return; } // another tab of this browser saved the new key
+      try { sessionStorage.setItem('hogwarts.keyChanged', '1'); } catch { /* ignore */ }
+      dropToken(); location.reload(); return;
+    }
     // a key that stopped working (changed elsewhere) never reconnects: back to the gate instead of retrying forever
     if (!opened && ++wsFails >= 3) void fetchMe(token).then((r) => { if (r?.status === 401) { if (loadToken() === token) dropToken(); location.reload(); } /* another tab may have saved a rotated key */ });
     setTimeout(connect, 1500);
@@ -1036,7 +1043,7 @@ const ctl = createControls({
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
     get dist() { return camDist; }, set dist(v: number) { camDist = v; },
   },
-  panels: { book: toggleBook, menu: toggleMenu, owl: () => toggleOwl(), trunk: () => toggleTrunk() },
+  panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => toggleTrunk() },
   agent: agentNow,
   pair: pairNow,
 });

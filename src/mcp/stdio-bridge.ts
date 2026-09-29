@@ -119,12 +119,14 @@ function intercept(tool: string, r: CallToolResult): CallToolResult {
 // ---------------------------------------------------------------- channel push (§C.4 item 1)
 let cursor: number | undefined;
 let pushing = false;
+let deadKey: string | undefined; // a key the server refused: polling with it would only count as failed logins
 async function pollOwls() {
-  if (pushing || !token) return;
+  if (pushing || !token || token === deadKey) return;
   pushing = true;
   try {
     const q = cursor === undefined ? 'api/owls' : `api/owls?since=${cursor}`;
     const r = await getJson(q, token);
+    if (r.status === 401 || r.status === 429) { deadKey = token; return; }
     if (r.status !== 200 || !r.body) return;
     const read = Number(r.body.read ?? 0);
     for (const m of r.body.owls ?? []) {
