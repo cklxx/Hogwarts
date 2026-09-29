@@ -8,6 +8,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { loadEnvironments } from './assets';
+import { captureCamera, captureFocus } from './capture';
 import { glowSprite } from './textures';
 
 export interface Looks { skyTint: string; sunIntensity: number; fogDensity: number; glow: number }
@@ -152,6 +153,8 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     resize,
     /** Drive sky, lights, fog and grading from the in-game hour, weather and the Minister's aesthetics. */
     update(hour: number, weather: string, look: Looks, focus: THREE.Vector3) {
+      captureCamera(camera);
+      focus = captureFocus(focus);
       // sun travels east -> south -> west; elevation peaks at noon
       const a = ((hour - 6) / 12) * Math.PI;
       sunDir.set(Math.cos(a) * 0.8, Math.sin(a), -0.35).normalize();
@@ -222,6 +225,6 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       bloom.enabled = !low;
       resize();
     },
-    render() { composer.render(); },
+    render() { if (!captureCamera(camera)) composer.render(); },
   };
 }

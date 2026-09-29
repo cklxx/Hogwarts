@@ -1,5 +1,9 @@
 # Hogwarts — 一个"咒语就是代码"的 3D 魔法世界
 
+[![宣传视频](docs/promo/poster.jpg)](docs/promo/hogwarts-promo.mp4)
+
+▶ [44 秒宣传片](docs/promo/hogwarts-promo.mp4)：真实内核 + 真实客户端逐帧离线渲染（`npx tsx scripts/promo/render.ts`，见 `scripts/promo/README.md`）。
+
 浏览器里是一个 Three.js 低多边形霍格沃茨；服务器是权威的世界内核；同一个内核通过 **MCP** 暴露给你本地的 Agent。
 Agent 能查询你的身份、武器库、魔法库，**用一门小语言（Runes）写出新咒语**、给角色锻造魔法道具、甚至替你走路和决斗。
 打小怪攒经验升年级、决斗攒声望；**每学期末声望第一的人成为魔法部长，获得一次改写整个世界规则的机会**。
