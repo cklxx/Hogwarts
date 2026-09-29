@@ -146,7 +146,7 @@ export const EVENTS: Record<EventId, EventDef> = {
     id: 'snitch', major: true, seconds: 90, weight: 3,
     name: { zh: '金色飞贼出现了', en: 'The Golden Snitch' },
     brief: () => ({ zh: `魁地奇球场 · 贴近 1.5 米停半秒，或用咒语打中 · +${SNITCH_POINTS} 学院分`, en: `Quidditch pitch · stay within 1.5 m for 0.5 s, or hit it with a spell · +${SNITCH_POINTS} house points` }),
-    can: () => true,
+    can: (w) => !w.qd.match, // 魁地奇: the match has its own Snitch
     start(w, e) {
       e.d.sx = PITCH.x; e.d.sz = PITCH.z; e.d.hover = 0; e.d.near = {};
       pickWaypoint(w, e);

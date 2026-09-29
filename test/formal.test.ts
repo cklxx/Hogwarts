@@ -18,6 +18,7 @@ import { World } from '../src/kernel/world.js';
 import { royaltyGrant, royaltyStep } from '../src/kernel/market.js';
 import { cupAward, cupDeduct, cupMult, cupRun, type CupOp } from '../src/kernel/housecup.js';
 import { DUEL_TERM_CAP, DUEL_WIN_REP, duelStep } from '../src/kernel/duelclub.js';
+import { QD_CATCH_REP, QD_CUP_MAX, QD_GOALS_PAID, QD_GOAL_REP, QD_REP_MAX, QD_WIN_REP, qdCup, qdRep } from '../src/kernel/quidditch.js';
 import { MEME } from '../src/lore/memes.js';
 import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
 import { mulberry32 } from '../src/shared/map.js';
@@ -52,7 +53,19 @@ type DuelVectors = {
 const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.url), 'utf8')) as {
   yearForXp: [number, number][]; titleIndex: [number, number, number, number, number][]; steal: [number, number, number][];
   agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors; cup: CupVectors; duel: DuelVectors;
+  quidditch: { constants: Record<string, number>; rep: [number, number, number, number][]; cup: [number, number][] };
 };
+
+describe('Lean conformance vectors: 魁地奇 (qd_rep_bounded, qd_rep_mono, qd_cup_bounded, qd_cup_mono)', () => {
+  it('the constants, qdRep and qdCup agree with Lean', () => {
+    expect(V.quidditch.constants).toEqual({ QD_GOAL_REP, QD_GOALS_PAID, QD_CATCH_REP, QD_WIN_REP, QD_CUP_MAX, QD_REP_MAX });
+    for (const [g, c, w, r] of V.quidditch.rep) {
+      expect([g, c, w, qdRep(g, c === 1, w === 1)]).toEqual([g, c, w, r]);
+      expect(r).toBeLessThanOrEqual(QD_REP_MAX);
+    }
+    for (const [sc, p] of V.quidditch.cup) { expect([sc, qdCup(sc)]).toEqual([sc, p]); expect(p).toBeLessThanOrEqual(QD_CUP_MAX); }
+  });
+});
 
 describe('Lean conformance vectors: 决斗俱乐部 (duel_step_capped, duel_step_pay, duel_club_term_bounded)', () => {
   it('the constants, the step, and whole terms of matches agree with Lean', () => {

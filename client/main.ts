@@ -30,6 +30,8 @@ import { createMarket } from './market';
 import { createPanels, type FamiliarState, type UnfairState } from './panels';
 import { createFun } from './panels/fun';
 import { createDuel, type DuSnap } from './panels/duel';
+import { createQuidditch } from './panels/quidditch';
+import { createQuidditch3d, type QdSnap } from './quidditch3d';
 import { createFunWorld } from './funworld';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
@@ -38,7 +40,7 @@ interface SW { h: string; n: string; ho: House; x: number; z: number; f: number;
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string; b?: 1 }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
-interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; du?: DuSnap; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
+interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; du?: DuSnap; qd?: QdSnap; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
   hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self'; mana?: number | null } | null)[];
@@ -357,6 +359,7 @@ function connect() {
     }
     else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); market.onBook(); }
     else if (duel.onMessage(msg)) { /* 决斗俱乐部 (client/panels/duel.ts) */ }
+    else if (quid.onMessage(msg)) { /* 魁地奇 (client/panels/quidditch.ts) */ }
     else if (msg.t === 'market') market.onMessage(msg); // 咒语集市 (client/market.ts)
     else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
     else if (msg.t === 'token') onToken(String(msg.token ?? ''));
@@ -762,6 +765,7 @@ function hud() {
   pn.hud();
   fun.hud();
   duel.hud();
+  quid.hud();
   trackBars();
 }
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
@@ -1756,8 +1760,11 @@ const pn = createPanels({
 // ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 · 巧克力蛙画片 · 隐藏宝箱 (client/panels/fun.ts, client/funworld.ts)
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
 const duel = createDuel({ send, toast, du: () => snap?.du, nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?', myHandle: () => myHandle, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw });
+const quid = createQuidditch({ send, toast, qd: () => snap?.qd, myHandle: () => myHandle, myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw });
 const funWorld = createFunWorld();
 scene.add(funWorld.group);
+const qd3d = createQuidditch3d((h) => wizards.get(h)?.root.position ?? null, (h) => wizards.get(h)?.body.rotation.y ?? 0);
+scene.add(qd3d.group);
 /** What a chest held (the card itself arrives as its own event and flips over). */
 function onChest(r: { whereZh?: string; where?: string; housePoints?: number; galleons?: number; card?: string; fragment?: { zh: string; en: string; source: string }; left?: number }) {
   const parts: string[] = [];
@@ -1827,6 +1834,7 @@ addEventListener('keydown', (e) => {
   if (pn.keydown(e)) return; // J 邓布利多军, K O.W.L. (client/panels)
   if (fun.keydown(e)) return; // C 巧克力蛙画片 (client/panels/fun.ts)
   if (!spectate && !watch.observing() && duel.keydown(e)) return; // G 决斗俱乐部 (client/panels/duel.ts)
+  if (!spectate && !watch.observing() && quid.keydown(e)) return; // P 魁地奇, F shoots while you carry the Quaffle (client/panels/quidditch.ts)
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
@@ -1883,7 +1891,7 @@ function frame() {
     const px = w.root.position.x, pz = w.root.position.z;
     w.root.position.x += (w.tx - w.root.position.x) * k;
     w.root.position.z += (w.tz - w.root.position.z) * k;
-    w.root.position.y = heightAt(w.root.position.x, w.root.position.z);
+    w.root.position.y = heightAt(w.root.position.x, w.root.position.z) + qd3d.lift(h); // 魁地奇: riders fly
     const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
     w.body.rotation.y += turn * Math.min(1, dt * 14);
     const speed = dt > 0 ? Math.hypot(w.root.position.x - px, w.root.position.z - pz) / dt : 0;
@@ -1997,6 +2005,7 @@ function frame() {
   ctl.update(dt);
   pn.frame(dt);
   funWorld.frame(dt, snap);
+  qd3d.frame(dt, snap?.qd);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();

@@ -144,7 +144,9 @@ export interface Wizard {
   equipped: Partial<Record<ItemSlot, string>>;
   achievements: string[];
   titles: string[];
-  stats: { stuns: number; stunned: number; creatures: number; casts: number; forged: number; reflects?: number; dodges?: number };
+  stats: { stuns: number; stunned: number; creatures: number; casts: number; forged: number; reflects?: number; dodges?: number;
+    /** Spells forged (forge_spell, copies and forks); `forged` counts items. */
+    spells?: number };
   st: WizardStatus;
   cooldowns: Record<string, number>;
   globalCd: number;
@@ -303,7 +305,7 @@ export interface Pending {
 }
 
 export type EventType = 'system' | 'chat' | 'combat' | 'creature' | 'achievement' | 'decree' | 'term' | 'level' | 'egg' | 'azkaban' | 'elder' | 'forge' | 'cast'
-  | 'owl' | 'ask' | 'curse' | 'dark' | 'da' | 'market' | 'wheel' | 'card' | 'duel';
+  | 'owl' | 'ask' | 'curse' | 'dark' | 'da' | 'market' | 'wheel' | 'card' | 'duel' | 'quidditch';
 
 export interface WorldEvent {
   id: number;

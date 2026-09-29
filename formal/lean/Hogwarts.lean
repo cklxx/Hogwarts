@@ -1124,6 +1124,62 @@ def duelVectors : String :=
     return out
   obj [("constants", obj [("DUEL_WIN_REP", toString DUEL_WIN_REP), ("DUEL_TERM_CAP", toString DUEL_TERM_CAP)]), ("step", arr steps), ("terms", arr terms)]
 
+
+/-! ## 魁地奇 — a match's rewards (src/kernel/quidditch.ts `qdRep`, `qdCup`)
+
+Per player, once a match (one match a term): reputation QD_GOAL_REP per goal for at most QD_GOALS_PAID goals, plus
+QD_CATCH_REP for catching the Snitch and QD_WIN_REP for the win; house points ⌊score / 5⌋, at most QD_CUP_MAX.
+Proved: both are bounded whatever the match (`qd_rep_bounded`, `qd_cup_bounded`), and more goals or a higher score
+never pay less (`qd_rep_mono`, `qd_cup_mono`).
+-/
+
+def QD_GOAL_REP : Nat := 2
+def QD_GOALS_PAID : Nat := 5
+def QD_CATCH_REP : Nat := 10
+def QD_WIN_REP : Nat := 5
+def QD_CUP_MAX : Nat := 60
+def QD_REP_MAX : Nat := QD_GOAL_REP * QD_GOALS_PAID + QD_CATCH_REP + QD_WIN_REP
+
+/-- quidditch.ts `qdRep`. -/
+def qdRep (goals : Nat) (caught won : Bool) : Nat :=
+  QD_GOAL_REP * min goals QD_GOALS_PAID + (if caught then QD_CATCH_REP else 0) + (if won then QD_WIN_REP else 0)
+
+/-- quidditch.ts `qdCup`. -/
+def qdCup (score : Nat) : Nat := min QD_CUP_MAX (score / 5)
+
+theorem qd_rep_bounded (g : Nat) (c w : Bool) : qdRep g c w ≤ QD_REP_MAX := by
+  unfold qdRep QD_REP_MAX
+  have h1 : QD_GOAL_REP * min g QD_GOALS_PAID ≤ QD_GOAL_REP * QD_GOALS_PAID := Nat.mul_le_mul_left _ (Nat.min_le_right _ _)
+  have h2 : (if c = true then QD_CATCH_REP else 0) ≤ QD_CATCH_REP := by split <;> simp
+  have h3 : (if w = true then QD_WIN_REP else 0) ≤ QD_WIN_REP := by split <;> simp
+  omega
+
+theorem qd_rep_mono (g : Nat) (c w : Bool) : qdRep g c w ≤ qdRep (g + 1) c w := by
+  unfold qdRep
+  have : min g QD_GOALS_PAID ≤ min (g + 1) QD_GOALS_PAID := by omega
+  have := Nat.mul_le_mul_left QD_GOAL_REP this
+  omega
+
+theorem qd_cup_bounded (s : Nat) : qdCup s ≤ QD_CUP_MAX := Nat.min_le_left _ _
+
+theorem qd_cup_mono (s t : Nat) (h : s ≤ t) : qdCup s ≤ qdCup t := by
+  unfold qdCup
+  have : s / 5 ≤ t / 5 := Nat.div_le_div_right h
+  omega
+
+/-- The 魁地奇 part of the vectors: constants, qdRep on a grid, qdCup on a range. -/
+def qdVectors : String :=
+  let b (x : Bool) : String := if x then "1" else "0"
+  let reps := Id.run do
+    let mut out : List String := []
+    for g in [0, 1, 2, 4, 5, 6, 9, 30] do
+      for c in [false, true] do
+        for w in [false, true] do
+          out := out ++ [s!"[{g},{b c},{b w},{qdRep g c w}]"]
+    return out
+  let cups := (List.range 80).map fun i => let sc := i * 7; s!"[{sc},{qdCup sc}]"
+  "{\"constants\":{\"QD_GOAL_REP\":" ++ toString QD_GOAL_REP ++ ",\"QD_GOALS_PAID\":" ++ toString QD_GOALS_PAID ++ ",\"QD_CATCH_REP\":" ++ toString QD_CATCH_REP ++
+    ",\"QD_WIN_REP\":" ++ toString QD_WIN_REP ++ ",\"QD_CUP_MAX\":" ++ toString QD_CUP_MAX ++ ",\"QD_REP_MAX\":" ++ toString QD_REP_MAX ++ "},\"rep\":[" ++ ",".intercalate reps ++ "],\"cup\":[" ++ ",".intercalate cups ++ "]}"
 /-! ## Conformance vectors (compared with the TypeScript code in test/formal.test.ts) -/
 
 /-- The agent-link part of the vectors: every shared constant, and samples of each floor/cost function. -/
@@ -1219,7 +1275,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ ",\"duel\":" ++ duelVectors ++ "}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ ",\"duel\":" ++ duelVectors ++ ",\"quidditch\":" ++ qdVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 

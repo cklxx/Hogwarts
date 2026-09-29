@@ -21,7 +21,8 @@ if (!tool) { console.error('usage: mcp.ts [--url URL] [--me KEYFILE] <tool|tools
 
 const key = keyFile && existsSync(keyFile) ? readFileSync(keyFile, 'utf8').trim() : undefined;
 const c = new Client({ name: 'hogwarts-playtest', version: '1' });
-await c.connect(new StreamableHTTPClientTransport(url, key ? { requestInit: { headers: { Authorization: `Bearer ${key}` } } } : undefined));
+const transport = new StreamableHTTPClientTransport(url, key ? { requestInit: { headers: { Authorization: `Bearer ${key}` } } } : undefined);
+await c.connect(transport);
 try {
   if (tool === 'tools') {
     const { tools } = await c.listTools();
@@ -46,5 +47,7 @@ try {
     if (r.isError) process.exitCode = 1;
   }
 } finally {
+  // one command, one session: end it on the server too (DELETE), or a busy playtest fills the session table
+  await transport.terminateSession().catch(() => {});
   await c.close();
 }

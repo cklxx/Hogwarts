@@ -238,7 +238,8 @@ function trLine(line: string): string {
 }
 /** A kernel message in the player's language (each line on its own; a bilingual line keeps its own half). */
 export function tr(msg: string): string {
-  const s = String(msg ?? '');
+  // `retry_after=N` is for agents; a person reads the seconds in the sentence itself
+  const s = String(msg ?? '').replace(/\s*retry_after=\d+/g, '');
   if (lang !== 'zh') return s.split('\n').map((l) => splitBi(l)?.en ?? l).join('\n');
   return s.split('\n').map(trLine).join('\n');
 }

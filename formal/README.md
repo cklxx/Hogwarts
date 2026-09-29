@@ -37,7 +37,7 @@ conserves reputation (only the base is created, the victim never goes negative) 
 spends exactly its cost and a fizzle is free · **effects per cast ≤ E·(1+A)** (the bound the TLA+ step
 properties imply) · caps clamp · healing never exceeds max health · aura stacking never exceeds a
 cap · summons never exceed the cap · decrees stay constitutional · **Feistel rounds are injective
-for any round function**, so every seal has exactly one answer. · **the Duelling Club pays at most DUEL_TERM_CAP × DUEL_WIN_REP reputation per wizard per term** (`duel_step_capped`, `duel_step_pay`, `duel_run_inv`, `duel_club_term_bounded`, whatever the order of wins; its `duelStep` vectors are compared with `duelGrant` in `test/formal.test.ts`).
+for any round function**, so every seal has exactly one answer. · **the Duelling Club pays at most DUEL_TERM_CAP × DUEL_WIN_REP reputation per wizard per term** (`duel_step_capped`, `duel_step_pay`, `duel_run_inv`, `duel_club_term_bounded`, whatever the order of wins; its `duelStep` vectors are compared with `duelGrant` in `test/formal.test.ts`). · **a Quidditch match pays each player at most QD_REP_MAX reputation and QD_CUP_MAX house points**, and never less for more goals or a higher score (`qd_rep_bounded`, `qd_rep_mono`, `qd_cup_bounded`, `qd_cup_mono`; vectors vs `qdRep` / `qdCup`).
 
 Agent link (docs/AGENT_LINK.md §A.5, §B.8): `pair_guess_bound` (a window's checked guesses hit at most
 as many of the 31⁶ codes as there are guesses, so live · hits ≤ cap · live) and `pair_lifetime_odds`

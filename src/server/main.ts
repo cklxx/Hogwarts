@@ -15,6 +15,7 @@ import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { marketMessage } from '../kernel/market.js';
 import { schoolEvents } from '../kernel/wheel.js';
 import { duelJoin, duelLeave, duelStatus } from '../kernel/duelclub.js';
+import { qdJoin, qdLeave, qdStatus, qdThrow } from '../kernel/quidditch.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
@@ -157,8 +158,12 @@ const tokenOf = (req: IncomingMessage, url: URL) => {
 // MCP: one transport + one McpServer per MCP session.
 type McpEntry = { transport: StreamableHTTPServerTransport; session: McpSession; seen: number };
 const mcpSessions = new Map<string, McpEntry>();
-const MAX_MCP_SESSIONS = 500;
+const MAX_MCP_SESSIONS = Number(process.env.MCP_MAX_SESSIONS ?? 500);
 const MCP_IDLE_MS = 30 * 60_000;
+/** A full table makes room by closing the least recently used session idle this long (a client that never closes its sessions cannot lock everyone out). */
+const MCP_EVICT_IDLE_MS = Number(process.env.MCP_EVICT_IDLE_MS ?? 60_000);
+/** Sessions one wizard may hold at once: a new keyed session closes that wizard's oldest beyond this. */
+const MCP_PER_WIZARD = 8;
 function closeMcp(id: string, e: McpEntry) {
   mcpSessions.delete(id);
   e.session.wizardId = null;
@@ -168,6 +173,19 @@ setInterval(() => {
   const now = Date.now();
   for (const [id, e] of mcpSessions) if (now - e.seen > MCP_IDLE_MS) closeMcp(id, e);
 }, 60_000);
+/** Make room for one more session: the least recently used idle one goes. False when every session is busy. */
+function evictIdle(now: number): boolean {
+  let old: [string, McpEntry] | null = null;
+  for (const kv of mcpSessions) if (now - kv[1].seen >= MCP_EVICT_IDLE_MS && (!old || kv[1].seen < old[1].seen)) old = kv;
+  if (!old) return false;
+  closeMcp(old[0], old[1]);
+  return true;
+}
+/** One wizard's sessions beyond MCP_PER_WIZARD - 1, oldest first, are closed (before a new one of theirs opens). */
+function trimWizard(wid: string) {
+  const mine = [...mcpSessions].filter(([, e]) => e.session.wizardId === wid).sort((a, b) => a[1].seen - b[1].seen);
+  for (const [id, e] of mine.slice(0, Math.max(0, mine.length - (MCP_PER_WIZARD - 1)))) closeMcp(id, e);
+}
 /** MCP sessions bound to a wizard: derived by scanning, never counted (docs/AGENT_LINK.md §A.4). */
 function sessionsOf(wid: string) {
   let n = 0;
@@ -209,13 +227,15 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
       return json(res, 400, { jsonrpc: '2.0', error: { code: -32000, message: 'No valid MCP session. Start with initialize.' }, id: null });
     }
     const adopt = adoptedSessionId(req);
-    if (mcpSessions.size >= MAX_MCP_SESSIONS) {
-      return json(res, 503, { jsonrpc: '2.0', error: { code: -32000, message: 'Too many open MCP sessions; try again later.' }, id: null });
-    }
     const token = tokenOf(req, url);
     // A Bearer key is a login: a wrong one counts as a failed login (and the session starts unbound).
     const keyedBy = token ? checkKey(req, token) : undefined;
     if (keyedBy === 'throttled') return json(res, 429, { jsonrpc: '2.0', error: { code: -32000, message: LOGIN_THROTTLED }, id: null });
+    if (typeof keyedBy === 'object') trimWizard(keyedBy.id);
+    if (mcpSessions.size >= MAX_MCP_SESSIONS && !evictIdle(Date.now())) {
+      res.setHeader('Retry-After', String(Math.ceil(MCP_EVICT_IDLE_MS / 1000)));
+      return json(res, 503, { jsonrpc: '2.0', error: { code: -32000, message: `Too many open MCP sessions; try again in ${Math.ceil(MCP_EVICT_IDLE_MS / 1000)}s. retry_after=${Math.ceil(MCP_EVICT_IDLE_MS / 1000)}` }, id: null });
+    }
     const session: McpSession = {
       wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req),
       loginFails, forgeFails, sessionsOf, rotated: (wid, tok, keep) => rotated(wid, tok, { keepMcp: keep }),
@@ -302,6 +322,8 @@ type ClientMsg =
   | { t: 'goto'; x: number; z: number }
   | { t: 'dodge'; dx: number; dz: number }
   | { t: 'duel'; op?: 'join' | 'leave' | 'status' }
+  // 魁地奇 (kernel/quidditch.ts): join / leave / status / throw; replies { t: 'quidditch', r }
+  | { t: 'quidditch'; op?: 'join' | 'leave' | 'status' | 'throw'; role?: 'chaser' | 'seeker' }
   // Owl Post (docs/AGENT_LINK.md §C.5)
   | { t: 'owl'; text: string }
   | { t: 'answer'; id: number; choice: string }
@@ -380,6 +402,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'dodge': world.dodge(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0); break; // (a roll on cooldown just does nothing)
       // 决斗俱乐部 (kernel/duelclub.ts): join / leave / status; replies { t: 'duel', r }
       case 'duel': reply({ t: 'duel', r: m.op === 'join' ? duelJoin(world, wid) : m.op === 'leave' ? duelLeave(world, wid) : duelStatus(world, wid) }); break;
+      case 'quidditch': reply({ t: 'quidditch', r: m.op === 'join' ? qdJoin(world, wid, m.role) : m.op === 'leave' ? qdLeave(world, wid) : m.op === 'throw' ? qdThrow(world, wid) : qdStatus(world, wid) }); break;
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
       case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
       case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;

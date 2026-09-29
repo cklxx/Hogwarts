@@ -5,6 +5,7 @@ import { CREATURES } from './creatures.js';
 import { dist } from './physics.js';
 import { derived } from './progression.js';
 import type { Wizard } from './types.js';
+import { qdPlaying } from './quidditch.js';
 import type { World } from './world.js';
 import { npcStock } from './market.js';
 
@@ -66,6 +67,9 @@ export function thinkNpcs(world: World) {
     if (!world.isActive(w)) continue;
     const p = PERSONAS.find((x) => x.name === w.name)!;
     const d = derived(w, world.rules);
+
+    // 魁地奇 (quidditch.ts): on a team, the match steers you
+    if (qdPlaying(world, w.id)) continue;
 
     // 决斗俱乐部 (duelclub.ts): a sparring partner — still until the countdown ends, then only the opponent, gently
     // (no healing, a Stupefy about every other thought), so a first-year can beat a seventh-year NPC

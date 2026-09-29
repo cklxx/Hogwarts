@@ -52,6 +52,7 @@ import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './card
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { blankWheel, stepWheel, wheelBolt, wheelKissed, wheelRoom, wheelSlain, wheelView, type Outcome, type WheelState } from './wheel.js';
 import { type DuelClub, duelWire, inMatch, newDuelClub, stepDuelClub } from './duelclub.js';
+import { type QdState, QD_FLY, newQd, qdFlying, qdWire, quidditchBolt, stepQuidditch } from './quidditch.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
 import { type MarketBook, bannedCastText, bannedListing, blankMarket, marketDecreeErrors, marketDecreeNews, payRoyalty, restoreMarket, rollDay, sanitizeMarket } from './market.js';
@@ -173,6 +174,8 @@ export class World {
   pending: Pending[] = [];
   /** 决斗俱乐部 (duelclub.ts): the queue, the match on the stage, and the term's reward ledger (persisted). */
   duel: DuelClub = newDuelClub();
+  /** 魁地奇 (kernel/quidditch.ts): this term's match. */
+  qd: QdState = newQd();
   events: WorldEvent[] = [];
   term: Term;
   houseCups: { term: number; winner: House | null; points: Record<House, number> }[] = [];
@@ -844,6 +847,7 @@ export class World {
     const spell: Spell = { id: existing?.id ?? this.nid('s_'), name, incantation, source: spec.source, nodes: a.nodes, minYear: a.minYear, effects: a.effects, builtin: false, createdAt: this.now, ...(spec.origin ? { origin: spec.origin } : {}), ...(spec.market ? { market: spec.market } : {}) };
     if (existing) Object.assign(existing, spell);
     else w.spells.push(spell);
+    w.stats.spells = (w.stats.spells ?? 0) + 1;
     if (spec.slot && spec.slot >= 1 && spec.slot <= 6) w.hotbar[spec.slot - 1] = spell.id;
     else if (!w.hotbar.includes(spell.id)) { const free = w.hotbar.indexOf(null); if (free >= 0) w.hotbar[free] = spell.id; }
     if (spec.quiet) { /* the caller (kernel/market.ts) says what happened */ }
@@ -893,8 +897,10 @@ export class World {
     }
     if (!opts.dryRun) {
       if (inMatch(this.duel, w.id) && this.duel.match!.phase !== 'fight') return fail('Wait for the countdown to finish. 等倒计时结束再施法。');
-      if (this.now < w.globalCd) return fail('Too fast — your wand arm needs a moment.');
-      if (this.now < (w.cooldowns[spell.id] ?? 0)) return fail(`${spell.name} is recharging (${(w.cooldowns[spell.id] - this.now).toFixed(1)}s).`);
+      // a machine-readable retry_after (whole seconds, at least 1) like every other "not yet" an agent can get
+      const retry = (until: number) => Math.max(1, Math.ceil(until - this.now));
+      if (this.now < w.globalCd) return fail(`Too fast — your wand arm needs a moment. 慢一点，持杖手要缓一下。 retry_after=${retry(w.globalCd)}`);
+      if (this.now < (w.cooldowns[spell.id] ?? 0)) return fail(`${spell.name} is recharging (${(w.cooldowns[spell.id] - this.now).toFixed(1)}s). 「${zhSpell(spell.name)}」还在冷却。 retry_after=${retry(w.cooldowns[spell.id])}`);
     }
     const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
@@ -1054,7 +1060,7 @@ export class World {
     if (w.st.rootedUntil > this.now) return { ok: false, error: 'You are rooted to the spot. 你被定住了。' };
     if (by === 'agent' && this.playerSteering(w)) return { ok: false, error: PLAYER_STEERING };
     const ready = w.st.dodgeReadyAt ?? 0;
-    if (ready > this.now) return { ok: false, error: `Still catching your breath: ${(ready - this.now).toFixed(1)}s. 还在喘气：${(ready - this.now).toFixed(1)} 秒。` };
+    if (ready > this.now) return { ok: false, error: `Still catching your breath: ${(ready - this.now).toFixed(1)}s. 还在喘气：${(ready - this.now).toFixed(1)} 秒。 retry_after=${Math.max(1, Math.ceil(ready - this.now))}` };
     let l = Math.hypot(dx, dz);
     if (!Number.isFinite(l) || l < 0.01) { dx = Math.sin(w.facing); dz = -Math.cos(w.facing); l = 1; }
     w.st.dashDx = dx / l; w.st.dashDz = dz / l;
@@ -2167,6 +2173,7 @@ export class World {
     this.syncSolids();
     thinkNpcs(this);
     stepDuelClub(this);
+    stepQuidditch(this, dt);
     const rb = this.rules;
     // 1. delayed spell blocks
     if (this.pending.length) {
@@ -2342,7 +2349,7 @@ export class World {
       const c = Math.cos(a), s = Math.sin(a);
       [dx, dz] = [dx * c - dz * s, dx * s + dz * c];
     }
-    const speed = this.rules.physics.moveSpeed * d.speedMult * haste * moveSlow(auraMag(w.auras, 'chill', this.now), jelly);
+    const speed = this.rules.physics.moveSpeed * d.speedMult * haste * moveSlow(auraMag(w.auras, 'chill', this.now), jelly) * (qdFlying(this, w) ? QD_FLY : 1);
     const before = { ...w.pos };
     w.pos.x += dx * speed * dt;
     w.pos.z += dz * speed * dt;
@@ -2456,6 +2463,7 @@ export class World {
           break;
         }
         if (this.wheel.active) wheelBolt(this, p); // 金色飞贼 / 皮皮鬼: a spell passing close enough catches or chases
+        if (this.qd.match) quidditchBolt(this, p); // 魁地奇: a spell passing a Bludger beats it away
         for (const e of this.around(p.pos, 2.2, () => true, p.owner, 4)) {
           const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
           if (dist(e.pos, p.pos) > r + 0.45) continue;
@@ -3579,6 +3587,7 @@ export class World {
       ev: wheelView(this),
       // 决斗俱乐部: the match on the stage (handles, phase, seconds left), for everyone
       du: duelWire(this),
+      qd: qdWire(this),
       w: ws,
       c: [...this.creatures.values()].map((c) => ({
         i: c.id, k: c.kind, x: round(c.pos.x), z: round(c.pos.z), f: round(c.facing), hp: Math.round(c.hp), m: Math.round(c.maxHp),
@@ -3736,6 +3745,8 @@ export class World {
       market: this.market,
       // 决斗俱乐部: only the term's reward ledger (caps and rematch gaps survive a restart; the queue and match do not)
       duelLedger: this.duel.ledger,
+      // 魁地奇: which term already had its match (the match itself is not saved)
+      quidditch: { doneTerm: this.qd.doneTerm },
       // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
       focus: Object.fromEntries(this.focus),
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
@@ -3761,6 +3772,8 @@ export class World {
     const dl = (data as { duelLedger?: { term?: unknown; wins?: unknown; pairs?: unknown } }).duelLedger;
     if (dl && typeof dl.term === 'number') w.duel.ledger = { term: dl.term, wins: { ...(dl.wins as Record<string, number> ?? {}) }, pairs: { ...(dl.pairs as Record<string, number> ?? {}) } };
     w.market = restoreMarket((data as { market?: unknown }).market);
+    const qd = (data as { quidditch?: { doneTerm?: unknown } }).quidditch;
+    if (typeof qd?.doneTerm === 'number') w.qd.doneTerm = qd.doneTerm;
     for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {
       if (typeof f?.pts === 'number' && typeof f.at === 'number' && Number.isFinite(f.pts) && Number.isFinite(f.at)) w.focus.set(id, { pts: f.pts, at: f.at });
     }

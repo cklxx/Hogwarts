@@ -204,7 +204,7 @@ export const MARKET_ID_RE = /^m_[a-z0-9]{1,12}$/;
 // bounds, compared through formal/vectors.json) and formal/tla/EventWheel.tla.
 
 /** Where a wizard's house points came from this term (十分梗 is a house-level bonus, kept apart in flags.housePoints). */
-export const CUP_SOURCES = ['creatures', 'duels', 'events', 'owls', 'chests', 'other'] as const;
+export const CUP_SOURCES = ['creatures', 'duels', 'events', 'owls', 'chests', 'quidditch', 'other'] as const;
 export type CupSource = (typeof CUP_SOURCES)[number];
 /** 决胜时刻: the last CUP_FINAL_S seconds of a term multiply every house point gained (rules.terms.finalMinuteMultiplier). */
 export const CUP_FINAL_S = 60;
