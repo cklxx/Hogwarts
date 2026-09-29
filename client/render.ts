@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { loadEnvironments } from './assets';
-import { captureCamera, captureFocus } from './capture';
+import { captureCamera, captureEnv, captureFocus } from './capture';
 import { gradedOutputPass } from './post';
 import { STORYBOOK, glowSprite, paintedClouds, paintedMoon } from './textures';
 
@@ -480,6 +480,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     update(hour: number, weather: string, look: Looks, focus: THREE.Vector3) {
       captureCamera(camera);
       focus = captureFocus(focus);
+      [hour, weather] = captureEnv(hour, weather);
       // sun travels east -> south -> west; elevation peaks at noon
       const a = ((hour - 6) / 12) * Math.PI;
       // Storybook: the sun arcs through the southern sky (Scotland), so from the grounds the castle's
