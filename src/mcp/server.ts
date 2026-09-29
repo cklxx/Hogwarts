@@ -458,9 +458,9 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     description: 'Wait up to 45 seconds of game time, returning early when the condition is met ("owl": your human wrote to you). Returns what changed: health, mana, position, arrival, and new events (each with `from` for owls). Use it instead of polling look/whoami in a loop.',
     inputSchema: {
       seconds: z.number().min(0.5).max(LISTEN_MAX_S),
-      until: z.enum(['time', 'arrived', 'hurt', 'event', 'mana_full', 'owl']).optional().describe('return early on this condition (default: time)'),
+      until: z.enum(['time', 'arrived', 'hurt', 'event', 'mana_full', 'owl', 'incoming']).optional().describe('return early on this condition (default: time); incoming = a hostile spell is flying at you (the reply says from whom and in how many seconds: time to raise Protego or dodge)'),
     },
-  }, async ({ seconds, until }: { seconds: number; until?: 'time' | 'arrived' | 'hurt' | 'event' | 'mana_full' | 'owl' }, extra: Extra) => {
+  }, async ({ seconds, until }: { seconds: number; until?: 'time' | 'arrived' | 'hurt' | 'event' | 'mana_full' | 'owl' | 'incoming' }, extra: Extra) => {
     const wid = bound();
     const w = wid ? world.wizards.get(wid) : undefined;
     if (!w) return fail(UNBOUND_HELP);
@@ -483,13 +483,14 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
         case 'event': return mine().some(wakes);
         case 'owl': return mine().some(fromHuman);
         case 'mana_full': return w.mana >= maxMana() - 0.5;
+        case 'incoming': return world.incoming(w.id).length > 0;
         default: return false;
       }
     };
     const deadline = Date.now() + seconds * 1000;
     while (Date.now() < deadline && !done() && !extra.signal.aborted) {
       world.touch(w.id);
-      await sleep(200);
+      await sleep(until === 'incoming' ? 50 : 200); // a spell in flight is gone in half a second
     }
     world.touch(w.id);
     const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -500,6 +501,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
       hp: `${Math.round(start.hp)} -> ${Math.round(w.hp)}`, mana: `${Math.round(start.mana)} -> ${Math.round(w.mana)}`,
       moved: r1(Math.hypot(w.pos.x - start.x, w.pos.z - start.z)), at: { x: r1(w.pos.x), z: r1(w.pos.z), place: world.placeName(w.pos) },
       walking: !!w.goal, state: world.whoami(w.id).state,
+      ...(until === 'incoming' ? { incoming: world.incoming(w.id) } : {}),
       events: evs.slice(-20).map(agentEvent),
       ...(evs.some(fromHuman) ? { owls: 'Your human wrote to you: call listen to read (and acknowledge) their owls.' } : {}),
     });

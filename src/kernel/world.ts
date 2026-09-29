@@ -1054,6 +1054,28 @@ export class World {
   }
 
   // ------------------------------------------------------------------ 决斗手感: dodge, perfect Protego, spell clash
+  /**
+   * What is flying at this wizard right now (MCP wait until:"incoming"): spells homing on them or whose straight path
+   * passes within 1.5 m, from someone who may harm them, soonest first, with the seconds until they land.
+   */
+  incoming(wid: string, horizon = 2.5): { from: string; kind: string; eta: number }[] {
+    const w = this.wizards.get(wid);
+    if (!w) return [];
+    const out: { from: string; kind: string; eta: number }[] = [];
+    for (const p of this.projectiles.values()) {
+      if (p.owner === wid || !this.canHarm(p.owner, wid)) continue;
+      const rx = w.pos.x - p.pos.x, rz = w.pos.z - p.pos.z;
+      const v2 = p.vel.x * p.vel.x + p.vel.z * p.vel.z;
+      if (v2 < 1e-6) continue;
+      const t = (rx * p.vel.x + rz * p.vel.z) / v2; // time of closest approach
+      if (t < 0 || t > horizon) continue;
+      const miss = Math.hypot(rx - p.vel.x * t, rz - p.vel.z * t);
+      if (p.homing !== wid && miss > 1.5) continue;
+      out.push({ from: this.entity(this.credit(p.owner) ?? p.owner)?.name ?? '?', kind: p.kind, eta: round(t) });
+    }
+    return out.sort((a, b) => a.eta - b.eta);
+  }
+
   /** Is this wizard mid-dodge (projectiles and claws pass them by)? */
   dodging(id: string) { const w = this.wizards.get(id); return !!w && (w.st.dodgeUntil ?? 0) > this.now; }
   /**

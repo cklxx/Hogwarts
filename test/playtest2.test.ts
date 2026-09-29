@@ -154,3 +154,22 @@ describe('playtest round 2, over MCP', () => {
     expect(r.match.hp[0].maxHp).toBeGreaterThan(0);
   });
 });
+
+describe('playtest round 2: something to react to', () => {
+  it('"I cannot see the bolt coming": incoming lists the spells flying at you, soonest first', () => {
+    const w = mk();
+    const a = player(w, 'Target', 'Gryffindor'), b = player(w, 'Shooter', 'Slytherin');
+    b.pos = { x: 60, z: 80 };
+    expect(w.incoming(a.id)).toEqual([]);
+    w.spawnProjectile(b, 'bolt', a.pos, a.id, 10, 'arcane', 0, []);
+    const inc = w.incoming(a.id);
+    expect(inc).toHaveLength(1);
+    expect(inc[0].from).toBe('Shooter');
+    expect(inc[0].eta).toBeGreaterThan(0);
+    expect(w.incoming(b.id)).toEqual([]); // not your own
+    // a bolt going elsewhere is not incoming
+    const c = player(w, 'Bystander', 'Hufflepuff');
+    c.pos = { x: 90, z: 60 };
+    expect(w.incoming(c.id)).toEqual([]);
+  });
+});
