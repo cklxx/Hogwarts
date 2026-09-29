@@ -20,6 +20,8 @@ export interface Spell {
   createdAt: number;
   /** 偷师: a copy made with study_spell records whose spell it was (their public name and handle). */
   origin?: { author: string; handle: string; spell: string; at: number };
+  /** 咒语集市: the market listing (and version) this spell was published as, copied from or forked into (kernel/market.ts). */
+  market?: { id: string; v: number };
 }
 
 /** 偷师: a custom spell of another wizard that hit you (the author's registry id is kept server-side only). */
@@ -266,7 +268,7 @@ export interface Pending {
 }
 
 export type EventType = 'system' | 'chat' | 'combat' | 'creature' | 'achievement' | 'decree' | 'term' | 'level' | 'egg' | 'azkaban' | 'elder' | 'forge' | 'cast'
-  | 'owl' | 'ask' | 'curse' | 'dark' | 'da';
+  | 'owl' | 'ask' | 'curse' | 'dark' | 'da' | 'market';
 
 export interface WorldEvent {
   id: number;
