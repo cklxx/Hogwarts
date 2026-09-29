@@ -1850,6 +1850,9 @@ const warmed = (async () => {
     const w = makeWizard(h, false, `warm-up-${i}`);
     w.root.position.x = i * 2;
     w.label.draw('warm-up', '#fff', 1);
+    // its Lumos light hidden like every wizard's (lights.ts): four extra lights would have compiled every lit
+    // shader for a light set the game never draws with, and the first frames compiled them all again
+    w.glow.visible = false;
     w.root.add(makeAuraRing());
     g.add(w.root);
     return w;

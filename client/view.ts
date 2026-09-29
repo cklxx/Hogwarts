@@ -672,6 +672,8 @@ export function createView(d: ViewDeps) {
   if (typeof location !== 'undefined' && /[?&](debug=view|capture=1)\b/.test(location.search)) {
     (globalThis as unknown as { __view: unknown }).__view = {
       cam: d.cam,
+      /** the fade's uniforms (a script can set a cut-out by hand while a scripted shot holds the camera) */
+      fade: FADE,
       me: () => d.wizards.get(d.myHandle())?.root.position,
       rig,
       stats: () => ({ ...stats, avgMs: stats.ms / Math.max(1, stats.frames), arm: rig.arm, lift: rig.lift, shoulder: rig.shoulder, indoor: rig.indoor, fadeA, fadeB, interiors: INTERIORS.length }),

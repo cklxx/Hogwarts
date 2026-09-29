@@ -492,7 +492,11 @@ export type Renderer = Awaited<ReturnType<typeof createRenderer>>;
 
 /** Turn frustum culling off under `root` (returns the undo): a warm-up must reach what the camera does not see. */
 function uncull(root: THREE.Object3D) {
-  const off: THREE.Object3D[] = [];
-  root.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; off.push(o); } });
-  return () => { for (const o of off) o.frustumCulled = true; };
+  const off: THREE.Object3D[] = [], shown: THREE.Object3D[] = [];
+  root.traverse((o) => {
+    if (o.frustumCulled) { o.frustumCulled = false; off.push(o); }
+    // hidden until it has something to draw (an empty grass chunk), but compiled with the rest
+    if (!o.visible && o.userData.warmVisible) { o.visible = true; shown.push(o); }
+  });
+  return () => { for (const o of off) o.frustumCulled = true; for (const o of shown) o.visible = false; };
 }

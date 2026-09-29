@@ -71,6 +71,8 @@ export function attach(renderer: THREE.WebGPURenderer, scene?: THREE.Scene, extr
   state.renderer = renderer;
   state.scene = scene ?? null;
   state.extra = extra ?? null;
+  // a harness hook (perf-client --dump: see what every shader program was built for, from the warm-up on)
+  (globalThis as unknown as { __perfHook?: (r: THREE.WebGPURenderer) => void }).__perfHook?.(renderer);
   renderer.info.autoReset = false;
   const render = renderer.render.bind(renderer);
   renderer.render = ((sc: THREE.Object3D, cam: THREE.Camera) => {

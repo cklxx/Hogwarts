@@ -213,6 +213,7 @@ function cpuField(group: THREE.Group, u: Field) {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = true;
       mesh.visible = false;
+      mesh.userData.warmVisible = true; // (render.ts's shader warm-up compiles it while it is still empty)
       mesh.matrixAutoUpdate = false;
       group.add(mesh);
       chunks.push({ mesh, geo, offs, shape, key: null, kept: 0, x0: 0, z0: 0 });

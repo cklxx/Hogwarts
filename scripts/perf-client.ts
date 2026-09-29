@@ -4,7 +4,7 @@
  *   npx vite build && npx tsx scripts/perf-client.ts [--port=8820] [--q=high,low] [--secs=8] [--warm=4]
  *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,crowd,castle,lake,overview] [--size=1280x720]
  *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium] [--census] [--shots=dir] [--url=&extra=1]
- *        [--gpu=webgpu|webgl]
+ *        [--gpu=webgpu|webgl] [--dump=dir [--dumpall]] (what compiled after the first frame, and why)
  *
  * What it does: writes a world save with `--bots` enrolled wizards (`--crowd` of them within 15 m of the courtyard
  * spawn, the rest spread over the map), the wild pre-filled to 3x its population, and one viewer wizard at the spawn;
@@ -40,7 +40,8 @@ import { World } from '../src/kernel/world.js';
 import { mulberry32, SPAWN, WORLD_HALF } from '../src/shared/map.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1'] as [string, string]; }));
+// (split at the first '=' only: --url='&dyn=0&x=1' keeps its own '=' signs)
+const args = new Map(process.argv.slice(2).map((a) => { const s = a.replace(/^--/, ''), i = s.indexOf('='); return (i < 0 ? [s, '1'] : [s.slice(0, i), s.slice(i + 1)]) as [string, string]; }));
 const opt = (k: string, d: string) => args.get(k) ?? d;
 const PORT = Number(opt('port', '8820'));
 const SECS = Number(opt('secs', '8'));
@@ -179,6 +180,32 @@ async function main() {
       page.on('pageerror', (e: Error) => console.error('[page error]', e.message));
       page.on('console', (m: { text(): string }) => { if (m.text().startsWith('[perf]') || m.text().startsWith('[gpu]')) console.log(`  ${m.text()}`); });
       await page.addInitScript(INIT);
+      // --dump: for every shader program compiled after the first frame, log what it was built for (object, material,
+      // the lights / environment / fog key) and what the same object was drawn with before; and log each change of
+      // each new lights / environment / fog key with the lights in it (a warm-up compiled for another light
+      // set is compiled again on the first frames). Installed by perf.ts's attach() (window.__perfHook), before the
+      // warm-up. (A string: tsx would wrap named functions in a helper the page does not have.)
+      if (args.get('dump')) await page.addInitScript(`(() => {
+        const seen = new Map();
+        const keys = new Set();
+        window.__perfHook = (r) => {
+          const pl = r._pipelines, orig = pl.getForRender.bind(pl);
+          const size = () => pl.programs.vertex.size + pl.programs.fragment.size;
+          pl.getForRender = (ro, pr) => {
+            const n = size(), res = orig(ro, pr);
+            const o = ro.object, k = o.id + ':' + ro.material.id, key = r._nodes.getCacheKey(ro.scene, ro.lightsNode);
+            const now = { mat: ro.material.type + '#' + ro.material.id + ' v' + ro.material.version, mkey: ro.getMaterialCacheKey(), dyn: ro.getDynamicCacheKey(), key, receiveShadow: o.receiveShadow, geo: o.geometry.id + ' ' + Object.keys(o.geometry.attributes).join(','), cam: ro.camera.type + '#' + ro.camera.id };
+            const first = !!(window.__perf.marks && window.__perf.marks.firstFrame);
+            if (ro.material.isShadowPassMaterial !== true && !keys.has(key)) {
+              keys.add(key);
+              console.log('[perf] new lights/env/fog key ' + key + ' (camera ' + ro.camera.id + ')' + (first ? ' after' : ' before') + ' the first frame: ' + ro.lightsNode._lights.map((l) => l.type + ':' + l.name + '#' + l.id + (l.castShadow ? ' (shadow)' : '')).join(', '));
+            }
+            if (size() > n && first) console.log('[perf] new program: ' + o.type + " '" + o.name + "' in '" + (o.parent && o.parent.name) + "' " + JSON.stringify(now) + ', drawn before with ' + JSON.stringify(seen.get(k)));
+            seen.set(k, now);
+            return res;
+          };
+        };
+      })()`);
       const cdp = await ctx.newCDPSession(page);
       await cdp.send('Network.enable');
       await cdp.send('Performance.enable');
@@ -227,6 +254,15 @@ async function main() {
           const progs: string[] = await page.evaluate(() => (window as any).__perf.programs?.() ?? []);
           const fresh = progs.filter((p) => !progs0.includes(p));
           console.log(`  programs: ${progs0.length} at the first frame, ${fresh.length} compiled since${fresh.length ? ': ' + fresh.slice(0, 12).join(' / ') : ''}`);
+          // --dump=dir: the code of every program compiled after the first frame (--dumpall: of all of them)
+          if (args.get('dump')) {
+            mkdirSync(args.get('dump')!, { recursive: true });
+            console.log('  lights:', await page.evaluate(() => { const out: string[] = []; (window as any).__perf.scene.traverseVisible((o: any) => { if (o.isLight) out.push(`${o.type}:${o.name || o.parent?.name || ''}#${o.id}${o.castShadow ? 'S' : ''}`); }); return out.join(' '); }));
+            for (const p of args.has('dumpall') ? progs : fresh) {
+              const id = Number(p.split('#').pop());
+              writeFileSync(join(args.get('dump')!, `${LABEL}-${q}-${p.replace(/[^\w#]+/g, '_')}.txt`), await page.evaluate((i: number) => (window as any).__perf.programCode(i), id));
+            }
+          }
           const n = (r.frames as unknown[]).length || 1;
           console.log(`  passes (draw calls per frame): ${Object.entries(r.passes as Record<string, number>).map(([k, v]) => `${k} ${f1(v / n)}`).join(', ')}`);
           const c = Object.entries(r.census as Record<string, { n: number; casters: number; tris: number; instances: number }>).sort((a, b) => b[1].n - a[1].n);

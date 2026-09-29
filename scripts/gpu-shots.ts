@@ -23,7 +23,8 @@ import { mulberry32, SPAWN } from '../src/shared/map.js';
 import type { GlamourMaterial } from '../src/shared/glamour.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1'] as [string, string]; }));
+// (split at the first '=' only: --url='&dyn=0&x=1' keeps its own '=' signs)
+const args = new Map(process.argv.slice(2).map((a) => { const s = a.replace(/^--/, ''), i = s.indexOf('='); return (i < 0 ? [s, '1'] : [s.slice(0, i), s.slice(i + 1)]) as [string, string]; }));
 const opt = (k: string, d: string) => args.get(k) ?? d;
 const PORT = Number(opt('port', '9004'));
 const GPU = opt('gpu', 'webgpu');
