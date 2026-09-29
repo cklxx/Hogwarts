@@ -1,8 +1,15 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import * as TSL from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { parseGlamourKey, type Glamour, type GlamourMaterial } from '../src/shared/glamour';
+import { StoryPhysicalMaterial, StoryStandardMaterial, inkPush, storyDiffuse, storyEffects } from './storybook';
 import { STORYBOOK, rimLit } from './textures';
+
+const T = TSL as unknown as Record<string, any>;
+const { Fn, vec2, vec3, vec4, float, uniform, pow, clamp, normalize, abs, dot, sin, atan, fract, floor, step, smoothstep, length, mix, select,
+  materialReference, materialColor, materialEmissive, materialRoughness, materialMetalness, vertexColor, frontFacing,
+  positionLocal, positionGeometry, normalLocal, normalView, positionViewDirection, userData } = T;
 
 /** A canvas sprite used for name tags, hp bars and speech bubbles. */
 export class Label {
@@ -251,16 +258,17 @@ function painted(parts: [THREE.BufferGeometry, THREE.ColorRepresentation][]) {
     return x;
   }))!;
 }
-/** Scale a vertex-coloured material's emissive by the vertex colour: the faint self-light meant for skin stays on the skin. */
-function emissiveByVertexColor<T extends THREE.MeshStandardMaterial>(m: T, key: string, prev?: T['onBeforeCompile']) {
-  m.onBeforeCompile = (sh, r) => {
-    prev?.call(m, sh, r);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      #ifdef USE_COLOR
-        totalEmissiveRadiance *= vColor.rgb;
-      #endif`);
-  };
-  m.customProgramCacheKey = () => key;
+/*
+ * Shader nodes shared by every material of a kind (one node graph = one compiled shader for all of them).
+ * What differs per material is read from the material through materialReference (`uLining`, the house lining;
+ * `glamSpark`, a glamour's light); the robe's swing (a Vector3 the wizard animates) is read from the mesh's
+ * userData.uSway, because the shadow map draws the robe with its own material but the same mesh.
+ */
+/** The faint self-light meant for skin, scaled by the vertex colour so it stays on the skin. */
+const EMISSIVE_BY_VC = materialEmissive.mul(vertexColor().rgb);
+/** Scale a vertex-coloured material's emissive by the vertex colour. */
+function emissiveByVertexColor<M extends THREE.MeshStandardNodeMaterial>(m: M): M {
+  m.emissiveNode = EMISSIVE_BY_VC;
   return m;
 }
 
@@ -331,28 +339,36 @@ function robeTex(house: House) {
  * vertex shader swings the lower part by `sway` (x: sideways, z: trailing, y: flare).
  */
 function clothMaterial(house: House, map: THREE.Texture | null, sway: { value: THREE.Vector3 }, vertexColors = false) {
-  const m = new THREE.MeshStandardMaterial({ color: map || vertexColors ? 0xffffff : CLOTH, map, roughness: 0.82, side: THREE.DoubleSide, vertexColors });
+  const m = new StoryStandardMaterial({ color: map || vertexColors ? 0xffffff : CLOTH, map, roughness: 0.82, side: THREE.DoubleSide });
   const lining = new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.7);
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uSway = sway;
-    sh.uniforms.uLining = { value: lining };
-    sh.vertexShader = 'uniform vec3 uSway;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-      float swayW = pow(clamp(1.0 - position.y / ${(ROBE_TOP - 0.2).toFixed(2)}, 0.0, 1.0), 1.6);
-      transformed.x += uSway.x * swayW;
-      transformed.z += uSway.z * swayW;
-      transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;`);
-    sh.fragmentShader = 'uniform vec3 uLining;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-      if (!gl_FrontFacing) diffuseColor.rgb = uLining;`);
-  };
-  m.customProgramCacheKey = () => 'wizard-cloth';
-  if (vertexColors) {
-    // sleeves carry the hands (skin-coloured vertices) with the faint skin self-light
-    m.emissive.setScalar(0.12);
-    emissiveByVertexColor(m, 'wizard-cloth-vc', m.onBeforeCompile);
-  }
-  return m;
+  // sleeves carry the hands (skin-coloured vertices) with the faint skin self-light
+  if (vertexColors) m.emissive.setScalar(0.12);
+  return asCloth(m, lining, sway, vertexColors);
 }
 const NO_SWAY = { value: new THREE.Vector3() };
+/** Cloth swings below the waist: x sideways, z trailing, y flaring out. `p` is the mesh's own position. */
+const swayed = Fn(([p]: any[]) => {
+  const sway = userData('uSway', 'vec3');
+  const w = pow(clamp(float(1).sub(p.y.div(ROBE_TOP - 0.2)), 0, 1), 1.6);
+  const q = p.add(vec3(sway.x.mul(w), 0, sway.z.mul(w))).toVar();
+  q.xz.addAssign(normalize(p.xz.add(vec2(1e-4))).mul(sway.y.mul(w)));
+  return q;
+});
+const SWAY_POSITION = swayed(positionLocal);
+const INK_SWAYED = inkPush(swayed(positionLocal), normalLocal);
+const INK_STILL = inkPush(positionLocal, normalLocal);
+/**
+ * Dress a material as cloth: the lining inside, the swing (`sway`, unless NO_SWAY), and for vertex-coloured
+ * cloth (sleeves carrying the hands) the skin's self-light only on the skin.
+ */
+function asCloth<M extends THREE.MeshStandardNodeMaterial>(m: M, lining: THREE.Color, sway: { value: THREE.Vector3 }, vc: boolean): M {
+  // the inside shows the house lining (storybook.ts: storyLining, applied after the colour and vertex colours)
+  Object.assign(m, { uLining: lining, storyLining: 1 });
+  m.vertexColors = vc;
+  if (sway !== NO_SWAY) m.positionNode = SWAY_POSITION;
+  if (vc) emissiveByVertexColor(m);
+  return m;
+}
 
 /**
  * Storybook ink outline for a character part (shown at 'high'): the part's own geometry pushed out
@@ -360,43 +376,28 @@ const NO_SWAY = { value: new THREE.Vector3() };
  * line stays one or two pixels wide; the robe's copy sways with the robe.
  */
 function inkMaterial(sway: { value: THREE.Vector3 }) {
-  const m = new THREE.MeshBasicMaterial({ color: 0x1c1018, side: THREE.BackSide });
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uSway = sway;
-    sh.vertexShader = 'uniform vec3 uSway;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-      float swayW = pow(clamp(1.0 - position.y / ${(ROBE_TOP - 0.2).toFixed(2)}, 0.0, 1.0), 1.6);
-      transformed.x += uSway.x * swayW;
-      transformed.z += uSway.z * swayW;
-      transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;
-      vec4 inkP = vec4(transformed, 1.0);
-      #ifdef USE_INSTANCING
-        inkP = instanceMatrix * inkP; // (drawn instanced by partbatch.ts)
-      #endif
-      float inkD = max(0.0, -(modelViewMatrix * inkP).z);
-      transformed += normalize(normal) * (0.014 + inkD * 0.0016);`);
-  };
-  m.customProgramCacheKey = () => 'wizard-ink';
+  const m = new THREE.MeshBasicNodeMaterial({ color: 0x1c1018, side: THREE.BackSide });
+  // (the head and hat outlines are drawn instanced by partbatch.ts: three.js has applied the instance's matrix
+  // to positionLocal and normalLocal by then, so the push is along the drawn normal either way)
+  if (sway === NO_SWAY) m.positionNode = INK_STILL;
+  else m.positionNode = INK_SWAYED;
   return m;
 }
 
 const std = (key: string, p: THREE.MeshStandardMaterialParameters) => once(`mat:${key}`, () => new THREE.MeshStandardMaterial(p));
 
-let _shieldMat: THREE.ShaderMaterial | null = null;
-const shieldUniforms = { uTime: { value: 0 } };
+let _shieldMat: THREE.MeshBasicNodeMaterial | null = null;
+const shieldUniforms = { uTime: uniform(0) };
+/** Protego: a fresnel bubble with rising bands and a faint hex weave, added onto what is behind it. */
 function shieldMat() {
-  return (_shieldMat ??= new THREE.ShaderMaterial({
-    uniforms: { ...shieldUniforms, uColor: { value: new THREE.Color(0x9fd3ff) } },
-    vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vP;
-      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz; vP = position; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `uniform float uTime; uniform vec3 uColor; varying vec3 vN; varying vec3 vV; varying vec3 vP;
-      void main(){
-        float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
-        float bands = smoothstep(0.85, 1.0, sin(vP.y * 16.0 - uTime * 4.0)) * 0.5;
-        float hex = smoothstep(0.92, 1.0, abs(sin(atan(vP.z, vP.x) * 9.0 + vP.y * 3.0))) * 0.25;
-        gl_FragColor = vec4(uColor * (0.08 + f * 1.8 + (bands + hex) * (0.3 + f)), 1.0);
-      }`,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  }));
+  if (_shieldMat) return _shieldMat;
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  const p = positionGeometry;
+  const f = pow(float(1).sub(abs(dot(normalView, positionViewDirection))), 2.2);
+  const bands = smoothstep(0.85, 1, sin(p.y.mul(16).sub(shieldUniforms.uTime.mul(4)))).mul(0.5);
+  const hex = smoothstep(0.92, 1, abs(sin(atan(p.z, p.x).mul(9).add(p.y.mul(3))))).mul(0.25);
+  m.colorNode = vec4(uniform(new THREE.Color(0x9fd3ff)).mul(float(0.08).add(f.mul(1.8)).add(bands.add(hex).mul(f.add(0.3)))), 1);
+  return (_shieldMat = m);
 }
 
 /** m/s: the walk cycle stops quickening here (a brisk 7 m/s walk is 1.45 strides a second). */
@@ -429,6 +430,7 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   // ---- robe: open at the front over a grey jumper and a house tie, legs and shoes underneath
   const sway = { value: new THREE.Vector3() };
   const robe = shadow(new THREE.Mesh(robeGeo(), clothMaterial(house, robeTex(house), sway)));
+  robe.userData.uSway = sway.value;
   // jumper, tie and the scarf's neck wrap: one mesh in the knit atlas
   const torso = new THREE.Mesh(once('torsoGeo', () => {
     const jumper = new THREE.LatheGeometry([0.24, 0.26, 0.25, 0.23, 0.25, 0.27, 0.2, 0.08].map((r, i) => new THREE.Vector2(r, 0.78 + i * 0.1)), 14);
@@ -438,14 +440,11 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   }), knitMat);
   rig.add(robe, torso);
   const legMat = once('legMat', () => {
-    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    const m = new StoryStandardMaterial({ vertexColors: true, roughness: 0.9 });
     // the (darker) shoe vertices are polished leather
-    m.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n#ifdef USE_COLOR\n  if (vColor.r < 0.009) roughnessFactor = 0.35;\n#endif')
-        .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n#ifdef USE_COLOR\n  if (vColor.r < 0.009) metalnessFactor = 0.1;\n#endif');
-    };
-    m.customProgramCacheKey = () => 'wizard-legs';
+    const shoe = vertexColor().r.lessThan(0.009);
+    m.roughnessNode = select(shoe, 0.35, materialRoughness);
+    m.metalnessNode = select(shoe, 0.1, materialMetalness);
     return m;
   });
   const legGeo = once('legGeo', () => {
@@ -473,9 +472,9 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   head.position.y = 1.5;
   const hg = headGeo();
   const headMat = once('headMat', () => {
-    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
+    const m = new StoryStandardMaterial({ vertexColors: true, roughness: 0.6 });
     m.emissive.setScalar(0.12);
-    return emissiveByVertexColor(m, 'wizard-head');
+    return emissiveByVertexColor(m);
   });
   const headMesh = head.add(shadow(new THREE.Mesh(once(`headGeo:${skinI}:${hairI}`, () => {
     const fg = faceGeo();
@@ -569,6 +568,7 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
     const still = once('inkStill', () => inkMaterial(NO_SWAY));
     for (const [part, mat] of [[robe, inkMat], [headMesh, still], [hatMesh, still]] as const) {
       const hull = new THREE.Mesh(part.geometry, mat);
+      hull.userData.uSway = part === robe ? sway.value : NO_SWAY.value;
       hull.name = 'ink';
       part.add(hull);
       inks.push(hull);
@@ -765,7 +765,7 @@ export interface Dress {
 const showInks = (d: Dress) => { for (const x of d.inks) x.visible = detail === 'high' && !d.ghost; };
 
 /** One clock for every animated glamour (starlight, flame, ghost). */
-const glamTime = { value: 0 };
+const glamTime = uniform(0);
 const WHITE = new THREE.Color(0xffffff);
 /** A preset's own robe (and hat) colour when the spell names none; unset = the black school robe. */
 const PRESET_CLOTH: Partial<Record<GlamourMaterial, number>> = { scales: 0x2f6f5a, mirror: 0xc0c6cc, flame: 0x3a0c04, starlight: 0x0d1238, ghost: 0xdfeeff };
@@ -824,9 +824,9 @@ function glamRobeTex(house: House, robe: number | null, trim: number | null, sca
 }
 
 /** The preset's surface: MeshPhysicalMaterial at 'high' where it has sheen, clearcoat, iridescence or metal. */
-function surface(mat: GlamourMaterial, hi: boolean, p: THREE.MeshStandardMaterialParameters, tint: THREE.Color): THREE.MeshStandardMaterial {
-  const P = (x: THREE.MeshPhysicalMaterialParameters) => new THREE.MeshPhysicalMaterial({ ...p, ...x });
-  const S = (x: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ ...p, ...x });
+function surface(mat: GlamourMaterial, hi: boolean, p: THREE.MeshStandardMaterialParameters, tint: THREE.Color): THREE.MeshStandardNodeMaterial {
+  const P = (x: THREE.MeshPhysicalMaterialParameters) => new StoryPhysicalMaterial({ ...p, ...x } as never);
+  const S = (x: THREE.MeshStandardMaterialParameters) => new StoryStandardMaterial({ ...p, ...x } as never);
   switch (mat) {
     case 'velvet': return hi ? P({ roughness: 0.95, sheen: 1, sheenRoughness: 0.4, sheenColor: tint.clone().lerp(WHITE, 0.4) }) : S({ roughness: 0.95 });
     case 'silk': return hi ? P({ roughness: 0.38, sheen: 0.6, sheenRoughness: 0.25, sheenColor: tint.clone().lerp(WHITE, 0.6), clearcoat: 0.7, clearcoatRoughness: 0.18 }) : S({ roughness: 0.38, metalness: 0.08 });
@@ -840,75 +840,56 @@ function surface(mat: GlamourMaterial, hi: boolean, p: THREE.MeshStandardMateria
   }
 }
 
-/** Light added after shading by the animated presets (object-space position in vGlamPos, time in uGlamTime). */
-const EFFECT_GLSL: Partial<Record<GlamourMaterial, string>> = {
-  starlight: `{
-    vec3 sp = vGlamPos * 34.0;
-    float hh = fract(sin(dot(floor(sp), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-    float star = step(0.86, hh) * smoothstep(0.32, 0.0, length(fract(sp) - 0.5));
-    float tw = 0.3 + 0.7 * pow(0.5 + 0.5 * sin(uGlamTime * (1.5 + hh * 4.0) + hh * 60.0), 3.0);
-    outgoingLight += uGlamSpark * (star * tw * 4.0 + 0.03);
-  }`,
-  flame: `{
-    float hgt = clamp(1.0 - vGlamPos.y / 1.6, 0.0, 1.0);
-    float an = atan(vGlamPos.z, vGlamPos.x);
-    float lick = sin(an * 7.0 + uGlamTime * 3.1) * 0.5 + sin(an * 13.0 - uGlamTime * 4.3 + vGlamPos.y * 9.0) * 0.35;
-    float wave = 0.5 + 0.5 * sin(vGlamPos.y * 18.0 - uGlamTime * 7.0 + lick * 3.0);
-    float fl = clamp(hgt * 1.3 + lick * 0.25 - 0.25, 0.0, 1.0) * (0.55 + 0.45 * wave);
-    outgoingLight += mix(uGlamSpark, vec3(1.0, 0.85, 0.35), fl * fl) * fl * 2.2;
-  }`,
-  ghost: `{
-    float rim = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.0);
-    float drift = 0.85 + 0.15 * sin(uGlamTime * 1.3 + vGlamPos.y * 6.0);
-    outgoingLight = outgoingLight * 0.6 + uGlamSpark * (0.22 + rim * 1.4) * drift;
-    diffuseColor.a = clamp(diffuseColor.a + rim * 0.5, 0.0, 0.85);
-  }`,
+/**
+ * Light added after shading by the animated presets (storybook.ts storyEffects): object-space position,
+ * one clock for every animated glamour, the preset's light colour from the material (`glamSpark`).
+ */
+const glamSparkNode = materialReference('glamSpark', 'color');
+const FX_GLAM: Partial<Record<GlamourMaterial, (light: any) => any>> = {
+  starlight: (light) => {
+    const sp = positionGeometry.mul(34);
+    const hh = fract(sin(dot(floor(sp), vec3(12.9898, 78.233, 37.719))).mul(43758.5453));
+    const star = step(0.86, hh).mul(smoothstep(0.32, 0, length(fract(sp).sub(0.5))));
+    const tw = float(0.3).add(pow(sin(glamTime.mul(hh.mul(4).add(1.5)).add(hh.mul(60))).mul(0.5).add(0.5), 3).mul(0.7));
+    return light.add(glamSparkNode.mul(star.mul(tw).mul(4).add(0.03)));
+  },
+  flame: (light) => {
+    const g = positionGeometry;
+    const hgt = clamp(float(1).sub(g.y.div(1.6)), 0, 1);
+    const an = atan(g.z, g.x);
+    const lick = sin(an.mul(7).add(glamTime.mul(3.1))).mul(0.5).add(sin(an.mul(13).sub(glamTime.mul(4.3)).add(g.y.mul(9))).mul(0.35));
+    const wave = sin(g.y.mul(18).sub(glamTime.mul(7)).add(lick.mul(3))).mul(0.5).add(0.5);
+    const fl = clamp(hgt.mul(1.3).add(lick.mul(0.25)).sub(0.25), 0, 1).mul(wave.mul(0.45).add(0.55));
+    return light.add(mix(glamSparkNode, vec3(1, 0.85, 0.35), fl.mul(fl)).mul(fl).mul(2.2));
+  },
+  ghost: (light) => {
+    const rim = pow(float(1).sub(abs(dot(normalView, positionViewDirection))), 2);
+    const drift = sin(glamTime.mul(1.3).add(positionGeometry.y.mul(6))).mul(0.15).add(0.85);
+    storyDiffuse.a.assign(clamp(storyDiffuse.a.add(rim.mul(0.5)), 0, 0.85));
+    return light.mul(0.6).add(glamSparkNode.mul(rim.mul(1.4).add(0.22)).mul(drift));
+  },
 };
+for (const [k, fx] of Object.entries(FX_GLAM)) storyEffects[`glam-${k}`] = fx!;
 
-/** Add a preset's animated light (if it has one); `then` runs after (the cloth sway and lining). */
-function withEffect<T extends THREE.MeshStandardMaterial>(m: T, mat: GlamourMaterial, spark: THREE.Color, key: string, then?: (sh: THREE.WebGLProgramParametersWithUniforms) => void) {
-  const glsl = EFFECT_GLSL[mat];
-  m.onBeforeCompile = (sh) => {
-    if (glsl) {
-      sh.uniforms.uGlamTime = glamTime;
-      sh.uniforms.uGlamSpark = { value: spark };
-      sh.vertexShader = 'varying vec3 vGlamPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vGlamPos = position;');
-      sh.fragmentShader = 'uniform float uGlamTime;\nuniform vec3 uGlamSpark;\nvarying vec3 vGlamPos;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', `${glsl}\n#include <opaque_fragment>`);
-    }
-    then?.(sh);
-  };
-  m.customProgramCacheKey = () => key;
+/** Add a preset's animated light (if it has one). */
+function withEffect<M extends THREE.MeshStandardNodeMaterial>(m: M, mat: GlamourMaterial, spark: THREE.Color): M {
+  if (FX_GLAM[mat]) Object.assign(m, { storyFx: `glam-${mat}`, glamSpark: spark });
   return m;
 }
 
 /** clothMaterial in a preset: the robe (own sway, own map) or the sleeves (vertex colours, no sway). */
 function glamCloth(mat: GlamourMaterial, map: THREE.Texture | null, lining: THREE.Color, sway: { value: THREE.Vector3 }, vc: boolean, tint: THREE.Color, spark: THREE.Color) {
-  const m = surface(mat, detail === 'high', { color: 0xffffff, map, side: THREE.DoubleSide, vertexColors: vc }, tint);
+  const m = surface(mat, detail === 'high', { color: 0xffffff, map, side: THREE.DoubleSide }, tint);
   if (vc) m.emissive.setScalar(0.12);
-  withEffect(m, mat, spark, `glam-cloth:${mat}:${vc ? 'vc' : 'map'}`, (sh) => {
-    sh.uniforms.uSway = sway;
-    sh.uniforms.uLining = { value: lining };
-    sh.vertexShader = 'uniform vec3 uSway;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-      float swayW = pow(clamp(1.0 - position.y / ${(ROBE_TOP - 0.2).toFixed(2)}, 0.0, 1.0), 1.6);
-      transformed.x += uSway.x * swayW;
-      transformed.z += uSway.z * swayW;
-      transformed.xz += normalize(position.xz + vec2(1e-4)) * uSway.y * swayW;`);
-    sh.fragmentShader = 'uniform vec3 uLining;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-      if (!gl_FrontFacing) diffuseColor.rgb = uLining;`);
-    if (vc) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      #ifdef USE_COLOR
-        totalEmissiveRadiance *= vColor.rgb;
-      #endif`);
-  });
-  return m;
+  return asCloth(withEffect(m, mat, spark), lining, sway, vc);
 }
 
 /** A translucent copy of a shared material for :ghost (bounded: one per base material). */
 function ghostOf(m: THREE.Material): THREE.Material {
   return once(`ghost:${m.uuid}`, () => {
     const c = m.clone();
-    c.onBeforeCompile = m.onBeforeCompile;
-    c.customProgramCacheKey = m.customProgramCacheKey;
+    // (what the shared shader nodes read from the material: clone() copies only three.js's own properties)
+    for (const k of ['uLining', 'glamSpark', 'storyFx', 'storyRim', 'storyLining'] as const) if (k in m) (c as unknown as Record<string, unknown>)[k] = (m as unknown as Record<string, unknown>)[k];
     c.transparent = true;
     c.opacity = 0.35;
     c.depthWrite = false;
@@ -983,12 +964,12 @@ function dressUp(d: Dress, g: Glamour, key: string) {
     return painted([[hatGeo(), hatCol], [brimGeo(), hatCol], [b, band]]);
   });
   d.hat.material = take(d, `hm:${mat}:${spark.getHex()}:${detail}`, () =>
-    withEffect(surface(mat, hi, { color: 0xffffff, vertexColors: true, side: THREE.DoubleSide }, new THREE.Color(hatCol)), mat, spark, `glam-hat:${mat}`));
+    withEffect(surface(mat, hi, { color: 0xffffff, vertexColors: true, side: THREE.DoubleSide }, new THREE.Color(hatCol)), mat, spark));
   if (mat === 'ghost') for (const x of [d.torso, ...d.legs, ...d.tails, d.head, d.wand]) x.material = ghostOf(d.orig.get(x)!.material);
   d.tip = g.glow ?? 0xffffff;
   d.lumos = g.glow ?? 0xfff2a0;
   d.glow.color.setHex(g.glow ?? 0xfff2c0);
-  d.animated = !!EFFECT_GLSL[mat];
+  d.animated = !!FX_GLAM[mat];
 }
 
 /** Give back what a wizard's look holds (call when the wizard leaves the scene). */

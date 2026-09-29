@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { WebGPURenderer } from 'three/webgpu';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 /**
@@ -20,8 +21,10 @@ export function tex(path: string, opts: { srgb?: boolean; repeat?: number; fallb
 }
 
 /** Two Poly Haven HDRIs pre-filtered for image-based lighting: a bright quarry by day, a moonless golf course by night. */
-export function loadEnvironments(renderer: THREE.WebGLRenderer, onReady: (day: THREE.Texture, night: THREE.Texture) => void) {
-  const pmrem = new THREE.PMREMGenerator(renderer);
+export async function loadEnvironments(renderer: WebGPURenderer, onReady: (day: THREE.Texture, night: THREE.Texture) => void) {
+  // (loaded here, not at the top: tests import this module's neighbours under Node, without the node renderer)
+  const { PMREMGenerator } = await import('three/webgpu');
+  const pmrem = new PMREMGenerator(renderer);
   const hdr = new HDRLoader();
   const out: Record<string, THREE.Texture> = {};
   const done = (k: string, t: THREE.Texture) => {

@@ -113,7 +113,8 @@ async function main() {
   const workers: Worker[] = [];
   const browser = await chromium.launch({
     executablePath: CHROMIUM,
-    args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-features=Vulkan', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
+    // (Vulkan and ANGLE both on SwiftShader: with WebGPU on SwiftShader alone, this Chromium loses the device at once)
+    args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
   });
   try {
     await waitHttp(`${base}/api/rules`, 60_000);
@@ -125,8 +126,9 @@ async function main() {
     bots.postMessage({ cmd: 'drive' });
     const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
-    page.on('pageerror', (e: Error) => console.error('[page error]', e.message));
-    page.on('console', (m: { type(): string; text(): string }) => { const t = m.text(); if (m.type() === 'error' || m.type() === 'warning' || t.startsWith('[perf]') || t.startsWith('[gpu]')) console.log(`  [${m.type()}] ${t.slice(0, 400)}`); });
+    page.on('pageerror', (e: Error) => console.error('[page error]', e.message, (e.stack ?? '').split('\n').slice(1, 6).join(' | ')));
+    const T0 = Date.now();
+    page.on('console', (m: { type(): string; text(): string }) => { const t = m.text(); if (args.has('verbose') || m.type() === 'error' || m.type() === 'warning' || t.startsWith('[perf]') || t.startsWith('[gpu]')) console.log(`  ${((Date.now() - T0) / 1000).toFixed(1)}s [${m.type()}] ${t.slice(0, 400)}`); });
     const t0 = Date.now();
     await page.goto(`${base}/?perf=1&capture=1&q=high&dyn=0${GPU === 'webgl' ? '&gpu=webgl' : ''}${EXTRA}#k=${w.viewer}`, { waitUntil: 'load' });
     await page.waitForFunction(() => (window as any).__perf?.marks?.firstFrame, null, { timeout: 300_000, polling: 500 });
