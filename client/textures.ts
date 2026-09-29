@@ -15,7 +15,7 @@ const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 const canvas = (size = 512) => {
   const c = document.createElement('canvas');
   c.width = c.height = size;
-  return [c, c.getContext('2d')!] as const;
+  return [c, c.getContext('2d', { willReadFrequently: true })!] as const;
 };
 function tex(c: HTMLCanvasElement, srgb = true) {
   const t = new THREE.CanvasTexture(c);

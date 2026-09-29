@@ -90,6 +90,7 @@ export class Pool {
   private frameDeath = 0;
   /** When the last particle written so far dies (nothing is drawn after that). */
   private lastDeath = 0;
+  private primed = false;
   private spans: Span[] = [];
   private u = { time: uniform(0), prev: uniform(0), dt: uniform(0), light: uniform(1), start: uniform(0, 'uint'), cap: uniform(1, 'uint'), count: uniform(0, 'uint'), px: uniform(0.001) };
   private sim: any = null;
@@ -114,8 +115,14 @@ export class Pool {
     this.mesh.name = additive ? 'fx-glow' : 'fx-smoke';
     this.allocate(capacity);
     scene.add(this.mesh);
+    // (hidden while nothing lives, but compiled with the rest by render.ts's warm-up)
+    this.mesh.userData.warmVisible = true;
     if (this.gpu) onBeforeFrame((renderer) => {
-      if (!this.sim || !this.drawn || !this.mesh.visible) return;
+      if (!this.sim) return;
+      // the first frame after (re)allocation runs the simulation once over one long-dead particle: its compute
+      // pipeline is built then (the warm-up frame), not on the frame the first spark flies
+      if (!this.primed) { this.primed = true; renderer.compute(this.sim, 1); }
+      if (!this.drawn || !this.mesh.visible) return;
       renderer.compute(this.sim, this.drawn); // (one thread per particle in the live window)
     });
   }
@@ -129,6 +136,7 @@ export class Pool {
     this.head = this.frameStart = this.written = 0;
     this.lastDeath = 0;
     this.spans = [];
+    this.primed = false;
     this.u.cap.value = capacity;
     const u = this.u;
     let slot: any, p0: any, v0: any, cs: any, gp: any, centre: any;

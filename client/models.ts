@@ -11,11 +11,16 @@ const { Fn, vec2, vec3, vec4, float, uniform, pow, clamp, normalize, abs, dot, s
   materialReference, materialColor, materialEmissive, materialRoughness, materialMetalness, vertexColor, frontFacing,
   positionLocal, positionGeometry, normalLocal, normalView, positionViewDirection, userData } = T;
 
-/** A canvas sprite used for name tags, hp bars and speech bubbles. */
+/**
+ * A canvas sprite used for name tags, hp bars and speech bubbles.
+ * (Every canvas that becomes a texture is a CPU canvas, `willReadFrequently`: uploading a GPU-backed 2D canvas
+ * to a WebGPU texture waits for the GPU to finish what is queued — in a busy frame on SwiftShader, ~1 s per name
+ * tag; from a CPU canvas it is a plain copy, 1-4 ms, on both backends.)
+ */
 export class Label {
   sprite: THREE.Sprite;
   private canvas = document.createElement('canvas');
-  private ctx = this.canvas.getContext('2d')!;
+  private ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
   private tex: THREE.CanvasTexture;
   private last = '';
   constructor(scale = 1) {
@@ -281,7 +286,7 @@ function knit(house: House) {
   return once(`knit:${house}`, () => {
     const c = document.createElement('canvas');
     c.width = 128; c.height = 64;
-    const g = c.getContext('2d')!;
+    const g = c.getContext('2d', { willReadFrequently: true })!;
     const [a, b] = SCARF[house];
     const n = 10, band = c.height * (1 - KNIT_GREY); // canvas rows top-down = v from 1 down
     for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? b : a; g.fillRect((i * c.width) / n, 0, c.width / n + 1, band); }
@@ -312,7 +317,7 @@ function robeTex(house: House) {
     const S = 256;
     const c = document.createElement('canvas');
     c.width = c.height = S;
-    const g = c.getContext('2d')!;
+    const g = c.getContext('2d', { willReadFrequently: true })!;
     for (let x = 0; x < S; x++) {
       const k = 0.78 + 0.22 * Math.cos((x / S) * Math.PI * 2 * 7);
       g.fillStyle = `rgb(${ROBE_RGB.map((c) => Math.round(c * k)).join(',')})`;
@@ -792,7 +797,7 @@ function glamRobeTex(house: House, robe: number | null, trim: number | null, sca
   const S = 256;
   const c = document.createElement('canvas');
   c.width = c.height = S;
-  const g = c.getContext('2d')!;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
   const base = new THREE.Color(robe ?? (STORYBOOK ? 0x221f2e : 0x1a1a20));
   for (let x = 0; x < S; x++) {
     const k = 0.78 + 0.22 * Math.cos((x / S) * Math.PI * 2 * 7);
@@ -1191,7 +1196,7 @@ function glowTex() {
   if (_glow) return _glow;
   const c = document.createElement('canvas');
   c.width = c.height = 64;
-  const g = c.getContext('2d')!;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
   const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   rg.addColorStop(0, 'rgba(255,255,255,1)');
   rg.addColorStop(1, 'rgba(255,255,255,0)');

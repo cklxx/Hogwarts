@@ -94,7 +94,7 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
       // plaque
       const c = document.createElement('canvas');
       c.width = 512; c.height = 160;
-      const p = c.getContext('2d')!;
+      const p = c.getContext('2d', { willReadFrequently: true })!;
       p.fillStyle = '#d4af37'; p.fillRect(0, 0, 512, 160);
       p.fillStyle = '#2b1d0e'; p.textAlign = 'center';
       p.font = 'bold 44px Georgia'; p.fillText(s.name, 256, 58);

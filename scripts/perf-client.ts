@@ -188,6 +188,15 @@ async function main() {
       if (args.get('dump')) await page.addInitScript(`(() => {
         const seen = new Map();
         const keys = new Set();
+        // and texture uploads that take long (WebGPU: an image or canvas copied into a texture)
+        if (typeof GPUQueue !== 'undefined') {
+          const q = GPUQueue.prototype, copy = q.copyExternalImageToTexture;
+          q.copyExternalImageToTexture = function (src, dst, size) {
+            const t = performance.now(), res = copy.call(this, src, dst, size), ms = performance.now() - t;
+            if (ms > 15) console.log('[perf] texture upload ' + ms.toFixed(0) + ' ms ' + JSON.stringify(size) + ' ' + (src.source && src.source.constructor.name) + ' < ' + new Error().stack.split('\\n').slice(3, 9).map((l) => l.trim().replace(/^at /, '').replace(/https?:[^ )]*\\//, '')).join(' < '));
+            return res;
+          };
+        }
         window.__perfHook = (r) => {
           const pl = r._pipelines, orig = pl.getForRender.bind(pl);
           const size = () => pl.programs.vertex.size + pl.programs.fragment.size;

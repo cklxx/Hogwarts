@@ -49,7 +49,7 @@ function archHole(w: number, h: number, lift = 0) {
 function leadedTexture() {
   const c = document.createElement('canvas');
   c.width = 64; c.height = 128;
-  const g = c.getContext('2d')!;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
   g.fillStyle = '#16110a';
   g.fillRect(0, 0, 64, 128);
   for (let y = 0; y < 128; y += 8)
@@ -70,7 +70,7 @@ function clockTexture() {
   const S = 256;
   const c = document.createElement('canvas');
   c.width = c.height = S;
-  const g = c.getContext('2d')!;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
   g.fillStyle = '#b8912e'; g.beginPath(); g.arc(128, 128, 128, 0, 7); g.fill();
   g.fillStyle = '#f3ead2'; g.beginPath(); g.arc(128, 128, 116, 0, 7); g.fill();
   g.strokeStyle = '#2a2014'; g.lineWidth = 2;

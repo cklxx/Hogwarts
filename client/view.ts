@@ -467,7 +467,7 @@ type XrayMaterial = THREE.MeshBasicNodeMaterial & { xrayColor: THREE.Color; xray
  * A rim in `color` drawn only where the body is hidden: depth Greater (behind what is drawn) and stencil == 1
  * (what is drawn there is the world, not a body). Discards below the feet (floors the shoes sink into).
  */
-function xrayMaterial(color: number): XrayMaterial {
+export function xrayMaterial(color: number): XrayMaterial {
   const m = new THREE.MeshBasicNodeMaterial({
     transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth,
     stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc,
