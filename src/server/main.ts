@@ -16,6 +16,7 @@ import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
 import { FORGE_FAIL_PER_MIN, LOGIN_FAIL_PER_IP_PER_MIN } from '../shared/constants.js';
 import { SnapshotFanout } from './fanout.js';
+import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
@@ -279,7 +280,9 @@ type ClientMsg =
   | { t: 'paircode' }
   | { t: 'rotate' }
   | { t: 'pause'; on: boolean }
-  | { t: 'destroy'; item: string };
+  | { t: 'destroy'; item: string }
+  // the browser shop: a fixed preset forged into your own trunk (shop.ts)
+  | { t: 'buy'; item: string; lang?: string };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -327,6 +330,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       }
       case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(wid, { x: m.x, z: m.z }) : world.setGoal(wid, null) }); break;
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
+      case 'buy': reply({ t: 'bought', r: buyPreset(world, wid, String(m.item ?? ''), m.lang === 'en' ? 'en' : 'zh') }); book(); break;
     }
   } catch (e) {
     reply({ t: 'err', error: (e as Error).message });

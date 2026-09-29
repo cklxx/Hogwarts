@@ -9,6 +9,8 @@ import { buildWorld } from './scene';
 import { heightAt } from './terrain';
 import { makeAuraRing, makeBolt, makeCreature, makeWizard, releaseWizardLook, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
 import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
+import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
+import { PAIR_TTL_S } from '../src/shared/constants';
 import { TIPS } from '../src/lore/memes';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
@@ -26,6 +28,8 @@ interface Me {
   /** Your agent (World.agentState, plus the MCP session count the server may add). */
   agent?: AgentInfo | null;
   agents?: { sessions?: number } | null;
+  /** While stunned: what put you down (World.knockedOutBy). */
+  down?: Down | null;
 }
 /** Owl Post events carry `from` and `owl` (docs/AGENT_LINK.md §C.2). */
 interface Ev { id: number; type: string; text: string; zh?: string; to?: string; t?: number; from?: 'player' | 'agent'; owl?: { id: number; options?: string[]; expiresAt?: number; re?: number } }
@@ -195,7 +199,7 @@ function connect() {
     else if (msg.t === 'cast') {
       ctl.onCast(msg.r);
       if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
-      else if (msg.r.notes?.length) toast(msg.r.notes.join(' · '));
+      else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
       if (!$('#trunk').hidden) send({ t: 'book' }); // Finite Incantatem / Revelio change what the trunk shows
     }
     else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); }
@@ -206,7 +210,8 @@ function connect() {
     else if (msg.t === 'goto') ctl.onGoto(msg.goal);
     else if (msg.t === 'sealmsg') { const r = msg.r; toast(r.runes ? L(`📜 第 ${r.tier} 道封印的第 ${r.page}/${r.of} 页已抄进你的笔记。`, `📜 Page ${r.page}/${r.of} of seal ${r.tier} copied into your notes.`) : r.opened ? L(`📕 封印打开了！`, `📕 The seal opens! ${r.reward}`) : `✗ ${L('ALGIZ 没有出现。封印纹丝不动，还反咬了你一口（-15 生命）。', r.message)}`); }
     else if (msg.t === 'sim') showSim(msg.r);
-    else if (msg.t === 'forged') { bookOut(`✓ ${L('已铸造', 'Forged')} ${msg.name}.${msg.notes.length ? '\n' + msg.notes.join('\n') : ''}`, 'good'); }
+    else if (msg.t === 'forged') { bookOut(`✓ ${L('已铸造', 'Forged')} ${msg.name}${L('。', '.')}${msg.notes.length ? '\n' + msg.notes.map(tr).join('\n') : ''}`, 'good'); }
+    else if (msg.t === 'bought') onBought(msg.r);
     else if (msg.t === 'err') {
       ctl.onError();
       const text = `✗ ${tr(String(msg.error ?? ''))}`;
@@ -467,7 +472,12 @@ function toast(text: string) {
 let curseNews: { text: string; until: number } | null = null;
 
 /** A dark corner of the HUD: a faint rune whose tooltip says which spell lights it. */
-const rune = (icon: string, tip: string, cls = '') => `<button type="button" class="rune ${cls}" data-tip="${esc(tip)}" aria-label="${esc(tip)}"><svg class="ic"><use href="#i-${icon}"/></svg></button>`;
+const rune = (icon: string, tip: string, cls = '', cast = '') => `<button type="button" class="rune ${cls}" data-tip="${esc(tip)}" aria-label="${esc(tip)}"${cast ? ` data-cast="${esc(cast)}"` : ''}><svg class="ic"><use href="#i-${icon}"/></svg></button>`;
+/** A dark corner's rune casts the charm that lights it, once you are old enough (Revelio is not on the hotbar). */
+document.addEventListener('click', (e) => {
+  const r = (e.target as HTMLElement).closest('.rune[data-cast]') as HTMLElement | null;
+  if (r) ctl.castOnSelf(r.dataset.cast!);
+});
 const setHtml = (el: HTMLElement, html: string) => { if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; } };
 /** Longest cooldown seen per hotbar spell since it was last ready: the sweep's full circle. */
 const cdMax = new Map<string, number>();
@@ -477,10 +487,10 @@ function hud() {
   const has = (k: string) => me!.ui.includes(k);
   // top-left: one quiet line (title · name · house); Revelio reveals your own measure
   const stats = has('revelio')
-    ? `<div class="stats">${L(`${me.year} 年级 · 声望 <span class="num">${me.reputation}</span> · <span class="num">${me.galleons}</span> 加隆 · 封印 <span class="num">${me.seals}</span>/4`, `Year ${me.year} · <span class="num">${me.reputation}</span> reputation · <span class="num">${me.galleons}</span> Galleons · <span class="num">${me.seals}</span>/4 seals`)}${me.title.next ? ` · <span title="${esc(me.title.next.how)}">${L('下一级', 'next')}: ${esc(L(me.title.next.zh, me.title.next.en))}</span>` : ''}</div>`
+    ? `<div class="stats">${L(`${me.year} 年级 · 声望 <span class="num">${me.reputation}</span> · <span class="num">${me.galleons}</span> 加隆 · 封印 <span class="num">${me.seals}</span>/4`, `Year ${me.year} · <span class="num">${me.reputation}</span> reputation · <span class="num">${me.galleons}</span> Galleons · <span class="num">${me.seals}</span>/4 seals`)}${me.title.next ? ` · <span title="${esc(tr(me.title.next.how))}">${L('下一级', 'next')}: ${esc(L(me.title.next.zh, me.title.next.en))}</span>` : ''}</div>`
     : '';
   setHtml($('#me'), `<div class="who" title="${esc(houseName(me.house))}"><span class="dot" style="color:${wizardColor(me.house)}"></span><span class="title">${esc(L(me.title.zh, me.title.en))}</span><b>${esc(me.name)}</b><span class="sep">·</span><span class="house">${houseName(me.house)}</span>` +
-    (has('revelio') ? '' : rune('eye', L('施放「原形立现 Revelio」，才能看清自己的斤两', 'Cast Revelio to see your own measure'))) + '</div>' + stats +
+    (has('revelio') ? '' : rune('eye', L('点一下施放「原形立现 Revelio」，看清自己的斤两', 'Click to cast Revelio and see your own measure'), '', 'Revelio')) + '</div>' + stats +
     (me.decree ? `<div class="decree">${L('魔法部长 —— 你手握一道未颁布的法令（MCP: decree）', 'Minister for Magic — you hold an unspent decree (MCP: decree)')}</div>` : ''));
   $('#me').classList.add('veiled');
   // top-right: Tempus
@@ -490,7 +500,7 @@ function hud() {
   const procl = me.proclamation ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
   setHtml($('#clock'), has('tempus')
     ? `<div class="time veiled">${snap.night ? '☾' : '☼'} <span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</div>${procl}`
-    : rune('hourglass', L('施放「时间显现 Tempus」，才知道现在几点', 'Cast Tempus to know the hour'), 'tip-r') + procl);
+    : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
   // bottom-right: Homenum Revelio
   const pres = $('#presence');
   if (has('homenum')) {
@@ -499,10 +509,14 @@ function hud() {
       .map((x) => ({ x, d: Math.hypot(x.x - my!.root.position.x, x.z - my!.root.position.z), a: Math.atan2(x.x - my!.root.position.x, -(x.z - my!.root.position.z)) }))
       .sort((a, b) => a.d - b.d).slice(0, 5);
     setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span style="color:${wizardColor(x.ho)}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`) + '</div>');
-  } else setHtml(pres, rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
+  } else setHtml(pres, me.year >= 3
+    ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
+    : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
   // bottom-left: Point Me lights the minimap
   $('#minimap').hidden = !has('point-me');
-  setHtml($('#pointme'), rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
+  setHtml($('#pointme'), me.year >= 2
+    ? rune('compass', L('点一下施放「给我指路」，点亮小地图', 'Click to cast Point Me and light the minimap'), 'tip-up', 'Point Me')
+    : rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
   bar('.hp', me.hp, me.maxHp, `${L('生命', 'HP')} ${Math.round(me.hp)} / ${me.maxHp}`);
   bar('.mana', me.mana, me.maxMana, `${Math.round(me.mana)} / ${me.maxMana} ${L('法力', 'mana')}`);
   bar('.xp', me.xpNext ? me.xp : 1, me.xpNext ?? 1, '');
@@ -525,11 +539,17 @@ function hud() {
   ctl.hud();
   const ov = $('#overlay');
   if (me.jailed) { ov.hidden = false; ov.innerHTML = L(`<div>阿兹卡班<small>摄魂怪会在 <span class="num">${me.jailed.toFixed(0)}</span> 秒后放你出去</small></div>`, `<div>Azkaban<small>The Dementors will release you in <span class="num">${me.jailed.toFixed(0)}</span>s</small></div>`); }
-  else if (me.stunned) { ov.hidden = false; ov.innerHTML = L(`<div>被击晕了<small>庞弗雷夫人正在给你治疗…… <span class="num">${me.stunned.toFixed(1)}</span> 秒</small></div>`, `<div>Stunned<small>Madam Pomfrey is patching you up… <span class="num">${me.stunned.toFixed(1)}</span>s</small></div>`); }
+  else if (me.stunned) {
+    ov.hidden = false;
+    const slotKey = (n: string) => me!.hotbar.findIndex((s) => s?.name === n) + 1;
+    const adv = `<small class="adv">${esc(downAdvice(me.down, slotKey, me.year))}</small>`;
+    ov.innerHTML = L(`<div>被击晕了<small>庞弗雷夫人正在给你治疗…… <span class="num">${me.stunned.toFixed(1)}</span> 秒</small>${adv}</div>`, `<div>Stunned<small>Madam Pomfrey is patching you up… <span class="num">${me.stunned.toFixed(1)}</span>s</small>${adv}</div>`);
+  }
   else ov.hidden = true;
   drawMinimap();
   drawMarauder();
   linkHud();
+  renderGoal();
   trackBars();
 }
 const bar = (sel: string, v: number, max: number, text: string) => {
@@ -689,6 +709,7 @@ function onPairCode(r: { code?: string; expiresIn?: number }) {
   pairExpired = false;
   pairedWith = null;
   renderMenuLive();
+  if (!$('#sp-agent').hidden) renderAgentBlock();
 }
 function onToken(t: string) {
   if (!t) return;
@@ -728,7 +749,7 @@ function renderMenuLive() {
       <p><button class="ghost" data-copy="op-say">${L('复制这句话', 'Copy the sentence')}</button> <button class="ghost" data-act="pair">${L('换一个', 'New code')}</button> <span class="hint">${L('有效期', 'Valid for')} <span id="op-count"></span> · ${L('只能用一次', 'single use')}</span></p>`;
   } else {
     html = `<p><button data-act="pair" class="op-big">🦉 ${L('生成配对码', 'Get a pairing code')}</button></p>
-      <p class="hint">${pairExpired ? L('配对码过期了，再生成一个吧。', 'That code expired; get a new one.') : L('得到一个 6 位配对码（3 分钟内有效，只能用一次），然后对你的 Agent 说：「连上霍格沃茨，配对码 XXX-XXX」。不用复制任何长密钥。', 'You get a 6-character code (3 minutes, single use); then tell your agent: "Connect to Hogwarts, pairing code XXX-XXX". No long key to copy.')}</p>`;
+      <p class="hint">${pairExpired ? L('配对码过期了，再生成一个吧。', 'That code expired; get a new one.') : L(`得到一个 6 位配对码（${Math.round(PAIR_TTL_S / 60)} 分钟内有效，只能用一次），然后对你的 Agent 说：「连上霍格沃茨，配对码 XXX-XXX」。不用复制任何长密钥。`, `You get a 6-character code (${Math.round(PAIR_TTL_S / 60)} minutes, single use); then tell your agent: "Connect to Hogwarts, pairing code XXX-XXX". No long key to copy.`)}</p>`;
   }
   if (html !== lastPairHtml) { $('#op-pair').innerHTML = html; lastPairHtml = html; }
   const cnt = document.getElementById('op-count');
@@ -936,7 +957,12 @@ function trackBars() {
   if (h !== barsH && h > 0) { barsH = h; document.documentElement.style.setProperty('--bars-h', `${h}px`); }
   const tl = Math.round($('#topleft').getBoundingClientRect().bottom);
   if (tl !== tlBottom && tl > 0) { tlBottom = tl; document.documentElement.style.setProperty('--tl-bottom', `${tl}px`); }
+  const tut = $('#tutorial');
+  const high = tut.dataset.at === 'topleft' || (tut.dataset.at === 'topright' && innerWidth <= 800);
+  const th = !tut.hidden && high && !tut.dataset.over ? Math.round(tut.getBoundingClientRect().height) : 0;
+  if (th !== tutH) { tutH = th; document.documentElement.style.setProperty('--tut-h', `${th}px`); }
 }
+let tutH = -1;
 $('#agentbox').addEventListener('click', (e) => {
   const el = $('#agentbox');
   const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
@@ -995,11 +1021,14 @@ let knownSpells: Set<string> | null = null;
 let trunkMsg = '';
 let destroyArmed: string | null = null;
 let trunkRefetch = 0;
+/** The armory has arrived at least once (so an empty trunk really is empty). */
+let trunkKnown = false;
+let trunkOk = false;
 const SLOT_ICON: Record<string, string> = { wand: '🪄', robe: '🥻', amulet: '📿', trinket: '💍', broom: '🧹' };
 const SLOT_ZH: Record<string, string> = { wand: '魔杖', robe: '长袍', amulet: '护身符', trinket: '小饰物', broom: '扫帚' };
 const MOD_ZH: Record<string, string> = { maxHp: '生命上限', maxMana: '法力上限', manaRegen: '回蓝', speed: '移速', power: '威力', ward: '护甲' };
 function onArmory(armory: { items?: TrunkItem[]; spells?: { name: string }[] }) {
-  if (Array.isArray(armory.items)) { trunkItems = armory.items; trunkAt = performance.now(); }
+  if (Array.isArray(armory.items)) { trunkItems = armory.items; trunkAt = performance.now(); trunkKnown = true; }
   if (Array.isArray(armory.spells)) knownSpells = new Set(armory.spells.map((s) => s.name));
   renderTrunk(true);
 }
@@ -1039,9 +1068,11 @@ function renderTrunk(rebuild = false) {
         : `<button class="ghost" data-act="destroy" data-id="${esc(it.id)}"${stuck}>${L('销毁', 'Destroy')}</button>`;
       return `<li class="${it.cursed ? 'cursed' : ''}"><div class="ti-name">${SLOT_ICON[it.slot] ?? '📦'} <b>${esc(it.name)}</b> <span class="hint">${esc(L(SLOT_ZH[it.slot] ?? it.slot, it.slot))}</span> ${badges}</div>
         <div class="ti-mods">${modsText(it.mods)}${it.lore ? ` <i class="hint">“${esc(it.lore)}”</i>` : ''}</div><div class="ti-acts">${wear} ${del}</div></li>`;
-    }).join('') : `<li class="hint">${L('箱子是空的。让你的 Agent 用 forge_item 给你锻造点东西吧。', 'Your trunk is empty. Ask your agent to forge you something (forge_item).')}</li>`;
+    }).join('') : `<li class="hint">${L('箱子是空的。在下面的商店买一件，或者让你的 Agent 用 forge_item 给你锻造。', 'Your trunk is empty. Buy something in the shop below, or ask your agent to forge you something (forge_item).')}</li>`;
     $('#trunk-msg').textContent = trunkMsg;
-  }
+    $('#trunk-msg').className = trunkOk ? 'ok' : 'err';
+    renderShop();
+  } else if (shopSig !== `${me?.galleons}`) renderShop();
   // live countdowns; once a binding wears off, ask for a fresh list
   document.querySelectorAll<HTMLElement>('#trunk-list [data-bound]').forEach((b) => {
     const it = trunkItems.find((x) => x.id === b.dataset.bound);
@@ -1068,8 +1099,10 @@ $('#trunk').addEventListener('click', (e) => {
   trunkMsg = '';
   mark('trunk');
   if (act === 'close') { toggleTrunk(false); return; }
+  trunkOk = false;
   if (act === 'finite') { ctl.castOnSelf('Finite Incantatem'); return; }
   if (act === 'revelio') { ctl.castOnSelf('Revelio'); return; }
+  if (act === 'buy') { send({ t: 'buy', item: b.dataset.item, lang }); b.disabled = true; return; }
   if (act === 'equip') send({ t: 'equip', item: b.dataset.id });
   else if (act === 'unequip') send({ t: 'unequip', slot: b.dataset.slot });
   else if (act === 'destroy') { destroyArmed = b.dataset.id ?? null; renderTrunk(true); return; }
@@ -1078,6 +1111,25 @@ $('#trunk').addEventListener('click', (e) => {
   else return;
   send({ t: 'book' }); // the server does not answer equip / unequip / destroy: read the trunk again
 });
+
+// ------------------------------------------------------------------ the shop (in the trunk): fixed presets, forged for yourself (src/shared/shop.ts)
+let shopSig = '';
+function renderShop() {
+  const g = me?.galleons ?? 0;
+  shopSig = `${me?.galleons}`;
+  $('#shop').innerHTML = `<h3>${L('商店', 'Shop')} <small>${L(`你有 <span class="num">${g}</span> 加隆 · 买下自动穿上 · 打败魔物赚加隆`, `you have <span class="num">${g}</span> Galleons · worn at once · creatures drop Galleons`)}</small></h3><ul class="shop-list">` +
+    SHOP.map((s) => {
+      const price = shopPrice(s), can = g >= price;
+      return `<li><div class="ti-name">${SLOT_ICON[s.slot] ?? '📦'} <b>${esc(L(s.zh, s.en))}</b> <span class="hint">${esc(L(SLOT_ZH[s.slot] ?? s.slot, s.slot))}</span></div>
+        <div class="ti-mods">${modsText(s.mods)} <i class="hint">“${esc(L(s.lore.zh, s.lore.en))}”</i></div>
+        <div class="ti-acts"><button data-act="buy" data-item="${esc(s.key)}"${can ? '' : ' disabled'}>${L(`<span class="num">${price}</span> 加隆 · 购买`, `Buy · <span class="num">${price}</span> Galleons`)}</button>${can ? '' : ` <span class="hint">${L(`还差 ${price - g} 加隆`, `${price - g} more Galleons`)}</span>`}</div></li>`;
+    }).join('') + '</ul>';
+}
+function onBought(r: { item: string; equipped: boolean; notes: string[] }) {
+  trunkOk = true;
+  trunkMsg = `✓ ${L(`买下了「${r.item}」`, `Bought "${r.item}"`)}${r.equipped ? L('，已经穿上。', ', now wearing it.') : L('：在上面点「穿上」。', ': press Equip above.')} ${tr(r.notes[0] ?? '')}`;
+  renderTrunk(true);
+}
 
 /** The Owl Post parts of the 10 Hz HUD. */
 function linkHud() {
@@ -1092,40 +1144,214 @@ function linkHud() {
 type ArmorySpell = { id: string; name: string; incantation: string; builtin: boolean; minYear: number; nodes: number; effects: string[]; source: string };
 let bookSpells: ArmorySpell[] = [];
 let bookSel: string | null = null;
-function toggleBook() {
+/** The hotbar as spell ids (from the last armory; changed at once when you move a spell, then confirmed by the server). */
+let bookBar: (string | null)[] = [null, null, null, null, null, null];
+/** The last error the editor showed (handed to your agent by "🦉 Ask my agent"). */
+let lastBookErr = '';
+function toggleBook(force?: boolean) {
   const b = $('#book');
-  b.hidden = !b.hidden;
+  b.hidden = !(force ?? b.hidden);
   if (!b.hidden) { solo(b); send({ t: 'book' }); ctl.notify('book'); }
 }
-function bookOut(text: string, cls = '') { const o = $('#sp-out'); o.textContent = text; o.className = cls; }
+function bookOut(text: string, cls = '') {
+  const o = $('#sp-out');
+  o.textContent = text;
+  o.className = cls;
+  if (cls === 'bad') lastBookErr = text; else if (cls === 'good') lastBookErr = '';
+}
 function renderBook(armory: { spells: ArmorySpell[]; hotbar: { slot: number; spell: string | null }[] }, grimoireText: string) {
   bookSpells = armory.spells;
+  const idOf = (name: string | null) => (name ? bookSpells.find((s) => s.name === name)?.id ?? null : null);
+  bookBar = Array.from({ length: 6 }, (_, i) => idOf(armory.hotbar.find((h) => h.slot === i + 1)?.spell ?? null));
   $('#grimoire').textContent = grimoireText;
-  const slotOf = (name: string) => armory.hotbar.find((h) => h.spell === name)?.slot;
-  $('#book-list').innerHTML = `<li data-id="">＋ <b>${L('新咒语', 'New spell')}</b><small>${L('自己写一个', 'write your own')}</small></li>` + bookSpells.map((s) =>
-    `<li data-id="${s.id}" class="${s.id === bookSel ? 'sel' : ''}">${s.builtin ? '📖' : '✒️'} <b>${esc(s.builtin ? L(`${spellName(s.name)} ${s.name}`, s.name) : s.name)}</b>${slotOf(s.name) ? ` <i>[${slotOf(s.name)}]</i>` : ''}<small>y${s.minYear} · ${s.nodes} nodes · ${esc(s.effects.join(', ') || '—')}</small></li>`).join('');
-  $('#book-list').querySelectorAll('li').forEach((li) => { (li as HTMLElement).onclick = () => loadSpell((li as HTMLElement).dataset.id || null); });
+  renderBookList();
 }
+const spellLabel = (s: ArmorySpell) => (s.builtin ? L(`${spellName(s.name)} ${s.name}`, s.name) : s.name);
+/** The spell list (each row with its hotbar keys 1–6) and the hotbar strip above it (drop a spell on a cell). */
+function renderBookList() {
+  const slotOf = (id: string) => bookBar.indexOf(id) + 1;
+  const keys = (s: ArmorySpell) => `<span class="bk-slots" role="group" aria-label="${esc(L('放到快捷栏', 'Put on the hotbar'))}">${[1, 2, 3, 4, 5, 6].map((n) =>
+    `<button type="button" class="bk-slot${slotOf(s.id) === n ? ' on' : ''}" data-slot="${n}" data-spell="${esc(s.id)}" title="${esc(slotOf(s.id) === n ? L(`在 ${n} 号栏 · 再点一下取下`, `On slot ${n} · click again to remove`) : L(`放到 ${n} 号栏`, `Put on slot ${n}`))}">${n}</button>`).join('')}</span>`;
+  $('#book-list').innerHTML = `<li data-id="" class="${!bookSel && !tplKey ? 'sel' : ''}">＋ <b>${L('新咒语', 'New spell')}</b><small>${L('自己写一个', 'write your own')}</small></li>`
+    + `<li data-tpl="1" class="tpl-entry${tplKey ? ' sel' : ''}">🧩 <b>${L('从模板开始', 'Start from a template')}</b><small>${L('不用写代码：选一选、拖一拖', 'no code: pick and slide')}</small></li>`
+    + bookSpells.map((s) => `<li data-id="${esc(s.id)}" draggable="true" class="${s.id === bookSel ? 'sel' : ''}">${s.builtin ? '📖' : '✒️'} <b>${esc(spellLabel(s))}</b><small>${L(`${s.minYear} 年级`, `y${s.minYear}`)} · ${s.nodes} ${L('节点', 'nodes')} · ${esc(s.effects.join(', ') || '—')}</small>${keys(s)}</li>`).join('');
+  $('#book-bar').innerHTML = `<span class="bb-h">${L('快捷栏', 'Hotbar')}</span>` + bookBar.map((id, i) => {
+    const s = id ? bookSpells.find((x) => x.id === id) : null;
+    return `<div class="bb-cell${s ? '' : ' empty'}" data-cell="${i + 1}" title="${esc(L('把咒语拖到这里；或者先选中咒语再点这一格', 'Drop a spell here, or select one and click this cell'))}"><b>${i + 1}</b><span>${s ? esc(s.builtin ? spellName(s.name) : s.name) : '·'}</span></div>`;
+  }).join('') + `<span class="bb-hint hint">${L('点咒语后面的数字，或把咒语拖到格子里', 'Click a number after a spell, or drag it onto a cell')}</span>`;
+}
+/** Put a spell on a hotbar slot (it swaps with whatever was there; the same slot again takes it off). */
+function assignSlot(id: string, n: number) {
+  const bar = [...bookBar], i = n - 1, j = bar.indexOf(id);
+  if (j === i) bar[i] = null;
+  else { if (j >= 0) bar[j] = bar[i]; bar[i] = id; }
+  bookBar = bar;
+  renderBookList();
+  send({ t: 'hotbar', slots: bar });
+  const s = bookSpells.find((x) => x.id === id);
+  const nm = s ? (s.builtin ? spellName(s.name) : s.name) : '';
+  bookOut(bar[i] === id ? L(`「${nm}」放到了 ${n} 号栏：按 ${n} 施放。`, `${nm} is on slot ${n}: press ${n}.`) : L(`「${nm}」从 ${n} 号栏取下了。`, `${nm} left slot ${n}.`), 'good');
+}
+$('#book-list').addEventListener('click', (e) => {
+  const t = e.target as HTMLElement;
+  const k = t.closest('.bk-slot') as HTMLElement | null;
+  if (k) { assignSlot(k.dataset.spell!, Number(k.dataset.slot)); return; }
+  const li = t.closest('li') as HTMLElement | null;
+  if (!li) return;
+  if (li.dataset.tpl) openTemplates();
+  else loadSpell(li.dataset.id || null);
+});
+$('#book-list').addEventListener('dragstart', (e) => {
+  const li = (e.target as HTMLElement).closest('li[data-id]') as HTMLElement | null;
+  if (!li?.dataset.id || !e.dataTransfer) return;
+  e.dataTransfer.setData('text/plain', li.dataset.id);
+  e.dataTransfer.effectAllowed = 'move';
+  $('#book-bar').classList.add('drag');
+});
+$('#book-list').addEventListener('dragend', () => $('#book-bar').classList.remove('drag'));
+const barCell = (e: Event) => (e.target as HTMLElement).closest('.bb-cell') as HTMLElement | null;
+$('#book-bar').addEventListener('dragover', (e) => { const c = barCell(e); if (!c) return; e.preventDefault(); c.classList.add('over'); });
+$('#book-bar').addEventListener('dragleave', (e) => barCell(e)?.classList.remove('over'));
+$('#book-bar').addEventListener('drop', (e) => {
+  const c = barCell(e);
+  $('#book-bar').classList.remove('drag');
+  if (!c) return;
+  e.preventDefault();
+  const id = e.dataTransfer?.getData('text/plain');
+  if (id && bookSpells.some((s) => s.id === id)) assignSlot(id, Number(c.dataset.cell));
+});
+$('#book-bar').addEventListener('click', (e) => { const c = barCell(e); if (c && bookSel) assignSlot(bookSel, Number(c.dataset.cell)); });
+
 function loadSpell(id: string | null) {
   bookSel = id;
+  closeTemplates();
   const s = bookSpells.find((x) => x.id === id);
   $<HTMLInputElement>('#sp-name').value = s ? (s.builtin ? `${s.name} II` : s.name) : '';
   $<HTMLInputElement>('#sp-inc').value = s && !s.builtin ? s.incantation : '';
   $<HTMLTextAreaElement>('#sp-src').value = s?.source ?? '';
-  $('#book-list').querySelectorAll('li').forEach((li) => li.classList.toggle('sel', (li as HTMLElement).dataset.id === (id ?? '')));
-  bookOut(s?.builtin ? L(`${spellName(s.name)}（${s.name}）是标准课程的一部分。改一改，用新名字铸造，它就是你的了。`, `${s.name} is part of the standard curriculum. Edit it and forge it under a new name to make it yours.`) : s ? L('修改后点「铸造」来改良它（同名会覆盖）。', 'Edit and Forge to rework it (same name replaces it).') : L('写一段 Runes 程序。下面的魔法书里有你能用的每一个词。', 'Write a Runes program. Open the Grimoire below for every word you can use.'));
+  renderBookList();
+  bookOut(s?.builtin ? L(`${spellName(s.name)}（${s.name}）是标准课程的一部分。点后面的数字把它放上快捷栏；改一改、用新名字铸造，它就是你的了。`, `${s.name} is part of the standard curriculum. Click a number to put it on the hotbar; edit it and forge it under a new name to make it yours.`) : s ? L('修改后点「铸造」来改良它（同名会覆盖）。', 'Edit and Forge to rework it (same name replaces it).') : L('写一段 Runes 程序，或者点左边的「从模板开始」。下面的魔法书里有你能用的每一个词。', 'Write a Runes program, or pick "Start from a template" on the left. The Grimoire below has every word you can use.'));
 }
 function showSim(r: { ok: boolean; mana: number; effects: string[]; notes: string[]; gas: number; error?: string; nodes?: number }) {
+  const notes = r.notes.map((n) => '  ! ' + tr(n)).join('\n');
   bookOut(r.ok
-    ? `✓ ${L(`会消耗 ${r.mana} 法力`, `Would cast for ${r.mana} mana`)} (${r.gas} gas${r.nodes ? `, ${r.nodes} nodes` : ''}).\n${r.effects.map((e) => '  • ' + e).join('\n') || L('  （无效果）', '  (no effects)')}${r.notes.length ? '\n' + r.notes.map((n) => '  ! ' + n).join('\n') : ''}`
-    : `✗ ${L('失效', 'Fizzles')}: ${tr(r.error ?? '')}${r.gas ? ` (after ${r.gas} gas)` : ''}`, r.ok ? 'good' : 'bad');
+    ? `✓ ${L(`会消耗 ${r.mana} 法力`, `Would cast for ${r.mana} mana`)}（${r.gas} gas${r.nodes ? L(`，${r.nodes} 个节点`, `, ${r.nodes} nodes`) : ''}）\n${r.effects.map((e) => '  • ' + e).join('\n') || L('  （无效果）', '  (no effects)')}${notes ? '\n' + notes : ''}`
+    : `✗ ${L('失效', 'Fizzles')}：${tr(r.error ?? '')}${r.gas ? L(`（运行了 ${r.gas} gas 之后）`, ` (after ${r.gas} gas)`) : ''}${notes ? '\n' + notes : ''}`, r.ok ? 'good' : 'bad');
 }
-$('#sp-sim').onclick = () => send({ t: 'simulate', source: $<HTMLTextAreaElement>('#sp-src').value, x: ctl.aim.x, z: ctl.aim.z, target: ctl.targetKey() ?? undefined });
+const simulateDraft = () => send({ t: 'simulate', source: $<HTMLTextAreaElement>('#sp-src').value, x: ctl.aim.x, z: ctl.aim.z, target: ctl.targetKey() ?? undefined });
+$('#sp-sim').onclick = simulateDraft;
 $('#sp-forge').onclick = () => {
   const slot = Number($<HTMLSelectElement>('#sp-slot').value) || undefined;
   send({ t: 'forge', name: $<HTMLInputElement>('#sp-name').value, incantation: $<HTMLInputElement>('#sp-inc').value || undefined, source: $<HTMLTextAreaElement>('#sp-src').value, slot });
 };
 $('#sp-cast').onclick = () => { if (bookSel) ctl.castKey(bookSel); };
+
+// ------------------------------------------------------------------ templates (从模板开始): menus and sliders write the Runes, simulated live
+let tplKey: string | null = null;
+let tplValues: Record<string, TplValue> = {};
+let tplName = '';
+let tplTimer = 0;
+const firstFreeSlot = () => { const i = bookBar.indexOf(null); return i >= 0 ? i + 1 : 6; };
+function openTemplates(key?: string) {
+  const y = me?.year ?? 1;
+  const t = TEMPLATES.find((x) => x.key === key && x.year <= y) ?? TEMPLATES.find((x) => x.key === tplKey && x.year <= y) ?? TEMPLATES[0];
+  if (t.key !== tplKey) tplValues = tplDefaults(t, y, me?.seals ?? 0);
+  tplKey = t.key;
+  bookSel = null;
+  const slot = $<HTMLSelectElement>('#sp-slot');
+  if (!slot.value) slot.value = String(firstFreeSlot());
+  $('#sp-tpl').hidden = false;
+  renderTemplates();
+  renderBookList();
+  applyTemplate();
+}
+function closeTemplates() { tplKey = null; $('#sp-tpl').hidden = true; }
+function renderTemplates() {
+  const t = TEMPLATES.find((x) => x.key === tplKey);
+  if (!t) return;
+  const y = me?.year ?? 1, se = me?.seals ?? 0;
+  const v = tplClamp(t, tplValues, y, se);
+  const chips = TEMPLATES.map((k) => `<button type="button" class="tp-chip${k.key === t.key ? ' on' : ''}" data-tk="${k.key}"${k.year > y ? ` disabled title="${esc(L(`${k.year} 年级解锁`, `unlocks in year ${k.year}`))}"` : ''}>${esc(L(k.zh, k.en))}${k.year > y ? ` <small>${L(`${k.year} 年级`, `y${k.year}`)}</small>` : ''}</button>`).join('');
+  const params = t.params.map((p) => {
+    if (p.kind === 'range') {
+      const unit = p.unit ? L(p.unit.zh, p.unit.en) : '';
+      return `<label class="tp-p"><span>${esc(L(p.zh, p.en))}</span><input type="range" data-p="${p.id}" min="${p.min}" max="${p.max(y, se)}" step="${p.step ?? 1}" value="${v[p.id]}"/><b class="num" data-pv="${p.id}">${v[p.id]}${unit}</b></label>`;
+    }
+    return `<label class="tp-p"><span>${esc(L(p.zh, p.en))}</span><select data-p="${p.id}">${p.options.map((o) => {
+      const lock = optionLock(o, y, se);
+      return `<option value="${esc(o.v)}"${o.v === v[p.id] ? ' selected' : ''}${optionOpen(o, y, se) ? '' : ' disabled'}>${esc(L(o.zh, o.en))}${lock ? L(`（${lock}）`, ` (${lock})`) : ''}</option>`;
+    }).join('')}</select></label>`;
+  }).join('');
+  $('#sp-tpl').innerHTML = `<div class="tp-chips">${chips}</div><p class="tp-desc hint">${esc(L(t.desc.zh, t.desc.en))}</p><div class="tp-params">${params}</div>`
+    + `<p class="tp-foot hint">${L('代码会写进下面的框里，并自动模拟出法力消耗。满意了就选一个快捷栏，点「铸造」。', 'The code goes in the box below and is simulated for its mana cost. Happy? Pick a hotbar slot and Forge.')}</p>`;
+}
+function applyTemplate() {
+  const t = TEMPLATES.find((x) => x.key === tplKey);
+  if (!t) return;
+  const y = me?.year ?? 1, se = me?.seals ?? 0;
+  tplValues = tplClamp(t, tplValues, y, se);
+  $<HTMLTextAreaElement>('#sp-src').value = t.build(tplValues, y, se);
+  const nm = $<HTMLInputElement>('#sp-name');
+  const suggested = L(t.name.zh, t.name.en);
+  if (!nm.value || nm.value === tplName || bookSpells.some((s) => s.builtin && `${s.name} II` === nm.value)) nm.value = suggested;
+  tplName = suggested;
+  clearTimeout(tplTimer);
+  tplTimer = window.setTimeout(simulateDraft, 250);
+}
+$('#sp-tpl').addEventListener('click', (e) => {
+  const c = (e.target as HTMLElement).closest('.tp-chip') as HTMLButtonElement | null;
+  if (c && !c.disabled) openTemplates(c.dataset.tk);
+});
+$('#sp-tpl').addEventListener('input', (e) => {
+  const el = e.target as HTMLInputElement | HTMLSelectElement;
+  const id = el.dataset.p;
+  if (!id) return;
+  tplValues[id] = el instanceof HTMLInputElement && el.type === 'range' ? Number(el.value) : el.value;
+  const t = TEMPLATES.find((x) => x.key === tplKey)!;
+  const p = t.params.find((x) => x.id === id);
+  const out = $('#sp-tpl').querySelector(`[data-pv="${id}"]`);
+  if (out && p?.kind === 'range') out.textContent = `${el.value}${p.unit ? L(p.unit.zh, p.unit.en) : ''}`;
+  applyTemplate();
+});
+
+// ------------------------------------------------------------------ 🦉 ask my agent: the owl pre-filled with the draft, or a prompt to copy
+function agentRequest() {
+  return {
+    draft: $<HTMLTextAreaElement>('#sp-src').value,
+    error: lastBookErr.split('\n')[0].replace(/^✗\s*(?:失效|Fizzles)?[:：]?\s*/, ''),
+    slot: Number($<HTMLSelectElement>('#sp-slot').value) || firstFreeSlot(),
+    name: $<HTMLInputElement>('#sp-name').value.trim() || undefined,
+  };
+}
+function renderAgentBlock() {
+  const box = $('#sp-agent');
+  const code = pairing && pairing.until > performance.now() ? pairing.code : null;
+  box.innerHTML = `<p><b>${L('你的 Agent 还没连接。', 'Your agent is not connected.')}</b> ${L('把下面这段复制给它（例如 Claude Code）：', 'Copy this to it (e.g. Claude Code):')}</p>
+    <div class="op-cmd"><pre id="sp-agent-text">${esc(agentPrompt({ ...agentRequest(), code }))}</pre></div>
+    <p class="row"><button data-copy="sp-agent-text">${L('复制给 Agent 的提示词', 'Copy the prompt for your agent')}</button>${code ? '' : ` <button class="ghost" data-act="pair">${L('生成配对码（放进提示词）', 'Get a pairing code (goes in the prompt)')}</button>`} <button class="ghost quiet" data-act="close">${L('收起', 'Hide')}</button></p>`;
+  box.hidden = false;
+}
+$('#sp-agent').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+  if (!b) return;
+  if (b.dataset.copy) copyText($('#sp-agent-text').textContent ?? '', b);
+  if (b.dataset.act === 'pair') requestPairCode();
+  if (b.dataset.act === 'close') $('#sp-agent').hidden = true;
+});
+$('#sp-agent-btn').onclick = () => {
+  if (agentNow()?.connected) {
+    $('#sp-agent').hidden = true;
+    const text = agentAsk(agentRequest());
+    toggleOwl(true);
+    const i = $<HTMLInputElement>('#owl-input');
+    i.value = text;
+    i.focus();
+    i.setSelectionRange(text.length, text.length);
+    owlStatus = L('写好了：按回车寄给你的 Agent（可以先改一改）。', 'Ready: press Enter to send it to your agent (edit it first if you like).');
+    owlDirty = true;
+    renderOwl();
+  } else renderAgentBlock();
+};
 
 // ------------------------------------------------------------------ the Restricted Section (seals)
 let sealTier = 1;
@@ -1143,6 +1369,59 @@ $('#seal-read').onclick = () => send({ t: 'readpage', tier: sealTier });
 $('#seal-break').onclick = () => send({ t: 'breakseal', tier: sealTier, words: $<HTMLInputElement>('#seal-words').value.split(/[\s,]+/).filter(Boolean) });
 
 $('#sp-forget').onclick = () => { const n = $<HTMLInputElement>('#sp-name').value; if (n) send({ t: 'unlearn', spell: n }); };
+
+// ------------------------------------------------------------------ the next goal (下一步): one quiet line under your name, after the tutorial
+const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
+let goalOff = lsGet('hogwarts.goal.off') === '1';
+let goalKey = lsGet('hogwarts.goal.seen') ?? '';
+let goalOpen = false;
+let goal: Goal | null = null;
+function renderGoal() {
+  const el = $('#goal');
+  if (!me || goalOff || ctl.tutorialActive() || me.stunned || me.jailed) { el.hidden = true; return; }
+  goal = nextGoal({
+    year: me.year, xp: me.xp, xpNext: me.xpNext, ui: me.ui, seals: me.seals, galleons: me.galleons, reputation: me.reputation, decree: me.decree, house: me.house,
+    customSpells: bookSpells.length ? bookSpells.filter((x) => !x.builtin).length : null,
+    items: trunkKnown ? trunkItems.length : null,
+  });
+  if (!goal) { el.hidden = true; return; }
+  if (goal.key !== goalKey) {
+    // progress: remember it and say so once
+    if (goalKey) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+    goalKey = goal.key; lsSet('hogwarts.goal.seen', goal.key); goalOpen = false;
+  }
+  const html = `<div class="g-row"><button type="button" class="g-line" aria-expanded="${goalOpen}" title="${esc(L('点一下看怎么做', 'Click for how'))}"><span class="g-k">${L('下一步', 'Next')}</span><span class="g-t">${esc(goal.text)}</span></button>`
+    + `<button type="button" class="g-x" title="${esc(L('隐藏（帮助面板 H 里可以重新打开）', 'Hide (the help panel, H, brings it back)'))}" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></div>`
+    + (goalOpen ? `<div class="g-why">${esc(goal.why)}${goal.act ? `<div class="g-acts"><button type="button" class="g-act">${esc(goal.actLabel ?? '')}</button></div>` : ''}</div>` : '');
+  setHtml(el, html);
+  el.hidden = false;
+}
+$('#goal').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button');
+  if (!b) return;
+  if (b.classList.contains('g-line')) goalOpen = !goalOpen;
+  else if (b.classList.contains('g-x')) { goalOff = true; lsSet('hogwarts.goal.off', '1'); }
+  else if (b.classList.contains('g-act') && goal?.act) {
+    const a = goal.act;
+    goalOpen = false;
+    if ('cast' in a) ctl.castOnSelf(a.cast);
+    else if (a.open === 'book') toggleBook(true);
+    else if (a.open === 'tpl') { toggleBook(true); openTemplates(); }
+    else if (a.open === 'seals') { if ($('#seals').hidden) toggleSeals(); }
+    else if (a.open === 'trunk') toggleTrunk(true);
+    else if (a.open === 'board') { if ($('#board').hidden) void showBoard(); }
+    else if (a.open === 'owl') toggleOwl(true);
+  }
+  b.blur();
+  renderGoal();
+});
+document.addEventListener('click', (e) => {
+  if (!(e.target as HTMLElement).closest('#help-goal')) return;
+  goalOff = false; lsSet('hogwarts.goal.off', '0');
+  ctl.toggleHelp(false);
+  renderGoal();
+});
 
 // ------------------------------------------------------------------ input (targeting, smart casting, click-to-move, camera, help, onboarding: controls.ts)
 function toggleMenu() {
@@ -1210,7 +1489,13 @@ addEventListener('keydown', (e) => {
   }
   // typing never triggers game keys (O and T included)
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName ?? '')) {
-    if (e.key === 'Escape') { if (document.activeElement === $('#owl-input')) toggleOwl(false); (document.activeElement as HTMLElement).blur(); }
+    if (e.key === 'Escape') {
+      const a = document.activeElement as HTMLElement;
+      if (a === $('#owl-input')) toggleOwl(false);
+      // the spellbook keeps your draft: Esc closes it straight from a field
+      if (a.closest('#book')) $('#book').hidden = true;
+      a.blur();
+    }
     return;
   }
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
