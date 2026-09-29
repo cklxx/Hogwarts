@@ -1,5 +1,6 @@
 import { SUMMON_KINDS, SUMMON_YEAR, UI_CHARMS, type EffectPrimitive, type Element, type SummonKind, type UiCharm } from '../shared/constants.js';
 import { inZone, mulberry32, ZONES } from '../shared/map.js';
+import { UI_CHARM_INFO } from '../shared/reveal.js';
 import { analyze } from '../runes/checker.js';
 import { Env, Interp, type RuneHost, type Value, display, isRef, isVec, ref, vec } from '../runes/interp.js';
 import { type Node, RuneError } from '../runes/parser.js';
@@ -202,6 +203,8 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
           const key = String(args[0]) as UiCharm;
           if (!(key in UI_CHARMS)) throw new RuneError(`reveal what? one of :${Object.keys(UI_CHARMS).join(' :')}`, at.line, at.col);
           if (!ctx.free && UI_CHARMS[key] > w.year) throw new RuneError(`:${key} is year-${UI_CHARMS[key]} magic`, at.line, at.col);
+          // an agent sees the corner in MCP look (kernel/reveal.ts), so the report says where
+          if (!ctx.free) notes.push(`reveal :${key} → look.${UI_CHARM_INFO[key].look} (${UI_CHARM_INFO[key].en})`);
           return push({}, `reveal ${key}`, () => world.reveal(w, key));
         }
         case 'chain': {

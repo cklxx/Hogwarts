@@ -1,4 +1,6 @@
 import { ZH_CREATURE, ZH_ELEMENT, ZH_HOUSE, zhPlace, zhSpell } from '../src/shared/zh';
+import { UI_CHARM_INFO } from '../src/shared/reveal';
+import type { UiCharm } from '../src/shared/constants';
 
 /** 中文 is the default; English is one click away (Esc menu). */
 export type Lang = 'zh' | 'en';
@@ -100,6 +102,7 @@ const ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^the storm must gather within (\d+)m/, (m) => `风暴只能在 ${m[1]} 米以内聚集`],
   [/^cleanse a wizard in play or one of your own summons/, () => '咒立停只能作用于在场的巫师或你自己的召唤物'],
   [/^reveal what\? one of (.+)/, (m) => `reveal 要揭示什么？只能是 ${m[1]}`],
+  [/^reveal :([\w-]+) → (look\.\w+)/, (m) => `显形 :${m[1]} 点亮了${UI_CHARM_INFO[m[1] as UiCharm]?.zh ?? '一角'}（Agent 看 ${m[2]}）`],
   [/^:(tempus|revelio|point-me|homenum) is year-(\d) magic/, (m) => `「:${m[1]}」是 ${m[2]} 年级的魔法`],
   [/^summon what\? one of (.+)/, (m) => `召唤什么？只能是 ${m[1]}`],
   [/^:(\w+) is year-(\d) conjuration/, (m) => `召唤「:${m[1]}」要 ${m[2]} 年级`],

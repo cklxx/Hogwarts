@@ -396,7 +396,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   // ---------------------------------------------------------------- acting in the world
   register('look', {
     title: 'Look around',
-    description: 'Nearby wizards (by public handle), creatures (by id, with weaknesses), landmarks, time of day and weather.',
+    description: 'Nearby wizards (by public handle), creatures (by id, with weaknesses), landmarks, time of day and weather. The HUD corners your reveal charms have lit appear as sections: tempus (clock, term), revelio (your own measure), pointMe (a north-up text radar), homenum (who is near, with compass bearings); darkCorners says which charm lights the rest.',
     inputSchema: { radius: z.number().min(1).max(80).optional() },
     annotations: { readOnlyHint: true },
   }, me((wid, a: { radius?: number }) => {

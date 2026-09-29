@@ -4,6 +4,7 @@ import { LANDMARKS, OBSTACLES } from '../src/shared/map';
 import { createDecor, type Look } from './decor';
 import { createFx } from './fx';
 import { createWatch } from './watch';
+import { HOMENUM_RANGE, RADAR_RANGE, homenum } from '../src/shared/reveal';
 import { L, applyStatic, creatureName, houseName, lang, placeName, primName, setLang, simEffect, spellName, tr } from './i18n';
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
@@ -699,10 +700,9 @@ function hud() {
   const pres = $('#presence');
   if (has('homenum')) {
     const my = wizards.get(myHandle);
-    const near = snap.w.filter((x) => x.h !== myHandle && my && Math.hypot(x.x - my.root.position.x, x.z - my.root.position.z) < 60)
-      .map((x) => ({ x, d: Math.hypot(x.x - my!.root.position.x, x.z - my!.root.position.z), a: Math.atan2(x.x - my!.root.position.x, -(x.z - my!.root.position.z)) }))
-      .sort((a, b) => a.d - b.d).slice(0, 5);
-    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span class="hn" data-house="${x.ho}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`) + '</div>');
+    // the same sense MCP look.homenum reports (src/shared/reveal.ts), from where you are drawn
+    const near = my ? homenum({ x: my.root.position.x, z: my.root.position.z }, snap.w.filter((x) => x.h !== myHandle)) : [];
+    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ o: x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span class="hn" data-house="${x.ho}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L(`${HOMENUM_RANGE} 米内没有人。`, `No one within ${HOMENUM_RANGE}m.`)}</div>`) + '</div>');
   } else setHtml(pres, me.year >= 3
     ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
     : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
@@ -784,7 +784,7 @@ function drawMinimap() {
   if (!my || !snap) return;
   // bottom-left stays dark (a faint rune, see hud) until the Four-Point Spell
   if (!me?.ui.includes('point-me')) return;
-  const cx = my.root.position.x, cz = my.root.position.z, S = 1.1;
+  const cx = my.root.position.x, cz = my.root.position.z, S = 110 / RADAR_RANGE; // the reach MCP look.pointMe reports
   g.clearRect(0, 0, 220, 220);
   g.save();
   g.beginPath(); g.arc(110, 110, 108, 0, Math.PI * 2); g.clip();
