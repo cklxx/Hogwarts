@@ -117,3 +117,40 @@ describe('playtest round 2', () => {
     expect(w.ministerBar()).toBe(33);
   });
 });
+
+describe('playtest round 2, over MCP', () => {
+  async function client(w: World, wid: string) {
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { createMcpServer } = await import('../src/mcp/server.js');
+    const server = createMcpServer(w, { wizardId: wid, baseUrl: 'http://x' });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await server.connect(st);
+    const c = new Client({ name: 'test', version: '0' });
+    await c.connect(ct);
+    return async (name: string, args: Record<string, unknown> = {}) => {
+      const r = (await c.callTool({ name, arguments: args })) as { content: { text: string }[]; isError?: boolean };
+      return JSON.parse(r.content[0].text);
+    };
+  }
+
+  it('"the password said nothing back": say answers with what it set off', async () => {
+    const w = mk();
+    const a = player(w, 'Moony');
+    const call = await client(w, a.id);
+    const r = await call('say', { text: 'I solemnly swear that I am up to no good' });
+    expect(r.answered?.length).toBeGreaterThan(0);
+    expect((await call('say', { text: 'hello' })).answered).toBeUndefined();
+  });
+
+  it('"status has no hp": a duel match shows both sides\' health', async () => {
+    const w = mk();
+    const a = player(w, 'Left'), b = player(w, 'Right', 'Slytherin');
+    for (const x of [a, b]) x.pos = { x: DUEL_STAGE.x, z: DUEL_STAGE.z + 3 };
+    duelJoin(w, a.id); duelJoin(w, b.id);
+    run(w, 0.2);
+    const r = await (await client(w, a.id))('duel_club', { op: 'status' });
+    expect(r.match.hp.map((x: { name: string }) => x.name)).toEqual(['Left', 'Right']);
+    expect(r.match.hp[0].maxHp).toBeGreaterThan(0);
+  });
+});

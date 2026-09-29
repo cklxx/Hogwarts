@@ -109,7 +109,12 @@ export function duelStatus(world: World, wid: string | null) {
     closed: duelClosed(world),
     stage: DUEL_STAGE,
     queue: c.queue.length, you: pos >= 0 ? { position: pos + 1 } : inMatch(c, wid) ? { inMatch: true } : null,
-    match: m ? { a: name(m.a), b: name(m.b), phase: m.phase, secondsLeft: Math.max(0, Math.ceil(phaseEnd(m) - world.now)) } : null,
+    match: m ? {
+      a: name(m.a), b: name(m.b), phase: m.phase, secondsLeft: Math.max(0, Math.ceil(phaseEnd(m) - world.now)),
+      // both sides' health and shields, so an agent can duel from status alone (playtest round 2)
+      hp: [m.a, m.b].map((id) => { const x = world.wizards.get(id); return x ? { name: x.name, hp: Math.round(x.hp), maxHp: world.derivedOf(x).maxHp, shield: Math.round(x.st.shield ?? 0), dealt: Math.round(m.stats[id]?.dealt ?? 0) } : null; }),
+      stageRadius: DUEL_LEASH,
+    } : null,
     winsThisTerm: wid ? (c.ledger.term === world.term.n ? c.ledger.wins[wid] ?? 0 : 0) : 0,
     rules: { winRep: DUEL_WIN_REP, winXp: DUEL_WIN_XP, sparringWinXp: Math.round(DUEL_WIN_XP / 2), lossXp: DUEL_LOSS_XP, rewardedWinsPerTerm: DUEL_TERM_CAP, samePairEveryMinutes: DUEL_PAIR_GAP_S / 60, fightSeconds: DUEL_FIGHT_S },
     /** The last five, newest first. */

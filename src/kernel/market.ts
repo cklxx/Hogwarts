@@ -377,6 +377,8 @@ function versionOf(world: World, s: Spell, v: number, desc: MarketVersion['desc'
   return { v, name: s.name, incantation: s.incantation, source: s.source, nodes: s.nodes, minYear: s.minYear, effects: [...s.effects], tags: tagsOf(s.effects, s.source), desc, at: world.now };
 }
 
+/** Why a listing went up without a public line (playtest round 2: fork said false, publish true, and nobody knew why). */
+const quiet = (announced: boolean) => (announced ? '' : ` (Not announced: the market announces one listing per author every ${Math.round(MARKET_ANNOUNCE_S / 60)} min; this one is listed all the same. 没有播报：集市每位作者每 ${Math.round(MARKET_ANNOUNCE_S / 60)} 分钟只播报一次，这个照样上架了。)`);
 /** A public "new in the market" line, at most once per author per MARKET_ANNOUNCE_S; returns whether it went out. */
 function announce(world: World, w: Wizard, line: Line) {
   const last = world.market.announced[w.id];
@@ -442,12 +444,12 @@ export function publishSpell(world: World, wid: string, key: string, opts: { des
     s.market = { id: linked.id, v };
     const f = fill(MARKET_REPUBLISHED, { v: w.name, item: s.name, n: v });
     const announced = !same && announce(world, w, f);
-    return { published: linked.id, v, name: s.name, tags: latest(linked).tags, minYear: s.minYear, announced, note: same ? 'Back in the market. 重新上架了。' : `Version v${v} published; older versions stay readable. v${v} 已发布，旧版本仍可阅读。` };
+    return { published: linked.id, v, name: s.name, tags: latest(linked).tags, minYear: s.minYear, announced, note: (same ? 'Back in the market. 重新上架了。' : `Version v${v} published; older versions stay readable. v${v} 已发布，旧版本仍可阅读。`) + quiet(announced) };
   }
   newListingRoom(world, w.id);
   const l = makeListing(world, w, s, desc, null);
   const announced = announce(world, w, fill(world.quip(MARKET_PUBLISHED, w.handle, l.id), { v: w.name, item: s.name }));
-  return { published: l.id, v: 1, name: s.name, tags: latest(l).tags, minYear: s.minYear, announced, note: 'Published. Others can copy or fork it; when they cast it you earn a little reputation. 已上架：别人施放它时你会得到少量声望。' };
+  return { published: l.id, v: 1, name: s.name, tags: latest(l).tags, minYear: s.minYear, announced, note: 'Published. Others can copy or fork it; when they cast it you earn a little reputation. 已上架：别人施放它时你会得到少量声望。' + quiet(announced) };
 }
 
 function makeListing(world: World, w: Wizard, s: Spell, desc: MarketVersion['desc'], parent: MarketListing['parent']): MarketListing {
@@ -546,7 +548,7 @@ export function forkSpell(world: World, wid: string, id: string, opts: { v?: num
   const announced = announce(world, w, fill(world.quip(MARKET_PUBLISHED, w.handle, fork.id), { v: w.name, item: name }));
   return {
     forked: { id: fork.id, v: 1, name, spellId: r.spell.id }, parent: { id: l.id, v: ver.v, name: ver.name, author: l.authorName },
-    tags: latest(fork).tags, minYear: r.spell.minYear, announced, notes: r.notes,
+    tags: latest(fork).tags, minYear: r.spell.minYear, announced, notes: announced ? r.notes : [...r.notes, quiet(false).trim()],
   };
 }
 

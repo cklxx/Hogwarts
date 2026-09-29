@@ -527,7 +527,13 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     title: 'Say something',
     description: 'Speak aloud. Everyone sees it. Some words have power here, and the castle answers some phrases. (有些话在这里是有魔力的。To talk privately to your human, use tell_player.)',
     inputSchema: { text: z.string().min(1).max(200) },
-  }, me((wid, a: { text: string }) => { world.say(world.wizards.get(wid)!, a.text, 'mcp'); return { said: a.text }; }));
+  }, me((wid, a: { text: string }) => {
+    const before = world.events.at(-1)?.id ?? 0;
+    world.say(world.wizards.get(wid)!, a.text, 'mcp');
+    // a phrase that worked answers at once, just for you (playtest round 2: the passwords said nothing back)
+    const answered = world.events.filter((e) => e.id > before && e.to === wid && ['egg', 'achievement', 'system', 'wheel', 'card'].includes(e.type)).map(agentEvent);
+    return { said: a.text, ...(answered.length ? { answered } : {}) };
+  }));
 
   register('events', {
     title: 'Recent events',
