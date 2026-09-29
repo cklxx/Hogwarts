@@ -13,6 +13,8 @@
 //! Safety: the game page may call exactly three commands (key_store, toggle_fullscreen, switch_server), granted at
 //! runtime to that server's origin only, and key_store checks the caller's origin again.
 
+mod bridge;
+
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -28,6 +30,8 @@ const DEFAULT_PORT: u16 = 7777;
 /// The game client's localStorage key for the Owl Post key (client/main.ts `LS`).
 const KEY_LS: &str = "hogwarts.token";
 const KEYCHAIN_SERVICE: &str = "hogwarts-desktop";
+/// tauri.conf.json `identifier`: the app's config directory name (the --mcp-stdio mode reads it without Tauri).
+const IDENTIFIER: &str = "io.github.cklxx.hogwarts";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Info {
@@ -134,8 +138,8 @@ fn version_of(origin: &str) -> Result<Info, String> {
     r.into_json::<Info>().map_err(|_| format!("{origin} 不是霍格沃茨服务器（或版本太旧，没有 /api/version）"))
 }
 
-fn config_path(app: &AppHandle) -> Option<std::path::PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("servers.json"))
+fn config_path(_app: &AppHandle) -> Option<std::path::PathBuf> {
+    config_dir().map(|d| d.join("servers.json"))
 }
 fn load_config(app: &AppHandle) -> Config {
     config_path(app).and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
@@ -149,7 +153,44 @@ fn save_config(app: &AppHandle, c: &Config) {
     }
 }
 
-fn keychain(origin: &str) -> Option<keyring::Entry> {
+pub(crate) fn config_dir() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join(IDENTIFIER))
+}
+
+/**
+ * Is there a keychain to talk to? Always on macOS and Windows. On Linux the Secret Service lives on the D-Bus
+ * session bus: an MCP client may start `--mcp-stdio` with a stripped environment (no DBUS_SESSION_BUS_ADDRESS), and
+ * then the keyring library would try to autolaunch a bus and hang, so fall back to the standard per-user bus socket
+ * or report no keychain.
+ */
+pub(crate) fn keychain_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        static OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        return *OK.get_or_init(|| {
+            if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() {
+                return true;
+            }
+            let uid = std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|s| s.lines().find(|l| l.starts_with("Uid:")).and_then(|l| l.split_whitespace().nth(1).map(str::to_string)));
+            match uid.map(|u| format!("/run/user/{u}/bus")) {
+                Some(p) if std::path::Path::new(&p).exists() => {
+                    std::env::set_var("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={p}"));
+                    true
+                }
+                _ => false,
+            }
+        });
+    }
+    #[allow(unreachable_code)]
+    true
+}
+
+pub(crate) fn keychain(origin: &str) -> Option<keyring::Entry> {
+    if !keychain_available() {
+        return None;
+    }
     keyring::Entry::new(KEYCHAIN_SERVICE, origin).ok()
 }
 
@@ -159,10 +200,13 @@ fn bridge_script(origin: &str, key: Option<&str>) -> String {
     let o = serde_json::to_string(origin).unwrap();
     let k = serde_json::to_string(&key).unwrap();
     let ls = serde_json::to_string(KEY_LS).unwrap();
+    let cc = serde_json::to_string(&format!("claude mcp add -s user hogwarts -- \"{}\" --mcp-stdio", exe_path())).unwrap();
     format!(
         r#"(function () {{
   var O = {o}, K = {k}, LS = {ls};
   if (location.origin !== O) return;
+  // the game's Owl Post shows the desktop client's own agent command instead of the Node bridge (client/main.ts)
+  window.__HOGWARTS_SHELL__ = {{ claudeCode: {cc} }};
   var call = function (cmd, args) {{ var t = window.__TAURI_INTERNALS__; if (t) return t.invoke(cmd, args || {{}}).catch(function () {{}}); }};
   try {{ if (K && !localStorage.getItem(LS)) localStorage.setItem(LS, K); }} catch (e) {{}}
   var last = K;
@@ -311,12 +355,97 @@ async fn switch_server(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// This program as an MCP command line (an AppImage's own path, not its temporary mount).
+fn exe_path() -> String {
+    std::env::var("APPIMAGE").ok().filter(|p| !p.is_empty()).unwrap_or_else(|| std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default())
+}
+
+#[derive(Serialize)]
+struct AgentInfo {
+    exe: String,
+    /// The command for Claude Code (also shown to copy).
+    claude_code: String,
+    /// Where Claude Desktop keeps its MCP servers, when it looks installed.
+    claude_desktop: Option<String>,
+    has_claude_cli: bool,
+}
+
+fn claude_desktop_config() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("Claude").join("claude_desktop_config.json"))
+}
+
+fn has_cli(bin: &str) -> bool {
+    std::process::Command::new(bin).arg("--version").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false)
+}
+
+#[tauri::command]
+fn agent_info() -> AgentInfo {
+    let exe = exe_path();
+    let cfg = claude_desktop_config().filter(|p| p.parent().map(|d| d.exists()).unwrap_or(false));
+    AgentInfo {
+        claude_code: format!("claude mcp add -s user hogwarts -- \"{exe}\" --mcp-stdio"),
+        exe,
+        claude_desktop: cfg.map(|p| p.display().to_string()),
+        has_claude_cli: has_cli("claude"),
+    }
+}
+
+/// Wire this program into an agent as the `hogwarts` MCP server: "claude-desktop" edits its config file (a
+/// backup is kept next to it), "claude-code" runs `claude mcp add`. The key is never written anywhere: the
+/// --mcp-stdio mode reads it from the keychain.
+#[tauri::command]
+fn agent_setup(target: String) -> Result<String, String> {
+    let exe = exe_path();
+    match target.as_str() {
+        "claude-desktop" => {
+            let path = claude_desktop_config().ok_or("找不到 Claude Desktop 的配置目录")?;
+            let mut cfg: serde_json::Value = match std::fs::read(&path) {
+                Ok(b) => {
+                    let _ = std::fs::write(path.with_extension("json.bak"), &b);
+                    serde_json::from_slice(&b).map_err(|_| format!("{} 不是合法的 JSON，没有改动它", path.display()))?
+                }
+                Err(_) => serde_json::json!({}),
+            };
+            if !cfg.is_object() {
+                return Err(format!("{} 的格式不对，没有改动它", path.display()));
+            }
+            if !cfg.get("mcpServers").map(|v| v.is_object()).unwrap_or(false) {
+                cfg["mcpServers"] = serde_json::json!({});
+            }
+            cfg["mcpServers"]["hogwarts"] = serde_json::json!({ "command": exe, "args": ["--mcp-stdio"] });
+            if let Some(d) = path.parent() {
+                std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap()).map_err(|e| e.to_string())?;
+            Ok(format!("已写入 {}。重启 Claude Desktop，然后对它说「连上霍格沃茨」。", path.display()))
+        }
+        "claude-code" => {
+            let _ = std::process::Command::new("claude").args(["mcp", "remove", "-s", "user", "hogwarts"]).output();
+            let out = std::process::Command::new("claude")
+                .args(["mcp", "add", "-s", "user", "hogwarts", "--", &exe, "--mcp-stdio"])
+                .output()
+                .map_err(|e| format!("运行 claude 失败（{e}）：把上面的命令复制到终端里执行"))?;
+            if out.status.success() {
+                Ok("已添加到 Claude Code（所有项目可用）。新开一个 claude 会话，对它说「连上霍格沃茨」。".into())
+            } else {
+                Err(format!("claude mcp add 失败：{}", String::from_utf8_lossy(&out.stderr).trim()))
+            }
+        }
+        _ => Err("unknown target".into()),
+    }
+}
+
+/// `--mcp-stdio`: see bridge.rs.
+pub fn mcp_stdio(args: &[String]) {
+    bridge::run(args)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Shell::default())
-        .invoke_handler(tauri::generate_handler![discover, probe, saved, forget, connect, key_store, toggle_fullscreen, switch_server])
+        .invoke_handler(tauri::generate_handler![discover, probe, saved, forget, connect, key_store, toggle_fullscreen, switch_server, agent_info, agent_setup])
         .run(tauri::generate_context!())
         .expect("error while running the Hogwarts desktop client");
 }

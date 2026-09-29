@@ -3,5 +3,5 @@
   "identifier": "launcher",
   "description": "The local launcher page: find, remember and open servers.",
   "windows": ["launcher"],
-  "permissions": ["core:default", "allow-discover", "allow-probe", "allow-connect", "allow-saved", "allow-forget"]
+  "permissions": ["core:default", "allow-discover", "allow-probe", "allow-connect", "allow-saved", "allow-forget", "allow-agent-info", "allow-agent-setup"]
 }

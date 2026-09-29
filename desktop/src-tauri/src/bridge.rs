@@ -1,0 +1,274 @@
+//! `hogwarts-desktop --mcp-stdio [--server URL]`: an MCP stdio server for Claude Desktop / Claude Code, relayed to
+//! the Hogwarts server's streamable-HTTP endpoint (`<server>/mcp`), with the player's key from the system keychain.
+//!
+//! The relay passes JSON-RPC messages through unchanged (so the client's own name, capabilities and answers to the
+//! server's questions — confirm_with_player — reach the server as they are), plus what the Node bridge
+//! (src/mcp/stdio-bridge.ts) does for the key:
+//! - the key goes in the Authorization header, from the keychain entry the game window keeps (per server origin);
+//! - after enroll / login / pair / rotate_key the new key is saved to the keychain FIRST, then removed from the text
+//!   the model sees (if saving fails the text passes through and stderr says why);
+//! - a dead upstream session (server restart: 404, or 400 "No valid MCP session") is rebuilt by replaying the
+//!   client's initialize with the current key, and the call is retried once.
+//! Status goes to stderr only; the key is never printed.
+
+use serde_json::Value;
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+const KEY_TOOLS: [&str; 4] = ["enroll", "login", "pair", "rotate_key"];
+
+struct Relay {
+    origin: String,
+    key: Mutex<Option<String>>,
+    session: Mutex<Option<String>>,
+    /// The client's initialize request, replayed to rebuild a dead session.
+    init: Mutex<Option<Value>>,
+    /// Pending tools/call ids → tool name (to spot the calls that hand out a key).
+    calls: Mutex<HashMap<String, String>>,
+    out: Mutex<std::io::Stdout>,
+    agent: ureq::Agent,
+}
+
+fn log(s: &str) {
+    eprintln!("hogwarts: {s}");
+}
+
+impl Relay {
+    fn emit(&self, msg: &Value) {
+        let mut o = self.out.lock().unwrap();
+        let _ = writeln!(o, "{msg}");
+        let _ = o.flush();
+    }
+
+    fn post(&self, body: &Value) -> Result<ureq::Response, ureq::Error> {
+        let mut r = self
+            .agent
+            .post(&format!("{}/mcp", self.origin))
+            .set("content-type", "application/json")
+            .set("accept", "application/json, text/event-stream");
+        if let Some(k) = self.key.lock().unwrap().as_deref() {
+            r = r.set("authorization", &format!("Bearer {k}"));
+        }
+        if let Some(s) = self.session.lock().unwrap().as_deref() {
+            r = r.set("mcp-session-id", s);
+        }
+        r.send_string(&body.to_string())
+    }
+
+    /// Send one client message upstream and relay whatever comes back (a JSON body or an SSE stream).
+    fn forward(&self, msg: &Value, retry: bool) {
+        match self.post(msg) {
+            Ok(resp) => {
+                if let Some(s) = resp.header("mcp-session-id") {
+                    *self.session.lock().unwrap() = Some(s.to_string());
+                }
+                if resp.status() == 202 {
+                    return;
+                }
+                let sse = resp.content_type().starts_with("text/event-stream");
+                let mut reader = BufReader::new(resp.into_reader());
+                if sse {
+                    let mut data = String::new();
+                    let mut line = String::new();
+                    while reader.read_line(&mut line).map(|n| n > 0).unwrap_or(false) {
+                        let l = line.trim_end_matches(['\r', '\n']);
+                        if let Some(d) = l.strip_prefix("data:") {
+                            data.push_str(d.trim_start());
+                        } else if l.is_empty() && !data.is_empty() {
+                            if let Ok(v) = serde_json::from_str::<Value>(&data) {
+                                self.relay_down(v);
+                            }
+                            data.clear();
+                        }
+                        line.clear();
+                    }
+                    if let Ok(v) = serde_json::from_str::<Value>(&data) {
+                        self.relay_down(v);
+                    }
+                } else {
+                    let mut s = String::new();
+                    let _ = reader.read_to_string(&mut s);
+                    if let Ok(v) = serde_json::from_str::<Value>(&s) {
+                        self.relay_down(v);
+                    }
+                }
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let text = resp.into_string().unwrap_or_default();
+                let dead = code == 404 || (code == 400 && text.contains("session"));
+                if dead && retry && self.rebuild() {
+                    return self.forward(msg, false);
+                }
+                self.fail(msg, &format!("Hogwarts server answered HTTP {code}: {}", text.chars().take(200).collect::<String>()));
+            }
+            Err(e) => self.fail(msg, &format!("Hogwarts server not reachable at {} ({e})", self.origin)),
+        }
+    }
+
+    /// Replay the client's initialize with the current key: a fresh upstream session after a server restart.
+    fn rebuild(&self) -> bool {
+        let Some(init) = self.init.lock().unwrap().clone() else { return false };
+        *self.session.lock().unwrap() = None;
+        let ok = self.post(&init).map(|r| {
+            if let Some(s) = r.header("mcp-session-id") {
+                *self.session.lock().unwrap() = Some(s.to_string());
+            }
+            let _ = r.into_string();
+        });
+        if ok.is_err() {
+            return false;
+        }
+        let _ = self.post(&serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).map(|r| r.into_string());
+        log("the server restarted: session rebuilt");
+        true
+    }
+
+    fn fail(&self, msg: &Value, why: &str) {
+        log(why);
+        if let Some(id) = msg.get("id").filter(|_| msg.get("method").is_some()) {
+            self.emit(&serde_json::json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32000, "message": why } }));
+        }
+    }
+
+    /// A message from the server to the client: save and hide a key a tool handed out, then pass it on.
+    fn relay_down(&self, mut v: Value) {
+        let id = v.get("id").map(|i| i.to_string());
+        let tool = id.as_ref().and_then(|i| self.calls.lock().unwrap().remove(i));
+        // a key handed out but not saved stays visible in that reply (the agent can still keep it itself)
+        let shown = tool.as_deref().map(|t| KEY_TOOLS.contains(&t)).unwrap_or(false) && !self.take_key(&mut v);
+        if !shown {
+            if let Some(k) = self.key.lock().unwrap().as_deref() {
+                scrub(&mut v, k, "(key)");
+            }
+        }
+        self.emit(&v);
+    }
+
+    /// Save a key a tool handed out and hide it from the reply; false when it could not be saved (then it is kept
+    /// for this session only, and left in the reply).
+    fn take_key(&self, v: &mut Value) -> bool {
+        let Some(content) = v.pointer_mut("/result/content").and_then(|c| c.as_array_mut()) else { return true };
+        let mut saved = true;
+        for item in content.iter_mut() {
+            let Some(text) = item.get("text").and_then(|t| t.as_str()) else { continue };
+            let Ok(data) = serde_json::from_str::<Value>(text) else { continue };
+            let Some(token) = data.get("token").and_then(|t| t.as_str()).map(str::to_string) else { continue };
+            match crate::keychain(&self.origin).map(|e| e.set_password(&token)) {
+                Some(Ok(())) => {
+                    *self.key.lock().unwrap() = Some(token.clone());
+                    let hidden = text.replace(&token, "(saved to the system keychain / 已存进系统钥匙串)");
+                    item["text"] = Value::String(hidden);
+                    log(&format!("key saved to the system keychain for {}", self.origin));
+                }
+                Some(Err(e)) => {
+                    log(&format!("could not save the key to the keychain ({e}); kept for this session, and left in the reply"));
+                    *self.key.lock().unwrap() = Some(token);
+                    saved = false;
+                }
+                None => {
+                    log("no system keychain: the key is kept for this session, and left in the reply");
+                    *self.key.lock().unwrap() = Some(token);
+                    saved = false;
+                }
+            }
+        }
+        saved
+    }
+}
+
+/// Replace every occurrence of `needle` in the strings of `v`.
+fn scrub(v: &mut Value, needle: &str, with: &str) {
+    if needle.len() < 8 {
+        return;
+    }
+    match v {
+        Value::String(s) if s.contains(needle) => *s = s.replace(needle, with),
+        Value::Array(a) => a.iter_mut().for_each(|x| scrub(x, needle, with)),
+        Value::Object(o) => o.values_mut().for_each(|x| scrub(x, needle, with)),
+        _ => {}
+    }
+}
+
+/// The server to use: `--server URL`, else the one the desktop client used last.
+fn server_arg(args: &[String]) -> Option<String> {
+    if let Some(i) = args.iter().position(|a| a == "--server") {
+        return args.get(i + 1).cloned();
+    }
+    let path = crate::config_dir()?.join("servers.json");
+    let c: crate::Config = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+    c.last
+}
+
+pub fn run(args: &[String]) {
+    if !crate::keychain_available() {
+        log("no keychain service here (Linux without a D-Bus session): the key is kept for this session only");
+    }
+    let Some(server) = server_arg(args) else {
+        log("no server yet: open the Hogwarts desktop client once and enter a castle, or pass --server http://<ip>:7777");
+        std::process::exit(2);
+    };
+    let origin = match crate::normalize(&server) {
+        Ok(o) => o,
+        Err(e) => {
+            log(&e);
+            std::process::exit(2)
+        }
+    };
+    let key = crate::keychain(&origin).and_then(|e| e.get_password().ok());
+    log(&format!("relaying to {origin}/mcp ({})", if key.is_some() { "with your key from the keychain" } else { "not logged in yet: enroll, or pair with a code from the game" }));
+    let relay = Arc::new(Relay {
+        origin,
+        key: Mutex::new(key),
+        session: Mutex::new(None),
+        init: Mutex::new(None),
+        calls: Mutex::new(HashMap::new()),
+        out: Mutex::new(std::io::stdout()),
+        agent: ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(5)).build(),
+    });
+    let stdin = std::io::stdin();
+    let mut first = true;
+    for line in stdin.lock().lines() {
+        let Ok(line) = line else { break };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(msg) = serde_json::from_str::<Value>(&line) else {
+            log("ignored a line that is not JSON");
+            continue;
+        };
+        if msg.get("method").and_then(|m| m.as_str()) == Some("initialize") {
+            *relay.init.lock().unwrap() = Some(msg.clone());
+        }
+        if msg.get("method").and_then(|m| m.as_str()) == Some("tools/call") {
+            if let (Some(id), Some(name)) = (msg.get("id"), msg.pointer("/params/name").and_then(|n| n.as_str())) {
+                relay.calls.lock().unwrap().insert(id.to_string(), name.to_string());
+            }
+        }
+        // the initialize must finish (it opens the session) before anything else goes up; then each message gets
+        // its own thread, so a long `wait` or `listen` never holds up the next call
+        if first {
+            first = false;
+            relay.forward(&msg, true);
+        } else {
+            let r = relay.clone();
+            std::thread::spawn(move || r.forward(&msg, true));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrub_hides_the_key_everywhere() {
+        let mut v = serde_json::json!({ "a": "key ABCDEFGH12 here", "b": ["ABCDEFGH12", { "c": "x" }] });
+        scrub(&mut v, "ABCDEFGH12", "(key)");
+        assert_eq!(v, serde_json::json!({ "a": "key (key) here", "b": ["(key)", { "c": "x" }] }));
+        let mut short = serde_json::json!("abc");
+        scrub(&mut short, "abc", "(key)"); // too short to be a key: left alone
+        assert_eq!(short, serde_json::json!("abc"));
+    }
+}

@@ -1,7 +1,7 @@
 # TODO / 路线图
 
 > 状态以 `main` 为准。每项写明：要做什么、验收标准、涉及文件。完成后移到「已完成」并附提交号。
-> 最后更新：2026-09-29（main 最新提交见 `git log`）
+> 最后更新：2026-09-29（main 最新提交见 `git log`）。**接下来的顺序、做法和本地环境见 [`docs/PLAN.md`](PLAN.md)。**
 
 ## 进行中（各在独立分支上，完成后合入 main）
 
@@ -31,7 +31,7 @@
 |---|---|---|
 | P0 | 服务器：`GET /api/version`（名称、版本、构建号、协议号、在线人数）；UDP 局域网发现（端口同 `PORT`，只回应私网/本机/同网段，限频；`DISCOVERY=0` 关）；`npm run find` 列出局域网服务器。客户端：服务器换了新构建时提示「游戏已更新」，空闲 1 分钟（或标签页在后台）自动刷新，写咒语、打字时不刷新 | 已完成（`wf/shell`） |
 | P1 | Tauri 2 壳（`desktop/`）：服务器列表（发现 + 手动输入 + 记住上次，上次的服务器在线就直接进）、直接加载服务器页面（内容永远与服务器同版本）、密钥存系统钥匙串（每个服务器一条，失效随之删除）、F11 全屏、Ctrl+Shift+S 换服务器、外部链接走系统浏览器；GitHub Actions 构建 Windows / macOS / Linux 安装包（不签名） | 已完成：Linux 上端到端实测（Xvfb + Secret Service：自动发现 → 钥匙串登录 → 别处换钥后旧钥删除，`desktop/test-gui.sh`）；Windows / macOS 待真机安装验证 |
-| P2 | 一键连接我的 Agent：壳在本机开 MCP 地址，桥接到服务器并带上玩家密钥；按钮写入 Claude Desktop / Claude Code 配置 | 验收：新装的 Claude Desktop 点一次按钮后能 `whoami` 到当前巫师 |
+| P2 | 一键连接我的 Agent：`hogwarts-desktop --mcp-stdio` 是 MCP stdio 服务器，转发到服务器 `/mcp`，密钥从钥匙串读；enroll/login/pair/rotate_key 发出的新钥先存钥匙串再从模型看到的文字里抹掉；服务器重启自动重建会话；启动器按钮写入 Claude Desktop 配置（留 .bak）或运行 `claude mcp add`；桌面客户端里的猫头鹰邮递显示这条命令 | 已完成：桥的端到端测试（钥匙串 / 精简环境两种）、Claude Desktop 配置写入、`claude mcp get hogwarts` → Connected（Linux）。待做：真机 Claude Desktop 验收；Rust 桥还没有「猫头鹰推送」（`notifications/claude/channel`） |
 | P3 | 可选：壳内恢复 WebGPU（从 `205ed7b` 取回），浏览器版继续 WebGL | 视真机测量决定 |
 | P4 | **看 Agent 玩（观战）**：Agent 在玩的时候，人可以在浏览器或桌面客户端里看。①「观看模式」：镜头跟着自己的巫师，按键不抢 Agent 的控制（现在一按 WASD 就接管），点「接管」才接手；②同屏显示 Agent 正在做什么：当前目标（`set_goal_note`）、最近的工具调用、刚铸造/施放的咒语源码；③能看别人的 Agent：从排行榜或身边的人点「观看」，只读、不暴露任何密钥；④分享观看链接：只能看、不能操作，可随时撤销 | 验收：Agent 连续玩 10 分钟，旁观者全程不需要按键、画面不丢人；观看者的任何输入都不会让 Agent 的寻路或施法中断；观看链接不含密钥，撤销后立即失效 |
 
