@@ -305,6 +305,13 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
     return report;
   }
   report.gas = interp.gasUsed;
+  if (!plan.length && !pendings.length && !ctx.free) {
+    // nothing to do (no target in range, a condition that never held): free, like a fizzle, and said out loud
+    const msg = 'The spell found nothing to act on (no target in range?). No mana spent.';
+    if (ctx.dryRun) { report.ok = true; notes.push(msg); return report; }
+    report.error = msg;
+    return report;
+  }
   const total = ctx.free ? 0 : round(rb.magic.castOverhead + plan.reduce((s, p) => s + p.cost, 0));
   report.mana = total;
   report.effects = plan.map((p) => `${p.desc} (${fmt(round(p.cost))} mana)`);

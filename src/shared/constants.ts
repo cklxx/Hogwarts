@@ -61,7 +61,10 @@ export const PAIR_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const PAIR_LEN = 6;
 /** 31^6 = 887 503 681 possible codes (Lean: pair_space). */
 export const PAIR_SPACE = PAIR_ALPHABET.length ** PAIR_LEN;
-export const PAIR_TTL_S = 180;
+export const PAIR_TTL_S = 600;
+/** A new wizard's first minutes: creatures hit 30% softer (the Hogwarts nurses call it 新生护符). */
+export const NEWCOMER_WARD_S = 180;
+export const NEWCOMER_WARD = 0.3;
 /**
  * Failed pairing attempts per minute: per source (IP) and per realm. A source over its own cap is refused
  * without spending the realm's budget (World.redeemPairCode(code, source)), so locking a realm out takes

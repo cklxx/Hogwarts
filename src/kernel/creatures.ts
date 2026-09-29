@@ -9,7 +9,7 @@ import type { CreatureDef } from './types.js';
  */
 export const CREATURES: Record<CreatureKind, CreatureDef> = {
   pixie: {
-    kind: 'pixie', name: 'Cornish Pixie', faction: 'hostile', hp: 24, speed: 5.5, damage: 4, range: 1.6, cooldown: 1.0, aggro: 10, radius: 0.35,
+    kind: 'pixie', name: 'Cornish Pixie', faction: 'hostile', hp: 24, speed: 5.5, damage: 4, range: 1.6, cooldown: 1.0, aggro: 7, radius: 0.35,
     xp: 12, rep: 1, galleons: 1, weak: { ice: 2 }, spawn: { x: 22, z: 28, r: 26, max: 8 },
     lore: 'Electric blue, eight inches high, and mischievous. Lockhart released a cage of them once. Freezing charms work.',
   },

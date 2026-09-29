@@ -171,7 +171,7 @@ integers and may be negative (a cursed item). -/
 
 def PAIR_ALPHABET_LEN : Nat := 31
 def PAIR_LEN : Nat := 6
-def PAIR_TTL_S : Nat := 180
+def PAIR_TTL_S : Nat := 600
 def PAIR_FAIL_PER_IP_PER_MIN : Nat := 10
 def PAIR_FAIL_PER_REALM_PER_MIN : Nat := 30
 def LOGIN_FAIL_PER_IP_PER_MIN : Nat := 20

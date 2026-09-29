@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
-  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
@@ -65,6 +65,8 @@ const DANCE_STEP_S = 0.4;
 const DANCE_MAX_RAD = 0.6;
 /** Stunning a wizard enrolled less than this long ago earns no reputation (stops throwaway-alt farming). */
 export const FRESH_SECONDS = 600;
+/** Curriculum reveal charms and the HUD corner each one unlocks (a slot can be reused once it is). */
+const REVEAL_CHARM: Record<string, string> = { Tempus: 'tempus', Revelio: 'revelio', 'Point Me': 'point-me', 'Homenum Revelio': 'homenum' };
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
 /** placeName's order: the most specific zone wins. */
@@ -668,8 +670,25 @@ export class World {
       const a = analyze(c.source);
       const s: Spell = { id: `b_${c.name.toLowerCase().replace(/[^a-z]+/g, '_')}`, name: c.name, incantation: c.incantation, source: c.source, nodes: a.nodes, minYear: c.year, effects: a.effects, builtin: true, createdAt: this.now };
       w.spells.push(s);
-      const free = w.hotbar.indexOf(null);
-      if (free >= 0) w.hotbar[free] = s.id;
+      let slot = w.hotbar.indexOf(null);
+      const kind = spellKind(s.effects);
+      if (slot < 0 && kind !== 'self') {
+        // a full bar: a new attack or healing spell takes the slot of a light/reveal charm you no longer need to cast
+        // (Lumos, or a reveal whose HUD corner is already unlocked), rightmost first
+        const spent = (id: string | null) => {
+          const x = w.spells.find((y) => y.id === id);
+          if (!x?.builtin) return false;
+          if (x.name === 'Lumos') return true;
+          const charm = REVEAL_CHARM[x.name];
+          return !!charm && w.ui.includes(charm);
+        };
+        for (let i = w.hotbar.length - 1; i >= 0; i--) if (spent(w.hotbar[i])) { slot = i; break; }
+        if (slot >= 0 && !w.npc) {
+          const old = w.spells.find((y) => y.id === w.hotbar[slot]);
+          this.emit('system', `${s.name} is now on hotbar slot ${slot + 1} (replacing ${old?.name}).`, { to: w.id, zh: `「${zhSpell(s.name)}」放到了 ${slot + 1} 号栏（换下了「${zhSpell(old?.name ?? '')}」）。在咒语书里可以随时调整。` });
+        }
+      }
+      if (slot >= 0) w.hotbar[slot] = s.id;
     }
   }
 
@@ -1079,6 +1098,7 @@ export class World {
     const w = this.wizards.get(dstId);
     if (!w) return 0;
     a *= 1 - derived(w, rb).ward;
+    if (srcId && this.creatures.has(srcId) && !w.npc && this.now - w.createdAt < NEWCOMER_WARD_S) a *= 1 - NEWCOMER_WARD;
     if (opts.hex) a = hexTickDmg(amount, a);
     if (w.st.shieldUntil > this.now && w.st.shield > 0) {
       const absorbed = Math.min(w.st.shield, a);
