@@ -1,5 +1,6 @@
 import type { House } from '../shared/constants.js';
 import { LANDMARKS } from '../shared/map.js';
+import { MEME, NPC_LINES, NPC_NIGHT, NPC_RIVAL, NPC_WEATHER, fill, houseLine, type Line } from '../lore/memes.js';
 import { CREATURES } from './creatures.js';
 import { dist } from './physics.js';
 import { derived } from './progression.js';
@@ -11,14 +12,31 @@ import type { World } from './world.js';
  * driven by a small brain that calls the same syscalls a player would. They never become Minister,
  * are worth no duel reputation, and only fight wizards who attack them first.
  */
-interface Persona { name: string; house: House; favourite: string; patrol: string[]; lines: string[] }
+interface Persona { name: string; house: House; favourite: string; patrol: string[]; lines: Line[] }
 
+/** Their idle chatter lives in lore/memes.ts (NPC_LINES), bilingual. */
 export const PERSONAS: Persona[] = [
-  { name: 'Seamus Finnigan', house: 'Gryffindor', favourite: 'Incendio', patrol: ['courtyard', 'willow', 'hagrid', 'forest'], lines: ['Why is it always me?!', 'I only said "Wingardium Leviosa"...', 'That was meant to be water!'] },
-  { name: 'Hannah Abbott', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['greenhouses', 'courtyard', 'hagrid'], lines: ['Has anyone seen Professor Sprout?', 'Mind the Devil\'s Snare!', 'Stay together, everyone.'] },
-  { name: 'Padma Patil', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['great_hall', 'seventh_floor', 'courtyard', 'lake'], lines: ['Wit beyond measure...', 'Pixies again. Freeze them.', 'The Grey Lady knows more than she says.'] },
-  { name: 'Gregory Goyle', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'pitch'], lines: ['Uh.', 'Crabbe? Crabbe!', '...wha?'] },
+  { name: 'Seamus Finnigan', house: 'Gryffindor', favourite: 'Incendio', patrol: ['courtyard', 'willow', 'hagrid', 'forest'], lines: NPC_LINES['Seamus Finnigan'] },
+  { name: 'Hannah Abbott', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['greenhouses', 'courtyard', 'hagrid'], lines: NPC_LINES['Hannah Abbott'] },
+  { name: 'Padma Patil', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['great_hall', 'seventh_floor', 'courtyard', 'lake'], lines: NPC_LINES['Padma Patil'] },
+  { name: 'Gregory Goyle', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'pitch'], lines: NPC_LINES['Gregory Goyle'] },
 ];
+
+/**
+ * What an NPC might say right now: its own lines, plus a word about the night or the weather, plus a remark to a
+ * wizard of another house standing within 10m. (The brain picks from it with the same world RNG draw as ever.)
+ */
+export function chatterPool(world: World, w: Wizard, p: Persona): Line[] {
+  const pool: Line[] = [...p.lines];
+  if (world.isNight()) pool.push(...NPC_NIGHT);
+  pool.push(...(NPC_WEATHER[world.rules.world.weather] ?? []));
+  for (const x of world.nearWizards(w.pos, 10)) {
+    if (x === w || x.npc || x.house === w.house || !world.isActive(x) || dist(x.pos, w.pos) > 10) continue;
+    pool.push(...NPC_RIVAL[p.house].map((l) => fill(l, { house: houseLine(x.house) })));
+    break;
+  }
+  return pool;
+}
 
 const brains = new Map<string, { patrol: number; next: number; lastSay: number; grudge: string | null; grudgeUntil: number }>();
 
@@ -87,8 +105,13 @@ export function thinkNpcs(world: World) {
       return;
     }
 
-    // chatter, then patrol
-    if (world.now - b.lastSay > 45 && world.rand() < 0.08) { world.say(w, p.lines[Math.floor(world.rand() * p.lines.length)]); b.lastSay = world.now; }
+    // chatter (all NPCs together at most every MEME.NPC_GAP_S, so the feed stays readable), then patrol
+    if (world.now - b.lastSay > 45 && world.rand() < 0.08) {
+      const pool = chatterPool(world, w, p);
+      const line = pool[Math.floor(world.rand() * pool.length)];
+      if (world.banter(['npc', MEME.NPC_GAP_S])) world.say(w, line.en, 'npc', line.zh);
+      b.lastSay = world.now;
+    }
     if (!w.goal) {
       const lm = LANDMARKS.find((l) => l.id === p.patrol[b.patrol % p.patrol.length]);
       b.patrol++;
