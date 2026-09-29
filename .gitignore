@@ -6,3 +6,4 @@ formal/tla/states
 formal/tla/*_TTrace_*.tla
 formal/tla/*_TTrace_*.bin
 data/promo/
+data/tls/

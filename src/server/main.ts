@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+import type { TLSSocket } from 'node:tls';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -44,11 +46,32 @@ const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://${LAN ?? 'localhost'}:${POR
  * (the browser's address bar / the MCP URL their agent used), so every copied command works from their machine
  * with no manual IP editing. Only well-formed host[:port] values are accepted.
  */
+// ---- HTTPS (browsers expose WebGPU only in a secure context: https:// or localhost). With a certificate in
+// TLS_CERT/TLS_KEY (default data/tls/cert.pem + key.pem, made by `npm run cert`) the same app is also served on
+// HTTPS_PORT (default 7443); MCP stays on plain HTTP so agents need no extra trust setup.
+const TLS_CERT = process.env.TLS_CERT ?? join(dirname(process.env.HOGWARTS_DATA ?? join(ROOT, 'data', 'world.json')), 'tls', 'cert.pem');
+const TLS_KEY = process.env.TLS_KEY ?? join(dirname(TLS_CERT), 'key.pem');
+const HTTPS_PORT = Number(process.env.HTTPS_PORT ?? 7443);
+const TLS = process.env.HTTPS !== '0' && existsSync(TLS_CERT) && existsSync(TLS_KEY);
+const hostOf = (req: IncomingMessage) => String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim().replace(/:\d+$/, '');
+/** The origin a browser should play on: the HTTPS one when TLS is on (WebGPU), else the one it used. */
+function playBaseFor(req: IncomingMessage): string {
+  if (process.env.PUBLIC_URL || !TLS) return baseFor(req);
+  const h = hostOf(req);
+  return /^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/.test(h) ? `https://${h}:${HTTPS_PORT}` : baseFor(req);
+}
+/** The MCP endpoint to show: always plain HTTP on PORT (agents' HTTP clients need no extra trust setup). */
+function mcpBaseFor(req: IncomingMessage): string {
+  if (process.env.PUBLIC_URL || !(req.socket as TLSSocket).encrypted) return baseFor(req);
+  const h = hostOf(req);
+  return /^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/.test(h) ? `http://${h}:${PORT}` : PUBLIC_URL;
+}
+
 function baseFor(req: IncomingMessage): string {
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL;
   const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim();
   if (!/^[A-Za-z0-9.\-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/.test(host)) return PUBLIC_URL;
-  const proto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https' ? 'https' : 'http';
+  const proto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https' || (req.socket as TLSSocket).encrypted ? 'https' : 'http';
   return `${proto}://${host}`;
 }
 
@@ -215,7 +238,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
     const keyedBy = token ? checkKey(req, token) : undefined;
     if (keyedBy === 'throttled') return json(res, 429, { jsonrpc: '2.0', error: { code: -32000, message: LOGIN_THROTTLED }, id: null });
     const session: McpSession = {
-      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req),
+      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), playUrl: playBaseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req),
       loginFails, forgeFails, sessionsOf, rotated: (wid, tok, keep) => rotated(wid, tok, { keepMcp: keep }),
     };
     if (session.wizardId) world.touch(session.wizardId);
@@ -252,7 +275,7 @@ const http = createServer(async (req, res) => {
     }
     if (url.pathname === '/api/me') {
       const w = keyed(req, url, res);
-      return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${baseFor(req)}/mcp` }) : undefined;
+      return w ? json(res, 200, { ...world.whoami(w.id), mcpUrl: `${mcpBaseFor(req)}/mcp` }) : undefined;
     }
     // The player's owls to their agent after owl id `since` (default: after what the agent has read), for a
     // stdio bridge's channel push (docs/AGENT_LINK.md §C.4). Read-only, and not presence: polling it neither
@@ -410,7 +433,7 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${mcpBaseFor(req)}/mcp`, ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
@@ -478,3 +501,13 @@ http.listen(PORT, HOST, () => {
   console.log(`[hogwarts] ${PUBLIC_URL}  (MCP: ${PUBLIC_URL}/mcp, WS: /ws)  term ${world.term.n}, ${world.rules.terms.lengthSeconds}s per term${realm.mode === 'worker' ? `  [realm ${realm.id}]` : ''}`);
   realmWorker(http, realmStats);
 });
+if (TLS && realm.mode !== 'worker') {
+  // the same app over TLS: every request and WebSocket upgrade is handed to the plain server's handlers
+  const https = createHttpsServer({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) });
+  https.on('request', (req, res) => http.emit('request', req, res));
+  https.on('upgrade', (req, socket, head) => http.emit('upgrade', req, socket, head));
+  https.on('error', (e) => console.error(`[hogwarts] HTTPS on ${HOST}:${HTTPS_PORT} failed:`, (e as Error).message));
+  https.listen(HTTPS_PORT, HOST, () => console.log(`[hogwarts] HTTPS（WebGPU 需要）: https://${LAN ?? 'localhost'}:${HTTPS_PORT}   证书 ${TLS_CERT}`));
+} else if (!TLS && realm.mode !== 'worker') {
+  console.log(`[hogwarts] 提示：浏览器只在 HTTPS 或 localhost 下提供 WebGPU。用局域网 IP 访问时请运行 npm run cert 生成证书后重启，或用 ssh -L ${PORT}:localhost:${PORT} 转发后打开 http://localhost:${PORT}`);
+}

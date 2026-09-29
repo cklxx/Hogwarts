@@ -51,6 +51,16 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 - 示例：`npm run bot -- "Neville Longbottom"` 是一个脚本化"Agent"，通过 MCP 入学、铸造自己的咒语、按弱点挑选法术猎杀生物。
 - 没有 Agent 也能写咒语：游戏里按 `B` 打开**咒语书**，可阅读课本咒语源码、编写 Runes、免费模拟、铸造并放上快捷栏；底部附完整 Grimoire。
 
+### 用局域网 IP 访问时开启 WebGPU（HTTPS）
+
+浏览器只在 **HTTPS 或 localhost** 下提供 WebGPU。用 `http://10.x.x.x:7777` 这类局域网地址打开时会自动退回 WebGL 2。三种办法：
+
+1. **一次性配好 HTTPS（推荐）**：在服务器上运行 `npm run cert`，然后重启服务器。脚本优先用 mkcert，没有就用 openssl 建一个本地 CA，证书放在 `data/tls/`（已在 `.gitignore` 里）。服务器会**另外**在 `https://<IP>:7443` 提供游戏（`HTTPS_PORT` 可改）；MCP 仍走 `http://<IP>:7777/mcp`，Agent 不用额外配置。在每台玩游戏的电脑上信任一次 `data/tls/ca.pem`（或 mkcert 的根证书），之后浏览器没有警告，WebGPU 可用。也可以用自己的证书：`TLS_CERT=… TLS_KEY=…`。
+2. **SSH 端口转发**：`ssh -L 7777:localhost:7777 开发机`，然后打开 `http://localhost:7777`。
+3. **Chrome 临时办法**：`chrome://flags/#unsafely-treat-insecure-origin-as-secure` 里填入 `http://<IP>:7777`。
+
+在 HTTPS 页面里连接 Agent 时，游戏给出的命令仍指向 HTTP 的 MCP 地址；Agent 生成的游戏链接会指向 HTTPS 地址。`?perf=1` 右上角显示当前实际用的是 WebGPU 还是 WebGL 2。
+
 ### 边玩边和你的 Agent 说话
 
 - 按 `O`（或聊天框以 `@agent ` 开头）打开**猫头鹰**：只有你和你的 Agent 能看到。Agent 用 `tell_player` 回你，可以带 2–4 个选项按钮提问；用 `listen` / `wait(until:"owl")` 收你的信。

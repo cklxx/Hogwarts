@@ -14,7 +14,8 @@
     "owl": "tsx src/mcp/stdio-bridge.ts",
     "bot": "tsx scripts/bot.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "cert": "tsx scripts/cert.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
