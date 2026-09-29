@@ -66,6 +66,13 @@ export const PAIR_TTL_S = 600;
 export const NEWCOMER_WARD_S = 180;
 export const NEWCOMER_WARD = 0.3;
 /**
+ * 以大欺小: knocking out a wizard more than BULLY_YEAR_GAP years below you pays no reputation (progression.ts
+ * stunPaysRep, Lean `stun_pays_rep`), and an NPC never picks a fight with a player that far below it (npc.ts).
+ */
+export const BULLY_YEAR_GAP = 2;
+/** NPCs keep the peace this close to the spawn point (npc.ts npcMayFight): nobody's first steps end in the Hospital Wing. */
+export const NPC_CALM_R = 30;
+/**
  * Failed pairing attempts per minute: per source (IP) and per realm. A source over its own cap is refused
  * without spending the realm's budget (World.redeemPairCode(code, source)), so locking a realm out takes
  * at least PAIR_FAIL_PER_REALM_PER_MIN / PAIR_FAIL_PER_IP_PER_MIN = 3 sources (Lean: realm_lock_needs_sources).
@@ -246,3 +253,6 @@ export const FRESH_SECONDS = 600;
 /** The browser's WebSocket carries the key as a subprotocol entry (it cannot set headers): src/server/key.ts. */
 export const WS_PROTOCOL = 'hogwarts';
 export const WS_KEY_PREFIX = 'hw-key.';
+
+/** 触发式铁甲咒 (src/kernel/ward.ts): the longest a ward stays armed, the seconds between wards, the mana it costs. */
+export const WARD_MAX_S = 3, WARD_CD_S = 8, WARD_MANA = 25;
