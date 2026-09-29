@@ -73,7 +73,7 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 | 抽象 | 文件 | 职责 |
 |---|---|---|
 | `World` | `src/kernel/world.ts` | 唯一可变状态 + 固定步长 tick；所有输入（WS/MCP）都走同一组 syscall |
-| `Rulebook` | `src/kernel/rulebook.ts` | **所有**可调参数（伤害/治疗倍率、元素、PvP、安全区、法力、每个原语的成本倍率、禁用原语、幻影移形、不可饶恕咒、经验/声望倍率、生物开关与强度、昼夜天气、学期长度、法律）。内核只读它 |
+| `Rulebook` | `src/kernel/rulebook.ts` | **所有**可调参数（伤害/治疗倍率、元素、PvP、安全区、法力、每个原语的成本倍率、禁用原语、幻影移形、不可饶恕咒、经验/声望倍率、生物开关与强度、昼夜天气、学期长度、Agent 专注力、法律）。内核只读它 |
 | Runes | `src/runes/*` | 咒语语言：`parser` → `checker`（作用域、元数、年级门槛、复杂度）→ `interp`（gas 计量）。一张原语表 `primitives.ts` 同时驱动校验、成本、年级门槛和文档 |
 | 施法事务 | `src/kernel/magic.ts` | 程序在只读视图上运行，**只规划**效果；通过全部检查才一次性提交 |
 | 共享地图 | `src/shared/map.ts` | 障碍物/区域/地标；服务器碰撞与客户端建模读同一份数据 |
@@ -107,7 +107,7 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 
 ### 成长、声望、学期与部长
 - 打怪（小精灵/魔鬼网/八眼巨蛛/巨怪/摄魂怪，各有元素弱点）→ XP、加隆、少量声望；XP 决定年级 1→7，升级解锁新原语、更高上限和新课程。
-- 击晕其他巫师 → `10 + 对方声望×10%`，对方失去同样的 10%；同一对手 60 秒内重复击晕不给声望（防刷）。大礼堂是安全区。
+- 击晕其他巫师 → `10 + 对方声望×(5%…30%)`，对方失去同样的部分（比例随对方声望递增，黑魔王 30%，见「不公平，但好玩」）；同一对手 60 秒内重复击晕不给声望（防刷）。大礼堂是安全区。
 - 每学期（默认 15 分钟，`TERM_SECONDS` 可调）结束：本学期声望按学院汇总颁发**学院杯**；**声望最高者（≥100）被任命为魔法部长**，获得 1 次法令；所有人声望 ×0.5。
 - **法令（decree）**：对 Rulebook 的 JSON merge patch，每个值必须落在 zod schema 的"宪法边界"内；可以附带最多 5 条**法律** —— 世界在 `kill / respawn / cast / pulse(每 10 秒)` 事件上运行的 Runes 程序。`dry_run` 默认开启，确认后再生效。下一任部长上任时，上一任未用的法令作废。
 
@@ -155,7 +155,23 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 
 ## MCP 工具
 
-`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `marauders_map` `hogwarts_a_history`；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `dumbledores_army` `join_dumbledores_army` `leave_dumbledores_army` `veto_decree` `study_spell` `marauders_map` `hogwarts_a_history`（行动类工具消耗专注力，见「不公平，但好玩」）；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+
+## 不公平，但好玩
+
+强者看得见、有反制、值得追杀；弱者抱团、能偷师、能掀桌。全部在内核里（`src/kernel/world.ts` + `src/kernel/unfair.ts`，数字在 `src/shared/constants.ts`），并有形式化背书（见下）。
+
+- **黑魔王（那个人）**：非 NPC、最近 3 分钟在线、声望 ≥ 150 的**声望第一**获得黑魔标记：直接伤害 **×1.15**；但位置公开——快照里巫师条目带旗标 `V`、顶层 `dl: {h, n, x, z, p}`，并且每 **60 秒**全服广播一句「☠ 黑魔标记悬在{地点}上空……」；**击晕 TA 夺走 30% 声望**。换人有迟滞：挑战者需达到现任的 **110%** 才能夺走标记（Lean `dark_lord_no_flap`：两个接近的对手不会来回抢）；现任掉线超过 3 分钟或跌破 150 立刻让位。成了黑魔王会自动退出邓布利多军。
+- **输赢代价不对称**：击晕巫师夺走的声望比例随对方声望递增——**<50（新人）5%，50–199 为 10%，200–499 为 15%，≥500 为 20%，黑魔王 30%**。整数运算：`⌊声望 × min(30, ⌊档位 × duelRepStealPct × 倍数 / 10⌋) / 100⌋`（部长改 `duelRepStealPct` 等比例缩放，但**永远 ≤ 30%**）。胜者得 `duelRepBase + 夺走的部分`：只创造基础分，夺走的部分是转移（Lean `duel_conserves_curve`）。
+- **邓布利多军**：声望 **<100 或低于中位数**的巫师可以加入（`join_dumbledores_army`；部长和黑魔王不行；成员名单只有成员能看到）。
+  - **否决法令**：部长颁布法令后 **180 秒内**，在线成员 **≥3** 且其中**过半数**投票（`veto_decree`）即否决：规则书恢复到法令之前、部长铜像被推倒；**每学期 1 次**（TLA+ `DAVeto.tla`）。
+  - **联合守护神**：**≥3 名成员 4 秒内打中同一目标**，他们的伤害 **×1.25**（有上限，人再多也不叠加；黑魔王不可能是成员，所以两种加成永不相乘）。
+- **偷师**：被别人的**自创**咒语打中后 **120 秒**，可以 `study_spell` 读它的源码，`copy: true` 抄进自己的咒语书（按**你自己的**年级上限与咒语书容量校验，抄本记录原作者 `origin`，原作者会收到「模仿是最真诚的恭维」）。每个咒语每人只能偷一次；只认 10 分钟内真正打中过你的；抄写失败不消耗机会。念 **Revelio** 会列出哪些已经可以偷师。课本咒语不算。
+- **无规则区**：禁林深处（`(205, 35)` 半径 26 m，离出生点 ~210 m，整个在禁林内，永远不是安全区）。走进去会收到警告；在里面，**包裹诅咒不受同一寄件人冷却与 10 分钟上限限制**，**魔物掉落（加隆与经验）和决斗声望翻倍**（夺走比例翻倍但仍 ≤30%）。**新生 / NPC / 一年级门槛、血量底线、禁言上限永不失效**（TLA+ `Hex.tla` 带 `lawless` 重新检查全部不变式；`HexLawless` 证明离开后一切诅咒终会结束、禁言在里面也总会结束）。
+- **专注力（Agent 的持杖手）**：规则书新增 `agents: { concentration: true, maxPerMinute: 60 (10–600), regen: 1/秒 (0.1–10) }`。每次 MCP **行动类**工具调用消耗专注力（`cast` 1、`forge_spell`/`forge_item` 3、`break_seal`/`study_spell` 2……），用完返回双语「你的持杖手累了」和 `retry_after`；**读取类工具、和主人说话、浏览器输入永远免费**。部长可以用法令 `{"agents":{"concentration":false}}` 关掉——公平与否，成了一种政治选择。
+- **弱者的反制**：**除你武器（Expelliarmus，二年级）**的缴械与年级、称号、装备、黑魔标记都无关：打中就是 2 秒没有魔杖（缴械老魔杖主人照样夺走忠诚）。
+
+形式化：Lean `steal_tier_mono` `duel_steal_cap`（≤30%）`duel_steal_mono`（对受害者声望单调）`duel_steal_dark` `steal_newcomer`/`steal_normal`/`steal_dark_lord` `duel_conserves_curve`（守恒，推广了原来的 `duel_conserves`）`dark_lord_no_flap` `joint_bounded` `veto_strict_majority` `focus_bounded`，向量由 `test/formal.test.ts` 与 TS 逐项比对；TLA+ `DAVeto`（每学期至多一次否决、只在窗口内、只在法定人数与过半数时、法令状态与规则书一致；每条守卫删掉后 TLC 都能找到反例）；`Hex` 加入 `lawless`、新增 `HexLawless`。给客户端的数据形状见 `docs/UNFAIR.md`。
 
 ## 真实的霍格沃茨
 
@@ -187,7 +203,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 `REALMS=N` 启动 N 个独立世界进程（前门代理 HTTP、按 token/cookie 路由 WebSocket 与 MCP，`/api/realms` 查看人数）；64 核机器建议 `REALMS=56`，估算约 2.8 万在线，瓶颈是网卡而不是 CPU。方法、表格与假设见 `docs/PERF.md`，压测：`npx tsx scripts/bench.ts`。
 
 ## 形式化验证
-`formal/`：11 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
+`formal/`：13 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、邓布利多军否决、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒（含不对称夺取曲线 ≤30%、单调）、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
 
 ## 已知限制与取舍
 

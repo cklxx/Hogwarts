@@ -22,7 +22,7 @@ export const ZH_SPELL: Record<string, string> = {
 export const ZH_PLACE: Record<string, string> = {
   'The Courtyard': '庭院', 'The Great Hall': '礼堂', 'Seventh-Floor Corridor': '八楼走廊', 'The Mirror of Erised': '厄里斯魔镜',
   'A disused classroom': '一间废弃的教室', Greenhouses: '温室', 'Greenhouse Three': '三号温室', 'Dungeon Stair': '地下教室楼梯',
-  "Dumbledore's Tomb": '邓布利多之墓', 'Whomping Willow': '打人柳', "Hagrid's Hut": '海格小屋', 'The Forbidden Forest': '禁林',
+  "Dumbledore's Tomb": '邓布利多之墓', 'Whomping Willow': '打人柳', "Hagrid's Hut": '海格小屋', 'The Forbidden Forest': '禁林', 'The Deep Forest': '禁林深处',
   'The Black Lake': '黑湖', 'Black Lake Shore': '黑湖岸边', 'Quidditch Pitch': '魁地奇球场', Hogsmeade: '霍格莫德',
   'Shrieking Shack': '尖叫棚屋', 'Hogwarts Grounds': '霍格沃茨场地', Azkaban: '阿兹卡班', 'The Highlands': '苏格兰高地',
 };

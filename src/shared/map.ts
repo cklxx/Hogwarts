@@ -9,7 +9,7 @@ export type Style = 'stone' | 'tower' | 'wood' | 'tree' | 'water' | 'house' | 'w
 export interface Zone { id: ZoneId; name: string; x: number; z: number; r?: number; box?: [number, number, number, number] }
 export type ZoneId =
   | 'grounds' | 'great_hall' | 'courtyard' | 'forest' | 'hogsmeade' | 'lake_shore' | 'dungeons'
-  | 'greenhouses' | 'seventh_floor' | 'erised' | 'tomb' | 'willow' | 'azkaban' | 'pitch';
+  | 'greenhouses' | 'seventh_floor' | 'erised' | 'tomb' | 'willow' | 'azkaban' | 'pitch' | 'deep_forest';
 
 export interface Landmark { id: string; name: string; x: number; z: number; blurb: string }
 
@@ -100,12 +100,21 @@ export const ZONES: Zone[] = [
   { id: 'tomb', name: "Dumbledore's Tomb", x: -52, z: 28, r: 5 },
   { id: 'willow', name: 'Whomping Willow', x: 45, z: 0, r: 8 },
   { id: 'lake_shore', name: 'Black Lake Shore', x: -110, z: 40, r: 75 },
+  // 无规则区: the far end of the Forbidden Forest, ~210 m from spawn (world.ts inLawless; README "不公平，但好玩")
+  { id: 'deep_forest', name: 'The Deep Forest', x: 205, z: 35, r: 26 },
   { id: 'forest', name: 'The Forbidden Forest', x: 165, z: 15, r: 88 },
   { id: 'pitch', name: 'Quidditch Pitch', x: 40, z: -150, r: 35 },
   { id: 'hogsmeade', name: 'Hogsmeade', x: 0, z: 172, r: 45 },
   { id: 'grounds', name: 'Hogwarts Grounds', x: 0, z: -30, r: 150 },
   { id: 'azkaban', name: 'Azkaban', x: AZKABAN.x, z: AZKABAN.z, r: 30 },
 ];
+
+/**
+ * The opt-in lawless zone (deep in the Forbidden Forest, entirely inside it, far from spawn). Inside it hostile
+ * parcels skip the per-pair cooldown and the 10-minute window, and creature loot and duel reputation are
+ * doubled — but the newcomer / NPC / first-year gates, the HP floors and the silence caps never lapse.
+ */
+export const LAWLESS_ZONE: ZoneId = 'deep_forest';
 
 export const LANDMARKS: Landmark[] = [
   { id: 'courtyard', name: 'The Courtyard', x: 0, z: -22, blurb: 'Where every new student arrives. Duels are frequent.' },

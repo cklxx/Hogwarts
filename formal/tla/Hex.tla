@@ -9,11 +9,17 @@
    Durations and caps are scaled down. Hex.cfg checks the safety properties with a window generous
    enough (WinCap > Cap) that every cap of the gate binds; HexLive.tla adds the liveness properties under
    the ratio the real constants keep (Lean hexes_leave_gaps): the window admits fewer parcels than it
-   takes jinxes to cover it, WinCap * the longest effect < WinLen. *)
+   takes jinxes to cover it, WinCap * the longest effect < WinLen.
+   The lawless zone (无规则区, the deep Forbidden Forest): `lawless` = the recipient stands in it (they walked in,
+   and may walk out: ToggleLawless; it is never a safe zone). There SendHex skips exactly two clauses, the
+   per-pair cooldown and the 10-minute window cap, and such a parcel does not count toward the window. Every
+   other clause, the HP floor and the silence caps still hold, and every invariant below is checked with it:
+   newcomers, NPCs, first-years and unready senders stay immune (FreshAndNpcImmune). *)
 EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS Senders, Unready, Housemates, Cap, MaxCursed, BoundCap, WinCap, WinLen, Cool, Respite, BindT,
-          Dur, BatsDur, SilMax, SilCool, MaxHp, Dmg, Gold0, Cost
+          Dur, BatsDur, SilMax, SilCool, MaxHp, Dmg, Gold0, Cost,
+          Lawless   \* TRUE: the model has the lawless zone (the recipient may walk in and out of it)
 
 Auras  == {"jelly", "boils", "bats"}     \* jinx auras (Tarantallegra, like Jelly-Legs, only acts on movement)
 Jinxes == Auras \cup {"lang", "none"}    \* what a parcel's lore carries; "none" = only negative enchantments
@@ -28,9 +34,9 @@ LeavesGaps == WinCap * Max(Max(Dur, BatsDur), SilMax) < WinLen
 ASSUME Unready \subseteq Senders /\ Housemates \subseteq Senders /\ Cost >= 1
 
 VARIABLES hex, sil, silBy, silCd, cursed, boundN, boundT, window, cool, resp, safe, online, pvp, hp, gold,
-          ever, last, protected, quiet
+          ever, last, protected, quiet, lawless
 vars == <<hex, sil, silBy, silCd, cursed, boundN, boundT, window, cool, resp, safe, online, pvp, hp, gold,
-          ever, last, protected, quiet>>
+          ever, last, protected, quiet, lawless>>
 \* history: ever[s] = s has delivered a parcel; last = the sender whose parcel this step delivered (else None);
 \* quiet = ticks since the recipient was last silenced, capped at SilCool
 
@@ -39,6 +45,7 @@ Init ==
   /\ cursed = 0 /\ boundN = 0 /\ boundT = 0 /\ window = << >>
   /\ cool = [s \in Senders |-> 0] /\ resp = 0
   /\ safe \in BOOLEAN /\ online \in BOOLEAN /\ pvp \in BOOLEAN /\ hp = MaxHp
+  /\ lawless \in (IF Lawless THEN BOOLEAN ELSE {FALSE}) /\ ~(safe /\ lawless)   \* the deep forest is no safe zone
   /\ gold = [s \in Senders |-> Gold0] /\ ever = [s \in Senders |-> FALSE] /\ last = None
   /\ protected \in BOOLEAN   \* the recipient is an NPC, a first-year or a newcomer
   /\ quiet = SilCool
@@ -62,7 +69,7 @@ SendHex(s, j, neg, empty) ==
   /\ j # "none" \/ neg                       \* hostile (and addressed to someone else)
   \* guardHostileGift, in order
   /\ s \notin Unready                        \* sender: not an NPC, year >= HEX_MIN_YEAR, enrolled >= FRESH_SECONDS
-  /\ cool[s] = 0                             \* HEX_PAIR_COOLDOWN_S
+  /\ lawless \/ cool[s] = 0                  \* HEX_PAIR_COOLDOWN_S (not owed in the lawless zone)
   /\ gold[s] >= Cost                         \* can pay price + HEX_MALICE_TAX
   /\ ~protected                              \* recipient: not an NPC, year >= 2, not a newcomer
   /\ online /\ ~safe /\ resp = 0             \* in play, not in a safe zone, not in respite
@@ -70,20 +77,20 @@ SendHex(s, j, neg, empty) ==
   /\ HexCount < Cap                          \* VICTIM_HEX_CAP
   /\ cursed < MaxCursed                      \* VICTIM_CURSED_ITEMS_MAX
   /\ (neg => boundN < BoundCap)              \* VICTIM_BOUND_CAP (negative items only)
-  /\ Len(window) < WinCap                    \* VICTIM_HEX_PER_10MIN
+  /\ lawless \/ Len(window) < WinCap         \* VICTIM_HEX_PER_10MIN (not owed in the lawless zone)
   \* deliverHostile
   /\ gold' = [gold EXCEPT ![s] = gold[s] - Cost]
   /\ ever' = [ever EXCEPT ![s] = TRUE]
   /\ last' = s
   /\ cool' = [cool EXCEPT ![s] = Cool]
-  /\ window' = Append(window, 0)
+  /\ window' = IF lawless THEN window ELSE Append(window, 0)   \* the window counts lawful parcels
   /\ cursed' = cursed + 1
   /\ IF neg /\ empty THEN boundN' = boundN + 1 /\ boundT' = BindT ELSE UNCHANGED <<boundN, boundT>>
   /\ hex' = CASE j \in {"jelly", "boils"} -> [hex EXCEPT ![j] = Max(hex[j], Dur)]
               [] j = "bats"                -> [hex EXCEPT !["bats"] = Max(hex["bats"], BatsDur)]
               [] OTHER                     -> hex
   /\ IF j \in {"bats", "lang"} THEN Silence(j) ELSE UNCHANGED <<sil, silBy, silCd>>
-  /\ UNCHANGED <<resp, safe, online, pvp, hp, protected, quiet>>
+  /\ UNCHANGED <<resp, safe, online, pvp, hp, protected, quiet, lawless>>
 
 \* one tick: timers run down, the jinx damage ticks (only while it bites), otherwise health regenerates
 Tick ==
@@ -99,7 +106,7 @@ Tick ==
   /\ hp' = IF Dotting THEN HexDot(hp) ELSE Min(MaxHp, hp + 1)
   /\ quiet' = IF sil > 0 THEN 0 ELSE Min(SilCool, quiet + 1)
   /\ last' = None
-  /\ UNCHANGED <<cursed, safe, online, pvp, gold, ever, protected>>
+  /\ UNCHANGED <<cursed, safe, online, pvp, gold, ever, protected, lawless>>
 
 \* Finite Incantatem on yourself (you must be able to cast): every jinx and the silence end, bindings break, respite
 Cleanse ==
@@ -108,19 +115,21 @@ Cleanse ==
   /\ boundN' = 0 /\ boundT' = 0
   /\ resp' = Respite
   /\ last' = None
-  /\ UNCHANGED <<silCd, cursed, window, cool, safe, online, pvp, hp, gold, ever, protected, quiet>>
+  /\ UNCHANGED <<silCd, cursed, window, cool, safe, online, pvp, hp, gold, ever, protected, quiet, lawless>>
 
 Others == <<hex, sil, silBy, silCd, boundN, boundT, window, cool, resp, hp, ever, protected, quiet>>
 \* destroy_item: any cursed item that is not bound
-Destroy == cursed > boundN /\ cursed' = cursed - 1 /\ last' = None /\ UNCHANGED <<Others, safe, online, pvp, gold>>
-ToggleSafe   == safe' = ~safe     /\ last' = None /\ UNCHANGED <<Others, cursed, online, pvp, gold>>
-ToggleOnline == online' = ~online /\ last' = None /\ UNCHANGED <<Others, cursed, safe, pvp, gold>>
-Decree       == pvp' = ~pvp       /\ last' = None /\ UNCHANGED <<Others, cursed, safe, online, gold>>
+Destroy == cursed > boundN /\ cursed' = cursed - 1 /\ last' = None /\ UNCHANGED <<Others, safe, online, pvp, gold, lawless>>
+ToggleSafe   == ~lawless /\ safe' = ~safe /\ last' = None /\ UNCHANGED <<Others, cursed, online, pvp, gold, lawless>>
+ToggleOnline == online' = ~online /\ last' = None /\ UNCHANGED <<Others, cursed, safe, pvp, gold, lawless>>
+Decree       == pvp' = ~pvp       /\ last' = None /\ UNCHANGED <<Others, cursed, safe, online, gold, lawless>>
+\* the recipient walks into (or out of) the deep forest: opt-in
+ToggleLawless == Lawless /\ ~safe /\ lawless' = ~lawless /\ last' = None /\ UNCHANGED <<Others, cursed, safe, online, pvp, gold>>
 \* a sender earns Galleons (creatures, quests): the gate, not poverty, has to stop them
 Earn(s) == gold[s] < Gold0 /\ gold' = [gold EXCEPT ![s] = gold[s] + 1] /\ last' = None
-           /\ UNCHANGED <<Others, cursed, safe, online, pvp>>
+           /\ UNCHANGED <<Others, cursed, safe, online, pvp, lawless>>
 
-Next == \/ Tick \/ Cleanse \/ Destroy \/ ToggleSafe \/ ToggleOnline \/ Decree
+Next == \/ Tick \/ Cleanse \/ Destroy \/ ToggleSafe \/ ToggleOnline \/ Decree \/ ToggleLawless
         \/ \E s \in Senders : Earn(s)
         \/ \E s \in Senders, j \in Jinxes, neg \in BOOLEAN, empty \in BOOLEAN : SendHex(s, j, neg, empty)
 Spec == Init /\ [][Next]_vars /\ WF_vars(Tick)
@@ -128,6 +137,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Tick)
 TypeOK == /\ hex \in [Auras -> 0..Max(Dur, BatsDur)] /\ sil \in 0..SilMax /\ silCd \in 0..(SilMax + SilCool)
           /\ cursed \in 0..MaxCursed /\ boundT \in 0..BindT /\ hp \in 0..MaxHp /\ pvp \in BOOLEAN
           /\ gold \in [Senders -> 0..Gold0] /\ resp \in 0..Respite /\ ever \in [Senders -> BOOLEAN] /\ last \in Senders \cup {None}
+          /\ lawless \in BOOLEAN /\ ~(safe /\ lawless)
 \* ---- invariants
 HexCountBounded       == HexCount <= Cap
 CursedItemsBounded    == cursed <= MaxCursed
@@ -145,11 +155,13 @@ SenderPays        == [][\A s \in Senders : /\ last' = s => gold'[s] = gold[s] - 
                                            /\ gold'[s] < gold[s] => last' = s]_vars
 SafeSuspends      == [][safe => (hp' >= hp /\ last' = None)]_vars
 RulesSuspend      == [][~pvp => (hp' >= hp /\ last' = None /\ JellyNow = 0 /\ ~Silenced)]_vars
-PairCooldownHolds == [][\A s \in Senders : last' = s => cool[s] = 0]_vars
+PairCooldownHolds == [][\A s \in Senders : last' = s => (cool[s] = 0 \/ lawless)]_vars   \* owed outside the lawless zone
 RespiteHolds      == [][resp > 0 => last' = None]_vars
 \* a new silence only ever starts after SilCool silence-free ticks: there is always a window to cast in
 CastingWindow     == [][(sil = 0 /\ sil' > 0) => quiet >= SilCool]_vars
 \* ---- liveness (weak fairness on Tick only: the victim need not do anything, the senders may do anything)
 EventuallyClean   == (HexCount > 0 \/ sil > 0) ~> (HexCount = 0 /\ sil = 0)
-EventuallyCanCast == (sil > 0) ~> (sil = 0)
+EventuallyCanCast == (sil > 0) ~> (sil = 0)                                   \* even in the lawless zone
+\* once the recipient stays out of the lawless zone, every hex ends (inside it, by choice, it need not)
+EventuallyCleanOutside == <>[]~lawless => ((HexCount > 0 \/ sil > 0) ~> (HexCount = 0 /\ sil = 0))
 =============================================================================

@@ -123,3 +123,51 @@ export const LISTEN_MAX_S = 45;
 export const AGENT_SEEN_ROUND_S = 5;
 /** The human comes first: an agent's move_to is refused for this long after the player last steered (WASD or a click walk). */
 export const PLAYER_GRACE_S = 2;
+
+// ------------------------------------------------------------------ 不公平，但好玩 (README "## 不公平，但好玩")
+// Strength is visible, has counterplay, and the leader is worth hunting. One source for the kernel,
+// formal/lean/Hogwarts.lean (compared through formal/vectors.json) and formal/tla/DAVeto.tla / Hex.tla.
+
+/** 黑魔王: the Dark Lord is the reputation #1 among non-NPC wizards seen in the last DARK_LORD_SEEN_S, with at least this much. */
+export const DARK_LORD_MIN_REP = 150;
+export const DARK_LORD_SEEN_S = 180;
+/** Hysteresis: a challenger takes the mark only with ≥ (100 + this)% of the holder's reputation (Lean: dark_lord_no_flap). */
+export const DARK_LORD_HYSTERESIS_PCT = 10;
+/** The Dark Lord's direct spell damage, in percent (×1.15; never stacks with the DA's joint bonus). */
+export const DARK_LORD_POWER_PCT = 115;
+/** How often the Dark Mark names the Dark Lord's whereabouts to everyone. */
+export const DARK_LORD_BROADCAST_S = 60;
+
+/**
+ * 输赢代价不对称: the share of the victim's reputation a duel stun steals, by the victim's reputation
+ * (at the rulebook's default duelRepStealPct = 10). [threshold, percent]: below 50 (newcomers) 5%, then 10%,
+ * 15% from 200, 20% from 500; the Dark Lord always 30%. Never more than STEAL_CAP_PCT (Lean: duel_steal_cap).
+ */
+export const STEAL_TIERS: readonly (readonly [number, number])[] = [[0, 5], [50, 10], [200, 15], [500, 20]];
+export const STEAL_DARK_LORD_PCT = 30;
+export const STEAL_CAP_PCT = 30;
+/** duelRepStealPct is scaled against this: the curve above is what the default (10) gives. */
+export const STEAL_BASE_PCT = 10;
+
+/** 邓布利多军: who may join (reputation below this, or below the median of wizards seen recently). */
+export const DA_REP_CEILING = 100;
+export const DA_MAX_MEMBERS = 24;
+/** Members online needed for a veto vote to count (and a strict majority of them must vote). */
+export const DA_QUORUM = 3;
+/** A veto must come within this long of the decree, and at most DA_VETOES_PER_TERM per term. */
+export const DA_VETO_WINDOW_S = 180;
+export const DA_VETOES_PER_TERM = 1;
+/** Joint spell: ≥ DA_JOINT_MIN members hitting the same target within DA_JOINT_WINDOW_S deal ×DA_JOINT_PCT%. */
+export const DA_JOINT_MIN = 3;
+export const DA_JOINT_WINDOW_S = 4;
+export const DA_JOINT_PCT = 125;
+
+/** 偷师: a custom spell that hit you can be studied STUDY_DELAY_S after it first did, while it hit you in the last STUDY_MEMORY_S. */
+export const STUDY_DELAY_S = 120;
+export const STUDY_MEMORY_S = 600;
+/** Spells remembered per victim, and studies remembered (one study per spell per victim). */
+export const STUDY_KEEP = 8;
+export const STUDIED_KEEP = 64;
+
+/** 无规则区: the deep Forbidden Forest (shared/map.ts LAWLESS_ZONE). Creature loot and duel reputation there ×this. */
+export const LAWLESS_MULT = 2;

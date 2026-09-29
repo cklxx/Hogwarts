@@ -1,6 +1,7 @@
 import {
   HEX_HP_FLOOR_FRAC, HEX_MALICE_TAX, HP_FLOOR, HP_FLOOR_FRAC, ITEM_MODS, MANA_FLOOR, MANA_FLOOR_FRAC, MANAREGEN_FLOOR_FRAC, MAX_YEAR,
-  MOVE_SLOW_FLOOR, NEG_LIMITS, POWER_FLOOR, SPEED_FLOOR, WARD_MAX, WARD_MIN, type ItemMod,
+  MOVE_SLOW_FLOOR, NEG_LIMITS, POWER_FLOOR, SPEED_FLOOR, STEAL_BASE_PCT, STEAL_CAP_PCT, STEAL_DARK_LORD_PCT, STEAL_TIERS, WARD_MAX, WARD_MIN,
+  DA_JOINT_MIN, DA_JOINT_PCT, DA_QUORUM, DARK_LORD_HYSTERESIS_PCT, type ItemMod,
 } from '../shared/constants.js';
 import { CORE_BONUS } from '../lore/wands.js';
 import type { Rulebook } from './rulebook.js';
@@ -16,6 +17,38 @@ export const yearForXp = (xp: number) => {
 
 /** Reputation stolen when stunning a wizard: ⌊victim · pct / 100⌋ (formal/lean: steal_le, duel_conserves). */
 export const stealAmount = (victim: number, pct: number) => Math.floor((Math.max(0, victim) * pct) / 100);
+
+// ------------------------------------------------------------------ 输赢代价不对称 (Lean: steal_tier_mono … duel_conserves_curve)
+/** The victim's tier of the steal curve, in percent: STEAL_TIERS by reputation, the Dark Lord always STEAL_DARK_LORD_PCT. */
+export function stealTier(victimRep: number, darkLord: boolean): number {
+  if (darkLord) return STEAL_DARK_LORD_PCT;
+  let pct = STEAL_TIERS[0][1];
+  for (const [at, p] of STEAL_TIERS) if (victimRep >= at) pct = p;
+  return pct;
+}
+/**
+ * The percent of the victim's reputation a duel stun steals: the tier scaled by the rulebook's
+ * duelRepStealPct (against STEAL_BASE_PCT = its default) and by `mult` (2 in the lawless zone), in whole
+ * percent, never above STEAL_CAP_PCT: ⌊tier · base · mult / 10⌋ ∧ 30. Monotone in the victim's reputation.
+ */
+export const stealPct = (victimRep: number, darkLord: boolean, base: number, mult = 1) =>
+  Math.min(STEAL_CAP_PCT, Math.floor((stealTier(victimRep, darkLord) * Math.max(0, base) * mult) / STEAL_BASE_PCT));
+/** Reputation a duel stun steals: ⌊victim · stealPct / 100⌋ — so 0 ≤ steal ≤ 30% of the victim (Lean: duel_steal_cap). */
+export const duelSteal = (victimRep: number, darkLord: boolean, base: number, mult = 1) =>
+  stealAmount(victimRep, stealPct(victimRep, darkLord, base, mult));
+
+/** 黑魔王 hysteresis: does a challenger with `challenger` reputation take the mark from a holder with `holder`? (Lean: dark_lord_no_flap) */
+export const darkLordTakes = (holder: number, challenger: number) => challenger * 100 >= holder * (100 + DARK_LORD_HYSTERESIS_PCT);
+/** 邓布利多军 joint spell: the damage multiplier in percent for `n` distinct members hitting one target within the window (Lean: joint_bounded). */
+export const jointPct = (n: number) => (n >= DA_JOINT_MIN ? DA_JOINT_PCT : 100);
+/** 邓布利多军 veto: at least DA_QUORUM members in play and ⌊online/2⌋ + 1 of their votes, a strict majority (Lean: veto_strict_majority). */
+export const vetoPasses = (online: number, votes: number) => online >= DA_QUORUM && votes >= Math.floor(online / 2) + 1;
+
+/**
+ * 专注力 (agent concentration): the pool after `dt` seconds of regeneration, capped at `max` (Lean: focus_bounded).
+ * Spending happens only when the pool holds at least the cost, so it never goes negative.
+ */
+export const focusAfter = (pts: number, max: number, regen: number, dt: number) => Math.min(max, Math.max(0, pts) + Math.max(0, regen) * Math.max(0, dt));
 
 export const maxNodes = (year: number, rb: Rulebook) => 40 + rb.magic.nodesPerYear * (year - 1);
 export const gasLimit = (year: number, rb: Rulebook) => 150 + rb.magic.gasPerYear * (year - 1);

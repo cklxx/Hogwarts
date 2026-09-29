@@ -9,7 +9,10 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { derived, derivedUncached, hexDotHp, hexHpFloor, hexPrice, hexTickDmg, hpFloor, moveSlow, stealAmount, yearForXp } from '../src/kernel/progression.js';
+import {
+  darkLordTakes, derived, derivedUncached, duelSteal, focusAfter, hexDotHp, hexHpFloor, hexPrice, hexTickDmg, hpFloor, jointPct, moveSlow, stealAmount, stealPct,
+  stealTier, vetoPasses, yearForXp,
+} from '../src/kernel/progression.js';
 import { titleIndex } from '../src/lore/titles.js';
 import { World } from '../src/kernel/world.js';
 import { mulberry32 } from '../src/shared/map.js';
@@ -24,9 +27,14 @@ type AgentLinkVectors = {
   moveSlow: [number, number, number][]; hexFloor: [number, number][]; hexDot: [number, number, number, number][]; hexCost: [number, number][];
   hexTick: [number, number, number][]; longestHex: number;
 };
+type UnfairVectors = {
+  constants: Record<string, number>; stealTiers: [number, number][]; stealTier: [number, number, number][];
+  stealPct: [number, number, number, number, number, number][]; darkLordTakes: [number, number, number][]; jointPct: [number, number][];
+  vetoPasses: [number, number, number][]; focusAfter: [number, number, number, number, number][];
+};
 const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.url), 'utf8')) as {
   yearForXp: [number, number][]; titleIndex: [number, number, number, number, number][]; steal: [number, number, number][];
-  agentLink: AgentLinkVectors;
+  agentLink: AgentLinkVectors; unfair: UnfairVectors;
 };
 
 describe('Lean conformance vectors', () => {
@@ -99,6 +107,38 @@ describe('Lean conformance vectors: the agent link (docs/AGENT_LINK.md §A.5, §
     const longest = Math.max(K.SILENCE_MAX_S, ...Object.values(K.JINX_DEFAULTS).map((j) => j.seconds));
     expect(A.longestHex).toBe(longest);
     expect(K.VICTIM_HEX_PER_10MIN * longest).toBeLessThan(K.HEX_WINDOW_S);
+  });
+});
+
+describe('Lean conformance vectors: 不公平，但好玩 (duel_steal_cap, duel_conserves_curve, dark_lord_no_flap, joint_bounded …)', () => {
+  const U = V.unfair;
+  it('every constant is the same number in Lean and in src/shared/constants.ts', () => {
+    expect(U.constants).toEqual({
+      STEAL_CAP_PCT: K.STEAL_CAP_PCT, STEAL_DARK_LORD_PCT: K.STEAL_DARK_LORD_PCT, STEAL_BASE_PCT: K.STEAL_BASE_PCT,
+      DARK_LORD_MIN_REP: K.DARK_LORD_MIN_REP, DARK_LORD_SEEN_S: K.DARK_LORD_SEEN_S, DARK_LORD_HYSTERESIS_PCT: K.DARK_LORD_HYSTERESIS_PCT,
+      DARK_LORD_POWER_PCT: K.DARK_LORD_POWER_PCT, DARK_LORD_BROADCAST_S: K.DARK_LORD_BROADCAST_S, DA_REP_CEILING: K.DA_REP_CEILING,
+      DA_MAX_MEMBERS: K.DA_MAX_MEMBERS, DA_QUORUM: K.DA_QUORUM, DA_VETO_WINDOW_S: K.DA_VETO_WINDOW_S, DA_VETOES_PER_TERM: K.DA_VETOES_PER_TERM,
+      DA_JOINT_MIN: K.DA_JOINT_MIN, DA_JOINT_WINDOW_S: K.DA_JOINT_WINDOW_S, DA_JOINT_PCT: K.DA_JOINT_PCT, STUDY_DELAY_S: K.STUDY_DELAY_S,
+      STUDY_MEMORY_S: K.STUDY_MEMORY_S, STUDY_KEEP: K.STUDY_KEEP, STUDIED_KEEP: K.STUDIED_KEEP, LAWLESS_MULT: K.LAWLESS_MULT,
+    });
+    expect(U.stealTiers).toEqual(K.STEAL_TIERS.map((t) => [...t]));
+  });
+  it('stealTier / stealPct / duelSteal (the steal curve)', () => {
+    for (const [r, d, t] of U.stealTier) expect([r, d, stealTier(r, d === 1)]).toEqual([r, d, t]);
+    for (const [r, d, b, m, p, s] of U.stealPct) expect([r, d, b, m, stealPct(r, d === 1, b, m), duelSteal(r, d === 1, b, m)]).toEqual([r, d, b, m, p, s]);
+    // and the proved shape, on the vectors themselves: ≤ 30 %, monotone in the victim's reputation, conserving
+    for (const [r, d, b, m, , s] of U.stealPct) {
+      expect(s * 100).toBeLessThanOrEqual(r * K.STEAL_CAP_PCT);
+      const richer = U.stealPct.filter((x) => x[1] === d && x[2] === b && x[3] === m && x[0] >= r);
+      for (const x of richer) expect(x[5]).toBeGreaterThanOrEqual(s);
+      expect(stealAmount(r, stealPct(r, d === 1, b, m))).toBe(s);
+    }
+  });
+  it('darkLordTakes / jointPct / vetoPasses / focusAfter', () => {
+    for (const [h, c, t] of U.darkLordTakes) expect([h, c, darkLordTakes(h, c) ? 1 : 0]).toEqual([h, c, t]);
+    for (const [n, p] of U.jointPct) expect([n, jointPct(n)]).toEqual([n, p]);
+    for (const [n, v, p] of U.vetoPasses) expect([n, v, vetoPasses(n, v) ? 1 : 0]).toEqual([n, v, p]);
+    for (const [p, m, r, d, f] of U.focusAfter) expect([p, m, r, d, focusAfter(p, m, r, d)]).toEqual([p, m, r, d, f]);
   });
 });
 
