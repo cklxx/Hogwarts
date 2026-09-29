@@ -489,6 +489,7 @@ const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "De
 
 // ------------------------------------------------------------------ effects
 const particles = createFx(scene, world.chimneys);
+particles.setQuality(quality); // (sized for the starting quality before the shader warm-up, not re-made after it)
 const tmpTip = new THREE.Vector3();
 // pooled spell effects (effects.ts)
 const fxm = createEffects(scene);
