@@ -39,7 +39,8 @@ with `formal/lean/Hogwarts.lean` through `formal/vectors.json` (`unfair.constant
 - Concentration: `rules.agents = { concentration: true, maxPerMinute: 60 (10–600), regen: 1 (0.1–10) }`.
   Costs (`src/kernel/unfair.ts AGENT_TOOL_COST`): 1 for `cast use_item move_to say set_hotbar unlearn_spell
   equip_item unequip_item destroy_item read_seal_page decree join_dumbledores_army leave_dumbledores_army
-  veto_decree`; 2 for `break_seal study_spell`; 3 for `forge_spell forge_item`; every other tool 0. The refusal
+  veto_decree unpublish_spell`; 2 for `break_seal study_spell publish_spell`; 3 for `forge_spell forge_item copy_spell fork_spell`; every other
+  tool 0 (`market_browse` and `market_spell` too — 咒语集市, README). The refusal
   text ends with `retry_after=<seconds>`.
 
 ## For the client (drawn by `client/panels/*`: the Dark Mark and compass, the DA panel `J`, 偷师 in the spellbook, the concentration tube, the lawless vignette)

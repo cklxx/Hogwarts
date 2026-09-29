@@ -5,7 +5,7 @@ import { PASSING, TROLL_MEME, esc, gradeName, pickLang } from './logic';
 import type { BoardRow, ExamBoard, ExamInfo, ExamList, Grade, SitReport } from './types';
 
 /**
- * 普通巫师等级考试 (key K, the spellbook's O.W.L. ribbon, the 下一步 line): this week's exams on the left (subject,
+ * 普通巫师等级考试 (key K, the spellbook's O.W.L. tab beside 咒语集市, the 下一步 line): this week's exams on the left (subject,
  * title, your best grade), the chosen one on the right — brief, par, reward, a Runes editor like the spellbook's
  * (load any spell of yours into it), 交卷 → a CI-style report with every hidden case, the grade (the Troll gets its
  * meme), rewards, achievements and your rank — and that exam's leaderboard.

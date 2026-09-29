@@ -61,6 +61,9 @@ export const LIMITS: Record<string, [number, number]> = {
   // 不公平，但好玩 (README): Dumbledore's Army status/join/leave/veto, and studying a spell that hit you
   da: [1, 5],
   study: [1, 3],
+  // 咒语集市 (kernel/market.ts): browsing / reading a listing, and publish / unpublish / copy / fork (each forges or lists)
+  market: [3, 8],
+  marketop: [0.5, 4],
   other: [30, 60],
   all: [80, 120],
 };

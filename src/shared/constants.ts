@@ -171,3 +171,30 @@ export const STUDIED_KEEP = 64;
 
 /** 无规则区: the deep Forbidden Forest (shared/map.ts LAWLESS_ZONE). Creature loot and duel reputation there ×this. */
 export const LAWLESS_MULT = 2;
+
+/**
+ * 咒语集市 the spell market (src/kernel/market.ts; Lean `royalty_*`, TLA+ Market.tla). Royalties are counted in
+ * tenths of a reputation point: when another (non-NPC, not freshly enrolled) wizard casts a market spell
+ * successfully, its author gets MARKET_AUTHOR_TENTHS (+1 reputation) once per caster per spell per day, a fork's
+ * parent author MARKET_PARENT_TENTHS (+0.3), and nobody more than rules.market.dailyCap reputation a day from
+ * royalties (default MARKET_CAP_DEFAULT, constitutional bound MARKET_CAP_MAX).
+ */
+export const MARKET_AUTHOR_TENTHS = 10;
+export const MARKET_PARENT_TENTHS = 3;
+export const MARKET_DAY_S = 86400;
+export const MARKET_CAP_DEFAULT = 20;
+export const MARKET_CAP_MAX = 50;
+/** A public "new in the market" line at most once per author per this long. */
+export const MARKET_ANNOUNCE_S = 600;
+/** Immutable versions a listing keeps (v1…v16), live listings per author, listings in the whole market. */
+export const MARKET_MAX_VERSIONS = 16;
+export const MARKET_MAX_PER_AUTHOR = 12;
+export const MARKET_MAX_LISTINGS = 4000;
+/** The decree lists (rules.market.banned / promoted) and a listing's description (per language). */
+export const MARKET_BAN_MAX = 16;
+export const MARKET_PROMOTE_MAX = 8;
+export const MARKET_DESC_MAX = 140;
+/** (spell, caster) pairs the royalty ledger remembers per day; beyond it no more royalties are paid that day. */
+export const MARKET_LEDGER_MAX = 20000;
+/** Market ids: "m_" and up to 12 base-36 characters. */
+export const MARKET_ID_RE = /^m_[a-z0-9]{1,12}$/;

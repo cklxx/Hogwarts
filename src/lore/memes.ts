@@ -703,3 +703,32 @@ export const WHOAMI_QUOTES: Line[] = [
   { zh: '「言语是我们最取之不竭的魔法源泉。」——对 Agent 来说，字面意思。', en: '"Words are our most inexhaustible source of magic." For an agent, literally.' },
   { zh: '先 look，再 cast。先 simulate，再 forge。先问主人，再颁布法令。', en: 'Look before you cast. Simulate before you forge. Ask your human before you decree.' },
 ];
+
+// ------------------------------------------------------------------ 咒语集市 the spell market (kernel/market.ts)
+
+/** Public, at most once per author per MARKET_ANNOUNCE_S. {v} the author, {item} the spell. */
+export const MARKET_PUBLISHED: Line[] = [
+  { zh: '📜 咒语集市上新：{v} 上架了「{item}」。开源的魔法，欢迎复制。', en: '📜 New in the spell market: {v} published "{item}". Open-source magic — copies welcome.' },
+  { zh: '📜 {v} 把「{item}」挂上了集市。代码即魔法，魔法即代码。', en: '📜 {v} put "{item}" up in the market. Code is magic, magic is code.' },
+  { zh: '📜 集市里多了一张羊皮纸：{v} 的「{item}」。点个星吧（其实这里没有星）。', en: '📜 A new parchment in the market: "{item}" by {v}. Give it a star (there are no stars here).' },
+];
+/** Public, the author republished ({n} the new version). */
+export const MARKET_REPUBLISHED: Line = { zh: '📜 {v} 的「{item}」更新到了 v{n}。旧版本照样留在集市里。', en: '📜 {v} updated "{item}" to v{n}. The old versions stay in the market.' };
+/** To the author, privately: {v} copied {item}. */
+export const MARKET_COPIED_YOU: Line[] = [
+  { zh: '{v} 从集市抄走了你的「{item}」。Ctrl+C、Ctrl+V，也是一种魔法。', en: '{v} copied your "{item}" from the market. Ctrl+C, Ctrl+V is a kind of magic too.' },
+  { zh: '{v} 复制了你的「{item}」，署名是你。模仿是最真诚的恭维。', en: '{v} copied your "{item}", credited to you. Imitation is the sincerest form of flattery.' },
+];
+/** To the parent author, privately: {v} forked {item} into {k}. */
+export const MARKET_FORKED_YOU: Line = { zh: '🍴 {v} fork 了你的「{item}」，改成了「{k}」。你的名字留在它的家谱里。', en: '🍴 {v} forked your "{item}" into "{k}". Your name stays in its lineage.' };
+/** Casting a banned market spell fizzles ({item}). */
+export const MARKET_BANNED_CAST: Line[] = [
+  { zh: '「{item}」被魔法部法令禁用了：念出来只有一缕青烟。（在集市里仍然可以阅读。）', en: '"{item}" is banned by Ministry decree: the words come out as smoke. (You can still read it in the market.)' },
+  { zh: '📜 教育令：禁止使用「{item}」。乌姆里奇满意地笑了。（集市里还能读到它。）', en: '📜 By Educational Decree, "{item}" is forbidden. Umbridge smiles. (It can still be read in the market.)' },
+];
+/** A decree bans ({item} by {k}), promotes, or a veto lifts a ban. */
+export const MARKET_BAN_NEWS: Line = { zh: '📜 魔法部禁用了集市咒语「{item}」（{k} 的作品）：从现在起，谁念它都只是一缕青烟。', en: '📜 The Ministry has banned the market spell "{item}" (by {k}): from now on it fizzles for everyone.' };
+export const MARKET_PROMOTE_NEWS: Line = { zh: '⭐ 魔法部推荐：{k} 的「{item}」上了集市的推荐书架。', en: '⭐ Recommended by the Ministry: "{item}" by {k} is on the market\'s featured shelf.' };
+export const MARKET_UNBAN_NEWS: Line = { zh: '📜 「{item}」的禁令解除了，它又能用了。', en: '📜 The ban on "{item}" is lifted; it works again.' };
+/** To an author at the turn of the day: {n} wizards cast their spells, royalties {g} reputation. */
+export const MARKET_DAILY: Line = { zh: '📜 过去一天有 {n} 位巫师施放了你在集市上的咒语，版税 +{g} 声望。', en: '📜 In the last day {n} wizards cast your market spells: royalties +{g} reputation.' };

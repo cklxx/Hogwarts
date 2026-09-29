@@ -97,7 +97,7 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 | 商店 | 行囊（`T`）里用加隆买现成装备（护符、扫帚、指环、长袍），买下自动穿上；走的是同一个 forge_item 规则 |
 | **② 写咒语** | |
 | 咒语书 | `B`：读、改、铸造咒语；「从模板开始」用下拉框和滑块生成 Runes；「🦉 让 Agent 帮我写」把草稿和报错交给你的 Agent。**偷师**：被别人的自创咒语打中 120 秒后，左页列出它（谁、什么咒语、还要几秒），「看源码」读进编辑器，「抄进咒语书」连署名一起铸造 |
-| O.W.L. 考试 | `K`（或咒语书上的「考试」书签）：本周考题、标准线、你的最好成绩（O/E/A/P/D/T，T 是巨怪）；Runes 编辑器可以从咒语书载入；交卷后是 CI 式报告（逐个用例 ✓/✗、分数、奖励、成就、名次）和每题排行榜 |
+| O.W.L. 考试 | `K`（或咒语书里「咒语集市」旁边的「考试」标签）：本周考题、标准线、你的最好成绩（O/E/A/P/D/T，T 是巨怪）；Runes 编辑器可以从咒语书载入；交卷后是 CI 式报告（逐个用例 ✓/✗、分数、奖励、成就、名次）和每题排行榜 |
 | 快捷栏 | 咒语书里每个咒语后面的 `1`–`6` 把它放上快捷栏（再点一次取下）；桌面上也能把咒语拖到书顶部的快捷栏格子里 |
 | 猫头鹰 | `O`：和你自己的 Agent 私聊；没有 Agent 就在这里（或 `Esc` 猫头鹰邮递里）**召唤使魔**（猫头鹰 / 猫 / 蟾蜍），显示在线 / 打盹 / 排队第几位和今日剩余次数（服务器没配使魔就不显示）。Agent 连上后，猫头鹰旁的小墨管是它的**专注力** |
 | **③ 政治** | |
@@ -106,7 +106,7 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 | 无规则区 | 走进禁林深处，屏幕边缘泛起红墨，顶部写着「无规则区：诅咒冷却与次数上限失效，掉落与声望翻倍」 |
 | **其他** | |
 | 面板 | `Esc` 菜单 / 猫头鹰邮递 · `Enter` 聊天 · `H` 帮助 · `R` 禁书区（**选修**） |
-| 手机 | 左下虚拟摇杆，点按选目标/攻击/走路，拖动看，双指缩放；考试在咒语书的书签里，邓布利多军在猫头鹰邮递里 |
+| 手机 | 左下虚拟摇杆，点按选目标/攻击/走路，拖动看，双指缩放；考试是咒语书里的一个标签，邓布利多军在猫头鹰邮递里 |
 | 不会写代码 | 咒语书「🧩 从模板开始」：元素弹、残血收割、护盾+治疗、群体冰冻、召唤、变形术，用下拉框和滑块生成 Runes，实时模拟法力消耗；「🦉 让 Agent 帮我写」把草稿和报错交给你的 Agent（没连接时给出可复制的提示词） |
 | 下一步 | 引导结束后，名字下方始终只有一行「下一步」目标，按三条主线轮流引导（打怪 → 写咒语 / 考试 → 邓布利多军 / 声望 / 部长），从不把你引向封印（点开看做法，× 隐藏，`H` 帮助面板里可重新打开） |
 
@@ -218,7 +218,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 - **评分**：全部用例通过才算及格。分数 = 100 × (节点/标准 + gas/标准 + 法力/标准) / 3，100 = 标准线，越低越好（gas 含延迟块，法力为全部花费，均取各用例最差值）。**O** 优秀 ≤ 100 · **E** 良好 ≤ 130 · **A** 及格；不及格：过半用例通过 **P** 差 · 至少一个 **D** 很差 · 一个都没过或编译失败 **T 巨怪**（附赠奇洛教授的「巨怪——在地下教室里！」）。失败时报告像 CI 日志：逐个用例 ✓/✗、失败原因和提示。
 - **每周轮换**：题库 17 道，按 ISO 周 + 世界密钥确定性地抽 6 道（至少两道一、二年级能考的）；考题年级高于你的年级时锁定。
 - **奖励**：每周每题第一次及格发经验/加隆/声望（`10+10×年级` / `2+2×年级` / `1+年级`，O ×1.5、E ×1.25），之后成绩提升只补差额；每题一个全服前 10 排行榜（每人一行，同分先到先得），随存档持久化。一周全部及格得成就「O.W.L. 全科通过」，全部 O 得「**O.W.L. 全 O**」，第一次拿 T 得「地下教室里有巨怪」。
-- **MCP**：`owl_exams`（本周考题、简介、标准线、你的最好成绩、前三名）· `sit_exam`（`exam_id` + `source` → 评分报告）· `exam_leaderboard`（`exam_id` 可选）。**WebSocket**：`{t:'exams'}` → `{t:'exams', r}`；`{t:'sit', id, source}` → `{t:'sat', r}`；`{t:'examboard', id}` → `{t:'examboard', r}`（一题的前 10 名）。**浏览器**：`K` 或咒语书的「考试」书签（`client/panels/exams.ts`）。
+- **MCP**：`owl_exams`（本周考题、简介、标准线、你的最好成绩、前三名）· `sit_exam`（`exam_id` + `source` → 评分报告）· `exam_leaderboard`（`exam_id` 可选）。**WebSocket**：`{t:'exams'}` → `{t:'exams', r}`；`{t:'sit', id, source}` → `{t:'sat', r}`；`{t:'examboard', id}` → `{t:'examboard', r}`（一题的前 10 名）。**浏览器**：`K` 或咒语书里的「考试」标签（`client/panels/exams.ts`）。
 
 | 考题 | 年级 | 科目 | 目标 | 标准线（节点/gas/法力） |
 |---|---|---|---|---|
@@ -244,7 +244,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 
 ## MCP 工具
 
-`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `dumbledores_army` `join_dumbledores_army` `leave_dumbledores_army` `veto_decree` `study_spell` `owl_exams` `sit_exam` `exam_leaderboard` `marauders_map` `hogwarts_a_history`（行动类工具消耗专注力，见「不公平，但好玩」）；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `dumbledores_army` `join_dumbledores_army` `leave_dumbledores_army` `veto_decree` `study_spell` `market_browse` `market_spell` `publish_spell` `unpublish_spell` `copy_spell` `fork_spell` `owl_exams` `sit_exam` `exam_leaderboard` `marauders_map` `hogwarts_a_history`（行动类工具消耗专注力，见「不公平，但好玩」）；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
 
 ## 不公平，但好玩
 
@@ -261,6 +261,17 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 - **弱者的反制**：**除你武器（Expelliarmus，二年级）**的缴械与年级、称号、装备、黑魔标记都无关：打中就是 2 秒没有魔杖（缴械老魔杖主人照样夺走忠诚）。
 
 形式化：Lean `steal_tier_mono` `duel_steal_cap`（≤30%）`duel_steal_mono`（对受害者声望单调）`duel_steal_dark` `steal_newcomer`/`steal_normal`/`steal_dark_lord` `duel_conserves_curve`（守恒，推广了原来的 `duel_conserves`）`dark_lord_no_flap` `joint_bounded` `veto_strict_majority` `focus_bounded`，向量由 `test/formal.test.ts` 与 TS 逐项比对；TLA+ `DAVeto`（每学期至多一次否决、只在窗口内、只在法定人数与过半数时、法令状态与规则书一致；每条守卫删掉后 TLC 都能找到反例）；`Hex` 加入 `lawless`、新增 `HexLawless`。给客户端的数据形状见 `docs/UNFAIR.md`。
+
+## 咒语集市
+
+咒语是社交对象：写好的咒语可以**发布**到集市，别人可以**抄走**或**改编（fork）**，别人每施放一次你的咒语，你就涨一点声望。全部在内核里（`src/kernel/market.ts`，数字在 `src/shared/constants.ts`），浏览器里在咒语书的「咒语集市」标签页。
+
+- **发布**（`publish_spell`）：只能发布自己写的咒语（课本咒语、抄本、偷师来的都不行——抄本请 fork）。每次发布是一个**不可修改的版本**（v1、v2……，最多 16 个）；标签来自效果原语、源码里的元素和 `(after …)`，最低年级来自静态检查器。每人最多 12 个在架；**下架**（`unpublish_spell`）只是藏起来，已有的抄本照样署原作者、照样能用。上架公告每位作者每 10 分钟最多一次。
+- **抄**（`copy_spell`）：按**你自己的**年级上限、封印、禁用原语和咒语书容量铸造（失败什么也不花）；抄本记下作者（`origin`）和集市编号（`market`）。
+- **改编**（`fork_spell`）：抄 + 改 + 以你的名义发布，源码必须和原版不同；家谱（lineage）一路记到最初的作者，下架的祖先显示为「已下架」。
+- **版税**：别人（不是你自己、不是 NPC、不是入学不到 10 分钟的新号）成功施放你的集市咒语，每人每咒语每天 **+1 声望**；有人施放**改编自你的**咒语，你另得 **+0.3**；每人每天版税**最多 20**（`rules.market.dailyCap`，宪法上限 50）。每天换日时私下告诉你「过去一天有 N 位巫师施放了你的咒语」。
+- **政治**：规则书新增 `market: { banned: [] (≤16), promoted: [] (≤8), royalties: true, dailyCap: 20 (0–50) }`。部长法令 `{"market":{"banned":["m_4"]}}` **禁用**一个集市咒语：谁施放它（包括所有抄本、以及一字不差的同款源码）都只冒一缕青烟，但仍然可以阅读；`promoted` 把咒语放上「推荐」书架（必须在架、不能同时被禁）。邓布利多军**否决**那道法令即解禁/撤推荐；作者下架后自动离开推荐书架。
+- 形式化：Lean `royalty_day_capped`（任意一天的施法序列下，每人版税 ≤ 上限）、`royalty_per_pair`（同一施法者同一咒语每天 ≤ 1 声望，改编的上游 ≤ 0.3）、`royalty_not_self`、`royalty_npc`，整天的伪随机施法序列作为向量与 TS 的 `royaltyStep` 逐项比对；TLA+ `Market.tla`（发布/下架/法令/否决/施法/换日：被禁的咒语永不生效、推荐 ⊆ 在架且不被禁、版税有界、不给自己、不给 NPC；每条守卫删掉后 TLC 都能找到反例）。
 
 ## 真实的霍格沃茨
 
@@ -293,7 +304,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 `REALMS=N` 启动 N 个独立世界进程（前门代理 HTTP、按 token/cookie 路由 WebSocket 与 MCP，`/api/realms` 查看人数）；64 核机器建议 `REALMS=56`，估算约 2.8 万在线，瓶颈是网卡而不是 CPU。方法、表格与假设见 `docs/PERF.md`，压测：`npx tsx scripts/bench.ts`。
 
 ## 形式化验证
-`formal/`：13 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、邓布利多军否决、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒（含不对称夺取曲线 ≤30%、单调）、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
+`formal/`：14 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、邓布利多军否决、封印、咒语集市）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒（含不对称夺取曲线 ≤30%、单调）、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解、集市版税每日有界）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
 
 ## 已知限制与取舍
 

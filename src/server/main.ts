@@ -12,6 +12,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { warmPathfinding } from '../kernel/pathfind.js';
 import { ensureNpcs } from '../kernel/npc.js';
 import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
+import { marketMessage } from '../kernel/market.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
@@ -307,7 +308,10 @@ type ClientMsg =
   | { t: 'buy'; item: string; lang?: string }
   // 不公平，但好玩: Dumbledore's Army and 偷师 (README; replies { t: 'da', r } and { t: 'study', r })
   | { t: 'da'; op?: 'status' | 'join' | 'leave' | 'veto' }
-  | { t: 'study'; spell: string; from?: string; copy?: boolean; name?: string; slot?: number };
+  | { t: 'study'; spell: string; from?: string; copy?: boolean; name?: string; slot?: number }
+  // 咒语集市 (kernel/market.ts marketMessage): reads and actions; replies { t: 'market', op, r } (+ a fresh book)
+  | { t: 'market'; op?: 'browse' | 'spell'; [k: string]: unknown }
+  | { t: 'marketop'; op: 'publish' | 'unpublish' | 'copy' | 'fork'; [k: string]: unknown };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -370,6 +374,13 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
         const r = world.studySpell(wid, String(m.spell ?? ''), { from: typeof m.from === 'string' ? m.from : undefined, copy: m.copy === true, name: typeof m.name === 'string' ? m.name : undefined, slot: finite(m.slot) ? m.slot : undefined });
         reply({ t: 'study', r });
         if (r.copied) book();
+        break;
+      }
+      case 'market':
+      case 'marketop': {
+        const r = marketMessage(world, wid, m);
+        reply({ t: 'market', op: r.op, r: r.r });
+        if (r.book) book();
         break;
       }
     }

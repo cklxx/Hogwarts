@@ -47,6 +47,7 @@ import {
   DARK_LORD_YOU, DARK_MARK_SEEN, LAWLESS_ENTER, LAWLESS_LEAVE, STUDIED_YOU, STUDY_READY, STUDY_WAIT, tiredText,
 } from './unfair.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
+import { type MarketBook, bannedCastText, bannedListing, blankMarket, marketDecreeErrors, marketDecreeNews, payRoyalty, restoreMarket, rollDay, sanitizeMarket } from './market.js';
 import type {
   Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
 } from './types.js';
@@ -140,6 +141,8 @@ export class World {
   decrees: DecreeRecord[] = [];
   /** O.W.L. exams (kernel/exams.ts): leaderboards and each wizard's weekly bests. Persisted. */
   owls: OwlBook = { boards: {}, bests: {} };
+  /** 咒语集市 (kernel/market.ts): listings, their versions and lineage, the day's royalty ledger. Persisted. */
+  market: MarketBook = blankMarket();
   flags = {
     statues: [] as Statue[], loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0,
     /** Name of the first wizard to post a curse (never shown publicly). */
@@ -735,7 +738,7 @@ export class World {
     return w.spells.find((s) => s.id === key) ?? w.spells.find((s) => s.name.toLowerCase() === k) ?? w.spells.find((s) => s.incantation.toLowerCase().replace(/[!.]/g, '') === k.replace(/[!.]/g, ''));
   }
 
-  forgeSpell(wid: string, spec: { name: string; incantation?: string; source: string; slot?: number; origin?: Spell['origin'] }): { spell: Spell; notes: string[] } {
+  forgeSpell(wid: string, spec: { name: string; incantation?: string; source: string; slot?: number; origin?: Spell['origin']; market?: Spell['market']; quiet?: boolean }): { spell: Spell; notes: string[] } {
     const w = this.need(wid);
     const name = spec.name.trim();
     if (name.length < 1 || name.length > 40) throw new Error('Spell names must be 1-40 characters.');
@@ -757,12 +760,13 @@ export class World {
     if (curse && this.rules.magic.unforgivablesBanned) notes.push(`The ${curse} Curse is Unforgivable. Casting it will send you to Azkaban.`);
     if (isLeviosar(incantation)) notes.push("It's Levi-O-sa, not Levi-o-SAR. (This one will fizzle.)");
     for (const egg of FORGE_NAME_EGGS) if (egg.re.test(name) || egg.re.test(incantation)) { notes.push(`${egg.line.zh} ${egg.line.en}`); break; }
-    const spell: Spell = { id: existing?.id ?? this.nid('s_'), name, incantation, source: spec.source, nodes: a.nodes, minYear: a.minYear, effects: a.effects, builtin: false, createdAt: this.now, ...(spec.origin ? { origin: spec.origin } : {}) };
+    const spell: Spell = { id: existing?.id ?? this.nid('s_'), name, incantation, source: spec.source, nodes: a.nodes, minYear: a.minYear, effects: a.effects, builtin: false, createdAt: this.now, ...(spec.origin ? { origin: spec.origin } : {}), ...(spec.market ? { market: spec.market } : {}) };
     if (existing) Object.assign(existing, spell);
     else w.spells.push(spell);
     if (spec.slot && spec.slot >= 1 && spec.slot <= 6) w.hotbar[spec.slot - 1] = spell.id;
     else if (!w.hotbar.includes(spell.id)) { const free = w.hotbar.indexOf(null); if (free >= 0) w.hotbar[free] = spell.id; }
-    if (spec.origin) this.emit('forge', `${w.name} studied ${spec.origin.author}'s "${spec.origin.spell}" and copied it into their book as ${name}.`, { who: [w.id], zh: `${w.name} 偷师了 ${spec.origin.author} 的「${spec.origin.spell}」，抄进了自己的咒语书（${name}）。` });
+    if (spec.quiet) { /* the caller (kernel/market.ts) says what happened */ }
+    else if (spec.origin) this.emit('forge', `${w.name} studied ${spec.origin.author}'s "${spec.origin.spell}" and copied it into their book as ${name}.`, { who: [w.id], zh: `${w.name} 偷师了 ${spec.origin.author} 的「${spec.origin.spell}」，抄进了自己的咒语书（${name}）。` });
     else this.emit('forge', `${w.name} ${existing ? 'reworked' : 'invented'} a spell: ${name} (${a.effects.join(', ') || 'no effects'}).`, { who: [w.id], zh: `${w.name} ${existing ? '改良' : '发明'}了一个咒语：${name}（${a.effects.join('、') || '无效果'}）。` });
     return { spell: existing ?? spell, notes };
   }
@@ -801,6 +805,11 @@ export class World {
     if (!opts.dryRun && this.silenced(w)) return fail(SILENCED);
     const spell = this.findSpell(w, key);
     if (!spell) return fail(`You do not know "${key}". Check your armory.`);
+    // 咒语集市: a market spell banned by decree (or a copy, or the same words) fizzles for everyone; it can still be read
+    if (bannedListing(this, spell)) {
+      if (!opts.dryRun) this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle });
+      return { ...fail(bannedCastText(this, spell, w.handle)), spell: spell.name };
+    }
     if (!opts.dryRun) {
       if (this.now < w.globalCd) return fail('Too fast — your wand arm needs a moment.');
       if (this.now < (w.cooldowns[spell.id] ?? 0)) return fail(`${spell.name} is recharging (${(w.cooldowns[spell.id] - this.now).toFixed(1)}s).`);
@@ -832,6 +841,7 @@ export class World {
       w.say = { text: spell.incantation, until: this.now + 1.5 };
       this.fx({ k: 'cast', x: w.pos.x, z: w.pos.z, h: w.handle });
       if (isHelloWorld(spell.name) || isHelloWorld(spell.incantation)) this.achieve(w, 'hello_world');
+      payRoyalty(this, w, spell); // 咒语集市: the author of a market spell earns a little (bounded) reputation
       this.runLaws('cast', w);
     } else {
       this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle });
@@ -1714,12 +1724,13 @@ export class World {
       });
     }
     const res = applyPatch(this.rules, full);
-    const errors = [...(res.ok ? [] : res.errors), ...lawErrors];
+    const errors = [...(res.ok ? marketDecreeErrors(this, res.rulebook) : res.errors), ...lawErrors];
     if (errors.length) return { ok: false as const, errors };
     if (!res.ok) return { ok: false as const, errors: res.errors };
     if (dryRun) return { ok: true as const, dryRun: true, changes: res.changes };
     const before = this.rules;
     this.rules = res.rulebook;
+    sanitizeMarket(this);
     w.decreeCharges = 0;
     const rec: DecreeRecord = { at: this.now, term: this.term.n, minister: w.name, changes: res.changes, proclamation: this.rules.proclamation };
     this.decrees.push(rec);
@@ -1730,6 +1741,7 @@ export class World {
       this.emit('decree', 'The Ministry has fallen. Scrimgeour is dead. They are coming. (Unforgivable Curses are no longer punished; the name "Voldemort" is now Taboo.)', { zh: '魔法部倒台了。斯克林杰死了。他们来了。（不可饶恕咒不再受罚；「伏地魔」这个名字成了禁忌。）' });
     if (!before.magic.apparitionOnGrounds && this.rules.magic.apparitionOnGrounds)
       this.emit('decree', 'The anti-Apparition jinx over Hogwarts has been lifted — as Dumbledore did for lessons, once.', { zh: '霍格沃茨上空的反幻影显形魔咒被解除了 —— 就像邓布利多为上课破例的那一次。' });
+    marketDecreeNews(this, before, this.rules, [w.id]);
     for (const w2 of this.wizards.values()) this.clampVitals(w2);
     // The Minister leaves a mark on the world itself: a statue in the courtyard.
     this.flags.statues = [...this.flags.statues, { name: w.name, house: w.house, term: this.term.n, inscription: this.rules.proclamation.slice(0, 80) }].slice(-8);
@@ -1924,6 +1936,7 @@ export class World {
     for (const [k, times] of this.owlTimes) if (!times.length || this.now - times[times.length - 1] >= 60) this.owlTimes.delete(k);
     this.unfairSweep();
     this.memeSweep();
+    rollDay(this); // 咒语集市: the day's royalty summary
   }
 
   /**
@@ -2866,7 +2879,9 @@ export class World {
 
   private enactVeto(v: VetoWindow) {
     const res = applyPatch(defaultRulebook(), v.before as unknown); // re-validated: it may have come from disk
+    const was = this.rules;
     this.rules = res.ok ? res.rulebook : defaultRulebook();
+    sanitizeMarket(this); // a listing unpublished since the decree leaves the 推荐 shelf (Market.tla PromotedPublished)
     this.flags.vetoTerm = v.term;
     this.flags.veto = null;
     const rec = this.decrees[v.decree];
@@ -2879,6 +2894,7 @@ export class World {
     for (const x of this.wizards.values()) this.clampVitals(x);
     const l = fill(DA_VETOED, { minister: v.minister });
     this.emit('decree', l.en, { who: [v.ministerId], zh: l.zh });
+    marketDecreeNews(this, was, this.rules);
   }
 
   /**
@@ -3086,6 +3102,8 @@ export class World {
       spells: w.spells.map((s) => ({
         id: s.id, name: s.name, incantation: s.incantation, builtin: s.builtin, minYear: s.minYear, nodes: s.nodes, effects: s.effects,
         cooldown: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)), source: s.source, ...(s.origin ? { origin: s.origin } : {}),
+        // 咒语集市: the listing it belongs to (own: you are its author, so publish_spell makes a new version) and a ban
+        ...(s.market ? { market: { ...s.market, own: this.market.listings[s.market.id]?.author === w.id }, ...(bannedListing(this, s) ? { banned: true } : {}) } : {}),
       })),
       // an anonymous parcel hides its sender until Revelio (§B.1)
       items: w.items.map((i) => {
@@ -3254,6 +3272,7 @@ export class World {
     return {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       owls: this.owls,
+      market: this.market,
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
       wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined, jinxLook: null })),
     };
@@ -3271,6 +3290,7 @@ export class World {
     };
     w.seq = data.seq ?? 0;
     w.owls = { boards: data.owls?.boards ?? {}, bests: data.owls?.bests ?? {} };
+    w.market = restoreMarket((data as { market?: unknown }).market);
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {
@@ -3301,6 +3321,7 @@ export class World {
       }
       w.wizards.set(x.id, wz);
     }
+    sanitizeMarket(w);
     return w;
   }
 }
