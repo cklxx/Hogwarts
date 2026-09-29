@@ -138,6 +138,9 @@ export const PROVOKED_SECS = 8, PROVOKED_LEASH = 60;
 /** 观战: how many of an agent's calls a watcher sees, and how long after its last call an agent counts as playing. */
 export const AGENT_LOG_MAX = 12, AGENT_ACTIVE_S = 120;
 
+/** 熟能生厌 (World.freshness): full rewards for the first GRIND_FREE_KILLS of one creature kind in GRIND_FATIGUE_S seconds, then less, down to GRIND_FLOOR. */
+export const GRIND_FREE_KILLS = 6, GRIND_FATIGUE_S = 600, GRIND_FLOOR = 0.05;
+
 export class World {
   rules: Rulebook;
   now = 0;
@@ -146,6 +149,8 @@ export class World {
   creatures = new EntityMap<Creature>();
   /** Prefix for newly minted tokens (set by a realm worker so a front door can route by token). */
   tokenPrefix = '';
+  /** 熟能生厌: recent kill times per wizard and creature kind (World.freshness; transient). */
+  private fatigue = new Map<string, Partial<Record<Creature['kind'], number[]>>>();
   /** 观战: watch link code → wizard id (World.newWatchCode). */
   private watchIndex = new Map<string, string>();
   /** Cross-check every spatial query against a full scan (tests / HOGWARTS_VERIFY_SPATIAL=1). Slow. */
@@ -1308,7 +1313,7 @@ export class World {
       if (!w) continue;
       const isKiller = w === killer;
       if (!isKiller && dmg / total < 0.2) continue;
-      const share = isKiller ? 1 : 0.5;
+      const share = (isKiller ? 1 : 0.5) * this.freshness(w, c.kind);
       this.gainXp(w, def.xp * pr.xpMultiplier * share * loot);
       this.addRep(w, def.rep * pr.creatureRepMultiplier * share, 'creatures');
       w.galleons += Math.round(def.galleons * pr.galleonMultiplier * share * loot);
@@ -1321,6 +1326,28 @@ export class World {
   }
 
   /** 内卷: MEME.GRIND_KILLS creatures inside MEME.GRIND_WINDOW_S gets a private word, at most every GRIND_GAP_S. */
+  /**
+   * 熟能生厌: how much one more kill of `kind` still teaches this wizard. The first GRIND_FREE_KILLS of a kind in
+   * GRIND_FATIGUE_S pay in full; after that GRIND_FREE_KILLS/(n+1), never below GRIND_FLOOR — the balance
+   * simulation (scripts/balance-sim.ts) had a year-one wizard one-shotting pixies at 360 XP/min from a standing
+   * loop. Other kinds, exams and events are untouched: variety and harder targets are the way up. Records this kill.
+   */
+  private freshness(w: Wizard, kind: Creature['kind']): number {
+    if (w.npc) return 1;
+    const byKind = this.fatigue.get(w.id) ?? {};
+    this.fatigue.set(w.id, byKind);
+    const recent = (byKind[kind] ?? []).filter((t) => this.now - t < GRIND_FATIGUE_S);
+    const n = recent.length;
+    recent.push(this.now);
+    byKind[kind] = recent;
+    const f = n < GRIND_FREE_KILLS ? 1 : Math.max(GRIND_FLOOR, GRIND_FREE_KILLS / (n + 1));
+    if (n === GRIND_FREE_KILLS) {
+      const zh = zhCreature(kind), en = CREATURES[kind].name;
+      this.emit('system', `You have learned what ${en}s can teach for now: each one is worth less for a while. Try another creature, an O.W.L. exam, or the next school event.`, { to: w.id, zh: `${zh}能教你的，你这阵子都学会了：接下来一段时间，打它们得到的越来越少。换个对手、去考一门 O.W.L.，或者等下一件校园事件。` });
+    }
+    return f;
+  }
+
   private grind(w: Wizard) {
     if (w.npc) return;
     const m = this.memo(w);
@@ -3280,6 +3307,7 @@ export class World {
       minister: m ? { name: m.name, decreeUnspent: m.decreeCharges > 0 } : null,
       darkLord: this.darkLordView(),
       darkLordRule: `The reputation #1 (min ${DARK_LORD_MIN_REP}, seen in the last ${DARK_LORD_SEEN_S / 60} minutes) is the Dark Lord: +${DARK_LORD_POWER_PCT - 100}% damage, whereabouts announced every ${DARK_LORD_BROADCAST_S}s, and a stun steals 30% of their reputation. A challenger needs 110% of theirs to take the mark.`,
+      ministerMinReputation: this.rules.terms.ministerMinReputation,
       ministerRule: `At the end of each term the highest-reputation wizard (min ${this.rules.terms.ministerMinReputation}) becomes Minister for Magic and may issue one decree.`,
       houseCups: this.houseCups.slice(-5),
       loopholeFirstFoundBy: this.flags.loopholeFoundBy,

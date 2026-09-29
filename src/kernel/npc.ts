@@ -6,6 +6,7 @@ import { dist } from './physics.js';
 import { derived } from './progression.js';
 import type { Wizard } from './types.js';
 import type { World } from './world.js';
+import { npcStock } from './market.js';
 
 /**
  * Non-player wizards. They are ordinary wizards in the kernel (same spells, same mana, same rules)
@@ -52,6 +53,7 @@ export function ensureNpcs(world: World, count: number) {
     w.connections = Math.max(1, w.connections);
     brains.set(w.id, { patrol: 0, next: 0, lastSay: -1e9, grudge: null, grudgeUntil: 0 });
   }
+  npcStock(world); // their stalls in the spell market (market.ts)
 }
 
 /** Called every tick; each NPC thinks twice a second. */

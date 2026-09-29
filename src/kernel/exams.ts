@@ -805,7 +805,8 @@ export function weeklyExams(secret: string, ms: number): ExamDef[] {
 // ------------------------------------------------------------------ sitting an exam in the live world
 
 /** Rewards for the first pass of an exam in a week, by exam year, times the grade's multiplier. */
-export const rewardBase = (year: number) => ({ xp: 10 + 10 * year, galleons: 2 + 2 * year, reputation: 1 + year });
+/** What a first pass this week pays (×1.5 for an O). XP was 10 + 10×year: less than two pixies, while a minute of pixies paid 360 (scripts/balance-sim.ts). */
+export const rewardBase = (year: number) => ({ xp: 30 + 30 * year, galleons: 2 + 2 * year, reputation: 1 + year });
 export const GRADE_MULT: Record<Grade, number> = { O: 1.5, E: 1.25, A: 1, P: 0, D: 0, T: 0 };
 
 const sitTimes = new WeakMap<World, Map<string, number[]>>();

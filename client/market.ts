@@ -16,7 +16,7 @@ import { ELEMENT_ICON, ic, isLatin, spellIcon } from './ink';
 
 /** A listing as World's market views return it (browseMarket / marketSpell cards). */
 export interface MarketCard {
-  id: string; v: number; name: string; incantation: string; author: string; handle: string; house: string;
+  id: string; v: number; name: string; incantation: string; author: string; handle: string; house: string; npc?: boolean;
   tags: string[]; effects: string[]; minYear: number; nodes: number; desc: { zh: string; en: string } | null;
   versions: number; copies: number; forks: number; casts: number; casters: number; popularity: number;
   parent?: { id: string; v: number; name: string; author: string };
@@ -132,10 +132,10 @@ export function createMarket(book: HTMLElement, host: MarketHost) {
     const shelf = $('.mk-shelf');
     shelf.hidden = !r.promoted.length;
     shelf.innerHTML = r.promoted.length ? `<h3>${ic('star')}${L('推荐书架', 'The featured shelf')} <small class="hint">${L('魔法部推荐', 'by Ministry decree')}</small></h3><div class="mk-chips">${r.promoted.map((c) =>
-      `<button type="button" class="mk-chip" data-id="${esc(c.id)}">${ic(cardIcon(c))}${nameHtml(c.name)}<small>${esc(c.author)}</small></button>`).join('')}</div>` : '';
+      `<button type="button" class="mk-chip" data-id="${esc(c.id)}">${ic(cardIcon(c))}${nameHtml(c.name)}<small>${esc(c.author)}${c.npc ? ' 🤖' : ''}</small></button>`).join('')}</div>` : '';
     $('.mk-list').innerHTML = r.listings.length ? r.listings.map((c) => `<li data-id="${esc(c.id)}" class="${c.id === sel ? 'sel' : ''}${c.banned ? ' banned' : ''}" tabindex="0">`
       + `<span class="sp-ic">${ic(cardIcon(c))}</span><span class="sp-tx"><b>${nameHtml(c.name)} <small class="mk-v">v${c.v}</small></b>`
-      + `<small>${esc(c.author)} · ${yearText(c.minYear)} · ${c.tags.map((t) => esc(tagText(t))).join(' · ') || '—'}</small>`
+      + `<small>${esc(c.author)}${c.npc ? ' 🤖' : ''} · ${yearText(c.minYear)} · ${c.tags.map((t) => esc(tagText(t))).join(' · ') || '—'}</small>`
       + `<small class="mk-stats">${L(`抄 ${c.copies} · 改编 ${c.forks} · 施放 ${c.casters}`, `${c.copies} copies · ${c.forks} forks · ${c.casters} casters`)}</small></span>`
       + `<span class="mk-bs">${badges(c)}</span></li>`).join('')
       : `<li class="mk-empty">${L('这里还空着。发布第一个咒语吧：在右页选一个你自己写的咒语。', 'Nothing here yet. Publish the first: pick one of your own spells on the right.')}</li>`;

@@ -223,7 +223,8 @@ export function payRoyalty(world: World, caster: Wizard, spell: Spell) {
     if (!who.includes(caster.id) && who.length < 200) who.push(caster.id);
   }
   const author = world.wizards.get(l.author);
-  if (author && r.author) world.addRep(author, r.author / 10);
+  // an NPC's stall (npcStock) earns nothing: NPCs already top the leaderboard, royalties would only push them further
+  if (author && !author.npc && r.author) world.addRep(author, r.author / 10);
   const parent = l.parent ? world.wizards.get(l.parent.authorId) : undefined;
   if (parent && r.parent) world.addRep(parent, r.parent / 10);
 }
@@ -281,6 +282,7 @@ function card(world: World, l: MarketListing, wid: string | null) {
   const m = world.rules.market;
   return {
     id: l.id, v: v.v, name: v.name, incantation: v.incantation, author: l.authorName, handle: l.authorHandle, house: l.house,
+    npc: world.wizards.get(l.author)?.npc || undefined,
     tags: v.tags, effects: v.effects, minYear: v.minYear, nodes: v.nodes, desc: v.desc,
     publishedAt: round1(l.publishedAt), updatedAt: round1(l.updatedAt), versions: l.versions.length,
     copies: l.copiers.length, forks: l.forks.length, casts: l.casts, casters: l.casters, popularity: popularity(l),
@@ -389,6 +391,28 @@ function announce(world: World, w: Wizard, line: Line) {
  * published — becomes its next immutable version (unchanged: nothing happens; unpublished: it comes back).
  * Copies of other wizards' spells (from the market, or studied) are theirs: fork them instead.
  */
+/**
+ * NPC stalls (试玩: 「集市 0 个上架」): each NPC keeps one spell of their own on the market, so the first player on
+ * a server finds something to browse, copy and fork. All are castable in the first year; none is an exam answer (copying one never passes an
+ * O.W.L.), and they earn no royalties (payRoyalty). Idempotent: called whenever the NPCs are (re)made.
+ */
+export const NPC_STALLS: Record<string, { name: string; source: string; desc: { zh: string; en: string } }> = {
+  'Seamus Finnigan': { name: 'Sparks Everywhere', source: '(each e (enemies 8) (bolt e 6 :fire))', desc: { zh: '火花四溅：8 米内每个敌人各挨一发小火球。西莫说：「炸了再说。」', en: 'A small fireball at every enemy within 8 m. Seamus: "Blow it up first, ask later."' } },
+  'Hannah Abbott': { name: 'First Aid Kit', source: '(heal self 15) (shield self 12 3)', desc: { zh: '急救包：先给自己回血，再套一层三秒的护盾。', en: 'Heal yourself, then a three-second shield.' } },
+  'Padma Patil': { name: 'Frost Signpost', source: '(bolt (first (enemies 25)) 9 :ice)', desc: { zh: '冰霜路标：不用选目标，冰锥自动打 25 米内最近的敌人。', en: 'No target needed: an ice bolt at the nearest enemy within 25 m.' } },
+  'Gregory Goyle': { name: 'Cosh', source: '(bolt target 14)', desc: { zh: '闷棍：不讲究，一发最大号的魔弹。', en: 'No finesse: the biggest bolt a first-year can throw.' } },
+};
+export function npcStock(world: World) {
+  for (const w of world.wizards.values()) {
+    const stall = w.npc ? NPC_STALLS[w.name] : undefined;
+    if (!stall || Object.values(world.market.listings).some((l) => l.author === w.id)) continue;
+    try {
+      const s = world.findSpell(w, stall.name) ?? world.forgeSpell(w.id, { name: stall.name, source: stall.source, quiet: true }).spell;
+      makeListing(world, w, s, { zh: stall.desc.zh, en: stall.desc.en }, null);
+    } catch { /* a rule change made it unforgeable: no stall this time */ }
+  }
+}
+
 export function publishSpell(world: World, wid: string, key: string, opts: { desc?: { zh?: string; en?: string } | null } = {}) {
   const w = world.need(wid);
   if (w.npc) throw new Error('NPCs keep to the curriculum.');
