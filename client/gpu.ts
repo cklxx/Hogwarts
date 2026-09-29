@@ -12,6 +12,9 @@ export type Backend = 'webgpu' | 'webgl';
 const params = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
 /** `?gpu=webgl` forces the WebGL 2 backend (comparisons, or a browser whose WebGPU misbehaves). */
 export const FORCE_WEBGL = params.get('gpu') === 'webgl';
+/** Set when the WebGPU device was lost earlier in this tab: the reload that follows stays on WebGL 2. */
+const LOST_KEY = 'hogwarts.gpuLost';
+const lostBefore = (() => { try { return sessionStorage.getItem(LOST_KEY) === '1'; } catch { return false; } })();
 
 let backend: Backend = 'webgl';
 /** Which backend the renderer runs on (valid once createGpuRenderer resolved). */
@@ -48,6 +51,7 @@ export async function createGpuRenderer(canvas: HTMLCanvasElement, o: { timestam
   tolerateOldSwizzle();
   let forceWebGL = FORCE_WEBGL;
   if (FORCE_WEBGL) fallbackReason = '?gpu=webgl';
+  else if (lostBefore) { forceWebGL = true; fallbackReason = 'WebGPU device lost earlier in this tab'; }
   else {
     const gpu = (navigator as Navigator & { gpu?: { requestAdapter(o?: object): Promise<unknown> } }).gpu;
     try {
@@ -68,6 +72,18 @@ export async function createGpuRenderer(canvas: HTMLCanvasElement, o: { timestam
     await renderer.init();
   }
   backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'webgpu' : 'webgl';
+  // A lost WebGPU device (driver reset, GPU hang, sleep/wake, an unstable adapter) leaves a black canvas that
+  // never recovers by itself. The world lives on the server, so the cheapest robust recovery is a reload that
+  // comes back on WebGL 2 for the rest of this tab (the key above); a lost WebGL context is handled by the browser.
+  if (backend === 'webgpu') {
+    const lost = renderer.onDeviceLost.bind(renderer);
+    renderer.onDeviceLost = (info: unknown) => {
+      lost(info as never);
+      try { sessionStorage.setItem(LOST_KEY, '1'); } catch { /* private mode: the reload may try WebGPU once more */ }
+      console.warn('[gpu] WebGPU device lost: reloading on WebGL 2');
+      setTimeout(() => location.reload(), 300);
+    };
+  }
   // An InstancedMesh of up to 1 024 instances gets its matrices as a uniform buffer, named after that node's id
   // in the shader source: every instanced mesh (a batch of wizard legs, the crowd, merlons, candles) then has
   // shader code of its own and compiles its own program, and partbatch.ts makes a new one whenever a new look
