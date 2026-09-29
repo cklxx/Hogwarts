@@ -153,13 +153,15 @@ impl Relay {
         let mut saved = true;
         for item in content.iter_mut() {
             let Some(text) = item.get("text").and_then(|t| t.as_str()) else { continue };
-            let Ok(data) = serde_json::from_str::<Value>(text) else { continue };
+            let Ok(mut data) = serde_json::from_str::<Value>(text) else { continue };
             let Some(token) = data.get("token").and_then(|t| t.as_str()).map(str::to_string) else { continue };
             match crate::keychain(&self.origin).map(|e| e.set_password(&token)) {
                 Some(Ok(())) => {
                     *self.key.lock().unwrap() = Some(token.clone());
-                    let hidden = text.replace(&token, "(saved to the system keychain / 已存进系统钥匙串)");
-                    item["text"] = Value::String(hidden);
+                    saved_reply(&mut data, &self.origin);
+                    // belt and braces: no copy of the key survives anywhere in the text
+                    let clean = serde_json::to_string_pretty(&data).unwrap_or_default().replace(&token, SAVED);
+                    item["text"] = Value::String(clean);
                     log(&format!("key saved to the system keychain for {}", self.origin));
                 }
                 Some(Err(e)) => {
@@ -175,6 +177,23 @@ impl Relay {
             }
         }
         saved
+    }
+}
+
+const SAVED: &str = "(saved to the system keychain / 已存进系统钥匙串)";
+
+/// A reply whose key is now in the keychain: the server's advice (keep the token in your memory, set up a bridge,
+/// give your human a `#k=` link) no longer applies. Same as the Node bridge's intercept (src/mcp/stdio-bridge.ts).
+fn saved_reply(data: &mut Value, origin: &str) {
+    let Some(o) = data.as_object_mut() else { return };
+    o.insert("token".into(), Value::String(SAVED.into()));
+    if o.contains_key("play") {
+        o.insert("play".into(), Value::String(format!("{origin}/")));
+        o.insert("playNote".into(), Value::String("Your human plays in the Hogwarts desktop client: it logs in with the same key from the system keychain.".into()));
+    }
+    o.insert("remember".into(), serde_json::json!({ "saved": "The desktop client saved your key in the system keychain; new sessions log in automatically. Do not ask for the key or write it anywhere." }));
+    if o.contains_key("connect") {
+        o.insert("connect".into(), serde_json::json!({ "desktop": "Already connected through the Hogwarts desktop client (hogwarts-desktop --mcp-stdio); nothing to set up." }));
     }
 }
 
@@ -270,5 +289,19 @@ mod tests {
         let mut short = serde_json::json!("abc");
         scrub(&mut short, "abc", "(key)"); // too short to be a key: left alone
         assert_eq!(short, serde_json::json!("abc"));
+    }
+
+    #[test]
+    fn a_saved_key_drops_the_advice_about_keeping_it() {
+        let mut d = serde_json::json!({ "name": "W", "token": "k", "play": "http://a:1/#k=k", "playNote": "give this link",
+            "remember": { "now": "save the token" }, "connect": { "bridge": "npx tsx src/mcp/stdio-bridge.ts" } });
+        saved_reply(&mut d, "http://a:1");
+        assert_eq!(d["token"], SAVED);
+        assert_eq!(d["play"], "http://a:1/");
+        assert!(d["remember"]["saved"].as_str().unwrap().contains("keychain"));
+        assert!(d["connect"].get("bridge").is_none());
+        let mut login = serde_json::json!({ "name": "W", "token": "k" }); // no play / connect: none added
+        saved_reply(&mut login, "http://a:1");
+        assert!(login.get("play").is_none() && login.get("connect").is_none());
     }
 }

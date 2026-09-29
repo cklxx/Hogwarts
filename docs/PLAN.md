@@ -50,7 +50,7 @@ npx tauri build                                      # 打当前平台的安装�
 1. 从最近一次「Desktop client」运行的 Artifacts 下载安装包（或本地 `npx tauri build`）。macOS 第一次右键 →「打开」；Windows「更多信息 → 仍要运行」。
 2. 服务器用默认 `HOST=0.0.0.0` 启动，防火墙放行 TCP+UDP 7777。
 3. 逐条验：启动器自动列出服务器 → 进入 → 游戏里登录一次 → 退出重开应直接进世界（钥匙串）→ 服务器换版本重启，壳内出现「游戏已更新」→ F11 全屏、Ctrl+Shift+S 回列表 → 启动器点「写入 Claude Desktop」，重启 Claude Desktop 后对它说「连上霍格沃茨」，`whoami` 应该是你的巫师。
-4. 有问题记进 TODO 的 P1/P2 行。已知没做：安装包签名、壳本身的自动更新（Tauri updater）、Rust 桥没有 Node 桥的「猫头鹰推送」（`notifications/claude/channel`），`listen` 工具照常能用。
+4. 有问题记进 TODO 的 P1/P2 行。macOS 已测部分和遗留见 TODO P1/P2（锁屏下测不了的几项要亮屏再点一遍）。已知没做：安装包签名、壳本身的自动更新（Tauri updater）、Rust 桥没有 Node 桥的「猫头鹰推送」（`notifications/claude/channel`），`listen` 工具照常能用。
 
 ### 2. P4 看 Agent 玩
 
