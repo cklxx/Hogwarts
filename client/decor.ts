@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { bannerTexture, glowSprite } from './textures';
 import { heightAt } from './terrain';
+import { STATUE_SPOTS, statueYaw } from '../src/shared/layout';
 
 export interface Statue { name: string; house: House; term: number; inscription: string }
 export interface Look {
@@ -37,7 +38,7 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
   let currentBanner: string | null = 'unset';
 
   // ---- statues of Ministers, lining the approach to the castle (everyone walks past them)
-  const STATUE_SPOTS = [[-7, 4], [7, 4], [-7, 16], [7, 16], [-7, 28], [7, 28], [-7, 40], [7, 40]];
+  // (STATUE_SPOTS: src/shared/layout.ts, where the kernel reads them too: the statues are solid)
   const statueGroup = new THREE.Group();
   scene.add(statueGroup);
   const marble = new THREE.MeshStandardMaterial({ color: 0xe8e4dc, roughness: 0.35 });
@@ -83,7 +84,7 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
       up.target.position.set(0, 3.5, 0);
       g.add(up, up.target);
       g.position.set(x, 0, z);
-      g.rotation.y = x < 0 ? Math.PI / 2 : -Math.PI / 2;
+      g.rotation.y = statueYaw(x);
       statueGroup.add(g);
     });
   }

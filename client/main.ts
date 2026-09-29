@@ -141,6 +141,7 @@ const R = createRenderer(canvas);
 const { scene, camera } = R;
 const world = buildWorld(scene);
 const decor = createDecor(scene, world.bannerSpots);
+if (/[?&]debug=colliders\b/.test(location.search)) void import('./debug').then((d) => d.showColliders(scene, () => snap?.look?.statues.length ?? 0));
 // Quality: ?q=low|high forces it; otherwise measure the first seconds and drop to low if slow.
 const forcedQ = new URLSearchParams(location.search).get('q');
 let quality: 'low' | 'high' = forcedQ === 'low' ? 'low' : 'high';
