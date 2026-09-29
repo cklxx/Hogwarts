@@ -153,6 +153,7 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 | 共享地图 | `src/shared/map.ts` | 障碍物/区域/地标；服务器碰撞与客户端建模读同一份数据 |
 | 碰撞 | `src/shared/layout.ts` · `src/kernel/physics.ts` | 实心物体的唯一数据源（城堡、塔、树干、火把柱、长桌、雕像……）：内核碰撞、A* 网格、弹道拦截和客户端摆放都读它；巫师与生物之间柔性分离；`?debug=colliders` 显示碰撞体。见 [docs/COLLISION.md](docs/COLLISION.md) |
 | MCP | `src/mcp/server.ts` | 每个 MCP 会话绑定一个巫师；`grimoire` 从原语表自动生成 |
+| **功能插件** | `src/kernel/feature.ts` · `features.ts` · `client/feature.ts` · `client/features.ts` | 一个玩法（决斗俱乐部、魁地奇、事件轮盘、咒语集市、O.W.L.）= 一个 `Feature`：自带世界状态、每 tick 步进、快照字段、存档、移动 / 施法 / 治疗 / 飞弹 / NPC 钩子、MCP 工具和浏览器消息；客户端对应一个 `ClientFeature`（HUD、按键、消息、3D、骑扫帚的高度）。内核、MCP、服务器、客户端只遍历注册表，不点名任何玩法——加一个玩法 = 写一个文件 + 在注册表里加一行 |
 
 ## 规则
 

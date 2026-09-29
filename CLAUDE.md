@@ -8,7 +8,7 @@
 
 | 路径 | 内容 |
 |---|---|
-| `src/kernel/` | 权威世界（`world.ts`，20 Hz）、Runes 咒语虚拟机（`magic.ts`）、规则书（`rulebook.ts`，zod 模式 = 宪法，法令只能改它）、生物、NPC、考试、集市、学院杯、事件轮盘 |
+| `src/kernel/` | 权威世界（`world.ts`，20 Hz）、Runes 咒语虚拟机（`magic.ts`）、规则书（`rulebook.ts`，zod 模式 = 宪法，法令只能改它）、生物、NPC、学院杯；**功能插件**（`feature.ts` 接口、`features.ts` 注册表）：决斗俱乐部、魁地奇、事件轮盘、集市、考试 |
 | `src/mcp/` | MCP 服务器（`server.ts`，每个会话一个）、Grimoire、stdio 桥 |
 | `src/server/` | HTTP/WS/MCP 入口（`main.ts`）、局域网发现、多进程 REALMS、静态文件、使魔 |
 | `client/` | 浏览器客户端（three.js `WebGLRenderer`，羊皮纸界面，`client/panels/*`） |
@@ -20,6 +20,7 @@
 ## 规矩
 
 - **提交前必须全绿**：`npx tsc --noEmit && npx vitest run && npx vite build`。改了 `desktop/` 再跑 `cargo test --manifest-path desktop/src-tauri/Cargo.toml`。
+- **新玩法写成插件**：内核一个 `Feature`（`src/kernel/feature.ts`）加进 `features.ts`，客户端一个 `ClientFeature` 加进 `client/features.ts`；不要在 `world.ts` / `mcp/server.ts` / `server/main.ts` / `client/main.ts` 里点名新玩法。状态用声明合并挂到 `World` 上，存档走 `save` / `load`。
 - **改内核规则或常量**：同步更新 `formal/`（TLA+ 规格、Lean、`formal/vectors.json` / `test/formal.test.ts`），并跑 `formal/run.sh`。
 - **界面文字**用 `L('中文', 'English')`，中文在前；服务器事件带 `zh`。
 - **性能改动**先测后改，前后数字写进 `docs/PERF.md`（软件渲染的帧率只看方向，要写明）。
