@@ -28,7 +28,6 @@ import {
   pointsAward, type Line,
 } from '../lore/memes.js';
 import { type CastReport, execute } from './magic.js';
-import type { OwlBook } from './exams.js';
 import { OWL_ACHIEVEMENTS } from '../lore/exams.js';
 import { lookOf } from './glamour.js';
 import { cleanGlamour, glamourKey, type Glamour } from '../shared/glamour.js';
@@ -55,7 +54,7 @@ import { inMatch } from './duelclub.js';
 import { FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
-import { type MarketBook, bannedCastText, bannedListing, blankMarket, marketDecreeErrors, marketDecreeNews, payRoyalty, restoreMarket, rollDay, sanitizeMarket } from './market.js';
+import { bannedCastText, bannedListing, marketDecreeErrors, marketDecreeNews, payRoyalty, rollDay, sanitizeMarket } from './market.js';
 import type {
   Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
 } from './types.js';
@@ -89,8 +88,8 @@ const ONLINE_GRACE = 300;
 /** Tarantallegra: the legs pick a new wrong direction every DANCE_STEP_S, up to DANCE_MAX_RAD off course. */
 const DANCE_STEP_S = 0.4;
 const DANCE_MAX_RAD = 0.6;
-/** Stunning a wizard enrolled less than this long ago earns no reputation (stops throwaway-alt farming). */
-export const FRESH_SECONDS = 600;
+import { FRESH_SECONDS } from '../shared/constants.js';
+export { FRESH_SECONDS };
 /** Curriculum reveal charms and the HUD corner each one unlocks (a slot can be reused once it is). */
 const REVEAL_CHARM: Record<string, string> = { Tempus: 'tempus', Revelio: 'revelio', 'Point Me': 'point-me', 'Homenum Revelio': 'homenum' };
 const TOMB = { x: -52, z: 28 };
@@ -170,15 +169,10 @@ export class World {
   private stuck = new Map<string, { t: number; replans: number }>();
   projectiles = new Map<string, Projectile>();
   pending: Pending[] = [];
-  /** 决斗俱乐部 (duelclub.ts): the queue, the match on the stage, and the term's reward ledger (persisted). */
   events: WorldEvent[] = [];
   term: Term;
   houseCups: { term: number; winner: House | null; points: Record<House, number> }[] = [];
   decrees: DecreeRecord[] = [];
-  /** O.W.L. exams (kernel/exams.ts): leaderboards and each wizard's weekly bests. Persisted. */
-  owls: OwlBook = { boards: {}, bests: {} };
-  /** 咒语集市 (kernel/market.ts): listings, their versions and lineage, the day's royalty ledger. Persisted. */
-  market: MarketBook = blankMarket();
   flags = {
     statues: [] as Statue[], loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0,
     /** Name of the first wizard to post a curse (never shown publicly). */
@@ -3771,8 +3765,6 @@ export class World {
   serialize() {
     return {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
-      owls: this.owls,
-      market: this.market,
       // what each feature keeps across a restart (kernel/features.ts)
       features: Object.fromEntries(HOOKS.save.map((f) => [f.id, f.save(this)])),
       // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
@@ -3794,8 +3786,6 @@ export class World {
       chests: data.flags?.chests ?? { term: 0, opened: {} },
     };
     w.seq = data.seq ?? 0;
-    w.owls = { boards: data.owls?.boards ?? {}, bests: data.owls?.bests ?? {} };
-    w.market = restoreMarket((data as { market?: unknown }).market);
     const saved = (data as { features?: Record<string, unknown> }).features ?? {};
     for (const f of HOOKS.load) f.load(w, saved[f.id], data as unknown as Record<string, unknown>); // older saves kept these at the top
     for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {

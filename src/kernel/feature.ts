@@ -23,7 +23,13 @@ export interface FeatureTool {
   input: Record<string, z.ZodTypeAny>;
   /** Concentration it spends (rules.agents); 0 for reading. */
   cost: number;
+  /** Changes nothing (MCP readOnlyHint). */
+  readOnly?: boolean;
+  /** Works for a session with no wizard bound yet (`wid` is then null). */
+  anonymous?: boolean;
   run(world: World, wid: string, args: Record<string, unknown>): unknown;
+  /** For an `anonymous` tool: the call when no wizard is bound. */
+  runAnon?(world: World, wid: string | null, args: Record<string, unknown>): unknown;
 }
 
 export interface Feature {

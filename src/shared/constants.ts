@@ -239,3 +239,6 @@ export type CardRarity = (typeof CARD_RARITIES)[number];
 export const CARD_DUP_GALLEONS: Record<CardRarity, number> = { common: 5, rare: 12, epic: 30, legendary: 80 };
 export const CARD_DROP_PCT_DEFAULT = 3;
 export const CARD_DROP_PCT_MAX = 20;
+
+/** Stunning a wizard enrolled less than this long ago earns no reputation (stops throwaway-alt farming); also no royalties, no hexes. */
+export const FRESH_SECONDS = 600;

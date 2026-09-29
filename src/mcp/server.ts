@@ -11,8 +11,6 @@ import { AGENT_PAUSED, type World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { TIME_REMARKS, WEATHER_REMARKS, WHOAMI_QUOTES, dayPart } from '../lore/memes.js';
 import { FailWindow } from '../server/limits.js';
-import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
-import { browseMarket, copySpell, forkSpell, marketSpell, publishSpell, unpublishSpell } from '../kernel/market.js';
 import { FEATURES } from '../kernel/features.js';
 import { qdOnTeam } from '../kernel/quidditch.js';
 import { grimoire } from './grimoire.js';
@@ -410,7 +408,15 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   // the features' own tools (kernel/features.ts: the Duelling Club, Quidditch, …), all bound to your wizard
   for (const f of FEATURES) for (const t of f.tools ?? []) {
-    register(t.name, { title: t.title, description: t.description, inputSchema: t.input }, me((wid, a: Record<string, unknown>) => t.run(world, wid, a ?? {})));
+    const config = { title: t.title, description: t.description, inputSchema: t.input, ...(t.readOnly ? { annotations: { readOnlyHint: true } } : {}) };
+    if (t.anonymous && t.runAnon) {
+      const anon = t.runAnon;
+      register(t.name, config, async (a: Record<string, unknown>) => {
+        const wid = bound();
+        if (wid) world.touch(wid);
+        try { return out(anon(world, wid, a ?? {})); } catch (e) { return fail((e as Error).message); }
+      });
+    } else register(t.name, config, me((wid, a: Record<string, unknown>) => t.run(world, wid, a ?? {})));
   }
 
   register('dodge', {
@@ -657,31 +663,6 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     description: 'Open the hidden chest you are standing next to (within 2.6 m; move_to one first — school_events says how many are still closed this term; they refill every term, first come first served). Inside: a Chocolate Frog card, Galleons, or a torn page with a working Runes spell. +5 house points.',
   }, me((wid) => world.openChest(wid)));
 
-  // ---------------------------------------------------------------- O.W.L. exams (kernel/exams.ts)
-  register('owl_exams', {
-    title: 'O.W.L. exams of the week',
-    description: 'This week\'s O.W.L.s (普通巫师等级考试): practical Runes exams, each a fixed sandbox scene with hidden test cases. Lists every exam with its brief, year, par (nodes, gas, mana), your best grade and the top 3. Sit one with sit_exam; nothing you submit touches the live world. Grades O/E/A pass, P/D/T (Troll) fail.',
-    annotations: { readOnlyHint: true },
-  }, me((wid) => listExams(world, wid)));
-
-  register('sit_exam', {
-    title: 'Sit an O.W.L. exam',
-    description: 'Submit Runes source for one of this week\'s exams (ids from owl_exams). It is checked at the exam\'s year and cast for real in a private exam hall, once per hidden test case, then graded like CI: a per-case log with why a case failed, a hint, your score (100 × mean of nodes/par, gas/par, mana/par; 100 = par, lower is better) and grade. The first pass of each exam each week pays XP, Galleons and reputation; a better grade later pays the difference. Costs no mana. At most 10 sittings a minute.',
-    inputSchema: {
-      exam_id: z.string().min(1).max(40).describe('an id from owl_exams, e.g. "counting-door"'),
-      source: z.string().min(1).max(4000).describe('the Runes program, e.g. (say (count (creatures 15)))'),
-    },
-  }, me((wid, a: { exam_id: string; source: string }) => sitExam(world, wid, a.exam_id, a.source)));
-
-  register('exam_leaderboard', {
-    title: 'O.W.L. leaderboards',
-    description: 'Top 10 per exam by score (lower is better; ties go to whoever got there first). Give exam_id for one exam, or omit it for every exam of this week.',
-    inputSchema: { exam_id: z.string().max(40).optional() },
-    annotations: { readOnlyHint: true },
-  }, async ({ exam_id }: { exam_id?: string }) => {
-    try { return out(examLeaderboard(world, bound(), exam_id)); } catch (e) { return fail((e as Error).message); }
-  });
-
   register('rulebook', {
     title: 'The Rulebook',
     description: 'The complete current rules of this world, the constitutional bounds of every rule (JSON Schema), standing laws, and the history of decrees.',
@@ -746,83 +727,6 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
       slot: z.number().int().min(1).max(6).optional().describe('hotbar slot for the copy'),
     },
   }, me((wid, a: { spell: string; from?: string; copy?: boolean; name?: string; slot?: number }) => world.studySpell(wid, a.spell, a)));
-
-  // ---------------------------------------------------------------- 咒语集市 the spell market (kernel/market.ts)
-  const desc = (zh?: string, en?: string) => (zh === undefined && en === undefined ? undefined : { zh, en });
-  register('market_browse', {
-    title: 'The spell market (咒语集市)',
-    description: 'Browse spells other wizards published: name, author, tags (effects and elements), min year, copies/forks/casts, banned and promoted badges; the Ministry\'s 推荐 shelf; your royalties today. Filter by tag, element, year (spells castable at that year), author, free text; sort popular | new | promoted. Read one with market_spell; take one with copy_spell or fork_spell.',
-    inputSchema: {
-      tag: z.string().max(20).optional().describe('an effect primitive (bolt, heal, nova, …), an element, or "delayed"'),
-      element: z.enum(['arcane', 'fire', 'ice', 'lightning', 'light']).optional(),
-      year: z.number().int().min(1).max(7).optional().describe('only spells whose minimum year is at most this'),
-      author: z.string().max(40).optional().describe('author name (part of it) or handle'),
-      q: z.string().max(60).optional().describe('search names, incantations and descriptions'),
-      sort: z.enum(['popular', 'new', 'promoted']).optional(),
-      mine: z.boolean().optional().describe('only your own listings (unpublished ones too)'),
-      limit: z.number().int().min(1).max(50).optional(),
-      offset: z.number().int().min(0).optional(),
-    },
-    annotations: { readOnlyHint: true },
-  }, async (a: { tag?: string; element?: string; year?: number; author?: string; q?: string; sort?: 'popular' | 'new' | 'promoted'; mine?: boolean; limit?: number; offset?: number }) => {
-    const wid = bound();
-    if (wid) world.touch(wid);
-    try { return out(browseMarket(world, wid, a)); } catch (e) { return fail((e as Error).message); }
-  });
-
-  register('market_spell', {
-    title: 'Read a market spell',
-    description: 'One market spell in full: its source (any version: v1, v2 …), versions, lineage (the spells it was forked from, up to the original), its forks, stats, whether it is banned or promoted, and whether you can copy it at your year.',
-    inputSchema: { id: z.string().min(3).max(16).describe('a market id like "m_1a" (from market_browse)'), v: z.number().int().min(1).optional().describe('version (default: the latest)') },
-    annotations: { readOnlyHint: true },
-  }, async ({ id, v }: { id: string; v?: number }) => {
-    const wid = bound();
-    if (wid) world.touch(wid);
-    try { return out(marketSpell(world, wid, id, v)); } catch (e) { return fail((e as Error).message); }
-  });
-
-  register('publish_spell', {
-    title: 'Publish a spell to the market',
-    description: 'Put one of your own custom spells in the spell market (咒语集市), or publish its current state as the next version if it is already there (versions are immutable). Others can copy or fork it; each distinct wizard who casts it successfully earns you +1 reputation a day (+0.3 when they cast a fork of it), up to the daily cap (rulebook market.dailyCap). Copies of other wizards\' spells cannot be published — fork them.',
-    inputSchema: {
-      spell: z.string().min(1).max(60).describe('your spell\'s name or id'),
-      desc_zh: z.string().max(140).optional().describe('a one-line description in Chinese'),
-      desc_en: z.string().max(140).optional().describe('a one-line description in English'),
-    },
-  }, me((wid, a: { spell: string; desc_zh?: string; desc_en?: string }) => publishSpell(world, wid, a.spell, { desc: desc(a.desc_zh, a.desc_en) })));
-
-  register('unpublish_spell', {
-    title: 'Unpublish a market spell',
-    description: 'Hide one of your listings from the market (by market id or spell name). Existing copies keep your name and still work; publish_spell brings it back.',
-    inputSchema: { spell: z.string().min(1).max(60).describe('market id or spell name') },
-  }, me((wid, a: { spell: string }) => unpublishSpell(world, wid, a.spell)));
-
-  register('copy_spell', {
-    title: 'Copy a market spell into your book',
-    description: 'Forge a market spell into your spellbook, credited to its author. Your own year caps, seals, banned primitives and spellbook size apply (a failed copy spends nothing). Banned spells can be read but not copied.',
-    inputSchema: {
-      id: z.string().min(3).max(16).describe('market id (from market_browse)'),
-      v: z.number().int().min(1).optional().describe('version (default: the latest)'),
-      name: z.string().min(1).max(40).optional().describe('name for your copy (default: the original name)'),
-      slot: z.number().int().min(1).max(6).optional().describe('hotbar slot'),
-    },
-  }, me((wid, a: { id: string; v?: number; name?: string; slot?: number }) => copySpell(world, wid, a.id, a)));
-
-  register('fork_spell', {
-    title: 'Fork a market spell',
-    description: 'Copy a market spell, change its source, and publish the result as your own listing: it is forged into your book (your caps apply; a failure spends and lists nothing) and its lineage records the parent. The source must differ from the parent\'s. When others cast your fork, you get the royalty and the parent\'s author a small share.',
-    inputSchema: {
-      id: z.string().min(3).max(16).describe('market id of the parent'),
-      source: z.string().min(1).max(4000).describe('your edited Runes source'),
-      v: z.number().int().min(1).optional().describe('parent version (default: the latest)'),
-      name: z.string().min(1).max(40).optional().describe('name of the fork (default: "<parent name> II")'),
-      incantation: z.string().max(60).optional(),
-      desc_zh: z.string().max(140).optional(),
-      desc_en: z.string().max(140).optional(),
-      slot: z.number().int().min(1).max(6).optional(),
-    },
-  }, me((wid, a: { id: string; source: string; v?: number; name?: string; incantation?: string; desc_zh?: string; desc_en?: string; slot?: number }) =>
-    forkSpell(world, wid, a.id, { ...a, desc: desc(a.desc_zh, a.desc_en) })));
 
   register('restricted_section', {
     title: 'The Restricted Section',

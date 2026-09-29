@@ -193,12 +193,13 @@ describe('O.W.L. exams: bounds', () => {
     const c: Creature = { id: 'c_live', kind: 'pixie', pos: { x: 66, z: 60 }, home: { x: 66, z: 60 }, hp: 24, maxHp: 24, facing: 0, target: null, attackCd: 99, rootedUntil: 0, wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: 0 };
     w.creatures.set(c.id, c);
     const ms = weekWith('three-pixies');
-    const before = JSON.parse(JSON.stringify({ ...w.serialize(), owls: null }));
+    const noOwls = () => { const x = JSON.parse(JSON.stringify(w.serialize())); x.features.owls = null; return x; };
+    const before = noOwls();
     const events0 = w.events.length;
     // a failing sitting (P/D, no reward): nothing but world.owls changes
     const fail = sitExam(w, a.id, 'three-pixies', '(bolt (first (enemies 30)) 16 :ice)', ms);
     expect(fail.verdict).toBe('FAIL');
-    const mid = JSON.parse(JSON.stringify({ ...w.serialize(), owls: null }));
+    const mid = noOwls();
     const strip = (x: typeof before) => ({ ...x, wizards: x.wizards.map((z: Wizard) => ({ ...z, achievements: [] })) });
     expect(strip(mid)).toEqual(strip(before));
     // a passing one: bolts fly in the exam hall, none here
@@ -346,7 +347,11 @@ describe('O.W.L. exams: sitting, rewards, leaderboards, persistence', () => {
     expect(sitExam(back, a.id, 'counting-door', KEY['counting-door'].ref, ms).rewards).toBeNull();
     // and saves from before the exams existed load with an empty book
     const old = JSON.parse(JSON.stringify(w.serialize()));
-    delete old.owls;
+    const legacy = JSON.parse(JSON.stringify(w.serialize()));
+    legacy.owls = legacy.features.owls; // saves from before features kept the book at the top
+    delete legacy.features;
+    expect(World.restore(legacy).owls).toEqual(w.owls);
+    delete old.features.owls;
     expect(World.restore(old).owls).toEqual({ boards: {}, bests: {} });
   });
 });

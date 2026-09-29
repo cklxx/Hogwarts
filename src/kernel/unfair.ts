@@ -69,8 +69,6 @@ export const AGENT_TOOL_COST: Readonly<Record<string, number>> = {
   cast: 1, use_item: 1, move_to: 1, dodge: 1, say: 1, set_hotbar: 1, unlearn_spell: 1, equip_item: 1, unequip_item: 1, destroy_item: 1,
   forge_spell: 3, forge_item: 3, read_seal_page: 1, break_seal: 2, decree: 1,
   join_dumbledores_army: 1, leave_dumbledores_army: 1, veto_decree: 1, study_spell: 2,
-  // 咒语集市 (kernel/market.ts): copying and forking forge a spell, so they cost what a forge does; browsing is free
-  publish_spell: 2, unpublish_spell: 1, copy_spell: 3, fork_spell: 3,
   // 隐藏宝箱: opening one is an action (reading school_events and frog_cards is free)
   open_chest: 1,
 };
