@@ -335,6 +335,7 @@ function connect() {
       for (const e of hist) if (e.type === 'owl' || e.type === 'ask') feed(e, false);
       for (const e of hist.filter((x) => x.type !== 'owl' && x.type !== 'ask' && !x.to).slice(-2)) feed(e, false);
       menuInfo(msg.mcpUrl);
+      onBuild(msg.build);
       if (msg.pair?.code) onPairCode(msg.pair);
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
@@ -597,6 +598,29 @@ function banner(text: string, type = 'system') {
 }
 /** A line for you alone (an error, a note from a cast): one at a time, above the hotbar, then gone. */
 let toastTimer = 0;
+/**
+ * The server restarted with a newer client build (welcome.build, a hash of dist/index.html): this tab still runs the
+ * old one. Say so once, with a reload button, and reload by itself when the player is idle (the key is kept, so the
+ * reload lands straight back in the world).
+ */
+let firstBuild = '';
+function onBuild(b: unknown) {
+  if (typeof b !== 'string' || !b || b === 'dev') return;
+  if (!firstBuild) { firstBuild = b; return; }
+  if (b === firstBuild || document.getElementById('update-note')) return;
+  const n = document.createElement('div');
+  n.id = 'update-note';
+  n.setAttribute('role', 'status');
+  n.innerHTML = `<span>${L('游戏已更新（空闲 1 分钟后自动刷新）', 'The game was updated (reloads after a minute idle)')}</span> <button type="button">${L('刷新', 'Reload')}</button>`;
+  n.querySelector('button')!.onclick = () => location.reload();
+  document.body.appendChild(n);
+  // reload by itself only when it costs nothing: the tab is in the background, or a minute without input with no
+  // panel open (a spell half-written in the book, an owl being typed) — never in the middle of a fight
+  setInterval(() => {
+    const open = PANELS.some((id) => !document.getElementById(id)?.hidden) || !chatBox.hidden;
+    if (document.hidden || (!open && performance.now() - lastActivity > 60_000)) location.reload();
+  }, 5000);
+}
 function toast(text: string) {
   const t = $('#toast');
   t.textContent = text;

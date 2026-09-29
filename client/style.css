@@ -861,3 +861,8 @@ body.touch #tutorial { max-width: calc(100vw - calc(84px * var(--u))); }
 @media (max-height: 620px) {
   #hotbar span { display: none; }
 }
+
+/* the server has a newer build than this tab (main.ts onBuild) */
+#update-note { position: fixed; top: calc(92px * var(--u)); /* under the House Cup score and the next-event timer */ left: 50%; transform: translateX(-50%); z-index: 6; display: flex; gap: calc(10px * var(--u)); align-items: center;
+  padding: calc(6px * var(--u)) calc(14px * var(--u)); background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: calc(4px * var(--u)); font-size: var(--fs-body); box-shadow: 0 2px 10px #0004; animation: fadein .25s var(--ease) both; }
+#update-note button { font: inherit; color: var(--paper); background: var(--wax); border: 0; border-radius: calc(3px * var(--u)); padding: calc(2px * var(--u)) calc(10px * var(--u)); cursor: pointer; }

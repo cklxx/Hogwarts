@@ -39,6 +39,8 @@ import { Agent, createServer, request, type IncomingMessage, type Server, type S
 import type { AddressInfo, Socket } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parsePairCode } from '../kernel/identity.js';
+import { readFileSync } from 'node:fs';
+import { buildId, serverName, startDiscovery } from './discovery.js';
 
 export interface RealmStats { players: number; wizards: number; clients: number; mcp: number }
 
@@ -360,6 +362,13 @@ async function runPrimary() {
   });
   front.on('error', (e) => { console.error(`[hogwarts] cannot listen on ${HOST}:${PORT}:`, e.message); process.exit(1); });
   front.listen(PORT, HOST, () => console.log(`[hogwarts] ${PUBLIC_URL}  front door for ${REALMS} realms (GET /api/realms)`));
+  // LAN discovery for the whole front door (discovery.ts): every realm's players count
+  if (!/^127\.|^localhost$|^::1$/.test(HOST)) {
+    const dist = fileURLToPath(new URL('../../dist', import.meta.url));
+    let version = '0';
+    try { version = String(JSON.parse(readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8')).version); } catch { /* keep 0 */ }
+    startDiscovery(PORT, () => ({ name: serverName(), port: PORT, version, build: buildId(dist), players: realms.reduce((n, r) => n + (r.stats?.players ?? 0), 0) }));
+  }
 
   const stop = () => {
     if (stopping) return;
