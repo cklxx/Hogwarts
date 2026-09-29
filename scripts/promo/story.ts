@@ -4,6 +4,7 @@
  * negative cue times happen in the pre-roll, before the first frame is drawn.
  */
 import type { Actor, Cam, Cue, ShotDef, Stage, V3 } from './sim.js';
+import { QD_START_FRAC, qdChase, qdJoin } from '../../src/kernel/quidditch.js';
 
 export interface Shot extends ShotDef {
   /** HTML drawn over the canvas at shot time t (styles computed from t: CSS animations do not run on the virtual clock). */
@@ -14,6 +15,13 @@ export interface Shot extends ShotDef {
 
 /** Seconds each shot dissolves into the next. */
 export const XFADE = 0.5;
+/**
+ * The score (scripts/promo/music.ts) is a waltz at BPM, three beats a bar; every shot lasts a whole number of
+ * beats, so each cut lands on a beat and the music can accent it.
+ */
+export const BPM = 132;
+export const BEAT = 60 / BPM;
+const beats = (n: number) => n * BEAT;
 
 /** Display faces (Google Fonts; local CJK fonts are the fallback). */
 export const FONTS = 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@500;700;900&family=Cinzel:wght@500;700&display=block';
@@ -87,7 +95,7 @@ function runes(src: string) {
     return esc(line)
       .replace(/(:[a-z-]+)/g, '<span class="e">$1</span>')
       .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="n">$1</span>')
-      .replace(/\((each|let|when|if|bolt|enemies|first|or|glamour|patronus|shield)\b/g, '(<span class="k">$1</span>')
+      .replace(/\((each|let|when|if|bolt|enemies|first|or|glamour|patronus|shield|kind)\b/g, '(<span class="k">$1</span>')
       .replace(/([()])/g, '<span class="p">$1</span>');
   }).join('\n');
 }
@@ -111,12 +119,16 @@ const LOOKS: [key: string, mat: string, zh: string, src: string][] = [
 ];
 const LOOK_AT = (i: number) => 0.4 + i * 0.68;
 
+const OWL_SPELL = `(each p (enemies 30)
+  (when (= (kind p) "pixie")
+    (bolt p 12 :ice)))`;
+
 const DECREE = '{"world":{"aesthetics":{"aurora":true,"fireworks":true,"lanterns":true}}}';
 
 export const SHOTS: Shot[] = [
   // 1. the castle at dusk, across the Black Lake → the title
   {
-    id: 'castle', dur: 5.4, hour: 17.75, poster: 4.2,
+    id: 'castle', dur: beats(12), hour: 17.75, poster: 4.2,
     cast: {},
     camera: dolly([-160, 7, 86], [-128, 13, 50], [-8, 16, -84], [0, 22, -90], 6.1, 48),
     overlay: (t) => {
@@ -136,7 +148,7 @@ export const SHOTS: Shot[] = [
   },
   // 2. a wizard in starlight robes against a swarm of pixies
   {
-    id: 'cast', dur: 4.3, hour: 16.7,
+    id: 'cast', dur: beats(9), hour: 16.7,
     cast: { star: { x: 10, z: 31, f: Math.PI / 2 } },
     creatures: [
       { id: 'px1', kind: 'pixie', x: 20.5, z: 28 }, { id: 'px2', kind: 'pixie', x: 22, z: 32.5 },
@@ -153,7 +165,7 @@ export const SHOTS: Shot[] = [
   },
   // 3. a spell written in Runes becomes real
   {
-    id: 'code', dur: 5.8, hour: 16.9,
+    id: 'code', dur: beats(12), hour: 16.9,
     cast: { leo: { x: -2, z: 31, f: Math.PI / 2 } },
     creatures: [
       { id: 'px5', kind: 'pixie', x: 10, z: 25 }, { id: 'px6', kind: 'pixie', x: 12, z: 31 }, { id: 'px7', kind: 'pixie', x: 9, z: 36.5 },
@@ -181,9 +193,35 @@ export const SHOTS: Shot[] = [
         </div>` + caption(t, 0.3, '咒语即代码', '用 Runes 写一段程序，铸造成真正的咒语', 60);
     },
   },
+  // 3b. the weekly O.W.L.: a Runes puzzle graded like CI
+  {
+    id: 'owls', dur: beats(12), hour: 16.2,
+    cast: { jing: { x: 14, z: 38, f: Math.PI * 0.62 } },
+    creatures: [
+      { id: 'px8', kind: 'pixie', x: 23, z: 33 }, { id: 'px9', kind: 'pixie', x: 24.5, z: 37.5 }, { id: 'px10', kind: 'pixie', x: 21.5, z: 41 },
+    ],
+    cues: [
+      [-1.2, (s) => s.forge('jing', '三连冰', OWL_SPELL)],
+      [2.0, (s) => s.cast('jing', '三连冰')],
+    ],
+    camera: dolly([7.5, 2.6, 46.5], [9.2, 2.2, 44.8], [19, 1.4, 36.5], [20.5, 1.3, 37], 5.8, 48),
+    overlay: (t) => {
+      const row = (at: number, name: string) => `<div style="margin-top:8px;opacity:${rise(t, at, 0.25).toFixed(3)}"><span class="s">✓</span> <span style="color:#e9dfc6">${name}</span></div>`;
+      return `<div class="abs glass" style="right:56px;top:120px;width:450px;padding:20px 24px;opacity:${rise(t, 0, 0.45).toFixed(3)};font-size:17px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <div style="font-size:20px;font-weight:700;color:${GOLD};letter-spacing:.2em">O.W.L. · 三只小精灵</div>
+            <div class="latin" style="font-size:12px;letter-spacing:.3em;color:#a89d86">WEEK 40</div>
+          </div>
+          <div class="rule" style="margin:10px 0 10px"></div>
+          <pre class="mono" style="margin:0 0 6px;font-size:16px;line-height:1.55;white-space:pre">${runes(OWL_SPELL)}</pre>
+          ${row(0.9, '三只都在射程内')}${row(1.3, '有一只躲在树后')}${row(1.7, '只剩两只')}${row(2.1, '一只都没有：不许浪费法力')}
+          <div style="margin-top:14px;opacity:${rise(t, 2.6, 0.3).toFixed(3)}"><span class="brush gold glow" style="font-size:44px">O</span><span style="margin-left:14px;color:#cfc3a6">99 分 · 低于标准线 · <span class="k">第 1 名</span></span></div>
+        </div>` + caption(t, 0.35, '每周 O.W.L. 考试', '用例像 CI 一样逐个判分 · 越省越高分 · 全服排行');
+    },
+  },
   // 4. your AI agent plays for you, over MCP, and talks to you by owl
   {
-    id: 'agent', dur: 5.6, hour: 16.4,
+    id: 'agent', dur: beats(12), hour: 16.4,
     cast: { star: { x: -6, z: 36, f: -2.4 } },
     creatures: [{ id: 'tr2', kind: 'troll', x: -20, z: 19, f: 0.7, hp: 128 }],
     cues: [
@@ -216,7 +254,7 @@ export const SHOTS: Shot[] = [
   },
   // 5. transfiguration of self: one spell, a new look
   {
-    id: 'glamour', dur: 5.6, hour: 17.25,
+    id: 'glamour', dur: beats(12), hour: 17.25,
     cast: Object.fromEntries(LOOKS.map(([k], i) => [k, { x: -10 + i * 4, z: -24, f: Math.PI }])),
     cues: [
       ...LOOKS.flatMap(([k, , , src]): Cue[] => [
@@ -235,7 +273,7 @@ export const SHOTS: Shot[] = [
   },
   // 6. a duel, and a Malfoy who will be telling his father
   {
-    id: 'duel', dur: 4.7, hour: 17.0,
+    id: 'duel', dur: beats(12), hour: 17.0,
     cast: { leo: { x: -7, z: 12, f: Math.PI / 2 }, draco: { x: 7, z: 12, f: -Math.PI / 2 } },
     cues: [
       [0.25, (s) => s.cast('draco', 'Stupefy', 'leo')],
@@ -244,12 +282,29 @@ export const SHOTS: Shot[] = [
       [1.75, (s) => s.cast('draco', 'Glacius', 'leo')],
       [2.35, (s) => { const d = s.w('draco'); d.hp = 24; d.say = null; s.cast('leo', 'Reducto', 'draco'); }],
     ],
-    camera: dolly([-1.2, 3.2, 28.5], [0.9, 2.6, 25], [0, 1.6, 12], [0.8, 1.3, 12], 5.2, 48),
-    overlay: (t) => caption(t, 0.4, '决斗攒声望，满世界都是梗', '击晕马尔福，他一定会搬出他爸爸'),
+    camera: dolly([-1.2, 3.2, 28.5], [0.9, 2.6, 25], [0, 1.6, 12], [0.8, 1.3, 12], 5.8, 48),
+    overlay: (t) => caption(t, 0.4, '决斗俱乐部：一对一攒声望', '鞠躬 · 倒数 · 开打 —— 击晕马尔福，他一定会搬出他爸爸'),
+  },
+  // 6b. Quidditch: a real match from the kernel (term 1 is Gryffindor v Slytherin), filmed from the stands
+  {
+    id: 'quidditch', dur: beats(15), hour: 15.6,
+    cast: { leo: { x: 40, z: -160, f: Math.PI }, lin: { x: 34, z: -150, f: Math.PI }, draco: { x: 44, z: -142, f: 0 }, mo: { x: 48, z: -154, f: 0 } },
+    cues: [
+      [-2.6, (s) => {
+        const w = s.world, len = w.rules.terms.lengthSeconds;
+        w.term.n = 1; w.qd.doneTerm = 0; w.qd.match = null;
+        w.term.startedAt = w.now + 0.2 - QD_START_FRAC * len; w.term.endsAt = w.term.startedAt + len;
+      }],
+      [-2.4, (s) => { for (const [k, r] of [['leo', 'seeker'], ['draco', 'seeker'], ['lin', 'chaser'], ['mo', 'chaser']] as const) qdJoin(s.world, s.w(k).id, r); }],
+      [-1.6, (s) => { for (const k of ['leo', 'draco', 'lin', 'mo']) qdChase(s.world, s.w(k).id, true); const m = s.world.qd.match; if (m) m.snitchAt = s.world.now + 1.2; }],
+      [0.3, (s) => { const m = s.world.qd.match; if (m) { m.quaffle.carrier = s.w('lin').id; s.w('lin').pos = { x: 38, z: -145 }; } }],
+    ],
+    camera: dolly([22, 8, -127], [27, 7.2, -131], [40, 4.2, -150], [41, 4, -147], 7.3, 58),
+    overlay: (t) => caption(t, 0.5, '魁地奇：每学期一场学院对抗', '骑扫帚飞 · 鬼飞球射门 · 游走球砸人 · 金色飞贼 +150'),
   },
   // 7. night: dementors over the lake, a Patronus, and the Minister redecorates the sky
   {
-    id: 'night', dur: 7.4, hour: 22.4,
+    id: 'night', dur: beats(18), hour: 22.4,
     cast: { star: { x: -48, z: 30, f: -Math.PI / 2 } },
     creatures: [
       { id: 'dm1', kind: 'dementor', x: -63, z: 26 }, { id: 'dm2', kind: 'dementor', x: -62, z: 35 }, { id: 'dm3', kind: 'dementor', x: -67, z: 31 },
@@ -270,7 +325,7 @@ export const SHOTS: Shot[] = [
   },
   // 8. the end card over the castle under an aurora
   {
-    id: 'end', dur: 5.4, hour: 22.6,
+    id: 'end', dur: beats(12), hour: 22.6,
     aesthetics: { aurora: true, fireworks: true, lanterns: true },
     cast: {},
     camera: dolly([-118, 26, 66], [-100, 31, 48], [0, 34, -92], [0, 36, -92], 5.4, 50),

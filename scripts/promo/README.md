@@ -33,7 +33,8 @@ and cached in `data/promo/fonts`; the render refuses to start with half-loaded f
 | `story.ts` | the storyboard: cast, shots (hour, who stands where, creatures, timed kernel calls), camera moves, captions |
 | `sim.ts` | stages the cast with the kernel (`enroll`, `gainXp`, `forgeSpell`, `cast` of real `glamour` spells) and records each shot: the kernel ticks at 20 Hz on a virtual clock and every 100 ms the same `{t:'snap'}` message the server broadcasts is written to a tape |
 | `inpage.js` | injected before the game's scripts: virtual `performance.now` / `Date.now` / `requestAnimationFrame`, seeded `Math.random`, and a WebSocket stand-in that plays the tape |
-| `render.ts` | writes the staged world to `data/promo/world.json`, starts the real server on it (port 8500–8519) for the client and the login gate, drives headless Chromium, screenshots, then cross-fades and encodes |
+| `music.ts` | the original score: a 3/4 waltz synthesised from arithmetic (music box, Karplus–Strong pizzicato and harp, a string pad, timpani, a harp sweep and a soft cymbal on every cut, a Schroeder reverb); every shot lasts a whole number of beats (`BPM` in `story.ts`), so the cuts land on the beat. `npx tsx scripts/promo/music.ts out.wav 57.3 5.45,9.55,…` renders it alone. Sources: `docs/promo/CREDITS.md` |
+| `render.ts` | writes the staged world to `data/promo/world.json`, starts the real server on it (port 8500–8519) for the client and the login gate, drives headless Chromium, screenshots, then cross-fades, lays the score under it (loudness-normalised to −16 LUFS, AAC), encodes, and cuts the README's `preview.gif` from the finished film |
 
 The page is opened at `/?capture=1`; only then does `client/capture.ts` read `window.__capture` (camera
 position, look-at point, field of view, skip-this-frame) inside `client/render.ts`. Everything else is
@@ -44,3 +45,6 @@ Each shot is played from 2.5 s before its first frame (not drawn), so shots can 
 Because the kernel runs on the tape's clock and the page on the virtual one, every render is the same
 film at any speed — about 3–4 s per 720p frame on SwiftShader on an idle 4-core box (the committed
 film: 1145 frames, 3 browsers, ~2 h wall time on a heavily shared machine).
+
+The committed v2 film: 10 shots, 126 beats (57.3 s), 1920×1080 at 24 fps, `--crf 27`:
+`npx tsx scripts/promo/render.ts --size 1920x1080 --crf 27`.

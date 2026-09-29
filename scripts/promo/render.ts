@@ -9,10 +9,11 @@
  * 4. opens headless Chromium on `/?capture=1`, with inpage.js replacing the clock, requestAnimationFrame
  *    and the socket, and steps the game exactly 1/fps seconds per frame while the camera flies the shot
  *    (client/capture.ts) and the captions are drawn as HTML over the canvas; each frame is a screenshot;
- * 5. joins the shots with cross-fades, an ambient pad and H.264 (ffmpeg from imageio-ffmpeg or $FFMPEG).
+ * 5. joins the shots with cross-fades, the original score (music.ts) and H.264 (ffmpeg from imageio-ffmpeg or $FFMPEG).
  *
  * No GPU needed (SwiftShader); a frame takes seconds, which is why nothing here runs in real time.
  */
+import { writeScore } from './music.js';
 import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -254,20 +255,38 @@ function encode(jobs: Job[]) {
     prev = out;
   }
   if (jobs.length === 1) chain = '[0:v]null[vx];';
-  // fade in from and out to black; under it an ambient pad (an open-fifth drone on A, pink-noise air, slow tremolo, echo)
+  // fade in from and out to black; under it the score (scripts/promo/music.ts), with an accent on every cut
   const v = `${chain}[vx]fade=t=in:st=0:d=0.8,fade=t=out:st=${(total - 1.2).toFixed(3)}:d=1.2,format=yuv420p[v]`;
-  const pad = [
-    `sine=f=110:r=48000:d=${total}`, `sine=f=164.81:r=48000:d=${total}`, `sine=f=220.4:r=48000:d=${total}`, `sine=f=329.63:r=48000:d=${total}`,
-  ];
-  const audio = `${pad.map((s, i) => `${s}[s${i}]`).join(';')};anoisesrc=color=pink:amplitude=0.05:r=48000:d=${total}[n];` +
-    `[s0][s1][s2][s3][n]amix=inputs=5:weights=1 0.6 0.5 0.25 0.9:normalize=1,lowpass=f=1400,` +
-    `tremolo=f=0.18:d=0.35,aecho=0.8:0.7:420|700:0.35|0.25,volume=3.4,afade=t=in:st=0:d=3,afade=t=out:st=${(total - 3).toFixed(3)}:d=3[a]`;
+  const cuts: number[] = [];
+  let at = 0;
+  for (const j of jobs.slice(0, -1)) { at += j.shot.dur; cuts.push(at); }
+  const wavPath = join(WORK, 'score.wav');
+  writeScore(wavPath, total, cuts);
+  inputs.push('-i', wavPath);
+  const audio = `[${jobs.length}:a]loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:st=0:d=0.4,afade=t=out:st=${(total - 2.5).toFixed(3)}:d=2.5[a]`;
   const out = join(OUT, 'hogwarts-promo.mp4');
   mkdirSync(OUT, { recursive: true });
   execFileSync(ff, ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', `${v};${audio}`, '-map', '[v]', '-map', '[a]',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', arg('crf', '26'), '-pix_fmt', 'yuv420p', '-r', String(FPS), '-movflags', '+faststart',
-    '-c:a', 'aac', '-b:a', '96k', '-shortest', out], { stdio: 'inherit' });
+    '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-shortest', out], { stdio: 'inherit' });
   return { out, total };
+}
+
+/**
+ * The README's moving preview (GitHub will not play an mp4 from the repository): a few seconds of each of the
+ * film's best moments (the title, the Runes, Quidditch, the end card), 480 px, 10 fps, one shared palette.
+ */
+function previewGif(jobs: Job[], film: string) {
+  const ff = ffmpegBin();
+  const starts: Record<string, number> = {};
+  let at = 0;
+  for (const j of jobs) { starts[j.shot.id] = at; at += j.shot.dur; }
+  const clips = ([['castle', 1.2, 3.2], ['code', 0.6, 3.4], ['quidditch', 1.0, 3.2], ['end', 1.2, 3.0]] as const).filter(([id]) => id in starts);
+  const parts = clips.map(([id, from, len], i) => `[0:v]trim=start=${(starts[id] + from).toFixed(3)}:duration=${len},setpts=PTS-STARTPTS,fps=10,scale=480:-2:flags=lanczos[c${i}]`);
+  const graph = `${parts.join(';')};${clips.map((_, i) => `[c${i}]`).join('')}concat=n=${clips.length}:v=1:a=0,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`;
+  const out = join(OUT, 'preview.gif');
+  execFileSync(ff, ['-y', '-loglevel', 'error', '-i', film, '-filter_complex', graph, '-loop', '0', out]);
+  return out;
 }
 
 function poster(jobs: Job[]) {
@@ -305,6 +324,8 @@ async function main() {
   if (flag('no-video') || ONLY.length) { log(`frames in ${WORK}/frames (${rendered.toFixed(0)} s)`); return; }
   const { out, total } = encode(jobs);
   const pst = poster(jobs);
+  const gif = previewGif(jobs, out);
+  log(`preview ${gif} (${(statSync(gif).size / 1e6).toFixed(1)} MB)`);
   log(`${out}: ${total.toFixed(1)} s, ${(statSync(out).size / 1e6).toFixed(2)} MB; poster ${pst}; ${((Date.now() - began) / 60000).toFixed(1)} min in all`);
   if (!flag('keep')) rmSync(join(WORK, 'frames'), { recursive: true, force: true });
 }
