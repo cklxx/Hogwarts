@@ -21,6 +21,8 @@ import type { Wizard } from './types.js';
 
 export const DUEL_STAGE = { x: 0, z: -30 };
 export const DUEL_ENDS = [{ x: -7, z: -30 }, { x: 7, z: -30 }] as const;
+/** Matchmaking: at most this many years apart, unless the first in the queue has waited DUEL_ANY_AFTER_S. */
+export const DUEL_YEAR_GAP = 1, DUEL_ANY_AFTER_S = 20;
 export const DUEL_BOW_S = 2, DUEL_COUNT_S = 3, DUEL_FIGHT_S = 90, DUEL_NPC_AFTER_S = 30, DUEL_LEASH = 22;
 export const DUEL_WIN_REP = 6, DUEL_WIN_XP = 40, DUEL_LOSS_XP = 15, DUEL_TERM_CAP = 5, DUEL_PAIR_GAP_S = 600, DUEL_QUEUE_MAX = 32;
 
@@ -213,8 +215,12 @@ export function stepDuelClub(world: World) {
   // drop whoever is no longer in play, then pair the first two, or give a lone wizard an NPC to spar with
   c.queue = c.queue.filter((q) => { const w = world.wizards.get(q.id); return !!w && world.online(w) && world.isActive(w) && !qdPlaying(world, q.id); });
   if (c.queue.length >= 2) {
-    const a = world.wizards.get(c.queue[0].id)!, b = world.wizards.get(c.queue[1].id)!;
-    return startMatch(world, a, b, !!(a.npc || b.npc));
+    // the longest-waiting gets the nearest year in the queue (a first-year met a fourth-year in playtest round 2);
+    // within DUEL_YEAR_GAP, or anyone at all once they have waited DUEL_ANY_AFTER_S
+    const a = world.wizards.get(c.queue[0].id)!;
+    const rest = c.queue.slice(1).map((q) => world.wizards.get(q.id)!).sort((x, y) => Math.abs(x.year - a.year) - Math.abs(y.year - a.year));
+    const b = rest[0];
+    if (Math.abs(b.year - a.year) <= DUEL_YEAR_GAP || world.now - c.queue[0].at >= DUEL_ANY_AFTER_S) return startMatch(world, a, b, !!(a.npc || b.npc));
   }
   if (c.queue.length === 1 && world.now - c.queue[0].at >= DUEL_NPC_AFTER_S) {
     const a = world.wizards.get(c.queue[0].id)!;

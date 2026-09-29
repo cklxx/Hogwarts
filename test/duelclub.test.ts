@@ -1,7 +1,7 @@
 /** 决斗俱乐部 (src/kernel/duelclub.ts): queue, match flow, isolation, bounded rewards. */
 import { describe, expect, it } from 'vitest';
 import {
-  DUEL_BOW_S, DUEL_COUNT_S, DUEL_ENDS, DUEL_FIGHT_S, DUEL_LEASH, DUEL_NPC_AFTER_S, DUEL_PAIR_GAP_S, DUEL_STAGE, DUEL_TERM_CAP, DUEL_WIN_REP,
+  DUEL_ANY_AFTER_S, DUEL_BOW_S, DUEL_COUNT_S, DUEL_ENDS, DUEL_FIGHT_S, DUEL_LEASH, DUEL_NPC_AFTER_S, DUEL_PAIR_GAP_S, DUEL_STAGE, DUEL_TERM_CAP, DUEL_WIN_REP,
   duelGrant, duelJoin, duelLeave, duelStatus,
 } from '../src/kernel/duelclub.js';
 import { ensureNpcs } from '../src/kernel/npc.js';
@@ -113,6 +113,24 @@ describe('the Duelling Club', () => {
     bolt(w, e, f, 8); // one hit, then a stand-off: the bell goes to whoever dealt more
     run(w, DUEL_FIGHT_S + 0.2);
     expect(w.duel.last.at(-1)).toMatchObject({ winner: e.id });
+  });
+
+  it('pairs close years first, and anyone once the first in the queue has waited', () => {
+    const w = mk();
+    const a = join(w, 'First'), far = join(w, 'Senior', 'Slytherin'), near = join(w, 'Peer', 'Hufflepuff');
+    far.year = 5; a.year = 1; near.year = 2;
+    duelJoin(w, a.id); duelJoin(w, far.id);
+    run(w, 1);
+    expect(w.duel.match).toBeNull(); // four years apart: not yet
+    duelJoin(w, near.id);
+    run(w, 0.1);
+    expect(w.duel.match).toMatchObject({ a: a.id, b: near.id });
+    const w2 = mk();
+    const x = join(w2, 'Alone'), y = join(w2, 'Elder', 'Slytherin');
+    y.year = 6;
+    duelJoin(w2, x.id); duelJoin(w2, y.id);
+    run(w2, DUEL_ANY_AFTER_S + 0.2);
+    expect(w2.duel.match).toMatchObject({ a: x.id, b: y.id });
   });
 
   it('is closed while PvP is off or the stage lies in a safe zone', () => {
