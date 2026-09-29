@@ -723,7 +723,7 @@ The same harness as wf/fast (`scripts/perf-client.ts`), with these differences:
 ¹ `main` compiles with `KHR_parallel_shader_compile` in the background and links on first use; its first frame
 still arrives at the same time because it waits on the gate and the snapshot. The node renderer builds its
 programs itself (node graph → WGSL/GLSL) before it can compile them, which is the CPU time in the warm-up; on
-SwiftShader the WebGPU pipeline compile is also slower than the WebGL one. ² Current `main` (`df40022`) built the
+SwiftShader the WebGPU pipeline compile is also slower than the WebGL one. ² Current `main` (`79d215a`) built the
 same way; the three.js chunk (WebGPU renderer, node system, both backends) is cached separately from the game code.
 
 ### Per camera spot
