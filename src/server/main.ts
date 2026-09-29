@@ -13,6 +13,7 @@ import { warmPathfinding } from '../kernel/pathfind.js';
 import { ensureNpcs } from '../kernel/npc.js';
 import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { marketMessage } from '../kernel/market.js';
+import { schoolEvents } from '../kernel/wheel.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
@@ -71,6 +72,8 @@ const world = load();
 world.tokenPrefix = realm.prefix;
 warmPathfinding();
 ensureNpcs(world, Number(process.env.NPC_COUNT ?? 4));
+// 校园事件轮盘: EVENT_FIRST_S rolls the first event sooner (demos, e2e tests); the interval itself is a rule (rules.events)
+if (process.env.EVENT_FIRST_S) world.wheel.nextAt = world.now + Math.max(0, Number(process.env.EVENT_FIRST_S) || 0);
 function save() {
   mkdirSync(dirname(DATA), { recursive: true });
   writeFileSync(DATA + '.tmp', JSON.stringify(world.serialize()));
@@ -311,7 +314,10 @@ type ClientMsg =
   | { t: 'study'; spell: string; from?: string; copy?: boolean; name?: string; slot?: number }
   // 咒语集市 (kernel/market.ts marketMessage): reads and actions; replies { t: 'market', op, r } (+ a fresh book)
   | { t: 'market'; op?: 'browse' | 'spell'; [k: string]: unknown }
-  | { t: 'marketop'; op: 'publish' | 'unpublish' | 'copy' | 'fork'; [k: string]: unknown };
+  | { t: 'marketop'; op: 'publish' | 'unpublish' | 'copy' | 'fork'; [k: string]: unknown }
+  // 学院杯 · 校园事件轮盘 · 巧克力蛙画片: open the chest you stand at (F); the school's news and your album
+  | { t: 'chest' }
+  | { t: 'school' };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -365,6 +371,8 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       // one exam's top 10 (the browser's O.W.L. panel; MCP exam_leaderboard)
       case 'examboard': reply({ t: 'examboard', r: examLeaderboard(world, wid, typeof m.id === 'string' ? m.id : undefined) }); break;
       case 'buy': reply({ t: 'bought', r: buyPreset(world, wid, String(m.item ?? ''), m.lang === 'en' ? 'en' : 'zh') }); book(); break;
+      case 'chest': reply({ t: 'chest', r: world.openChest(wid) }); break;
+      case 'school': reply({ t: 'school', r: schoolEvents(world, wid) }); break;
       case 'da': {
         const r = m.op === 'join' ? world.joinDA(wid) : m.op === 'leave' ? world.leaveDA(wid) : m.op === 'veto' ? world.vetoDecree(wid) : world.daState(wid);
         reply({ t: 'da', op: m.op ?? 'status', r });

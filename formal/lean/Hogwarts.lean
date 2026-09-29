@@ -867,6 +867,183 @@ def marketVectors : String :=
     return out
   obj [("constants", consts), ("royaltyGrant", arr grants), ("days", arr days)]
 
+/-! ## 学院杯 — the house-point ledger (src/kernel/housecup.ts, README 学院杯)
+
+Every house point a wizard earns in a term, from any source, goes through `cupAward`: multiplied in the final
+minute (`cupMult`, bounded by the rulebook's constitution CUP_MULT_MAX), and capped per wizard per term (the cap is
+`rules.terms.wizardPointsCap`). Filch takes points away with `cupDeduct`, never below zero. Proved: a term's
+ledger never exceeds the cap whatever happens in it (`cup_term_bounded`), an award never lowers it
+(`cup_award_mono`) and adds at most n · CUP_MULT_MAX (`cup_award_gain`), a deduction never goes below zero — also
+over the integers (`cup_deduct_nonneg`), the final-minute multiplier stays in [1, CUP_MULT_MAX] whatever a decree
+says (`cup_mult_bounded`), and a house of k wizards holds at most k · cap + the 十分梗 cap (`house_points_bounded`).
+Vectors: samples of each function and whole terms of pseudo-random awards and deductions, replayed by the
+TypeScript `cupRun`. -/
+
+def CUP_FINAL_S : Nat := 60
+def CUP_MULT_DEFAULT : Nat := 2
+def CUP_MULT_MAX : Nat := 3
+def CUP_CAP_DEFAULT : Nat := 400
+def CUP_CAP_MIN : Nat := 50
+def CUP_CAP_MAX : Nat := 5000
+def SNITCH_POINTS : Nat := 150
+def SNITCH_CAP_PER_TERM : Nat := 150
+def CURFEW_PENALTY : Nat := 5
+def EVENT_MAX_S : Nat := 150
+def EVENT_INTERVAL_MIN : Nat := 60
+def EVENT_INTERVAL_DEFAULT : Nat := 180
+def EVENT_INTERVAL_MAX : Nat := 1800
+/-- "Ten points to Ravenclaw!": the most one house can receive that way in a term (lore/memes.ts MEME.HOUSE_POINTS_CAP). -/
+def TEN_POINTS_CAP : Nat := 100
+
+/-- housecup.ts `cupMult`: `mult` clamped to [1, CUP_MULT_MAX] in the last `finalS` seconds, else 1. -/
+def cupMult (left finalS mult : Nat) : Nat := if left ≤ finalS then min CUP_MULT_MAX (max 1 mult) else 1
+
+theorem cup_mult_bounded (left finalS mult : Nat) : 1 ≤ cupMult left finalS mult ∧ cupMult left finalS mult ≤ CUP_MULT_MAX := by
+  unfold cupMult CUP_MULT_MAX; split
+  · constructor
+    · simp only [Nat.le_min]; omega
+    · exact Nat.min_le_left _ _
+  · omega
+
+/-- Outside the final minute nothing is multiplied. -/
+theorem cup_mult_outside (left finalS mult : Nat) (h : finalS < left) : cupMult left finalS mult = 1 := by
+  unfold cupMult; simp; omega
+
+/-- housecup.ts `cupAward`: add n at multiplier m under the cap; a ledger at or over the cap gains nothing. -/
+def cupAward (cur n cap m : Nat) : Nat := if n = 0 ∨ cap ≤ cur then cur else min cap (cur + n * m)
+
+theorem cup_award_capped (cur n cap m : Nat) (h : cur ≤ cap) : cupAward cur n cap m ≤ cap := by
+  unfold cupAward; split
+  · exact h
+  · exact Nat.min_le_left _ _
+
+theorem cup_award_mono (cur n cap m : Nat) : cur ≤ cupAward cur n cap m := by
+  unfold cupAward; split
+  · exact Nat.le_refl _
+  · rename_i h; simp only [Nat.le_min]; constructor <;> omega
+
+theorem cup_award_gain (cur n cap m : Nat) : cupAward cur n cap m ≤ cur + n * m := by
+  unfold cupAward; split
+  · omega
+  · exact Nat.min_le_right _ _
+
+/-- With the rulebook's multiplier, one award adds at most n · CUP_MULT_MAX. -/
+theorem cup_final_minute_gain (cur n cap left finalS mult : Nat) :
+    cupAward cur n cap (cupMult left finalS mult) ≤ cur + n * CUP_MULT_MAX := by
+  have h1 := cup_award_gain cur n cap (cupMult left finalS mult)
+  have h2 := (cup_mult_bounded left finalS mult).2
+  have h3 : n * cupMult left finalS mult ≤ n * CUP_MULT_MAX := Nat.mul_le_mul_left n h2
+  omega
+
+/-- housecup.ts `cupDeduct` over the natural numbers (truncated subtraction). -/
+def cupDeduct (cur n : Nat) : Nat := cur - n
+
+/-- And over the integers, as the TypeScript computes it: `max(0, cur − max(0, n))` — never negative. -/
+def cupDeductI (cur n : Int) : Int := max 0 (cur - max 0 n)
+theorem cup_deduct_nonneg (cur n : Int) : 0 ≤ cupDeductI cur n := by unfold cupDeductI; omega
+theorem cup_deduct_le (cur n : Int) (h : 0 ≤ cur) : cupDeductI cur n ≤ cur := by unfold cupDeductI; omega
+theorem cup_deduct_agrees (cur n : Nat) : cupDeductI cur n = (cupDeduct cur n : Int) := by unfold cupDeductI cupDeduct; omega
+
+/-- One operation on a ledger. -/
+inductive CupOp where
+  | award (n m : Nat)
+  | deduct (n : Nat)
+
+/-- housecup.ts `cupStep` / `cupRun`: a whole term from an empty ledger. -/
+def cupStep (cap : Nat) (cur : Nat) : CupOp → Nat
+  | .award n m => cupAward cur n cap m
+  | .deduct n => cupDeduct cur n
+def cupRun (cap : Nat) (ops : List CupOp) : Nat := ops.foldl (cupStep cap) 0
+
+theorem cup_step_capped (cap cur : Nat) (op : CupOp) (h : cur ≤ cap) : cupStep cap cur op ≤ cap := by
+  cases op with
+  | award n m => exact cup_award_capped cur n cap m h
+  | deduct n => show cupDeduct cur n ≤ cap; unfold cupDeduct; omega
+
+theorem cup_foldl_capped (cap : Nat) (ops : List CupOp) : ∀ cur, cur ≤ cap → ops.foldl (cupStep cap) cur ≤ cap := by
+  induction ops with
+  | nil => intro cur h; exact h
+  | cons op ops ih => intro cur h; exact ih _ (cup_step_capped cap cur op h)
+
+/-- cup_term_bounded: whatever happens in a term, one wizard's house points stay within [0, cap]. -/
+theorem cup_term_bounded (cap : Nat) (ops : List CupOp) : cupRun cap ops ≤ cap :=
+  cup_foldl_capped cap ops 0 (Nat.zero_le _)
+
+/-- A house: its members' ledgers plus the 十分梗 bonus (itself ≤ TEN_POINTS_CAP). -/
+def housePoints (ledgers : List Nat) (ten : Nat) : Nat := ledgers.foldl (· + ·) 0 + ten
+
+theorem foldl_sum_bounded (cap : Nat) : ∀ (ls : List Nat) (acc : Nat), (∀ x ∈ ls, x ≤ cap) → ls.foldl (· + ·) acc ≤ acc + ls.length * cap := by
+  intro ls
+  induction ls with
+  | nil => intro acc _; simp
+  | cons x xs ih =>
+    intro acc h
+    have hx := h x (List.mem_cons_self ..)
+    have := ih (acc + x) (fun y hy => h y (List.mem_cons_of_mem _ hy))
+    simp only [List.foldl_cons, List.length_cons]
+    rw [Nat.succ_mul]; omega
+
+/-- house_points_bounded: a house of k wizards, each playing any term, holds at most k · cap + TEN_POINTS_CAP. -/
+theorem house_points_bounded (cap ten : Nat) (terms : List (List CupOp)) (hten : ten ≤ TEN_POINTS_CAP) :
+    housePoints (terms.map (cupRun cap)) ten ≤ terms.length * cap + TEN_POINTS_CAP := by
+  unfold housePoints
+  have := foldl_sum_bounded cap (terms.map (cupRun cap)) 0 (by
+    intro x hx; simp only [List.mem_map] at hx; obtain ⟨o, _, rfl⟩ := hx; exact cup_term_bounded cap o)
+  simp only [List.length_map] at this; omega
+
+/-- The constitution: the defaults are inside their bounds, and the snitch fits its cap. -/
+theorem cup_defaults_ok : CUP_MULT_DEFAULT ≤ CUP_MULT_MAX ∧ 1 ≤ CUP_MULT_DEFAULT ∧ CUP_CAP_MIN ≤ CUP_CAP_DEFAULT ∧ CUP_CAP_DEFAULT ≤ CUP_CAP_MAX
+    ∧ SNITCH_POINTS ≤ SNITCH_CAP_PER_TERM ∧ EVENT_MAX_S < EVENT_INTERVAL_DEFAULT ∧ EVENT_INTERVAL_MIN ≤ EVENT_INTERVAL_DEFAULT ∧ EVENT_INTERVAL_DEFAULT ≤ EVENT_INTERVAL_MAX := by decide
+
+/-- The 学院杯 part of the vectors: constants, samples of each function, and whole terms of pseudo-random operations. -/
+def cupVectors : String :=
+  let q (s : String) : String := "\"" ++ s ++ "\""
+  let arr (xs : List String) : String := "[" ++ ",".intercalate xs ++ "]"
+  let obj (xs : List (String × String)) : String := "{" ++ ",".intercalate (xs.map fun (k, v) => q k ++ ":" ++ v) ++ "}"
+  let consts := obj [
+    ("CUP_FINAL_S", toString CUP_FINAL_S), ("CUP_MULT_DEFAULT", toString CUP_MULT_DEFAULT), ("CUP_MULT_MAX", toString CUP_MULT_MAX),
+    ("CUP_CAP_DEFAULT", toString CUP_CAP_DEFAULT), ("CUP_CAP_MIN", toString CUP_CAP_MIN), ("CUP_CAP_MAX", toString CUP_CAP_MAX),
+    ("SNITCH_POINTS", toString SNITCH_POINTS), ("SNITCH_CAP_PER_TERM", toString SNITCH_CAP_PER_TERM), ("CURFEW_PENALTY", toString CURFEW_PENALTY),
+    ("EVENT_MAX_S", toString EVENT_MAX_S), ("EVENT_INTERVAL_MIN", toString EVENT_INTERVAL_MIN), ("EVENT_INTERVAL_DEFAULT", toString EVENT_INTERVAL_DEFAULT),
+    ("EVENT_INTERVAL_MAX", toString EVENT_INTERVAL_MAX), ("TEN_POINTS_CAP", toString TEN_POINTS_CAP)]
+  let mults := Id.run do
+    let mut out : List String := []
+    for l in [0, 30, 59, 60, 61, 900] do
+      for m in [0, 1, 2, 3, 7] do
+        out := out ++ [s!"[{l},{CUP_FINAL_S},{m},{cupMult l CUP_FINAL_S m}]"]
+    return out
+  let awards := Id.run do
+    let mut out : List String := []
+    for c in [0, 5, 399, 400, 450] do
+      for n in [0, 1, 10, 150] do
+        for m in [1, 2, 3] do
+          out := out ++ [s!"[{c},{n},400,{m},{cupAward c n 400 m}]"]
+    return out
+  let deducts := Id.run do
+    let mut out : List String := []
+    for c in [0, 3, 5, 40] do
+      for n in [0, 5, 100] do
+        out := out ++ [s!"[{c},{n},{cupDeduct c n}]"]
+    return out
+  let lcg (x : Nat) : Nat := (x * 1103515245 + 12345) % 2147483648
+  let terms := Id.run do
+    let mut out : List String := []
+    let mut x := 1991
+    for cap in [50, 100, 400, 1000] do
+      let mut ops : List CupOp := []
+      let mut enc : List String := []
+      for _ in [0:80] do
+        x := lcg x; let k := x / 65536 % 5
+        x := lcg x; let n := x / 65536 % 61
+        x := lcg x; let m := 1 + x / 65536 % 3
+        if k == 0 then
+          ops := ops ++ [CupOp.deduct (n % 11)]; enc := enc ++ [s!"[1,{n % 11},0]"]
+        else
+          ops := ops ++ [CupOp.award n m]; enc := enc ++ [s!"[0,{n},{m}]"]
+      out := out ++ [obj [("cap", toString cap), ("ops", arr enc), ("final", toString (cupRun cap ops))]]
+    return out
+  obj [("constants", consts), ("cupMult", arr mults), ("cupAward", arr awards), ("cupDeduct", arr deducts), ("terms", arr terms)]
+
 /-! ## Conformance vectors (compared with the TypeScript code in test/formal.test.ts) -/
 
 /-- The agent-link part of the vectors: every shared constant, and samples of each floor/cost function. -/
@@ -962,7 +1139,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ "}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 

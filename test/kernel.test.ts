@@ -494,6 +494,7 @@ describe('winners reshape the world', () => {
     const a = join(w, 'Cedric Diggory');
     a.reputation = 300;
     a.termReputation = 300;
+    w.cupGain(a, 300, 'creatures'); // house points go through the 学院杯 ledger (kernel/housecup.ts)
     w.forceEndTerm();
     expect(w.looks().banner).toBe('Hufflepuff');
     const r = w.decree(a.id, { world: { aesthetics: { aurora: true, skyTint: '#ffd0a0', glow: 2 } } }, 'Fair play for all', false);

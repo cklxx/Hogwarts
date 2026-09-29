@@ -732,3 +732,112 @@ export const MARKET_PROMOTE_NEWS: Line = { zh: '⭐ 魔法部推荐：{k} 的「
 export const MARKET_UNBAN_NEWS: Line = { zh: '📜 「{item}」的禁令解除了，它又能用了。', en: '📜 The ban on "{item}" is lifted; it works again.' };
 /** To an author at the turn of the day: {n} wizards cast their spells, royalties {g} reputation. */
 export const MARKET_DAILY: Line = { zh: '📜 过去一天有 {n} 位巫师施放了你在集市上的咒语，版税 +{g} 声望。', en: '📜 In the last day {n} wizards cast your market spells: royalties +{g} reputation.' };
+
+// ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 (kernel/wheel.ts, kernel/housecup.ts)
+
+/** 校园事件轮盘: what each event says when it starts, is won, and is lost ({v} the hero, {n} a number, {house} a house or place). */
+export const WHEEL_LINES: Record<string, { start: Line[]; won: Line[]; lost: Line[] }> = {
+  troll: {
+    start: [
+      { zh: '🧌 地下教室有巨怪！——奇洛教授说完就晕过去了。巨怪在地窖楼梯口，大家一起上！（羽加迪姆勒维奥萨对它三倍伤害）', en: '🧌 Troll in the dungeon! — Professor Quirrell faints on cue. It is at the Dungeon Stair: everyone, together! (Wingardium Leviosa does triple damage.)' },
+      { zh: '🧌 「地下教室有巨怪……我想你们应该知道。」一只加强版巨怪堵在了地窖楼梯口。按伤害分学院分！', en: '🧌 "Troll in the dungeon… thought you ought to know." A beefed-up troll blocks the Dungeon Stair. House points by damage dealt!' },
+    ],
+    won: [
+      { zh: '🧌 巨怪倒下了！最后一击：{v}。按伤害分学院分——羽加迪姆勒维奥萨，yyds。', en: '🧌 The troll is down! Final blow: {v}. House points shared by damage — Wingardium Leviosa never gets old.' },
+      { zh: '🧌 轰！巨怪被放倒了，{v} 补的最后一刀。赫敏说：「这可不是书上教的。」', en: '🧌 Thud! The troll falls; {v} landed the last blow. Hermione: "That was not in the book."' },
+    ],
+    lost: [
+      { zh: '🧌 巨怪打了个哈欠，拖着大棒回地窖睡觉去了。「就这？」', en: '🧌 The troll yawns and drags its club back down to the dungeon. "Is that it?"' },
+      { zh: '🧌 巨怪嫌大家太菜，自己走了。临走前留下一句：「下次多带点人。」', en: '🧌 The troll wanders off, unimpressed. Parting words: "Bring more friends next time."' },
+    ],
+  },
+  snitch: {
+    start: [
+      { zh: '✨ 金色飞贼出现在魁地奇球场上空！贴近它 1.5 米停半秒，或者用任何咒语打中它 = +{n} 学院分。90 秒后它就飞走了。', en: '✨ The Golden Snitch is over the Quidditch pitch! Stay within 1.5 m of it for half a second, or hit it with any spell, for +{n} house points. It escapes in 90 s.' },
+      { zh: '✨ 一道金光掠过魁地奇球场：金色飞贼！哈利一年级差点把它吞下去。抓住它 +{n} 学院分。', en: '✨ A golden glint over the Quidditch pitch: the Snitch! Harry nearly swallowed one in first year. Catch it for +{n} house points.' },
+    ],
+    won: [
+      { zh: '✨ {v} 抓住了金色飞贼！{house} +{n} 分。「我一年级的时候也这样。」——哈利', en: '✨ {v} caught the Golden Snitch! {house} +{n} points. "I did that in first year." — Harry' },
+      { zh: '✨ 金色飞贼落网！{v} 为{house}拿下 {n} 分。魁地奇的规矩：抓住飞贼，比赛结束。', en: '✨ Snitch caught! {v} wins {n} points for {house}. Quidditch rules: catch the Snitch, end the game.' },
+    ],
+    lost: [
+      { zh: '✨ 金色飞贼嗖地一下飞走了。它会记住每一个差点抓到它的人。', en: '✨ The Snitch zips away. It remembers everyone who almost caught it.' },
+      { zh: '✨ 飞贼溜了。找球手们面面相觑：「刚才谁看见它往哪儿飞了？」', en: '✨ The Snitch is gone. The Seekers look at each other: "Did anyone see where it went?"' },
+    ],
+  },
+  curfew: {
+    start: [
+      { zh: '🏮 宵禁！费尔奇和洛丽丝夫人开始巡逻城堡。被他们看见扣学院分；躲在柱子后面，或者用活点地图盯着他们。在城堡里熬过宵禁没被抓到，还有奖励。', en: '🏮 Curfew! Filch and Mrs Norris patrol the castle. Seen = house points lost; hide behind pillars, or watch them on the Marauder\'s Map. Last it out in the castle uncaught for a reward.' },
+      { zh: '🏮 「学生夜游！学生夜游！」费尔奇提着灯出来了，洛丽丝夫人跑在前面。躲好！', en: '🏮 "Students out of bed! Students out of bed!" Filch comes out with his lantern, Mrs Norris running ahead. Hide!' },
+    ],
+    won: [
+      { zh: '🏮 宵禁结束。{n} 位巫师在城堡里熬过了宵禁、一次也没被抓到。费尔奇气得直跺脚。', en: '🏮 Curfew is over. {n} wizards lasted it out in the castle without being caught. Filch stamps his foot.' },
+    ],
+    lost: [
+      { zh: '🏮 宵禁结束。费尔奇心满意足地回了办公室——「总有一天我要把你们吊起来。」', en: '🏮 Curfew is over. Filch shuffles back to his office, satisfied. "One day I\'ll have you hanging by your ankles."' },
+    ],
+  },
+  dementors: {
+    start: [
+      { zh: '🌫️ 摄魂怪来袭！它们从黑湖那边压过来了。呼神护卫（Expecto Patronum）能把它们赶走——哪个学院没人被击倒，全院参战者都有奖励。', en: '🌫️ Dementors! They sweep in from the Black Lake. Expecto Patronum drives them off — a house with nobody knocked down rewards every member who fought.' },
+      { zh: '🌫️ 湖面结了一层霜，一群摄魂怪朝场地飘来。「想想你最快乐的事。」', en: '🌫️ Frost creeps over the lake; a flight of Dementors drifts toward the grounds. "Think of your happiest memory."' },
+    ],
+    won: [
+      { zh: '🌫️ 最后一只摄魂怪被赶回了湖面。卢平教授：「吃块巧克力吧，会好一点的。」', en: '🌫️ The last Dementor flees across the lake. Professor Lupin: "Eat some chocolate. It helps."' },
+    ],
+    lost: [
+      { zh: '🌫️ 摄魂怪退回了阿兹卡班的方向。空气终于暖和了一点。', en: '🌫️ The Dementors withdraw toward Azkaban. The air warms a little at last.' },
+    ],
+  },
+  peeves: {
+    start: [
+      { zh: '🎈 皮皮鬼在{house}泼了一地墨水！走进去会变慢。用任何咒语打中他就能把他赶走（+30 学院分）。', en: '🎈 Peeves has splashed ink all over {house}! Wading through it slows you. Hit him with any spell to chase him off (+30 house points).' },
+    ],
+    won: [
+      { zh: '🎈 {v} 一咒打中了皮皮鬼！他尖叫着飞走了：「血人巴罗来了！」', en: '🎈 {v} hit Peeves! He shrieks and flies off: "The Bloody Baron is coming!"' },
+    ],
+    lost: [
+      { zh: '🎈 皮皮鬼玩够了，唱着跑调的歌飘走了。墨水慢慢干了。', en: '🎈 Peeves has had his fun and floats off singing rude songs. The ink slowly dries.' },
+    ],
+  },
+  room: {
+    start: [
+      { zh: '🚪 有求必应屋开门了！在八楼走廊（傻巴拿巴挂毯对面）来回走三趟，心里想着你要的东西——前三位能拿到一个宝箱。', en: '🚪 The Room of Requirement is open! Pace the seventh-floor corridor (opposite Barnabas the Barmy) three times, thinking of what you need — the first three get a chest.' },
+    ],
+    won: [
+      { zh: '🚪 有求必应屋送出了三个宝箱，墙上的门慢慢消失了。', en: '🚪 The Room has given away three chests; the door fades back into the wall.' },
+    ],
+    lost: [
+      { zh: '🚪 墙上的门消失了。有求必应屋只对真正需要它的人开门。', en: '🚪 The door fades into the wall. The Room only opens for those who truly need it.' },
+    ],
+  },
+};
+
+/** 决胜时刻: the last minute of a term ({n} the multiplier). */
+export const FINAL_MINUTE: Line[] = [
+  { zh: '⏳ 决胜时刻！本学期最后 60 秒，所有学院分 ×{n}。邓布利多：「我还有几个最后时刻的分数要加……」', en: '⏳ The final minute! The last 60 seconds of the term: every house point ×{n}. Dumbledore: "I have a few last-minute points to award…"' },
+  { zh: '⏳ 决胜时刻：学院分 ×{n}！现在不卷，更待何时？', en: '⏳ Final minute: house points ×{n}! If not now, when?' },
+];
+
+/** The House Cup ceremony ({house} the winner, {v} the MVP, {n} their points). */
+export const CUP_CEREMONY: Line[] = [
+  { zh: '🏆 学院杯归{house}！礼堂的旗帜换成了{house}的颜色。本学期 MVP：{v}（{n} 分）。', en: '🏆 The House Cup goes to {house}! The Great Hall\'s banners turn to {house} colours. MVP of the term: {v} ({n} points).' },
+  { zh: '🏆 {house}赢得学院杯！邓布利多：「我还有几个最后时刻的分数要加。」——开玩笑的。MVP：{v}（{n} 分）。', en: '🏆 {house} win the House Cup! Dumbledore: "I have a few last-minute points…" — only joking. MVP: {v} ({n} points).' },
+];
+
+/** Filch and Mrs Norris, when they catch someone after curfew ({house}, {n} points lost). */
+export const CURFEW_CAUGHT: Line[] = [
+  { zh: '🏮 费尔奇：「学生夜游！抓到你了！」{house} -{n} 分。', en: '🏮 Filch: "Student out of bed! Caught you!" {house} -{n} points.' },
+  { zh: '🏮 洛丽丝夫人盯着你，然后跑去叫费尔奇了。{house} -{n} 分。', en: '🏮 Mrs Norris stares at you, then runs off to fetch Filch. {house} -{n} points.' },
+  { zh: '🏮 「又是你！」{house} -{n} 分（不会扣成负数，放心）。', en: '🏮 "You again!" {house} -{n} points (never below zero, relax).' },
+];
+
+/** Loading tips about the events and cards (appended to TIPS below). */
+export const FUN_TIPS: Line[] = [
+  { zh: '每 3 分钟校园里出一件事：巨怪、金色飞贼、宵禁、摄魂怪、皮皮鬼、有求必应屋。', en: 'Every 3 minutes something happens: a troll, the Snitch, curfew, Dementors, Peeves, the Room of Requirement.' },
+  { zh: '学期最后 60 秒是「决胜时刻」：学院分翻倍。', en: 'The last 60 seconds of a term are the final minute: house points count double.' },
+  { zh: '巧克力蛙画片不卖，只能捡、赢、从宝箱里翻出来。按 C 打开画册。', en: 'Chocolate Frog cards are never sold: find, win or dig them out of chests. C opens your album.' },
+  { zh: '罗恩的画片缺阿格里帕和托勒密。你的呢？', en: 'Ron was missing Agrippa and Ptolemy. What about you?' },
+  { zh: '城堡里藏着十几个宝箱，每学期刷新一次。走近按 F。', en: 'A dozen chests hide around the grounds and refill every term. Walk up and press F.' },
+];
+TIPS.push(...FUN_TIPS);

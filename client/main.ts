@@ -27,13 +27,16 @@ import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } f
 import * as probe from './perf';
 import { createMarket } from './market';
 import { createPanels, type FamiliarState, type UnfairState } from './panels';
+import { createFun } from './panels/fun';
+import { createFunWorld } from './funworld';
+import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
-interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string }
+interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string; b?: 1 }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
-interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
+interface Snap { t: number; hour: number; night: boolean; weather: string; term: { n: number; left: number }; cup?: CupSnap; ev?: EvSnap | null; w: SW[]; c: SC[]; p: SP[]; fx: Fx[]; elder: { x: number; z: number } | null; willowCalm: boolean; look?: Look }
 interface Me {
   handle: string; name: string; house: House; year: number; xp: number; xpNext: number | null; reputation: number; galleons: number;
   hp: number; maxHp: number; mana: number; maxMana: number; hotbar: ({ id: string; name: string; cd: number; kind?: 'harm' | 'help' | 'self' } | null)[];
@@ -47,9 +50,11 @@ interface Me {
   unfair?: UnfairState | null;
   /** While stunned: what put you down (World.knockedOutBy). */
   down?: Down | null;
+  /** 学院杯 / 巧克力蛙画片 (World.funState): your house points this term, your album, the curfew grace. */
+  fun?: FunMe | null;
 }
 /** Owl Post events carry `from` and `owl` (docs/AGENT_LINK.md §C.2). */
-interface Ev { id: number; type: string; text: string; zh?: string; to?: string; t?: number; from?: 'player' | 'agent'; owl?: { id: number; options?: string[]; expiresAt?: number; re?: number } }
+interface Ev { id: number; type: string; text: string; zh?: string; to?: string; t?: number; from?: 'player' | 'agent'; owl?: { id: number; options?: string[]; expiresAt?: number; re?: number }; card?: string }
 /** An item as World.armory lists it. */
 interface TrunkItem {
   id: string; name: string; slot: string; mods: Record<string, number>; lore?: string; charm?: unknown; unique?: string; equipped: boolean;
@@ -334,7 +339,8 @@ function connect() {
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') me = msg.s;
-    else if (msg.t === 'event') { pn.onEvent(msg.e); feed(msg.e, true); }
+    else if (msg.t === 'event') { pn.onEvent(msg.e); fun.onEvent(msg.e); feed(msg.e, true); }
+    else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
       ctl.onCast(msg.r);
@@ -454,6 +460,7 @@ function apply(s: Snap) {
       m.root.rotation.y = -c.f;
       actors.add(m.root);
       creatures.set(c.i, m);
+      m.root.scale.setScalar(c.b ? 1.35 : 1); // 地下教室有巨怪: the event's troll is a head taller (and pooled models reset)
     }
     m.seen = g;
     m.tx = c.x; m.tz = c.z; m.tf = c.f;
@@ -565,7 +572,7 @@ function feed(e: Ev, fresh: boolean) {
     if (fresh) { curseNews = { text, until: performance.now() + 12000 }; if (!$('#trunk').hidden) send({ t: 'book' }); }
     return;
   }
-  if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'egg' && e.to) || (e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000')))) { banner(text); return; }
+  if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'wheel' && !e.to) || (e.type === 'egg' && e.to) || (e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000')))) { banner(text, e.type); return; }
   // history from before you arrived: only the last couple of public lines, and they fade like the rest
   feedLine(text, `${e.type}${e.to ? ' private' : ''}`);
 }
@@ -579,7 +586,9 @@ function feedLine(text: string, cls: string) {
   setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 1300); }, FEED_S * 1000 + Math.min(4000, text.length * 40));
 }
 let bannerT = 0;
-function banner(text: string) {
+function banner(text: string, type = 'system') {
+  // one big thing in the centre at a time: while the House Cup ceremony or a card reveal holds it, news goes to the feed
+  if (fun.claimsCentre()) { feedLine(text, type); return; }
   const b = $('#banner');
   b.textContent = text;
   b.classList.remove('out');
@@ -690,6 +699,7 @@ function hud() {
   linkHud();
   renderGoal();
   pn.hud();
+  fun.hud();
   trackBars();
 }
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
@@ -736,6 +746,7 @@ function drawMinimap() {
   for (const w of snap.w) { const [a, b] = P(w.x, w.z); g.fillStyle = w.h === myHandle ? '#2a1b0f' : '#' + HOUSE_COLORS[w.ho].toString(16).padStart(6, '0'); g.beginPath(); g.arc(a, b, w.h === myHandle ? 4 : 3, 0, 7); g.fill(); }
   g.fillStyle = '#3a2716'; g.font = '600 13px "LXGW WenKai", Georgia, serif';
   for (const l of LANDMARKS) { const [a, b] = P(l.x, l.z); if (a > 0 && a < 220 && b > 0 && b < 220) g.fillText(l.name, a + 3, b); }
+  fun.drawMinimap(g, P); // the event's marker (and Filch's round)
   g.restore();
 }
 
@@ -1638,6 +1649,12 @@ const ctl = createControls({
   panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => toggleTrunk() },
   agent: agentNow,
   pair: pairNow,
+  // 隐藏宝箱: F at a closed chest opens it
+  extraAction: () => {
+    const p = wizards.get(myHandle)?.root.position;
+    const c = p && snap?.cup ? funWorld.chestNear(p, snap.cup.ch) : null;
+    return c ? { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) } : null;
+  },
 });
 // ------------------------------------------------------------------ the panels: 黑魔王, 邓布利多军, 偷师, O.W.L., 使魔, 专注力, 无规则区 (client/panels)
 /** Put a source in the spellbook's editor as a new draft (偷师's 看源码). */
@@ -1658,6 +1675,19 @@ const pn = createPanels({
   openBook: () => { if ($('#book').hidden) toggleBook(true); },
   loadDraft, solo,
 });
+// ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 · 巧克力蛙画片 · 隐藏宝箱 (client/panels/fun.ts, client/funworld.ts)
+const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
+const funWorld = createFunWorld();
+scene.add(funWorld.group);
+/** What a chest held (the card itself arrives as its own event and flips over). */
+function onChest(r: { whereZh?: string; where?: string; housePoints?: number; galleons?: number; card?: string; fragment?: { zh: string; en: string; source: string }; left?: number }) {
+  const parts: string[] = [];
+  if (r.galleons) parts.push(L(`${r.galleons} 加隆`, `${r.galleons} Galleons`));
+  if (r.fragment) parts.push(L(`一页如尼文残页：${r.fragment.zh}`, `a torn page of Runes: ${r.fragment.en}`));
+  if (r.card) parts.push(L('一张巧克力蛙画片', 'a Chocolate Frog card'));
+  toast(L(`🧰 打开了宝箱（${r.whereZh ?? ''}）：${parts.join('、') || '空的'} · 学院分 +${r.housePoints ?? 0} · 本学期还剩 ${r.left ?? 0} 个`, `🧰 You open the chest (${r.where ?? ''}): ${parts.join(', ') || 'empty'} · +${r.housePoints ?? 0} house points · ${r.left ?? 0} left this term`));
+  if (r.fragment) loadDraft(L('宝箱里的残页', 'Page from a chest'), r.fragment.source, L(r.fragment.zh, r.fragment.en));
+}
 // the camera keeps out of walls, fades what hides you, x-rays you and your allies (view.ts)
 const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), cam: {
   get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; }, get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; }, get dist() { return camDist; }, set dist(v: number) { camDist = v; } } });
@@ -1716,6 +1746,7 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (pn.keydown(e)) return; // J 邓布利多军, K O.W.L. (client/panels)
+  if (fun.keydown(e)) return; // C 巧克力蛙画片 (client/panels/fun.ts)
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
   if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
@@ -1727,6 +1758,7 @@ addEventListener('keydown', (e) => {
     if (!$('#atask').hidden) { $('#atask').hidden = true; atPending = null; return; }
     if (!$('#book').hidden) { $('#book').hidden = true; return; }
     if (pn.closeTop()) return;
+    if (fun.closeTop()) return;
     if (!$('#owl').hidden) { toggleOwl(false); return; }
     if (!$('#trunk').hidden) { toggleTrunk(false); return; }
     if (!$('#seals').hidden) { $('#seals').hidden = true; return; }
@@ -1877,6 +1909,7 @@ function frame() {
 
   ctl.update(dt);
   pn.frame(dt);
+  funWorld.frame(dt, snap);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();

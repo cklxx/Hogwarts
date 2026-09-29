@@ -64,6 +64,9 @@ export const LIMITS: Record<string, [number, number]> = {
   // 咒语集市 (kernel/market.ts): browsing / reading a listing, and publish / unpublish / copy / fork (each forges or lists)
   market: [3, 8],
   marketop: [0.5, 4],
+  // 隐藏宝箱 (F at a chest) and the school's news / the album panel (both cheap reads or one-shot actions)
+  chest: [1, 4],
+  school: [2, 5],
   other: [30, 60],
   all: [80, 120],
 };

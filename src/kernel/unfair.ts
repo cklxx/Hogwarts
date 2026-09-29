@@ -71,6 +71,8 @@ export const AGENT_TOOL_COST: Readonly<Record<string, number>> = {
   join_dumbledores_army: 1, leave_dumbledores_army: 1, veto_decree: 1, study_spell: 2,
   // 咒语集市 (kernel/market.ts): copying and forking forge a spell, so they cost what a forge does; browsing is free
   publish_spell: 2, unpublish_spell: 1, copy_spell: 3, fork_spell: 3,
+  // 隐藏宝箱: opening one is an action (reading school_events and frog_cards is free)
+  open_chest: 1,
 };
 export const tiredText = (cur: number, max: number, retry: number) =>
   `Your wand hand is tired (concentration ${cur}/${max}). Rest ${retry}s and try again. 你的持杖手累了（专注力 ${cur}/${max}），歇 ${retry} 秒再试。 retry_after=${retry}`;

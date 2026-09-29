@@ -908,7 +908,7 @@ export function sitExam(world: World, wid: string, examId: string, source: strin
     best.paid = GRADE_MULT[g.grade];
     world.gainXp(w, rewards.xp);
     w.galleons += rewards.galleons;
-    world.addRep(w, rewards.reputation);
+    world.addRep(w, rewards.reputation, 'owls');
   }
 
   let rank: number | null = null;
