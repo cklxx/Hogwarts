@@ -1,6 +1,6 @@
 # Hogwarts — 一个"咒语就是代码"的 3D 魔法世界
 
-[![宣传视频](docs/promo/poster.jpg)](docs/promo/hogwarts-promo.mp4)
+<a href="docs/promo/hogwarts-promo.mp4"><img src="docs/promo/preview.gif" alt="霍格沃茨宣传片预览（点击观看完整 44 秒视频）" width="720"></a>
 
 ▶ [44 秒宣传片](docs/promo/hogwarts-promo.mp4)：真实内核 + 真实客户端逐帧离线渲染（`npx tsx scripts/promo/render.ts`，见 `scripts/promo/README.md`）。
 
