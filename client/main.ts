@@ -1953,6 +1953,7 @@ const warmed = (async () => {
   const far = 3000;
   ring(far, far, 0xffffff, 1, 2, 0.1); puff(far, far, 0xffffff); column(far, far, 0xffffff, 0.1); floatText(far, far, '1', '#fff'); lightning([far, far, far + 1, far], 0xffffff);
   scene.add(g);
+  funWorld.warm(true); // the snitch, Filch, Mrs Norris, Peeves, the Room's door (client/funworld.ts)
   // compiled for the post-processing scene pass's target: the scene is drawn into it (linear HDR, multisampled,
   // tone mapped later), and a pipeline for another target format would be another compile
   try { await R.warm(scene, camera); } catch (e) { console.warn('[gpu] warm-up compile failed, compiling on first use', e); }
@@ -1960,6 +1961,7 @@ const warmed = (async () => {
   // map's pipelines and the post-processing passes, which compileAsync does not build
   try { R.warmFrame(); } catch (e) { console.warn('[gpu] warm-up frame failed', e); }
   scene.remove(g);
+  funWorld.warm(false);
   herd.begin(); herd.end();
   crowd.begin(); crowd.end(false);
   parts.begin(); parts.end();
