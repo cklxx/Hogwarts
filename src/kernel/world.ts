@@ -1977,6 +1977,10 @@ export class World {
     if (w.st.disarmedUntil > this.now) return fail('You have been disarmed!');
     if (this.silenced(w)) return fail(SILENCED);
     if (this.now < (w.cooldowns[it.id] ?? 0) || this.now < w.globalCd) return fail(`${it.name} is recharging.`);
+    // an item's charm is a cast like any other: the features' holds (a duel's bow) and the market's bans apply to it
+    for (const f of HOOKS.castBlock) { const why = f.castBlock(this, w); if (why) return fail(why); }
+    const asSpell = { id: it.id, name: it.name, source: it.charm.source } as Spell;
+    if (bannedListing(this, asSpell)) { this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle }); return fail(bannedCastText(this, asSpell, w.handle)); }
     const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     // Charms were validated against the forger's year; the holder's own caps still apply at runtime.
