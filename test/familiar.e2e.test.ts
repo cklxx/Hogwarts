@@ -49,7 +49,7 @@ beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hogwarts-familiar-'));
   const env: NodeJS.ProcessEnv = {
     ...process.env, PORT: String(PORT), HOST: '127.0.0.1', HOGWARTS_DATA: join(dir, 'world.json'), PUBLIC_URL: BASE, NPC_COUNT: '0',
-    ANTHROPIC_API_KEY: 'sk-test-familiar', ANTHROPIC_BASE_URL: apiUrl, FAMILIAR_DAILY: '5',
+    ANTHROPIC_API_KEY: 'sk-test-familiar', ANTHROPIC_BASE_URL: apiUrl, FAMILIAR_DAILY: '5', FAMILIAR_MODEL: 'claude-opus-5-5',
   };
   for (const k of ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_PROFILE', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) delete env[k];
   proc = spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {

@@ -3,6 +3,7 @@
  * The familiar drives the real MCP tools in-process, so these tests also check that the MCP rules
  * (pause, rate limits, the allowlist on top) hold for it exactly as for an external agent.
  */
+const FALLBACK_OK = (m: string) => ['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5'].includes(m);
 import { describe, expect, it } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
 import { World } from '../src/kernel/world.js';
@@ -122,7 +123,8 @@ describe('the familiar', () => {
     expect(sys[1].cache_control).toEqual({ type: 'ephemeral' });
     expect(b0.cache_control).toEqual({ type: 'ephemeral' });
     expect(b0.output_config).toEqual({ effort: 'low' });
-    expect(b0).toMatchObject({ betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+    if (FALLBACK_OK(FAMILIAR_DEFAULT_MODEL)) expect(b0).toMatchObject({ betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+    else expect(b0.fallbacks).toBeUndefined();
     expect(JSON.stringify(b0.messages)).toContain('冻住身边所有小精灵');
     // the tool loop: each result goes back as a tool_result for the same tool_use id
     const last = f.bodies[1].messages.at(-1)!;

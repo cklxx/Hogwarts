@@ -110,7 +110,7 @@ export interface FamiliarConfig {
   fallbacks: boolean;
 }
 
-export const FAMILIAR_DEFAULT_MODEL = 'claude-opus-5-5';
+export const FAMILIAR_DEFAULT_MODEL = 'claude-sonnet-5'; // cost-efficient default; set FAMILIAR_MODEL=claude-opus-5-5 for the strongest spell-writer
 /** Models that take `fallbacks: "default"` (beta server-side-fallback-2026-07-01). */
 const FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5']);
 const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
