@@ -3,7 +3,9 @@
 This page records what was measured, on what, and how, before and after the performance pass
 (branch `wf/perf`, base commit `9b159fa`), and in the review fix pass after it (`wf/perf-fix`,
 [below](#fix-pass-frame-rate-input-full-snapshots-aoi-churn)). Every number comes from
-`scripts/bench.ts`; you can re-run all of them (see [Reproduce](#reproduce)).
+`scripts/bench.ts`; you can re-run all of them (see [Reproduce](#reproduce)). The browser client's own pass
+(`wf/fast`: draw calls, lights, level of detail, instancing, AOI in the client, load) is in
+[Client (browser)](#client-browser-wffast) at the end.
 
 ## Summary
 
@@ -366,6 +368,8 @@ Server (`src/server`):
 
 Things this stream cannot do from the server, in the order they pay off:
 
+(Items 1 and 2 are done in the client pass, [below](#client-browser-wffast).)
+
 1. **Enable AOI for browsers** (3.6x less bandwidth): in `client/main.ts` `apply()`, when a wizard,
    creature or bolt is missing from a snapshot, dispose its geometries, materials and textures
    (including the label's `CanvasTexture`) — or keep a pool and hide/reuse models; puff only for a real
@@ -394,3 +398,221 @@ npx tsx scripts/bench.ts churn --n=300 --secs=120 --aoi=0,140/0,140/10,140/20   
 ```
 
 To measure "before", check out `9b159fa`, copy `scripts/bench*.ts` into it and run the same commands.
+
+## Client (browser): wf/fast
+
+The owner's complaint was the browser: 「太卡了」. This pass measured the client first, fixed what the
+measurements pointed at, and measured again. Base: `main` at `c7665c4` (storybook art style and the
+collision pass merged) plus the probe below; after: branch `wf/fast`.
+
+### How it is measured
+
+* **`?perf=1`** (`client/perf.ts`): an overlay (fps, frame ms mean / worst, pixel ratio, JS ms per frame,
+  draw calls, triangles, programs, textures) and `window.__perf` for scripts: per-frame JS time split by
+  section (`msg` = WebSocket messages incl. `JSON.parse` and `apply`, `hud` = the 10 Hz HUD, `anim` = entity
+  interpolation and animation, `world` = sky/decor/scene tick, `fx` = particles, `ctl` = controls, `render` =
+  the composer's submit), `renderer.info` summed over every pass of a frame (three.js resets it per
+  `render()` call otherwise), draw calls per pass (shadow map, lake mirror, main, bloom mips, output),
+  a census of what the scene holds (drawables and shadow casters per top-level object), WebSocket bytes,
+  load milestones. Every hook is one boolean test when the probe is off.
+* **`scripts/perf-client.ts`**: writes a world save with 60 enrolled bots (30 within 15 m of the courtyard
+  spawn, 30 spread over the map), 12 NPCs, the wild pre-filled to 3x (80 creatures), and one viewer wizard
+  at the spawn; starts the real server on it; drives the bots over WebSocket (`scripts/bench-clients.ts`:
+  20 Hz input, random walk, a cast a second); opens the client in headless Chromium (SwiftShader) at
+  `/?perf=1&capture=1&q=…#k=<viewer key>` with the pointer over the view, and records 8 s at each camera
+  spot after 3 s: `follow` (the game camera behind you, in the crowd), `crowd` (the courtyard from 70 m),
+  `castle` (the castle and grounds from above), `lake` (the Black Lake and its mirror), `overview` (the
+  whole map from 220 m). Also Chrome's own counters (CDP `Performance.getMetrics`: layouts, style recalcs),
+  long tasks, JS heap growth and drops, bytes over the wire per type, and optional CPU profiles
+  (`--profile`), per-object census (`--census`, `--detail=`) and screenshots (`--shots=`).
+* **Caveat**: SwiftShader renders on the CPU, and this 4-core box was shared with other agents' jobs
+  (load average 7-10 during the runs), so frame rates (well under 1 fps) and absolute milliseconds are not
+  what a laptop sees. Read **draw calls, triangles, shader programs, passes and bytes** as the GPU and
+  network numbers, and the JS milliseconds as relative CPU costs measured the same way before and after
+  (`render` includes the time the page waits on SwiftShader, so it tracks the GPU load too). Both builds ran
+  back to back with identical settings, `&dyn=0` (no dynamic resolution) and 640x360.
+
+### Summary
+
+| | before | after |
+|---|---:|---:|
+| Draw calls per frame, 'high': in the crowd (game camera) / courtyard from 70 m / castle / lake / whole map | 1010 / 1478 / 2931 / 125 / 3832 | **348 / 446 / 540 / 106 / 500** |
+| … 'low' | 815 / 1390 / 1365 / 179 / 1950 | **219 / 359 / 283 / 78 / 280** |
+| Shadow-map draw calls per frame, in the crowd, 'high' | 243 | **37** (batched parts, far models instanced, redrawn every other frame) |
+| Point lights every lit pixel evaluates (and that are compiled into every shader) | 77 (one per wizard online + lamps + spell pool) | **6** ('low' start: 4), fixed |
+| Shader programs compiled after the first frame (20 s over five spots) | 2-4, plus **every lit shader again whenever a wizard came or went** (the light count changed) | **0** |
+| Terrain picking under the pointer (every frame the pointer is over the view) | 7.9 ms | **0.016 ms** (500x) |
+| Controls JS per frame with the pointer over the view (harness, all spots) | 9-48 ms | **0.3-2.3 ms** |
+| `apply()` per snapshot | 2.0-14 ms | **0.25-0.9 ms** |
+| Snapshot size (this 60-bot world; AOI now on) | 15-19 KB | **8-12 KB** (500 players spread: 98 → 27 KB, [fix pass](#fix-pass-frame-rate-input-full-snapshots-aoi-churn)) |
+| Snapshots the page read per second in the harness (the server sends 10) | 1.0-2.1 (the page fell behind) | **6.2-13** |
+| Movement input messages at 144 Hz (turning the camera) | 144 /s | **≤ 20 /s** (+4 Hz heartbeat) |
+| Bytes to load the game (default style) | 967 KB | **240 KB** (Brotli; repeat visits: bundles cached for a year, the page revalidated) |
+| … the two HDRIs of `?style=real` (files, measured compressed size) | 3.15 MB | 2.33 MB (Brotli 9; the WebP textures are already compressed) |
+| Time to the first frame with the world in it (SwiftShader; ±30 % run to run on this box) | 63 s ('high') / 75 s ('low') | **50 s / 38 s** (the shader warm-up overlaps the gate and the WebSocket handshake) |
+| JS heap growth / GCs per 8 s while playing | 0.0-0.45 MB/s / 0-1 | 0.17-1.2 MB/s / 0-4 (the page now parses 5-10x more snapshots a second; effects, labels and the frame loop no longer allocate per use) |
+| Textures on the GPU (whole-map view) | 288 | **124** |
+| fps in SwiftShader (not a GPU number; for the direction only) | 0.19-0.37 | 0.39-1.39 |
+
+### Before / after per camera spot
+
+Both builds back to back, same world, same bots, 8 s per spot after 3 s, 640x360, `&dyn=0`, pointer over
+the view. JS columns are CPU milliseconds on this (shared, SwiftShader) box, averaged over only 3-8 frames
+per spot: compare them within a row, not with a laptop. "render submit" is the composer's `render()`, which
+includes waiting on SwiftShader.
+
+
+**q=high** (before → after)
+
+| | follow | crowd | castle | lake | overview |
+|---|---:|---:|---:|---:|---:|
+| draw calls | 1010 → **348** | 1478 → **446** | 2931 → **540** | 125 → **106** | 3832 → **500** |
+| triangles (k) | 555 → **429** | 673 → **403** | 1261 → **514** | 335 → **361** | 1349 → **499** |
+| shader programs | 73 → **120** | 76 → **122** | 78 → **126** | 80 → **128** | 82 → **129** |
+| textures | 115 → **72** | 168 → **100** | 201 → **117** | 164 → **119** | 288 → **124** |
+| render submit ms/frame | 35.6 → **17.5** | 37.5 → **13.9** | 102 → **17.2** | 28.1 → **6.6** | 133 → **10.0** |
+| anim ms/frame | 3.02 → **10.33** | 3.13 → **1.40** | 4.90 → **1.10** | 4.90 → **1.37** | 4.67 → **0.73** |
+| controls ms/frame | 22.02 → **1.15** | 9.10 → **0.93** | 10.03 → **2.32** | 47.67 → **0.34** | 9.17 → **0.60** |
+| WebSocket ms/s | 8.3 → **5.5** | 4.5 → **7.7** | 4.7 → **4.2** | 10.4 → **9.0** | 7.6 → **3.3** |
+| HUD ms/s | 1.16 → **4.66** | 0.06 → **0.20** | 0.24 → **0.15** | 0.34 → **0.51** | 0.16 → **0.47** |
+| apply ms/snapshot | 3.65 → **0.78** | 2.85 → **0.90** | 1.98 → **0.70** | 2.39 → **0.52** | 2.89 → **0.32** |
+| parse ms/snapshot | 0.29 → **0.10** | 0.17 → **0.17** | 0.10 → **0.14** | 0.34 → **0.11** | 0.54 → **0.10** |
+| snapshot KB | 15.2 → **11.0** | 16.2 → **11.7** | 16.3 → **11.1** | 16.9 → **10.8** | 16.7 → **10.4** |
+| style recalcs/s | 0.27 → **0.89** | 0.06 → **0.42** | 0.06 → **0.35** | 0.18 → **0.69** | 0.10 → **0.46** |
+| layouts/s | 0.14 → **0.39** | 0.00 → **0.00** | 0.00 → **0.00** | 0.00 → **0.00** | 0.00 → **0.00** |
+| fps (SwiftShader) | 0.27 → **0.39** | 0.19 → **0.63** | 0.19 → **0.47** | 0.37 → **1.04** | 0.30 → **0.69** |
+
+**q=low** (before → after)
+
+| | follow | crowd | castle | lake | overview |
+|---|---:|---:|---:|---:|---:|
+| draw calls | 815 → **219** | 1390 → **359** | 1365 → **283** | 179 → **78** | 1950 → **280** |
+| triangles (k) | 445 → **276** | 517 → **267** | 513 → **265** | 231 → **200** | 550 → **256** |
+| shader programs | 65 → **112** | 70 → **113** | 72 → **116** | 74 → **116** | 75 → **117** |
+| textures | 68 → **55** | 173 → **74** | 212 → **83** | 171 → **84** | 296 → **89** |
+| render submit ms/frame | 53.8 → **10.9** | 29.2 → **8.7** | 36.9 → **8.2** | 29.0 → **4.5** | 112 → **7.0** |
+| anim ms/frame | 8.87 → **8.48** | 3.05 → **2.64** | 2.63 → **0.94** | 2.87 → **0.95** | 3.83 → **0.66** |
+| controls ms/frame | 18.13 → **0.78** | 8.65 → **0.49** | 9.77 → **0.70** | 10.23 → **0.41** | 9.03 → **0.32** |
+| WebSocket ms/s | 14.4 → **11.6** | 5.7 → **10.3** | 8.6 → **4.7** | 15.0 → **3.9** | 8.3 → **5.8** |
+| HUD ms/s | 2.01 → **1.85** | 0.55 → **0.63** | 0.18 → **0.60** | 0.38 → **0.77** | 0.25 → **0.34** |
+| apply ms/snapshot | 14.34 → **0.68** | 2.13 → **0.53** | 2.81 → **0.27** | 3.61 → **0.25** | 3.79 → **0.49** |
+| parse ms/snapshot | 0.43 → **0.18** | 0.21 → **0.18** | 0.60 → **0.09** | 0.20 → **0.09** | 0.21 → **0.12** |
+| snapshot KB | 18.8 → **9.4** | 19.2 → **9.0** | 16.6 → **9.3** | 17.3 → **8.5** | 17.1 → **8.2** |
+| style recalcs/s | 0.24 → **1.62** | 0.29 → **0.78** | 0.24 → **0.77** | 0.35 → **1.51** | 0.21 → **0.61** |
+| layouts/s | 0.08 → **0.75** | 0.00 → **0.00** | 0.00 → **0.00** | 0.00 → **0.00** | 0.00 → **0.00** |
+| fps (SwiftShader) | 0.24 → **0.86** | 0.39 → **1.01** | 0.36 → **0.99** | 0.69 → **1.39** | 0.31 → **0.97** |
+
+
+
+
+Notes on the rows that went up: *shader programs* — the instanced variants (crowd, statues, batched parts,
+glow quads) are extra programs, but all of them are compiled while the veil is up (see warm-up below) and
+none after; *anim* in the crowd at 'high' now also copies ~30 wizards' part matrices and runs the level of
+detail (and, averaged over 4 frames, is mostly label repaints — the canvas work moved from `apply` to the
+frame that shows a tag); *style recalcs* rose from ~0.2 to ~0.4-1.6 a second because the client now reads
+all ~10 snapshots a second instead of 1-2 (still nothing next to a frame's budget).
+
+### What changed, by measured impact
+
+1. **Draw calls, 3-8x fewer** (GPU and the renderer's CPU submit alike):
+   * *Far wizards* (beyond 42 m at 'high', 24 m at 'low', with 4 m of hysteresis; your own wizard, your
+     target and a stunned wizard never) are one instanced low-poly model (`crowd.ts`, `models.ts`
+     `farWizardGeometry`: ~230 triangles, closed robe, sleeves, head, hat, scarf; robe and trim colour per
+     instance from the house or the glamour worn; a stride bob) plus one instanced ink outline: 2 draw calls
+     (1 in the shadow map) for all of them, where each full model is ~17 (5).
+   * *Near wizards' shared parts* (legs, jumper, arms, head, hat, wand, head and hat outlines: same geometry
+     and material across wizards) are drawn instanced across every near wizard (`partbatch.ts`): the parts
+     stay in their models and animate as before, on a layer the cameras skip, and their world matrices are
+     copied into one InstancedMesh per kind each frame. Beyond 22 m the scarf tails and an unlit wand are
+     left out (`setMid`).
+   * *Far creatures* (beyond 70 m, where they stopped animating anyway) are statues, one instanced mesh per
+     kind baked from the kind's own model (`herd.ts`); beyond 170 m (110 m at 'low') they are not drawn.
+   * *Spells in flight* (a sphere and two sprites each) are one instanced core mesh and one batch of
+     camera-facing glow quads (`bolts.ts`, `billboards.ts`): 2 draw calls for any number of bolts.
+   * *Name tags* are drawn within 45 m (30 m at 'low') and always on your target; a hidden tag is not
+     repainted or re-uploaded until it is shown again (the 512x160 canvas upload per hp change was the
+     costliest part of `apply`).
+   * *Static world* (castle walls, towers, roofs, huts, props): merged per material, per 64 m cell and per
+     shadow flag into world-space meshes (`batch.ts`): 106 of 259 meshes into 31. What may be merged is
+     measured, not listed: the scene's own tick is run at several times, hours and player positions and
+     through a quality switch, and anything whose matrix, visibility, geometry or material changed (83:
+     clock hands, the Willow, the squid, candles, the Great Hall roof, quality-dependent frames) is left alone.
+   * *Floating candles* (48 meshes + 48 glow sprites, bobbed by `scene.ts`) are drawn instanced from their
+     live transforms (`instancer.ts`).
+   * *Effects* (rings, puffs, pillars, damage numbers, lightning) are pooled with shared geometry, and damage
+     number textures cached by text and colour (`effects.ts`): no geometry, material or canvas texture per
+     effect any more — and disposing the last material of a kind no longer frees its shader program (the
+     next puff recompiled it).
+   * *Lake mirror* leaves wizards, creatures and spells out and refreshes every other frame (the instanced
+     crowd and statues still reflect).
+   * *Shadow map* redrawn every other frame (`shadowMap.autoUpdate = false`): the light's shadow matrix is
+     updated only with it, so what is drawn always matches the map; a moving wizard's shadow lags one frame.
+2. **Lights** (`lights.ts`): every wizard carried a Lumos point light (intensity 0 unless lit), so with 60
+   online every lit pixel looped over 77 point lights, and each wizard who came or went changed the count
+   compiled into every shader — all ~60 lit programs recompiled, a hitch of seconds on Windows/ANGLE. Now
+   every point light is a *source*, hidden, and each frame the 6 that matter (lit, nearest the player
+   relative to their range, with hysteresis) are copied into 6 real lights that never change in number
+   (4 when the game starts at 'low'; the automatic switch to 'low' recompiles nothing).
+3. **Controls: terrain picking** (`terrain.ts` `rayGround`): the pointer's ground point was a raycast
+   against the 131 000-triangle terrain mesh on every frame the pointer was over the view — **7.9 ms** a
+   frame on this box, half a 60 Hz budget; it is now marched along the height grid the mesh is built from
+   (`surfaceAt`, exact on the rendered triangles): **0.016 ms**, same point (tested to 5 cm on 300 rays).
+4. **Network**: the client takes **area-of-interest snapshots** by default (`&aoi=1`; `?aoi=0` asks for the
+   whole world). Wizards who leave the area are *parked* (kept out of the scene for 90 s, up to 96) and come
+   back as the same model; creatures go back to a pool per kind; only a creature or bolt that vanishes within
+   100 m of you (the server always sends everything within 120 m) gets its death puff or impact burst.
+   Parked models past their time and pool overflow are **disposed** (their own materials, geometries, tag
+   texture, lights — the old client leaked one model's GPU buffers per death or logout). **Input** is sent at
+   most once per 50 ms world tick, always ending on the latest state (it was every frame the rounded input
+   changed: 144 messages a second on a 144 Hz display while turning). Bandwidth and server CPU for both are
+   in the [fix pass](#fix-pass-frame-rate-input-full-snapshots-aoi-churn) tables (500 players: 981 → ~270 KB/s
+   per client; input 144 → 20 Hz saves 12-36 % of a server core).
+5. **Load**: the server (`src/server/static.ts`) serves the build from memory with the `.br` / `.gz` files the
+   build writes (`vite.config.ts`), `Cache-Control: immutable` for the hashed bundles, ETag / 304 for the
+   page and assets (it read every file from disk on every request, uncompressed, uncached): **967 → 240 KB**.
+   Shaders are **compiled while the veil and the gate are up** (`compileAsync`, `KHR_parallel_shader_compile`
+   where available) for the composer's render target — the world, a wizard, every creature kind, the
+   crowd, statues, bolts, effects, tags — and three.js's per-program error check (a synchronous GPU
+   read-back) is off outside development: **0 programs compiled after the first frame** in any spot (before:
+   the lake's mirror on first sight, a puff after the last one faded, every lit shader on each join/leave).
+6. **Post-processing and resolution**: the colour grade runs inside the output pass (`post.ts`: one
+   full-screen HDR pass fewer, same result); **dynamic resolution** (`dynres.ts`) steps the pixel ratio down
+   15 % when frames average over 20 ms and back up 10 % after 8 s steady at 60 Hz (a step up that fails
+   within 3 s is undone and the next try waits 4x longer), within 0.6x-min(2, DPR) at 'high' and
+   0.5-0.75x at 'low'; `?dyn=0` turns it off. 'low' uses 2x MSAA instead of 4x. Phones and tablets (coarse
+   pointer, small screen) start at 'low' instead of spending 3 s at 'high' first.
+7. **DOM / allocations**: the 10 Hz HUD writes a text, style or attribute only when it changed (hotbar,
+   bars, overlay, target frame), the action prompt's width is measured once per label instead of every
+   frame (a forced layout), and the frame loop no longer allocates per frame (bolt light list, willow
+   check, focus vector). The DOM was never the big cost here (under 1 layout a second before and after);
+   these changes are structural, so the coming UI reskin keeps them.
+
+### Known issues and what is left
+
+* **SwiftShader is not a GPU**: no frame rate here says what a laptop will do. The GPU-side claims rest on
+  draw calls, triangles, passes, lights and programs; a real-device check (Intel Iris Xe laptop at 'high',
+  a mid-range phone at 'low') is still owed.
+* The crowd's far model has one skin tone, no walk cycle (a bob), no hands or legs, and glamours show only
+  as robe and trim colours; statues do not animate. Both only beyond 42 m / 70 m (24 m at 'low').
+* Snapshots are still JSON (parse is 0.1-0.2 ms each with AOI); a binary or delta encoding would cut bytes
+  3-5x more but needs server work, and the MCP/JSON APIs must stay — not done.
+* The terrain is one 131 000-triangle mesh (culled whole); tiling it would let frustum culling drop the half
+  behind the camera. The storybook bakes three sky environment maps at start (PMREM), which dominates the
+  SwiftShader load time; lazily baking dusk and night would help weak GPUs.
+* The light budget shows at most 6 point lights near you; in a crowd of Lumos wands and bolts the farther
+  ones stay dark. A decree that builds a statue still adds its spotlight (one recompile, rare).
+* Per-frame averages in the tables cover 3-8 frames per spot (SwiftShader's frame rate); the load timings
+  moved by ±30 % between runs on this shared box.
+
+### Reproduce
+
+```bash
+npx vite build
+npx tsx scripts/perf-client.ts --port=8820 --q=high,low --secs=8 --warm=3 --size=640x360 --census --url='&dyn=0'
+#   --spots=follow,crowd,castle,lake,overview,close  --bots=60 --crowd=30 --npcs=12  --aoi=0|1
+#   --shots=dir (screenshots, HUD hidden)  --profile | --profile=spot (CPU profile)  --detail=Mesh,Group
+#   --out=results.jsonl  --label=after ;  PLAYWRIGHT_CORE=… CHROMIUM=… to point at your own
+# in the game: ?perf=1 (overlay) · ?lod=0 (every model in full) · ?dyn=0 · ?aoi=0 · ?q=low|high
+```
+For "before", check out `c7665c4`, cherry-pick `32c5bbe` (the probe hooks in `client/main.ts`), copy
+`client/perf.ts` and `scripts/perf-client.ts` from this branch, build, and run the same command.

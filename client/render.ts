@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -9,6 +8,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { loadEnvironments } from './assets';
 import { captureCamera, captureFocus } from './capture';
+import { gradedOutputPass } from './post';
 import { STORYBOOK, glowSprite, paintedClouds, paintedMoon } from './textures';
 
 export interface Looks { skyTint: string; sunIntensity: number; fogDensity: number; glow: number }
@@ -337,8 +337,10 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         gl_FragColor = c;
       }`,
   });
-  composer.addPass(grade);
-  composer.addPass(new OutputPass());
+  // the grade runs inside the output pass (post.ts): one full-screen pass fewer
+  const output = gradedOutputPass(grade);
+  if (!(output as { graded?: boolean }).graded) composer.addPass(grade);
+  composer.addPass(output);
 
   // a small pool of point lights handed to the spells nearest the camera
   const boltLights = Array.from({ length: 6 }, () => {
