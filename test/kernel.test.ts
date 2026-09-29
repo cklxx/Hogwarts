@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { World } from '../src/kernel/world.js';
 import { SPAWN } from '../src/shared/map.js';
 import type { Creature } from '../src/kernel/types.js';
+import { TERM_DEFAULT_S, TERM_OLD_DEFAULT_S } from '../src/shared/constants.js';
 
 function mkWorld() {
   const world = new World({ seed: 42 });
@@ -314,6 +315,33 @@ describe('terms, ministers and decrees', () => {
     expect(w.rules.combat.damageMultiplier).toBe(2);
     expect(a.decreeCharges).toBe(0);
     expect(() => w.decree(a.id, {}, 'again', false)).toThrow();
+  });
+
+  it('a term is an hour by default; at its end only those who played it lose half their reputation', () => {
+    const w = mkWorld();
+    expect(w.rules.terms.lengthSeconds).toBe(TERM_DEFAULT_S);
+    const here = join(w, 'Present'), away = join(w, 'Away');
+    here.reputation = 80; away.reputation = 80;
+    away.connections = 0; away.lastSeenAt = w.term.startedAt - 1; // last seen before this term began
+    w.forceEndTerm();
+    expect(here.reputation).toBe(40);
+    expect(away.reputation).toBe(80); // kept
+  });
+
+  it('moves a v1 save on the old 15-minute default to the new default, unless a decree chose the length; TERM_SECONDS-style overrides work on a restored world', () => {
+    const w = mkWorld();
+    w.rules.terms.lengthSeconds = TERM_OLD_DEFAULT_S;
+    const old = { ...(JSON.parse(JSON.stringify(w.serialize())) as object), version: 1 } as ReturnType<World['serialize']>;
+    const moved = World.restore(old);
+    expect(moved.rules.terms.lengthSeconds).toBe(TERM_DEFAULT_S);
+    expect(moved.term.endsAt).toBe(moved.term.startedAt + TERM_DEFAULT_S);
+    const chosen = { ...old, decrees: [{ at: 0, term: 1, minister: 'M', changes: [`terms.lengthSeconds: 3000 -> ${TERM_OLD_DEFAULT_S}`], proclamation: '' }] } as ReturnType<World['serialize']>;
+    expect(World.restore(chosen).rules.terms.lengthSeconds).toBe(TERM_OLD_DEFAULT_S); // the Minister's choice stands
+    moved.now = moved.term.startedAt + 500;
+    moved.setTermLength(300); // shorter than what has already run: the term ends in a minute, not in the past
+    expect(moved.term.endsAt).toBe(moved.now + 60);
+    moved.setTermLength(86400 * 3);
+    expect(moved.rules.terms.lengthSeconds).toBe(86400); // the rulebook's bound
   });
 
   it('laws are programs the world runs on events', () => {

@@ -545,6 +545,7 @@ describe('隐藏宝箱: hidden chests', () => {
 describe('a whole term with NPCs and events', () => {
   it('stays within the bounds: house points ≥ 0, each wizard ≤ the cap, one event at a time', () => {
     const w = new World({ seed: 11, secret: 'fun' });
+    w.setTermLength(900); // one 15-minute term, played through
     ensureNpcs(w, 4);
     join(w, 'Harry Potter');
     join(w, 'Luna Lovegood');

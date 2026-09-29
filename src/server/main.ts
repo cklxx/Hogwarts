@@ -61,14 +61,15 @@ function load(): World {
     try {
       const w = World.restore(JSON.parse(readFileSync(DATA, 'utf8')));
       console.log(`[hogwarts] restored ${w.wizards.size} wizards from ${DATA}`);
+      // TERM_SECONDS applies to a restored world too (it used to count only for a fresh one)
+      if (process.env.TERM_SECONDS) w.setTermLength(Number(process.env.TERM_SECONDS));
       return w;
     } catch (e) {
       console.error('[hogwarts] could not restore world, starting fresh:', e);
     }
   }
   const w = new World();
-  if (process.env.TERM_SECONDS) w.rules.terms.lengthSeconds = Math.max(120, Number(process.env.TERM_SECONDS));
-  w.term.endsAt = w.now + w.rules.terms.lengthSeconds;
+  w.setTermLength(Number(process.env.TERM_SECONDS) || w.rules.terms.lengthSeconds);
   return w;
 }
 const world = load();

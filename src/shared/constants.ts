@@ -249,3 +249,12 @@ export const FRESH_SECONDS = 600;
 /** The browser's WebSocket carries the key as a subprotocol entry (it cannot set headers): src/server/key.ts. */
 export const WS_PROTOCOL = 'hogwarts';
 export const WS_KEY_PREFIX = 'hw-key.';
+
+/**
+ * The default term: one hour. A 15-minute term (the first default) was too short for anyone to reach the Minister's
+ * bar (100) or the Dark Lord's (150) — an active player earns roughly 2–3 reputation a minute (live server: 37 in a
+ * term) — and it halved everyone's reputation 96 times a day, the absent included. `TERM_SECONDS` overrides it.
+ */
+export const TERM_DEFAULT_S = 3600;
+/** The term length before TERM_DEFAULT_S: a save still on it (and no decree ever changed it) moves to the new default. */
+export const TERM_OLD_DEFAULT_S = 900;
