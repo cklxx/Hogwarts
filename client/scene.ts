@@ -176,7 +176,9 @@ function waterMaterial(normals: THREE.Texture, sunColorHex: number, waterColorHe
   normals.wrapS = normals.wrapT = THREE.RepeatWrapping;
   const time = uniform(0), sunDirection = uniform(new THREE.Vector3(0.5, 0.8, 0.2));
   const sunColor = uniform(new THREE.Color(sunColorHex)), waterColor = uniform(new THREE.Color(waterColorHex)), distortionScale = uniform(distortion);
-  const mirror = reflector({ resolutionScale: 0.5 });
+  // (multisampled like the scene pass: the same render-target format and sample count means the mirror's render
+  // reuses the scene pass's pipelines instead of compiling every material a second time on first sight of the lake)
+  const mirror = reflector({ resolutionScale: 0.5, samples: 4 });
   const mirrorUV = mirror.uvNode;
   const noise = Fn(([uv]: any[]) => {
     const uv0 = div(uv, 103).add(vec2(div(time, 17), div(time, 29)));
@@ -816,6 +818,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       const night = sunDir.y < 0.05;
       torches.forEach((l, i) => { l.intensity = night ? 9 + Math.sin(t * 13 + i * 3) * 1.5 + Math.sin(t * 7.3 + i) : 0; });
       if (water) {
+        // the mirror keeps about the old fixed 512 x 512 texture's pixel count, whatever the window size
+        const px = typeof innerWidth === 'number' ? innerWidth * innerHeight * devicePixelRatio * devicePixelRatio : 1280 * 720;
+        (water.mirror.reflector as { resolutionScale: number }).resolutionScale = Math.max(0.25, Math.min(1, Math.sqrt((512 * 512) / Math.max(1, px))));
         water.time.value += dt * 0.6;
         water.sunDirection.value.copy(sunDir);
       }

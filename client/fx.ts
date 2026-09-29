@@ -321,7 +321,10 @@ export function pixelSize(camera: THREE.PerspectiveCamera, renderer: THREE.WebGP
  * laid down more sparsely, chimney smoke puffs are fewer and bigger).
  */
 export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
-  const budget = COMPUTE() ? BUDGET.webgpu : BUDGET.webgl;
+  // (?particles=N: N glow + N/4 smoke on either backend, e.g. the same budget for a side-by-side measurement)
+  const forced = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('particles')) : 0;
+  const fixed = forced > 0 ? [Math.round(forced), Math.round(forced / 4)] as const : null;
+  const budget = fixed ? { high: fixed, low: fixed } : COMPUTE() ? BUDGET.webgpu : BUDGET.webgl;
   const glow = new Pool(scene, budget.high[0], true);
   const smoke = new Pool(scene, budget.high[1], false);
   let density = 1;

@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { WebGPURenderer } from 'three/webgpu';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 /**
@@ -20,17 +19,17 @@ export function tex(path: string, opts: { srgb?: boolean; repeat?: number; fallb
   return t;
 }
 
-/** Two Poly Haven HDRIs pre-filtered for image-based lighting: a bright quarry by day, a moonless golf course by night. */
-export async function loadEnvironments(renderer: WebGPURenderer, onReady: (day: THREE.Texture, night: THREE.Texture) => void) {
-  // (loaded here, not at the top: tests import this module's neighbours under Node, without the node renderer)
-  const { PMREMGenerator } = await import('three/webgpu');
-  const pmrem = new PMREMGenerator(renderer);
+/**
+ * Two Poly Haven HDRIs for image-based lighting: a bright quarry by day, a moonless golf course by night. Handed
+ * over as they are (equirectangular); render.ts pre-filters the one it needs into its environment texture.
+ */
+export function loadEnvironments(onReady: (day: THREE.Texture, night: THREE.Texture) => void) {
   const hdr = new HDRLoader();
   const out: Record<string, THREE.Texture> = {};
   const done = (k: string, t: THREE.Texture) => {
-    out[k] = pmrem.fromEquirectangular(t).texture;
-    t.dispose();
-    if (out.day && out.night) { onReady(out.day, out.night); pmrem.dispose(); }
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    out[k] = t;
+    if (out.day && out.night) onReady(out.day, out.night);
   };
   hdr.load('/hdri/quarry_01_1k.hdr', (t) => done('day', t), undefined, () => {});
   hdr.load('/hdri/moonless_golf_1k.hdr', (t) => done('night', t), undefined, () => {});

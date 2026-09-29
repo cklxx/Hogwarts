@@ -1844,12 +1844,18 @@ const warmed = (async () => {
   const t0 = performance.now();
   const g = new THREE.Group();
   g.position.set(0, -200, 0);
-  const w = makeWizard('Gryffindor', false, 'warm-up');
-  w.label.draw('warm-up', '#fff', 1);
-  w.root.add(makeAuraRing());
-  g.add(w.root, makeBolt('root', 'fire'));
+  // a wizard of every house (each house's knitwear, sleeves and hat are materials and batches of their own)
+  const ws = (['Gryffindor', 'Hufflepuff', 'Ravenclaw', 'Slytherin'] as const).map((h, i) => {
+    const w = makeWizard(h, false, `warm-up-${i}`);
+    w.root.position.x = i * 2;
+    w.label.draw('warm-up', '#fff', 1);
+    w.root.add(makeAuraRing());
+    g.add(w.root);
+    return w;
+  });
+  g.add(makeBolt('root', 'fire'));
   g.updateMatrixWorld(true);
-  parts.begin(); parts.add(w.root); parts.end();
+  parts.begin(); for (const w of ws) parts.add(w.root); parts.end();
   const kinds = Object.keys(NAMES) as CreatureKind[];
   const made: CreatureEntry[] = [];
   for (const k of kinds) {
@@ -1869,6 +1875,9 @@ const warmed = (async () => {
   // compiled for the post-processing scene pass's target: the scene is drawn into it (linear HDR, multisampled,
   // tone mapped later), and a pipeline for another target format would be another compile
   try { await R.warm(scene, camera); } catch (e) { console.warn('[gpu] warm-up compile failed, compiling on first use', e); }
+  // and one frame with the warm-up models in it (under the ground, but in the sun's shadow frustum): the shadow
+  // map's pipelines and the post-processing passes, which compileAsync does not build
+  try { R.warmFrame(); } catch (e) { console.warn('[gpu] warm-up frame failed', e); }
   scene.remove(g);
   herd.begin(); herd.end();
   crowd.begin(); crowd.end(false);

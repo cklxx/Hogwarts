@@ -54,7 +54,7 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
     const p = positionGeometry;
     bannerMat.positionNode = vec3(p.x, p.y, sin(bannerTime.mul(2).add(p.y.mul(1.3)).add(modelWorldMatrix.element(3).x.mul(0.1))).mul(0.12).mul(float(2.2).sub(p.y)).mul(0.5));
   }
-  const banners = spots.map((s) => {
+  spots.forEach((s) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 4.4, 1, 10), bannerMat);
     m.position.set(s.x, s.y - 2.2, s.z);
     m.rotation.y = s.yaw;
@@ -183,7 +183,6 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
       const key = look.banner ?? 'Hogwarts';
       if (key !== currentBanner) { bannerMat.map = bannerTex(look.banner); bannerMat.needsUpdate = true; currentBanner = key; }
       bannerTime.value = t;
-      void banners;
       const sk = JSON.stringify(look.statues);
       if (sk !== statueKey) { statueKey = sk; buildStatues(look.statues); }
 

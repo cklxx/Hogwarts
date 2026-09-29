@@ -386,7 +386,7 @@ function gpuField(group: THREE.Group, u: Field) {
     group.add(mesh);
     cur = {
       level: l, cell, side, mesh, cull, reset, origin,
-      dispose() { group.remove(mesh); base.dispose(); mat.dispose(); },
+      dispose() { group.remove(mesh); base.dispose(); mat.dispose(); cull.dispose(); reset.dispose(); instances.value.dispose?.(); },
     };
   }
 

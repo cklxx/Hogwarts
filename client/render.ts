@@ -6,6 +6,7 @@ import { LensflareMesh, LensflareElement } from 'three/addons/objects/LensflareM
 import { loadEnvironments } from './assets';
 import { captureCamera, captureEnv, captureFocus } from './capture';
 import { COMPUTE, createGpuRenderer, gpuBackend, mirrorGuards, runFrameJobs, fallbackReason } from './gpu';
+import { PERF } from './perf';
 import { createPost } from './post';
 import { installStorybook, story, storyFog } from './storybook';
 import { STORYBOOK, glowSprite, paintedClouds, paintedMoon } from './textures';
@@ -135,7 +136,7 @@ function starField(n: number, px: number, color: number) {
  * The renderer is three.js's WebGPURenderer (gpu.ts): WebGPU where the browser has it, WebGL 2 otherwise.
  */
 export async function createRenderer(canvas: HTMLCanvasElement) {
-  const renderer = await createGpuRenderer(canvas);
+  const renderer = await createGpuRenderer(canvas, { timestamps: PERF });
   if (STORYBOOK) installStorybook(renderer);
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
   renderer.shadowMap.enabled = true;
@@ -148,9 +149,17 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
   scene.fog = new THREE.FogExp2(0x9fb8d9, 0.003);
   if (STORYBOOK) storyFog(scene);
 
+  // Image-based light: ONE environment texture for the whole game, re-baked in place when the time of day moves
+  // to another phase. (The node renderer keys every lit material's shaders on the environment texture: switching
+  // scene.environment between three textures rebuilt ~120 materials' node graphs and compiled ~57 programs the
+  // first time dusk or night came.)
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  const env: { day: THREE.Texture | null; dusk: THREE.Texture | null; night: THREE.Texture | null } = { day: null, dusk: null, night: null };
+  const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+  scene.environment = envRT.texture;
+  type Phase = 'day' | 'dusk' | 'night';
+  let envPhase: Phase | 'room' = 'room';
+  let bakeEnv: (phase: Phase) => boolean = () => false;
+  const setEnv = (phase: Phase) => { if (phase !== envPhase && bakeEnv(phase)) envPhase = phase; };
 
   // ---- sky
   let preetham: SkyMesh | null = null;
@@ -166,13 +175,14 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
     const bakeSky = skyMaterial();
     bake.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), bakeSky.mat));
     const white = new THREE.Color(1, 1, 1);
-    const at = (day: number, dusk: number, elev: number) => {
+    const AT: Record<Phase, [number, number, number]> = { day: [1, 0, 0.8], dusk: [0.6, 1, 0.05], night: [0, 0, -0.5] };
+    bakeEnv = (phase) => {
+      const [day, dusk, elev] = AT[phase];
       paintSky(bakeSky.u, day, dusk, white, new THREE.Vector3(0.8, elev, -0.35).normalize());
-      return pmrem.fromScene(bake, 0.02, 0.1, 100).texture;
+      pmrem.fromScene(bake, 0.02, 0.1, 100, { renderTarget: envRT });
+      return true;
     };
-    env.day = at(1, 0, 0.8);
-    env.dusk = at(0.6, 1, 0.05);
-    env.night = at(0, 0, -0.5);
+    setEnv('day'); // (now, so the shader warm-up sees the texture the game draws with)
   } else {
     preetham = new SkyMesh();
     preetham.scale.setScalar(4000);
@@ -189,7 +199,10 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
     preetham.mieCoefficient.value = 0.004;
     preetham.mieDirectionalG.value = 0.82;
     // image-based lighting: a neutral room until the Poly Haven HDRIs arrive, then day/night maps
-    loadEnvironments(renderer, (day, night) => { env.day = day; env.night = night; });
+    loadEnvironments((day, night) => {
+      bakeEnv = (phase) => { pmrem.fromEquirectangular(phase === 'night' ? night : day, envRT); return true; };
+      hdri = true;
+    });
   }
 
   const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a4a2a, 0.6);
@@ -272,6 +285,7 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
   const WHITE = new THREE.Color(1, 1, 1);
   let dayFactor = 1;
   let bloomOn = true;
+  let hdri = false;
 
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
@@ -299,7 +313,7 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
     hemi.color.copy(su.mid.value).lerp(su.zenith.value, 0.3);
     hemi.color.multiplyScalar(1 / Math.max(1e-4, hemi.color.r, hemi.color.g, hemi.color.b)).lerp(WHITE, 0.35);
     hemi.groundColor.set(0x1a1826).lerp(c1.set(0x6b5a3a), dayFactor).lerp(c2.set(0x8a5a44), dusk * 0.5);
-    scene.environment = night > 0.6 ? env.night : dusk > 0.45 ? env.dusk : env.day;
+    setEnv(night > 0.6 ? 'night' : dusk > 0.45 ? 'dusk' : 'day');
     scene.environmentIntensity = 0.25 + 0.15 * dayFactor;
     // rim light on characters: the key light's colour, from its side
     story.keyDir.value.copy(dayFactor > 0.35 ? sunDir : moonDir);
@@ -351,8 +365,8 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
     moon.intensity = 0.8 * (1 - dayFactor) * look.sunIntensity;
     hemi.intensity = (0.3 + 0.45 * dayFactor) * (weather === 'clear' ? 1 : 0.8);
     hemi.color.copy(tint).multiplyScalar(0.8).lerp(c1.set(0xcfe3ff), 0.5);
-    if (env.day && env.night) scene.environment = dayFactor > 0.3 ? env.day : env.night;
-    scene.environmentIntensity = env.day ? (dayFactor > 0.3 ? 0.35 + 0.45 * dayFactor : 0.6) : 0.12 + 0.55 * dayFactor;
+    if (hdri) setEnv(dayFactor > 0.3 ? 'day' : 'night');
+    scene.environmentIntensity = hdri ? (dayFactor > 0.3 ? 0.35 + 0.45 * dayFactor : 0.6) : 0.12 + 0.55 * dayFactor;
     flareHost.position.copy(camera.position).addScaledVector(sunDir, 1500);
     flare!.visible = dayFactor > 0.75 && weather === 'clear';
 
@@ -402,7 +416,30 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
     async warm(sc: THREE.Scene = scene, cam: THREE.Camera = camera) {
       const was = renderer.getRenderTarget();
       renderer.setRenderTarget(post.scenePass.renderTarget);
-      try { await renderer.compileAsync(sc, cam); } finally { renderer.setRenderTarget(was); }
+      // (the node renderer compiles only what the camera sees: everything, for once)
+      const back = uncull(sc);
+      try { await renderer.compileAsync(sc, cam); } finally { back(); renderer.setRenderTarget(was); }
+    },
+    /**
+     * Draw one frame of `sc` now (behind the loading veil) so that what compileAsync cannot reach is compiled too:
+     * the shadow map's pipelines and the post-processing passes.
+     */
+    warmFrame() {
+      sun.shadow.autoUpdate = false;
+      sun.shadow.needsUpdate = true;
+      const back = uncull(scene);
+      // (from above the Black Lake, so that its mirror renders too: the mirror draws the scene into a target of its
+      // own, and its pipelines are compiled on the first frame it does)
+      const pos = camera.position.clone(), rot = camera.quaternion.clone();
+      camera.position.set(-110, 40, 110);
+      camera.lookAt(-110, 0, 40);
+      camera.updateMatrixWorld();
+      try { runFrameJobs(renderer, camera); post.render(); } finally {
+        back();
+        camera.position.copy(pos);
+        camera.quaternion.copy(rot);
+        camera.updateMatrixWorld();
+      }
     },
     /** Drive sky, lights, fog and grading from the in-game hour, weather and the Minister's aesthetics. */
     update(hour: number, weather: string, look: Looks, focus: THREE.Vector3) {
@@ -449,3 +486,10 @@ export async function createRenderer(canvas: HTMLCanvasElement) {
   };
 }
 export type Renderer = Awaited<ReturnType<typeof createRenderer>>;
+
+/** Turn frustum culling off under `root` (returns the undo): a warm-up must reach what the camera does not see. */
+function uncull(root: THREE.Object3D) {
+  const off: THREE.Object3D[] = [];
+  root.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; off.push(o); } });
+  return () => { for (const o of off) o.frustumCulled = true; };
+}

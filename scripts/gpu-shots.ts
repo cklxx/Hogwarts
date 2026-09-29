@@ -3,9 +3,9 @@
  * either backend (WebGPU or WebGL2), so pictures from two builds or two backends can be laid side by side.
  *
  *   npx vite build && npx tsx scripts/gpu-shots.ts --gpu=webgpu|webgl [--label=x] [--out=dir] [--port=9004]
- *        [--size=960x540] [--shots=castle-dusk,courtyard-day,...] [--wait=6] [--url=&extra=1]
+ *        [--size=960x540] [--shots=castle-dusk,courtyard-day,...] [--wait=6] [--url=&extra=1] [--serve]
  *
- * The world: a viewer at the courtyard spawn, seven wizards in a row wearing each glamour material (velvet,
+ * The world: a viewer on the lawn south-east of the courtyard, seven wizards in a row wearing each glamour material (velvet,
  * silk, scales, mirror, flame, starlight, ghost), 24 bots walking and casting in the courtyard (spells in
  * flight), the aurora decreed. Each shot pins the camera, the hour and the weather through `?capture=1`
  * (client/capture.ts), waits `--wait` seconds, and writes `<out>/<label>-<shot>.png` with the HUD hidden.
@@ -39,13 +39,15 @@ const SCRATCH = process.env.PERF_TMP ?? join(ROOT, 'data', 'perf');
 type V3 = [number, number, number];
 /** The comparison spots: camera, look-at, hour of the day, weather. */
 const SHOTS: Record<string, { pos: V3; look: V3; hour: number; weather?: string; fov?: number }> = {
-  'castle-dusk': { pos: [55, 40, 40], look: [0, 12, -45], hour: 17.8 },
-  'courtyard-day': { pos: [8, 14, 45], look: [0, 1, -22], hour: 11 },
-  forest: { pos: [110, 14, 70], look: [170, 4, 10], hour: 14.5 },
-  'night-aurora': { pos: [0, 9, 70], look: [0, 30, -60], hour: 23 },
+  'castle-dusk': { pos: [55, 40, 40], look: [0, 12, -45], hour: 17.8, fov: 60 },
+  'courtyard-day': { pos: [8, 14, 45], look: [0, 1, -22], hour: 11, fov: 60 },
+  forest: { pos: [110, 14, 70], look: [170, 4, 10], hour: 14.5, fov: 60 },
+  'night-aurora': { pos: [0, 9, 70], look: [0, 30, -60], hour: 23, fov: 60 },
   glamour: { pos: [0, 1.9, -13.2], look: [0, 1.15, -19], hour: 12, fov: 50 },
-  spells: { pos: [14, 6, -8], look: [0, 1.5, -24], hour: 16 },
-  lake: { pos: [-55, 10, 10], look: [-110, 0, 45], hour: 10 },
+  spells: { pos: [14, 6, -8], look: [0, 1.5, -24], hour: 16, fov: 60 },
+  lake: { pos: [-55, 10, 10], look: [-110, 0, 45], hour: 10, fov: 60 },
+  /** the viewer stands on the lawn south-east of the courtyard: the grass field is around them */
+  meadow: { pos: [24, 2.2, 24], look: [12, 0.4, 6], hour: 15.5, fov: 60 },
 };
 const WANT = (args.get('shots') ?? Object.keys(SHOTS).join(',')).split(',');
 
@@ -62,7 +64,7 @@ function makeWorld(file: string) {
   world.term.endsAt = 86400;
   (world.rules.world.aesthetics as { aurora: boolean }).aurora = true;
   const viewer = world.enroll('Shot Viewer').wizard;
-  viewer.pos = { x: SPAWN.x + 6, z: SPAWN.z + 9 };
+  viewer.pos = { x: 18, z: 12 }; // (on the lawn: the grass grows round the viewer)
   viewer.createdAt = -1e9;
   const still: string[] = [];
   GLAMOURS.forEach((mat, i) => {
@@ -124,6 +126,11 @@ async function main() {
     workers.push(still, bots);
     await Promise.all([ask(still, 'connect', 'connected'), ask(bots, 'connect', 'connected')]);
     bots.postMessage({ cmd: 'drive' });
+    if (args.has('serve')) {
+      // (debugging: keep the server and the bots running; open http://localhost:PORT/?perf=1&capture=1#k=KEY yourself)
+      console.log(`serving on ${base}, viewer key ${w.viewer}`);
+      await new Promise(() => {});
+    }
     const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     page.on('pageerror', (e: Error) => console.error('[page error]', e.message, (e.stack ?? '').split('\n').slice(1, 6).join(' | ')));

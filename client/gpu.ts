@@ -43,7 +43,8 @@ function tolerateOldSwizzle() {
   };
 }
 
-export async function createGpuRenderer(canvas: HTMLCanvasElement): Promise<THREE.WebGPURenderer> {
+/** `timestamps`: GPU timestamp queries (the ?perf=1 probe reads GPU time per frame with them, WebGPU only). */
+export async function createGpuRenderer(canvas: HTMLCanvasElement, o: { timestamps?: boolean } = {}): Promise<THREE.WebGPURenderer> {
   tolerateOldSwizzle();
   let forceWebGL = FORCE_WEBGL;
   if (FORCE_WEBGL) fallbackReason = '?gpu=webgl';
@@ -55,7 +56,7 @@ export async function createGpuRenderer(canvas: HTMLCanvasElement): Promise<THRE
     } catch (e) { forceWebGL = true; fallbackReason = `WebGPU adapter failed: ${(e as Error).message}`; }
   }
   // (antialias off: the scene is drawn into the post-processing pass's own multisampled target)
-  let renderer = new THREE.WebGPURenderer({ canvas, antialias: false, powerPreference: 'high-performance', forceWebGL });
+  let renderer = new THREE.WebGPURenderer({ canvas, antialias: false, powerPreference: 'high-performance', forceWebGL, trackTimestamp: !!o.timestamps && !forceWebGL });
   try {
     await renderer.init();
   } catch (e) {
@@ -67,6 +68,14 @@ export async function createGpuRenderer(canvas: HTMLCanvasElement): Promise<THRE
     await renderer.init();
   }
   backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'webgpu' : 'webgl';
+  // An InstancedMesh of up to 1 024 instances gets its matrices as a uniform buffer, named after that node's id
+  // in the shader source: every instanced mesh (a batch of wizard legs, the crowd, merlons, candles) then has
+  // shader code of its own and compiles its own program, and partbatch.ts makes a new one whenever a new look
+  // comes near (177 programs compiled after the first frame in a crowd). With no room for uniform buffers,
+  // three.js takes its other path, instanced vertex attributes (what WebGLRenderer does), and instanced meshes
+  // of one material share one program again.
+  const caps = (renderer.backend as { capabilities?: { getUniformBufferLimit(): number } }).capabilities;
+  if (caps) caps.getUniformBufferLimit = () => 0;
   console.info(`[gpu] ${backend === 'webgpu' ? 'WebGPU' : 'WebGL 2'} backend${fallbackReason ? ` (${fallbackReason})` : ''}`);
   return renderer;
 }
