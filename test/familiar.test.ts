@@ -164,6 +164,32 @@ describe('the familiar', () => {
     for (const l of logs) expect(l).not.toContain('another one'); // counts, never content
   });
 
+  it('comes back after a restart, still summoned and with today\'s quota spent, and answers owls sent meanwhile', async () => {
+    const { world, fam } = mk({ daily: 2 }, [[use('tell_player', { text: 'on it' })], [say('')]]);
+    const a = join(world, 'Hermione');
+    fam.summon(a.id, true, 'cat');
+    await ask(world, fam, a.id, 'a spell please');
+    expect(fam.stateOf(a.id).left).toBe(1);
+    const saved = JSON.parse(JSON.stringify(fam.save()));
+    fam.stop();
+    // the restart: a new world from the save, a new Familiars from its save; an owl was written in between
+    const world2 = World.restore(JSON.parse(JSON.stringify(world.serialize())));
+    world2.owl(a.id, 'player', 'are you still there?');
+    const f2 = fake([[use('tell_player', { text: 'still here' })], [say('')]]);
+    const fam2 = new Familiars({ world: world2, config: { ...CFG, daily: 2 }, create: f2.create, externalAgents: () => 0, log: () => {}, pollMs: 0 });
+    fam2.restore(saved);
+    expect(fam2.stateOf(a.id)).toMatchObject({ on: true, kind: 'cat', left: 1 }); // the quota was not refilled
+    const greeted = world2.wizards.get(a.id)!.owlbox.length;
+    fam2.kick();
+    await fam2.idle();
+    await settle();
+    expect(f2.bodies.length).toBeGreaterThan(0); // the owl from while it was down is answered
+    expect(agentOwls(world2.wizards.get(a.id)!).at(-1)).toBe('still here');
+    expect(world2.wizards.get(a.id)!.owlbox.length).toBe(greeted + 1); // no second greeting
+    expect(fam2.stateOf(a.id).left).toBe(0);
+    fam2.stop();
+  });
+
   it('has a global daily guard across wizards, and API errors do not use up a request', async () => {
     const { world, fam, f } = mk({ globalDaily: 1 }, [new FamiliarApiError('rate_limited'), [say('hi')]]);
     const a = join(world, 'Luna'), b = join(world, 'Ginny');

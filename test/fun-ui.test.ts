@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { World } from '../src/kernel/world.js';
-import { startEvent } from '../src/kernel/wheel.js';
+import { seesWizard, startEvent } from '../src/kernel/wheel.js';
 import { grantCard } from '../src/kernel/cards.js';
 import { CARD_BY_ID, CARDS } from '../src/lore/cards.js';
 import { EVENT_IDS } from '../src/shared/constants.js';
@@ -78,6 +78,20 @@ describe('the event slip', () => {
     expect(curfewHint(ev, { x: 0, z: -12 })).toMatchObject({ k: 'filch', inCone: false });
     expect(curfewHint(ev, { x: 31, z: -52 })).toMatchObject({ k: 'norris', inCone: true });
     expect(curfewHint({ id: 'troll', st: 'on' }, { x: 0, z: 0 })).toBeNull();
+  });
+  it('curfew: the HUD\'s "he sees you" is the kernel\'s catch rule, pillars included', () => {
+    const w = new World({ seed: 5, secret: 'hud' });
+    const x = w.enroll('Fred', 'Gryffindor').wizard;
+    const filch = { k: 'filch' as const, x: -18, z: -24, f: 0 };
+    const ev: EvSnap = { id: 'curfew', st: 'on', p: [filch] };
+    expect(curfewHint(ev, { x: -18, z: -33 })?.inCone).toBe(false); // in front, but behind the pillar at (-18, -30)
+    expect(curfewHint(ev, { x: -18, z: -27 })?.inCone).toBe(true);
+    let agree = 0;
+    for (let i = 0; i < 400; i++) {
+      x.pos = { x: -18 + ((i * 37) % 23) - 11, z: -24 - ((i * 53) % 13) };
+      if (curfewHint(ev, x.pos)!.inCone === seesWizard(w, filch, x)) agree++;
+    }
+    expect(agree).toBe(400);
   });
 });
 

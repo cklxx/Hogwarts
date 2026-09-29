@@ -3,6 +3,7 @@ import {
 } from '../shared/constants.js';
 import { CURFEW_CAUGHT, WHEEL_LINES, fill, houseLine, type Line } from '../lore/memes.js';
 import { zhHouse } from '../shared/zh.js';
+import { FILCH, NORRIS, SIGHT_H, sees, type Patroller } from '../shared/curfew.js';
 import { CREATURES } from './creatures.js';
 import { CHESTS, rollCard } from './cards.js';
 import { dist } from './physics.js';
@@ -122,8 +123,6 @@ export const CURFEW_WAYPOINTS: Vec2[] = [
   { x: 0, z: -9 }, { x: -21, z: -24 }, { x: -24, z: -40 }, { x: -42, z: -47 }, { x: -52, z: -52 }, { x: -32, z: -58 },
   { x: -16, z: -46 }, { x: 0, z: -36 }, { x: 16, z: -46 }, { x: 30, z: -57 }, { x: 52, z: -52 }, { x: 44, z: -26 }, { x: 21, z: -22 },
 ];
-export const FILCH = { speed: 2.6, range: 11, halfAngle: 0.8 };
-export const NORRIS = { speed: 3.3, range: 4 };
 const PEEVES_SPOTS: { x: number; z: number; place: Line }[] = [
   { x: 4, z: -16, place: { zh: '庭院', en: 'the Courtyard' } },
   { x: 41, z: -22, place: { zh: '温室门口', en: 'the greenhouses' } },
@@ -522,17 +521,11 @@ function placeOnRoute(e: ActiveEvent, p: { s: number; x: number; z: number; f: n
   if (Math.hypot(b.x - a.x, b.z - a.z) > 1e-6) p.f = Math.atan2(b.x - a.x, -(b.z - a.z));
 }
 
-/** Filch sees in a cone (his lantern), Mrs Norris all round but close; neither sees through walls or pillars. */
-export function seesWizard(w: World, p: { k: 'filch' | 'norris'; x: number; z: number; f: number }, x: Wizard): boolean {
-  const dx = x.pos.x - p.x, dz = x.pos.z - p.z, d = Math.hypot(dx, dz);
-  if (p.k === 'filch') {
-    if (d > FILCH.range) return false;
-    const ang = Math.atan2(dx, -dz), off = Math.abs(Math.atan2(Math.sin(ang - p.f), Math.cos(ang - p.f)));
-    if (d > 1.2 && off > FILCH.halfAngle) return false;
-  } else if (d > NORRIS.range) return false;
+/** Filch sees in a cone (his lantern), Mrs Norris all round but close; neither sees through walls or pillars (shared/curfew.ts). */
+export function seesWizard(w: World, p: Patroller, x: Wizard): boolean {
   // the Marauder's Map shows you their footsteps: Mrs Norris cannot sneak up on you
   if (p.k === 'norris' && x.marauderUntil > w.now) return false;
-  return !w.solids.hitSegment(p.x, p.z, x.pos.x, x.pos.z, 1.5);
+  return sees(p, x.pos, (ax, az, bx, bz) => !w.solids.hitSegment(ax, az, bx, bz, SIGHT_H));
 }
 
 function caughtAfterCurfew(w: World, e: ActiveEvent, x: Wizard, by: 'filch' | 'norris') {
