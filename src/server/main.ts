@@ -10,6 +10,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { warmPathfinding } from '../kernel/pathfind.js';
 import { ensureNpcs } from '../kernel/npc.js';
+import { listExams, sitExam } from '../kernel/exams.js';
 import { TICK, World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
@@ -288,7 +289,10 @@ type ClientMsg =
   | { t: 'pause'; on: boolean }
   | { t: 'destroy'; item: string }
   // 使魔 (familiar.ts): summon or dismiss the built-in agent
-  | { t: 'familiar'; on: boolean; kind?: string };
+  | { t: 'familiar'; on: boolean; kind?: string }
+  // O.W.L. exams (kernel/exams.ts)
+  | { t: 'exams' }
+  | { t: 'sit'; id: string; source: string };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -337,6 +341,8 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       }
       case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(wid, { x: m.x, z: m.z }) : world.setGoal(wid, null) }); break;
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
+      case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
+      case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;
     }
   } catch (e) {
     reply({ t: 'err', error: (e as Error).message });

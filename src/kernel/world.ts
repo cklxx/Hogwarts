@@ -25,6 +25,8 @@ import {
   pointsAward, type Line,
 } from '../lore/memes.js';
 import { type CastReport, execute } from './magic.js';
+import type { OwlBook } from './exams.js';
+import { OWL_ACHIEVEMENTS } from '../lore/exams.js';
 import { lookOf } from './glamour.js';
 import { cleanGlamour, glamourKey, type Glamour } from '../shared/glamour.js';
 import { dist, resolve, solidAt } from './physics.js';
@@ -87,6 +89,8 @@ export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: numbe
   dark_arts: { name: 'The Dark Arts', zh: '黑魔法', rep: 0, text: 'You posted a curse. The forge asked no questions. Nobody saw you do it — this time.', textZh: '你寄出了一个诅咒。锻造炉什么也没问。这一次，没有人看见。' },
   hello_world: { name: 'Hello, World', zh: '你好，世界', rep: 1, text: 'Your spell said hello to the world. Every great wizard starts here — even Hermione had a first program.', textZh: '你的咒语向世界问了好。每个伟大的巫师都从这里开始——赫敏也写过她的第一个程序。' },
   trevor: { name: 'Has Anyone Seen a Toad?', zh: '有人看见一只蟾蜍吗？', rep: 5, text: 'You found Trevor by the Black Lake. Neville owes you one.', textZh: '你在黑湖边找到了特雷弗。纳威欠你一个人情。' },
+  // O.W.L. exams (kernel/exams.ts)
+  ...OWL_ACHIEVEMENTS,
 };
 
 export interface Statue { name: string; house: House; term: number; inscription: string }
@@ -116,6 +120,8 @@ export class World {
   term: Term;
   houseCups: { term: number; winner: House | null; points: Record<House, number> }[] = [];
   decrees: DecreeRecord[] = [];
+  /** O.W.L. exams (kernel/exams.ts): leaderboards and each wizard's weekly bests. Persisted. */
+  owls: OwlBook = { boards: {}, bests: {} };
   flags = {
     statues: [] as Statue[], loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0,
     /** Name of the first wizard to post a curse (never shown publicly). */
@@ -2691,6 +2697,7 @@ export class World {
   serialize() {
     return {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
+      owls: this.owls,
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
       wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined, jinxLook: null })),
     };
@@ -2707,6 +2714,7 @@ export class World {
       housePoints: data.flags?.housePoints ?? { term: 0, pts: {} },
     };
     w.seq = data.seq ?? 0;
+    w.owls = { boards: data.owls?.boards ?? {}, bests: data.owls?.bests ?? {} };
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {

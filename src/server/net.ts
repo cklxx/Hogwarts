@@ -52,6 +52,9 @@ export const LIMITS: Record<string, [number, number]> = {
   rotate: [0.05, 2],
   pause: [1, 5],
   familiar: [0.5, 3],
+  // O.W.L. exams: a sitting runs a sandbox World per test case (the kernel also caps sittings per minute)
+  exams: [2, 5],
+  sit: [0.2, 3],
   other: [30, 60],
   all: [80, 120],
 };
