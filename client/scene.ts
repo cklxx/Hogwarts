@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
+import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_DOOR, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS } from '../src/shared/layout';
 import { tex as fileTex } from './assets';
 import { WIND, createGrass } from './grass';
 import { setWizardDetail } from './models';
@@ -493,19 +494,20 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     // a lintel over the doors turns the full-height slot into a doorway
     const lintel = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(6.2, 5, 1), 6.2, 5, 1, 4), M.stone));
     lintel.position.set(0, 11.5, -40.5);
-    const doorArch = add(new THREE.Mesh(new THREE.ExtrudeGeometry((() => { const sh = archShape(8, 10.2, -0.2); sh.holes.push(archHole(6, 9)); return sh; })(), { depth: 0.4, bevelEnabled: false, curveSegments: 10 }), M.darkStone));
-    doorArch.position.set(0, 0, -40);
+    const D = HALL_DOOR;
+    const doorArch = add(new THREE.Mesh(new THREE.ExtrudeGeometry((() => { const sh = archShape(D.outer, D.h, -0.2); sh.holes.push(archHole(D.hole, D.holeH)); return sh; })(), { depth: D.depth, bevelEnabled: false, curveSegments: 10 }), M.darkStone));
+    doorArch.position.set(D.x, 0, D.z);
     // buttresses with pinnacles along both long walls
-    const butGeo = worldUV(new THREE.BoxGeometry(0.7, 13.2, 0.9), 0.7, 13.2, 0.9, 4);
+    const B = HALL_BUTTRESS;
+    const butGeo = worldUV(new THREE.BoxGeometry(B.w, B.h, B.d), B.w, B.h, B.d, 4);
     const pinGeo = new THREE.ConeGeometry(0.42, 3.4, 6);
-    const zs = Array.from({ length: 7 }, (_, i) => -70.3 + i * 4.6);
-    const butI = new THREE.InstancedMesh(butGeo, M.stone, zs.length * 2);
-    const pinI = new THREE.InstancedMesh(pinGeo, M.darkStone, zs.length * 2);
+    const butI = new THREE.InstancedMesh(butGeo, M.stone, HALL_BUTTRESSES.length);
+    const pinI = new THREE.InstancedMesh(pinGeo, M.darkStone, HALL_BUTTRESSES.length);
     const mm = new THREE.Matrix4();
-    zs.forEach((z, i) => [-1, 1].forEach((sx, j) => {
-      butI.setMatrixAt(i * 2 + j, mm.makeTranslation(sx * 13.35, 6.6, z));
-      pinI.setMatrixAt(i * 2 + j, mm.makeTranslation(sx * 13.35, 14.9, z));
-    }));
+    HALL_BUTTRESSES.forEach(({ x, z }, i) => {
+      butI.setMatrixAt(i, mm.makeTranslation(x, 6.6, z));
+      pinI.setMatrixAt(i, mm.makeTranslation(x, 14.9, z));
+    });
     butI.castShadow = pinI.castShadow = true;
     butI.receiveShadow = true;
     scene.add(butI, pinI);
@@ -667,31 +669,31 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   const hallLight = new THREE.PointLight(0xffd59a, 30, 30, 1.5);
   hallLight.position.set(0, 7, -56);
   scene.add(hallLight);
-  for (const x of [-7.5, -2.5, 2.5, 7.5]) {
-    const t = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(1.4, 0.9, 22), 1.4, 0.9, 22, 2), M.wood));
-    t.position.set(x, 0.45, -55);
+  for (const { x, z, w, h, d } of HALL_TABLES) {
+    const t = add(new THREE.Mesh(worldUV(new THREE.BoxGeometry(w, h, d), w, h, d, 2), M.wood));
+    t.position.set(x, h / 2, z);
   }
 
   // ---- Mirror of Erised & Barnabas the Barmy's tapestry
-  const frame = add(new THREE.Mesh(new THREE.BoxGeometry(2.4, 4.2, 0.3), gold));
-  frame.position.set(30, 2.1, -62.5);
+  const frame = add(new THREE.Mesh(new THREE.BoxGeometry(MIRROR.w, MIRROR.h, MIRROR.d), gold));
+  frame.position.set(MIRROR.x, MIRROR.h / 2, MIRROR.z);
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 3.4), new THREE.MeshStandardMaterial({ color: 0x9fb8d9, metalness: 1, roughness: 0.05, emissive: 0x1b2b48, emissiveIntensity: 0.8 }));
-  glass.position.set(30, 2.1, -62.3);
+  glass.position.set(MIRROR.x, MIRROR.h / 2, MIRROR.z + 0.2);
   scene.add(glass);
   const tap = new THREE.Mesh(new THREE.PlaneGeometry(6, 4), new THREE.MeshStandardMaterial({ color: 0x7a2e5a, roughness: 1 }));
   tap.position.set(-32, 5, -63.9);
   scene.add(tap);
 
   // ---- torches along the main path (real lights, few of them)
-  for (const z of [0, 40, 80, 120]) {
-    const post = add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 3, 6), trunk));
-    post.position.set(3.2, 1.5, z);
+  for (const { x, z } of TORCH_POSTS) {
+    const post = add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, TORCH_POST.r, TORCH_POST.h, 6), trunk));
+    post.position.set(x, TORCH_POST.h / 2, z);
     const flame = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowSprite('rgba(255,190,90,1)', 'rgba(255,120,30,0)'), blending: THREE.AdditiveBlending, depthWrite: false }));
     flame.scale.setScalar(1.4);
-    flame.position.set(3.2, 3.2, z);
+    flame.position.set(x, 3.2, z);
     scene.add(flame);
     const l = new THREE.PointLight(0xff9a40, 0, 16, 1.8);
-    l.position.set(3.2, 3.3, z);
+    l.position.set(x, 3.3, z);
     l.name = 'torch';
     scene.add(l);
   }

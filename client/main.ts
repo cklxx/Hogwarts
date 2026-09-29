@@ -177,6 +177,7 @@ const crowd = createCrowd(scene);
 const LOD = { high: { wizard: 42, label: 45, creature: 170, anim: 70 }, low: { wizard: 24, label: 30, creature: 110, anim: 45 } };
 if (new URLSearchParams(location.search).get('lod') === '0') for (const l of Object.values(LOD)) Object.assign(l, { wizard: 1e9, label: 1e9, creature: 1e9, anim: 1e9 }); // (for comparisons)
 probe.mark('world');
+if (/[?&]debug=colliders\b/.test(location.search)) void import('./debug').then((d) => d.showColliders(scene, () => snap?.look?.statues.length ?? 0));
 // Quality: ?q=low|high forces it; otherwise measure the first seconds and drop to low if slow.
 const forcedQ = new URLSearchParams(location.search).get('q');
 let quality: 'low' | 'high' = forcedQ === 'low' ? 'low' : 'high';
