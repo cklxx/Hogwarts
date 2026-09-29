@@ -53,12 +53,28 @@ async function known(cfg) {
   }
 }
 
+// 连接我的 Agent: this program as the `hogwarts` MCP server (--mcp-stdio), wired into Claude Desktop or Claude Code
+async function agentSection(cfg) {
+  const info = await invoke('agent_info');
+  $('#code-cmd').textContent = info.claude_code;
+  const say = (t, err = false) => { const el = $('#agent-status'); el.textContent = t; el.classList.toggle('err', err); };
+  if (!cfg.last) say('先进入一次服务器，Agent 会连到那一个。');
+  const desk = $('#to-desktop'), code = $('#to-code');
+  if (!info.claude_desktop) { desk.disabled = true; desk.title = '没有检测到 Claude Desktop'; }
+  if (!info.has_claude_cli) { code.disabled = true; code.title = '没有找到 claude 命令：把下面的命令复制到终端里执行'; }
+  const run = async (target) => { try { say(await invoke('agent_setup', { target })); } catch (e) { say(String(e), true); } };
+  desk.onclick = () => run('claude-desktop');
+  code.onclick = () => run('claude-code');
+  $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(info.claude_code); say('已复制。粘贴到终端里执行。'); } catch { say('复制失败：请手动选中命令复制。', true); } };
+}
+
 $('#rescan').onclick = () => scan();
 $('#manual').onsubmit = (e) => { e.preventDefault(); const v = $('#addr').value.trim(); if (v) enter(v); };
 
 (async () => {
   const cfg = await invoke('saved');
   known(cfg);
+  agentSection(cfg).catch(() => { $('#agent').hidden = true; });
   const pick = new URLSearchParams(location.search).has('pick');
   // straight back into the last castle, unless we came here to switch (Ctrl+Shift+S)
   if (cfg.last && !pick) {

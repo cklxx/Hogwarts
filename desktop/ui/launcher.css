@@ -28,3 +28,9 @@ input:focus, button:focus-visible { outline: 2px solid var(--wax); outline-offse
 #status { min-height: 1.6em; margin: 8px 0 0; color: var(--ink-soft); }
 #status.err { color: var(--wax); }
 footer { margin-top: 20px; font-size: 13px; color: var(--ink-soft); }
+
+.hint { color: var(--ink-soft); font-size: 14px; margin: 4px 0 8px; }
+.row.wrap { flex-wrap: wrap; }
+.row.cmd { margin-top: 10px; background: #fff8e6; border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; }
+.row.cmd code { flex: 1; min-width: 0; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
+#agent-status.err { color: var(--wax); }

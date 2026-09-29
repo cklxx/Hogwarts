@@ -28,6 +28,16 @@
         <button type="submit" class="primary">进入</button>
       </div>
     </form>
+    <section id="agent">
+      <h2>连接我的 Agent</h2>
+      <p class="hint">让 Claude 用你的巫师身份玩、替你写咒语。它连的是你上次进入的服务器；密钥从系统钥匙串里读，不会写进任何配置文件。</p>
+      <div class="row wrap">
+        <button id="to-desktop" type="button" class="primary">写入 Claude Desktop</button>
+        <button id="to-code" type="button">添加到 Claude Code</button>
+      </div>
+      <div class="row cmd"><code id="code-cmd"></code><button id="copy" type="button" class="quiet">复制</button></div>
+      <p id="agent-status" class="hint" role="status" aria-live="polite"></p>
+    </section>
     <footer>进入游戏后：F11 全屏，Ctrl+Shift+S 回到这里换服务器。密钥保存在系统钥匙串里。</footer>
   </main>
   <script src="launcher.js"></script>

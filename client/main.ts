@@ -838,7 +838,9 @@ function menuInfo(url?: string) {
   if (url) mcpUrl = url;
   else if (!mcpUrl) mcpUrl = account.mcpUrl || `${location.origin}/mcp`;
   // "$PWD" is expanded by the shell when the command is added, so the saved entry holds an absolute path and works from any directory
-  const bridge = `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
+  // inside the desktop client (desktop/), its own --mcp-stdio mode is the bridge: nothing to check out, key from the keychain
+  const shell = (window as unknown as { __HOGWARTS_SHELL__?: { claudeCode?: string } }).__HOGWARTS_SHELL__;
+  const bridge = shell?.claudeCode ?? `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
   const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
   $('#menu').innerHTML = `<h2>${ic('letter')}<span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button class="x" data-close="menu" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
     <section class="op-first">
@@ -849,7 +851,7 @@ function menuInfo(url?: string) {
     </section>
     ${pn.menuLinks()}
     <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
-    <p>${L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
+    <p>${shell?.claudeCode ? L('<b>推荐：桌面客户端当桥</b>（在终端里运行一次；Agent 连的是这台服务器，密钥从系统钥匙串读，不写进任何配置。想接 Claude Desktop：按 <kbd>Ctrl+Shift+S</kbd> 回到启动器，点「写入 Claude Desktop」）：', '<b>Recommended: the desktop client as the bridge</b> (run it once in a terminal; the agent reaches this server and reads the key from the system keychain, never from a config file. For Claude Desktop: <kbd>Ctrl+Shift+S</kbd> back to the launcher, then "写入 Claude Desktop"):') : L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
     <p>${L('<b>HTTP 直连 + 配置头</b>（命令里是字面的 <code>${HOGWARTS_TOKEN}</code>，要用单引号；再在 shell profile 里 <code>export HOGWARTS_TOKEN=你的密钥</code>）：', '<b>Direct HTTP with a header</b> (the command holds a literal <code>${HOGWARTS_TOKEN}</code> in single quotes; put <code>export HOGWARTS_TOKEN=&lt;your key&gt;</code> in your shell profile):')}</p>
     <div class="op-cmd"><pre id="op-header">${esc(header)}</pre><button class="ghost" data-copy="op-header">${L('复制', 'Copy')}</button></div>

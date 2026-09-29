@@ -11,6 +11,8 @@ fn main() {
         "key_store",
         "toggle_fullscreen",
         "switch_server",
+        "agent_info",
+        "agent_setup",
     ])))
     .expect("tauri build script");
 }
