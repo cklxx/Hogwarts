@@ -1,24 +1,37 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import * as TSL from 'three/tsl';
 import { mulberry32 } from '../src/shared/map';
-import { LAKE, SEA_LEVEL, flatness, surfaceAt } from './terrain';
+import { COMPUTE, onBeforeFrame } from './gpu';
+import { StoryStandardMaterial } from './storybook';
+import { INNER_GRID, LAKE, SEA_LEVEL, flatness, surfaceAt } from './terrain';
 import { STORYBOOK } from './textures';
 
 /**
- * A field of GPU-instanced grass around the player: a G x G grid of square chunks, one small
- * instanced mesh each. Every world chunk maps to a fixed chunk mesh (toroidally), so walking only
- * regenerates the row of chunks that scrolled into view, a few per frame. Blade placement is seeded
- * by the chunk coordinates, so a chunk always grows the same grass.
+ * A field of wind-blown grass around the player, in one of two ways that look the same:
  *
- * Cost control: only the clumps that actually grow are uploaded (built/flat ground, the lake, the
- * sea and everything beyond the inner terrain mesh cost nothing); each chunk has its own bounding
- * sphere, so chunks off screen are frustum-culled; and a chunk away from the player draws only a
- * prefix of its (randomly placed) clumps, thinning the field where the blades are already shrinking
- * into the ground. Blades sit on the rendered terrain (surfaceAt) and sway in the vertex shader
- * (rolling gusts + flutter), bending away from the player's feet.
+ * - **WebGPU: generated, culled and counted on the GPU.** Every frame a compute shader walks a jittered
+ *   lattice of clump sites around the player (~24 000 at 'high'), reads the ground's height and how much grass
+ *   grows there from a texture of the terrain's own grid, drops what does not grow, what is off screen and a
+ *   share of the far ones, and appends the rest to a storage buffer with an atomic counter, which is also the
+ *   instance count of one indirect draw. The CPU does nothing per frame but set four uniforms, and only the
+ *   clumps in view are drawn (culled one by one, not per chunk).
+ * - **WebGL 2** (no compute atomics or indirect draws): a G x G grid of square chunks, one small instanced
+ *   mesh each, filled on the CPU. Every world chunk maps to a fixed chunk mesh (toroidally), so walking only
+ *   regenerates the row of chunks that scrolled into view, a few per frame; placement is seeded by the chunk
+ *   coordinates, so a chunk always grows the same grass. Only the clumps that grow are uploaded, each chunk
+ *   is frustum-culled as a whole, and a far chunk draws a prefix of its (randomly placed) clumps.
+ *
+ * Either way the blades sit on the rendered terrain (surfaceAt) and sway in the vertex shader (rolling gusts
+ * plus flutter), bending away from the player's feet, from the same TSL code.
  */
 
 /** Everything that sways (grass, tree crowns, pennants, chimney smoke) leans with the same wind. */
 export const WIND = new THREE.Vector2(0.8, 0.35);
+
+const T = TSL as unknown as Record<string, any>;
+const { Fn, vec2, vec3, vec4, float, int, uint, uniform, attribute, varying, select, If, Return, sin, cos, dot, fract, floor, abs, max, min, clamp, mix,
+  smoothstep, distance, length, hash, textureLoad, ivec2, instanceIndex, instancedArray, storage, atomicAdd, atomicStore,
+  positionGeometry, normalGeometry, transformNormalToView } = T;
 
 interface Level { grid: number; chunk: number; perChunk: number }
 const LEVELS: Record<'low' | 'high', Level> = {
@@ -27,6 +40,8 @@ const LEVELS: Record<'low' | 'high', Level> = {
   // up to ~2.6k clumps (~10k blades)
   low: { grid: 5, chunk: 10, perChunk: 150 },
 };
+/** The field's radius at a level (blades shrink into the ground toward it). */
+const radiusOf = (l: Level) => (l.grid / 2 - 0.5) * l.chunk;
 
 /**
  * Four blades fanned around a common root (one instance). Widths and offsets are in metres, the
@@ -85,6 +100,53 @@ export function grassDensity(x: number, z: number, y: number) {
   return ss(0.03, 0.3, flatness(x, z)) * lake * inner * dry * (1 - ss(10, 22, y));
 }
 
+// ------------------------------------------------------------------ the blades (both paths)
+interface Field { time: any; focus: any; radius: any; wind: any }
+/**
+ * The blade material. `off` = (x, y, z, yaw) of the clump's root, `shp` = (height, width, hue, phase); a hue
+ * of 2 or more is a wildflower (2: white, 3: gold, 4: violet).
+ */
+function bladeMaterial(u: Field, off: any, shp: any) {
+  const m = new StoryStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
+  const cr = cos(off.w), sr = sin(off.w);
+  const rot = (v: any) => vec2(cr.mul(v.x).add(sr.mul(v.y)), sr.negate().mul(v.x).add(cr.mul(v.y)));
+  const p = positionGeometry;
+  m.positionNode = Fn(() => {
+    // blades shrink into the ground toward the edge of the field, so it has no visible border
+    const bh = shp.x.mul(float(1).sub(smoothstep(u.radius.mul(0.45), u.radius, distance(off.xz, u.focus.xz))));
+    const t = vec3(p.x.mul(shp.y), p.y.mul(bh), p.z.mul(shp.y)).toVar();
+    t.xz.assign(rot(t.xz));
+    // wind: slow gusts rolling across the grounds plus a quick per-blade flutter
+    const gust = sin(dot(off.xz, vec2(0.061, 0.043)).sub(u.time.mul(1.25))).mul(0.5).add(0.5)
+      .mul(sin(dot(off.xz, vec2(-0.017, 0.029)).add(u.time.mul(0.37))).mul(0.4).add(0.6));
+    const flutter = sin(u.time.mul(3.7).add(shp.w.mul(6.2831)).add(off.x.mul(0.8))).mul(0.22);
+    const bend = float(0.12).add(gust.mul(0.55)).add(flutter.mul(0.6)).mul(p.y).mul(p.y).mul(bh);
+    t.xz.addAssign(u.wind.mul(bend));
+    t.y.subAssign(bend.mul(bend).mul(0.35).div(max(bh, 0.05)));
+    // blades part around the player's feet
+    const away = off.xz.sub(u.focus.xz);
+    const dp = length(away);
+    t.xz.addAssign(away.div(max(dp, 0.01)).mul(smoothstep(1.4, 0.2, dp)).mul(p.y).mul(bh).mul(0.45));
+    return t.add(off.xyz);
+  })();
+  // the blade's normal turned with the clump; lit from above on both faces (blades are thin: no dark backsides)
+  const n = normalGeometry;
+  m.normalNode = transformNormalToView(varying(vec3(rot(n.xz).x, n.y, rot(n.xz).y))).normalize();
+  const tip = varying(p.y), hueV = varying(shp.z);
+  m.colorNode = Fn(() => {
+    const hue = fract(hueV);
+    const root = STORYBOOK ? vec3(0.022, 0.055, 0.018) : vec3(0.035, 0.085, 0.018);
+    const tipC = STORYBOOK ? mix(vec3(0.06, 0.15, 0.035), vec3(0.16, 0.23, 0.055), hue.mul(hue)) : mix(vec3(0.1, 0.25, 0.04), vec3(0.27, 0.32, 0.08), hue.mul(hue).mul(hue));
+    const c = mix(root, tipC, smoothstep(0, 1, tip)).toVar();
+    // wildflowers: a coloured head on the tips of the clump
+    const petal = select(hueV.lessThan(3), vec3(0.85, 0.82, 0.7), select(hueV.lessThan(4), vec3(0.9, 0.62, 0.06), vec3(0.42, 0.2, 0.75)));
+    If(hueV.greaterThan(1.5), () => { c.assign(mix(c, petal, smoothstep(0.72, 0.9, tip))); });
+    return vec4(c, 1);
+  })();
+  return m;
+}
+
+// ------------------------------------------------------------------ WebGL 2: CPU chunks
 interface Chunk {
   mesh: THREE.Mesh;
   geo: THREE.InstancedBufferGeometry;
@@ -99,77 +161,40 @@ interface Chunk {
 }
 
 export function createGrass(scene: THREE.Scene) {
-  const uniforms = {
-    uTime: { value: 0 },
-    uFocus: { value: new THREE.Vector3() },
-    uRadius: { value: 40 },
-    uWind: { value: WIND },
-  };
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
-  mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = `attribute vec4 aOffset; attribute vec4 aShape;
-      uniform float uTime; uniform vec3 uFocus; uniform float uRadius; uniform vec2 uWind;
-      varying float vTip; varying float vHue;
-      ` + sh.vertexShader
-      .replace('#include <beginnormal_vertex>', `
-        float gc = cos(aOffset.w), gs = sin(aOffset.w);
-        mat2 gRot = mat2(gc, -gs, gs, gc);
-        vec3 objectNormal = normal;
-        objectNormal.xz = gRot * objectNormal.xz;`)
-      .replace('#include <begin_vertex>', `
-        // blades shrink into the ground toward the edge of the field, so it has no visible border
-        float bh = aShape.x * (1.0 - smoothstep(uRadius * 0.45, uRadius, distance(aOffset.xz, uFocus.xz)));
-        vec3 transformed = vec3(position.x * aShape.y, position.y * bh, position.z * aShape.y);
-        transformed.xz = gRot * transformed.xz;
-        // wind: slow gusts rolling across the grounds plus a quick per-blade flutter
-        float gust = 0.5 + 0.5 * sin(dot(aOffset.xz, vec2(0.061, 0.043)) - uTime * 1.25);
-        gust *= 0.6 + 0.4 * sin(dot(aOffset.xz, vec2(-0.017, 0.029)) + uTime * 0.37);
-        float flutter = sin(uTime * 3.7 + aShape.w * 6.2831 + aOffset.x * 0.8) * 0.22;
-        float bend = (0.12 + gust * 0.55 + flutter * 0.6) * position.y * position.y * bh;
-        transformed.xz += uWind * bend;
-        transformed.y -= 0.35 * bend * bend / max(bh, 0.05);
-        // blades part around the player's feet
-        vec2 away = aOffset.xz - uFocus.xz;
-        float dp = length(away);
-        transformed.xz += away / max(dp, 0.01) * smoothstep(1.4, 0.2, dp) * 0.45 * position.y * bh;
-        transformed += aOffset.xyz;
-        vTip = position.y; vHue = aShape.z;`);
-    sh.fragmentShader = `varying float vTip; varying float vHue;
-      ` + sh.fragmentShader
-      .replace('#include <color_fragment>', `#include <color_fragment>
-        float hue = fract(vHue);
-        ${STORYBOOK
-          // storybook: the painted meadow's own greens, from its deep strokes up to sunlit yellow-green tips
-          ? `vec3 gRoot = vec3(0.022, 0.055, 0.018);
-        vec3 gTip = mix(vec3(0.06, 0.15, 0.035), vec3(0.16, 0.23, 0.055), hue * hue);`
-          : `vec3 gRoot = vec3(0.035, 0.085, 0.018);
-        vec3 gTip = mix(vec3(0.1, 0.25, 0.04), vec3(0.27, 0.32, 0.08), hue * hue * hue);`}
-        diffuseColor.rgb = mix(gRoot, gTip, smoothstep(0.0, 1.0, vTip));
-        if (vHue > 1.5) {
-          // wildflowers: a coloured head on the tips of the clump
-          vec3 petal = vHue < 3.0 ? vec3(0.85, 0.82, 0.7) : vHue < 4.0 ? vec3(0.9, 0.62, 0.06) : vec3(0.42, 0.2, 0.75);
-          diffuseColor.rgb = mix(diffuseColor.rgb, petal, smoothstep(0.72, 0.9, vTip));
-        }`)
-      // lit from above on both faces (blades are thin; no dark backsides)
-      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
-        #ifdef DOUBLE_SIDED
-          normal *= faceDirection;
-        #endif`);
-  };
-  mat.customProgramCacheKey = () => 'grass-field';
-
+  const u: Field = { time: uniform(0), focus: uniform(new THREE.Vector3()), radius: uniform(40), wind: uniform(WIND) };
   const group = new THREE.Group();
   group.name = 'grass';
   scene.add(group);
-  let level = LEVELS.high;
+  let visible = true;
+  const field = COMPUTE() ? gpuField(group, u) : cpuField(group, u);
+  field.build(LEVELS.high);
+  return {
+    group,
+    /** 'gpu' (compute-generated, one indirect draw) or 'cpu' (instanced chunks). */
+    kind: field.kind,
+    /** Clumps the last frame could draw at most (GPU: every lattice site; CPU: what the chunks hold). */
+    get budget() { return field.budget(); },
+    setQuality(q: 'low' | 'high') { field.build(LEVELS[q]); },
+    setVisible(v: boolean) { visible = v; group.visible = v; },
+    /** Re-centre on `focus`, thin the far clumps and advance the wind. */
+    update(t: number, focus: THREE.Vector3, budget = 3) {
+      u.time.value = t;
+      u.focus.value.copy(focus);
+      if (visible) field.update(focus, budget);
+    },
+  };
+}
+
+function cpuField(group: THREE.Group, u: Field) {
+  const mat = bladeMaterial(u, attribute('aOffset', 'vec4'), attribute('aShape', 'vec4'));
+  let level: Level | null = null;
   let base: THREE.BufferGeometry | null = null;
   let chunks: Chunk[] = [];
   /** Chunk offsets around the player's chunk, nearest first (after a teleport the grass regrows from the feet out). */
   let order: [number, number][] = [];
-  let visible = true;
 
   function build(l: Level) {
+    if (l === level) return;
     level = l;
     for (const c of chunks) { group.remove(c.mesh); c.geo.dispose(); }
     base?.dispose();
@@ -188,11 +213,12 @@ export function createGrass(scene: THREE.Scene) {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = true;
       mesh.visible = false;
+      mesh.userData.warmVisible = true; // (render.ts's shader warm-up compiles it while it is still empty)
       mesh.matrixAutoUpdate = false;
       group.add(mesh);
       chunks.push({ mesh, geo, offs, shape, key: null, kept: 0, x0: 0, z0: 0 });
     }
-    uniforms.uRadius.value = (l.grid / 2 - 0.5) * l.chunk;
+    u.radius.value = radiusOf(l);
     const h = Math.floor(l.grid / 2);
     order = [];
     for (let dz = -h; dz <= h; dz++) for (let dx = -h; dx <= h; dx++) order.push([dx, dz]);
@@ -201,7 +227,7 @@ export function createGrass(scene: THREE.Scene) {
 
   /** Grow world chunk (cx, cz) into `c`: only the clumps that grow are written, packed at the front. */
   function fill(c: Chunk, cx: number, cz: number) {
-    const { chunk, perChunk } = level;
+    const { chunk, perChunk } = level!;
     const rnd = mulberry32(((cx * 73856093) ^ (cz * 19349663)) >>> 0);
     const o = c.offs.array as Float32Array, s = c.shape.array as Float32Array;
     let n = 0, y0 = Infinity, y1 = -Infinity;
@@ -233,17 +259,12 @@ export function createGrass(scene: THREE.Scene) {
     c.geo.boundingSphere!.radius = Math.hypot(half * Math.SQRT2 + 1, (y1 - y0) / 2 + 0.8);
   }
 
-  build(level);
   return {
-    group,
-    setQuality(q: 'low' | 'high') { if (LEVELS[q] !== level) build(LEVELS[q]); },
-    setVisible(v: boolean) { visible = v; group.visible = v; },
-    /** Re-centre on `focus` (a few chunks per call), thin the far chunks and advance the wind. */
-    update(t: number, focus: THREE.Vector3, budget = 3) {
-      uniforms.uTime.value = t;
-      uniforms.uFocus.value.copy(focus);
-      if (!visible) return;
-      const { grid, chunk } = level;
+    kind: 'cpu' as const,
+    build,
+    budget: () => chunks.reduce((a, c) => a + c.kept, 0),
+    update(focus: THREE.Vector3, budget: number) {
+      const { grid, chunk } = level!;
       const ccx = Math.floor(focus.x / chunk), ccz = Math.floor(focus.z / chunk);
       let done = 0;
       const first = chunks.every((c) => c.key === null);
@@ -258,7 +279,7 @@ export function createGrass(scene: THREE.Scene) {
       // draw a prefix of each chunk's clumps: all of them near the player, fewer where the blades
       // shrink toward the edge of the field, none beyond it (this also hides a chunk that scrolled
       // out of the field and has not been regrown yet)
-      const R = uniforms.uRadius.value;
+      const R = u.radius.value as number;
       for (const c of chunks) {
         let n = 0;
         if (c.kept) {
@@ -270,6 +291,122 @@ export function createGrass(scene: THREE.Scene) {
         c.geo.instanceCount = n;
         c.mesh.visible = n > 0;
       }
+    },
+  };
+}
+
+// ------------------------------------------------------------------ WebGPU: compute
+/**
+ * The ground for the compute shader: the inner terrain mesh's own vertex heights (257 x 257 over ±320 m, so
+ * blades sit on the drawn triangles exactly, as surfaceAt does) and grassDensity at each vertex (smooth over
+ * tens of metres: interpolated between vertices).
+ */
+function groundTexture() {
+  const { size, step, heights } = INNER_GRID();
+  const W = size + 1;
+  const data = new Float32Array(W * W * 4);
+  for (let iz = 0; iz < W; iz++) for (let ix = 0; ix < W; ix++) {
+    const i = iz * W + ix, x = -320 + ix * step, z = -320 + iz * step, y = heights[i];
+    data[i * 4] = y;
+    data[i * 4 + 1] = grassDensity(x, z, y);
+  }
+  const t = new THREE.DataTexture(data, W, W, THREE.RGBAFormat, THREE.FloatType);
+  t.minFilter = t.magFilter = THREE.NearestFilter; // (read with textureLoad, interpolated in the shader)
+  t.needsUpdate = true;
+  return { tex: t, W, step };
+}
+
+let ground: { groundAt: any } | null = null;
+/** The ground for compute shaders (grass here, particles in fx.ts): groundAt(x, z) = vec2(height, grass density). */
+export function gpuGround() {
+  if (ground) return ground;
+  const g = groundTexture();
+  const texel = (ix: any, iz: any) => textureLoad(g.tex, ivec2(clamp(ix, 0, g.W - 1), clamp(iz, 0, g.W - 1)));
+  /** Height of the drawn triangles and the grass density at (x, z): surfaceAt and grassDensity, on the GPU. */
+  const groundAt = Fn(([x, z]: any[]) => {
+    const fx = x.add(320).div(g.step), fz = z.add(320).div(g.step);
+    const ix = int(floor(fx)), iz = int(floor(fz));
+    const a = fx.sub(floor(fx)), b = fz.sub(floor(fz));
+    const ha = texel(ix, iz), hb = texel(ix, iz.add(1)), hc = texel(ix.add(1), iz.add(1)), hd = texel(ix.add(1), iz);
+    // PlaneGeometry splits each cell along the (x0, z1)-(x1, z0) diagonal
+    const y = select(a.add(b).lessThanEqual(1), ha.x.add(hd.x.sub(ha.x).mul(a)).add(hb.x.sub(ha.x).mul(b)), hc.x.add(hb.x.sub(hc.x).mul(float(1).sub(a))).add(hd.x.sub(hc.x).mul(float(1).sub(b))));
+    const d = mix(mix(ha.y, hd.y, a), mix(hb.y, hc.y, a), b);
+    return vec2(y, d);
+  });
+  return (ground = { groundAt });
+}
+
+function gpuField(group: THREE.Group, u: Field) {
+  const { groundAt } = gpuGround();
+  /** The camera's projection x view (a compute pass has no camera of its own). */
+  const viewProj = uniform(new THREE.Matrix4());
+  // per level: lattice spacing (the CPU field's mean clump density), sites per side, buffers, kernels
+  let cur: { level: Level; cell: number; side: number; mesh: THREE.Mesh; cull: any; reset: any; origin: any; dispose(): void } | null = null;
+
+  function build(l: Level) {
+    if (cur?.level === l) return;
+    cur?.dispose();
+    const R = radiusOf(l);
+    u.radius.value = R;
+    const cell = l.chunk / Math.sqrt(l.perChunk);
+    const side = Math.ceil((2 * R) / cell) + 2;
+    const max = side * side;
+    const instances = instancedArray(max * 2, 'vec4');
+    const base = clumpGeometry();
+    const draw = new THREE.IndirectStorageBufferAttribute(new Uint32Array([base.index!.count, 0, 0, 0, 0]), 5);
+    base.setIndirect(draw);
+    const counter = storage(draw, 'uint', 5).toAtomic();
+    const origin = uniform(new THREE.Vector2());
+    const reset = Fn(() => { atomicStore(counter.element(1), uint(0)); })().compute(1);
+    const cull = Fn(() => {
+      If(instanceIndex.greaterThanEqual(uint(max)), () => { Return(); });
+      const gx = int(instanceIndex.mod(uint(side))).add(int(origin.x)), gz = int(instanceIndex.div(uint(side))).add(int(origin.y));
+      const seed = uint(gx.add(8192)).mul(uint(16384)).add(uint(gz.add(8192))).mul(uint(16));
+      const r = (k: number) => hash(seed.add(uint(k)));
+      const x = float(gx).add(r(0)).mul(cell), z = float(gz).add(r(1)).mul(cell);
+      // beyond the field, or thinned out toward its edge (the CPU field draws a shrinking share of each chunk)
+      const dist = length(vec2(x, z).sub(u.focus.xz));
+      If(dist.greaterThan(R).or(r(8).greaterThan(float(1).sub(smoothstep(0.35 * R, R, dist).mul(0.75)))), () => { Return(); });
+      const g = groundAt(x, z), y = g.x, d = g.y;
+      If(r(2).greaterThanEqual(d), () => { Return(); });
+      // in view? (the clump's centre, with a metre of margin for blades bent by the wind)
+      const clip = viewProj.mul(vec4(x, y.add(0.35), z, 1));
+      If(clip.w.lessThan(-1).or(abs(clip.x).greaterThan(clip.w.add(2))).or(abs(clip.y).greaterThan(clip.w.add(2))), () => { Return(); });
+      const i = atomicAdd(counter.element(1), uint(1)).toVar();
+      const flower = r(6).lessThan(0.04);
+      const hue = select(flower, float(2).add(floor(r(9).mul(3))).add(r(10).mul(0.9)), r(6).sub(0.04).div(0.96));
+      instances.element(i.mul(2)).assign(vec4(x, y.sub(0.03), z, r(3).mul(Math.PI * 2)));
+      instances.element(i.mul(2).add(1)).assign(vec4(r(4).mul(0.42).add(0.28).mul(d.mul(0.45).add(0.55)), r(5).mul(0.7).add(0.8), hue, r(7)));
+    })().compute(max, [64]);
+    const mat = bladeMaterial(u, instances.element(instanceIndex.mul(2)), instances.element(instanceIndex.mul(2).add(1)));
+    const mesh = new THREE.Mesh(base, mat);
+    mesh.frustumCulled = false; // (culled clump by clump in the compute pass)
+    mesh.receiveShadow = true;
+    mesh.matrixAutoUpdate = false;
+    mesh.name = 'grass-gpu';
+    group.add(mesh);
+    cur = {
+      level: l, cell, side, mesh, cull, reset, origin,
+      dispose() { group.remove(mesh); base.dispose(); mat.dispose(); cull.dispose(); reset.dispose(); instances.value.dispose?.(); },
+    };
+  }
+
+  let pending = false;
+  onBeforeFrame((renderer, camera) => {
+    if (!pending || !cur || !group.visible) return;
+    pending = false;
+    camera.updateMatrixWorld();
+    viewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    renderer.compute([cur.reset, cur.cull]);
+  });
+  return {
+    kind: 'gpu' as const,
+    build,
+    budget: () => (cur ? cur.side * cur.side : 0),
+    update(focus: THREE.Vector3) {
+      if (!cur) return;
+      cur.origin.value.set(Math.floor(focus.x / cur.cell) - (cur.side >> 1), Math.floor(focus.z / cur.cell) - (cur.side >> 1));
+      pending = true; // (the compute pass runs just before the frame is drawn, with this frame's camera)
     },
   };
 }

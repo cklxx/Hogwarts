@@ -150,6 +150,11 @@ export function makeTerrain(grassMat: THREE.MeshStandardMaterial, rockMat: THREE
 // follow the rendered triangles exactly instead of the smooth function between them.
 const INNER = 640, SEGS = 256, STEP = INNER / SEGS;
 let innerGrid: Float32Array | null = null;
+/** The inner mesh's grid: `size` cells a side of `step` metres from (-320, -320), vertex heights row by row (z). */
+export function INNER_GRID() {
+  if (!innerGrid) throw new Error('terrain: makeTerrain() first');
+  return { size: SEGS, step: STEP, heights: innerGrid };
+}
 /** Height of the rendered terrain surface at (x, z): the inner mesh's triangles, or heightAt() outside it. */
 export function surfaceAt(x: number, z: number): number {
   const fx = (x + INNER / 2) / STEP, fz = (z + INNER / 2) / STEP;

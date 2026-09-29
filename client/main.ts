@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { LANDMARKS, OBSTACLES } from '../src/shared/map';
 import { createDecor, type Look } from './decor';
-import { createFx } from './fx';
+import { createFx, createWeather } from './fx';
 import { L, applyStatic, creatureName, houseName, lang, placeName, setLang, spellName, tr } from './i18n';
 import { createRenderer } from './render';
 import { buildWorld } from './scene';
@@ -160,15 +160,14 @@ function rotateTips(el: HTMLElement, ms: number): () => void {
 // ------------------------------------------------------------------ rendering setup
 const canvas = $<HTMLCanvasElement>('#view');
 probe.mark('script');
-const R = createRenderer(canvas);
-probe.attach(R.renderer, R.scene);
+const R = await createRenderer(canvas);
+probe.attach(R.renderer, R.scene, { backend: R.backend, fallback: R.fallbackReason, particles: () => particles, grass: () => world.grass });
 probe.mark('renderer');
 // Shader errors are checked in development only: the check reads the compile status back from the GPU,
 // which waits for every command queued before it (a stall per program, and it defeats parallel compiling).
 R.renderer.debug.checkShaderErrors = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
-// The sun's shadow map is redrawn every other frame (see frame()): the light's shadow matrix is only
-// updated with it, so what is drawn always matches the map; a moving wizard's shadow lags one frame.
-R.renderer.shadowMap.autoUpdate = false;
+// The sun's shadow map is redrawn every other frame (see frame(): R.shadowFrame): the light's shadow matrix is
+// only updated with it, so what is drawn always matches the map; a moving wizard's shadow lags one frame.
 const { scene, camera } = R;
 const sceneBefore = new Set(scene.children);
 const world = buildWorld(scene);
@@ -246,13 +245,12 @@ const capturing = params.get('capture') === '1';
 const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? [0.5, 0.75] : [0.6 * Math.min(1, devicePixelRatio), Math.min(2, devicePixelRatio)]);
 const dyn = params.get('dyn') === '0' || capturing ? null : createDynRes({
   min: ratioRange(quality)[0], max: ratioRange(quality)[1],
-  apply: (r) => { R.renderer.setPixelRatio(r); R.composer.setPixelRatio(r); R.resize(); },
+  apply: (r) => R.setPixelRatio(r),
 });
 const applyQuality = (q: 'low' | 'high') => {
   quality = q; R.setQuality(q); world.setQuality(q); lighterLake(); dyn?.range(...ratioRange(q));
   // multisampling: 4x at 'high', 2x at 'low' (half the resolve bandwidth; weak GPUs are fill-bound)
-  const samples = q === 'low' ? 2 : 4;
-  for (const rt of [R.composer.renderTarget1, R.composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
+  R.setSamples(q === 'low' ? 2 : 4);
 };
 /**
  * The lake's mirror re-renders the scene from below the water every frame. Wrap whatever scene.ts installed
@@ -261,29 +259,24 @@ const applyQuality = (q: 'low' | 'high') => {
  */
 function lighterLake() {
   const lake = world.lake;
-  if (!lake || (lake.onBeforeRender as { lighter?: boolean }).lighter) return;
-  const mirror = lake.onBeforeRender;
+  if (!lake || lakeLight) return;
+  lakeLight = true;
   let n = 0;
-  const hook = ((...a: Parameters<typeof mirror>) => {
+  lake.wrap((render) => {
     if (n++ % 2 && !fullDetail) return;
     const was = actors.visible;
     actors.visible = false;
-    mirror.apply(lake, a);
+    render();
     actors.visible = was;
-  }) as typeof mirror & { lighter?: boolean };
-  hook.lighter = true;
-  lake.onBeforeRender = hook;
+  });
 }
+let lakeLight = false;
 applyQuality(quality);
 probe.mark('quality');
 const perf = { frames: 0, time: 0, done: !!forcedQ || startQuality === 'low' };
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
-const weatherPts = new THREE.Points(
-  new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 3000 * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 40 : (Math.random() - 0.5) * 120)), 3)),
-  new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.8 }),
-);
-weatherPts.visible = false;
-scene.add(weatherPts);
+// rain and snow round the player, placed by the GPU (fx.ts)
+const weather = createWeather(scene);
 const elderGlint = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), new THREE.MeshStandardMaterial({ color: 0xe0c3ff, emissive: 0xc9a0ff, emissiveIntensity: 4 }));
 scene.add(elderGlint);
 const aimRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 24), new THREE.MeshBasicMaterial({ color: 0xff5050, side: THREE.DoubleSide, transparent: true, opacity: 0.8, depthTest: false }));
@@ -503,6 +496,7 @@ const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "De
 
 // ------------------------------------------------------------------ effects
 const particles = createFx(scene, world.chimneys);
+particles.setQuality(quality); // (sized for the starting quality before the shader warm-up, not re-made after it)
 const tmpTip = new THREE.Vector3();
 // pooled spell effects (effects.ts)
 const fxm = createEffects(scene);
@@ -1867,7 +1861,7 @@ function frame() {
   if (my) {
     const t = my.root.position;
     view.place(t, dt); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
-    weatherPts.position.set(t.x, 0, t.z);
+    weather.points.position.set(t.x, 0, t.z);
   }
 
   // lighting, sky and decorations from the hour, the weather and whatever the last Minister decreed
@@ -1877,14 +1871,7 @@ function frame() {
     const night = 1 - R.day;
     for (const m of world.nightGlow) m.emissiveIntensity = (0.35 + 3.2 * night) * look.glow;
     decor.update(look, R.day, clock, dt);
-    weatherPts.visible = snap.weather === 'rain' || snap.weather === 'snow';
-    if (weatherPts.visible) {
-      const pos = weatherPts.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const fall = snap.weather === 'rain' ? 30 : 3;
-      for (let i = 0; i < pos.count; i++) { let y = pos.getY(i) - fall * dt; if (y < 0) y += 40; pos.setY(i, y); }
-      pos.needsUpdate = true;
-      (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
-    }
+    weather.update(snap.weather, dt);
     let nearWillow = false;
     if (!snap.willowCalm) for (const w of wizards.values()) if (Math.hypot(w.root.position.x - 45, w.root.position.z) < 9) { nearWillow = true; break; }
     world.tick(clock, dt, nearWillow, R.sunDir,
@@ -1913,7 +1900,7 @@ function frame() {
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();
-  R.renderer.shadowMap.needsUpdate = fullDetail || (++frameNo & 1) === 1;
+  R.shadowFrame(fullDetail || (++frameNo & 1) === 1);
   R.render();
   probe.end('render', tp);
   if (snap) probe.mark('firstFrame');
@@ -1935,12 +1922,21 @@ const warmed = (async () => {
   const t0 = performance.now();
   const g = new THREE.Group();
   g.position.set(0, -200, 0);
-  const w = makeWizard('Gryffindor', false, 'warm-up');
-  w.label.draw('warm-up', '#fff', 1);
-  w.root.add(makeAuraRing());
-  g.add(w.root, makeBolt('root', 'fire'));
+  // a wizard of every house (each house's knitwear, sleeves and hat are materials and batches of their own)
+  const ws = (['Gryffindor', 'Hufflepuff', 'Ravenclaw', 'Slytherin'] as const).map((h, i) => {
+    const w = makeWizard(h, false, `warm-up-${i}`);
+    w.root.position.x = i * 2;
+    w.label.draw('warm-up', '#fff', 1);
+    // its Lumos light hidden like every wizard's (lights.ts): four extra lights would have compiled every lit
+    // shader for a light set the game never draws with, and the first frames compiled them all again
+    w.glow.visible = false;
+    w.root.add(makeAuraRing());
+    g.add(w.root);
+    return w;
+  });
+  g.add(makeBolt('root', 'fire'));
   g.updateMatrixWorld(true);
-  parts.begin(); parts.add(w.root); parts.end();
+  parts.begin(); for (const w of ws) parts.add(w.root); parts.end();
   const kinds = Object.keys(NAMES) as CreatureKind[];
   const made: CreatureEntry[] = [];
   for (const k of kinds) {
@@ -1957,18 +1953,18 @@ const warmed = (async () => {
   const far = 3000;
   ring(far, far, 0xffffff, 1, 2, 0.1); puff(far, far, 0xffffff); column(far, far, 0xffffff, 0.1); floatText(far, far, '1', '#fff'); lightning([far, far, far + 1, far], 0xffffff);
   scene.add(g);
-  // compiled for the composer's render target: the scene is drawn into it (linear, tone mapped later by the
-  // output pass), and three.js builds a different variant of every shader for the screen
-  const was = R.renderer.getRenderTarget();
-  R.renderer.setRenderTarget(R.composer.renderTarget1);
-  try { await R.renderer.compileAsync(scene, camera); } catch { /* compile on first use, as before */ }
-  R.renderer.setRenderTarget(was);
+  // compiled for the post-processing scene pass's target: the scene is drawn into it (linear HDR, multisampled,
+  // tone mapped later), and a pipeline for another target format would be another compile
+  try { await R.warm(scene, camera); } catch (e) { console.warn('[gpu] warm-up compile failed, compiling on first use', e); }
+  // and one frame with the warm-up models in it (under the ground, but in the sun's shadow frustum): the shadow
+  // map's pipelines and the post-processing passes, which compileAsync does not build
+  try { R.warmFrame(); } catch (e) { console.warn('[gpu] warm-up frame failed', e); }
   scene.remove(g);
   herd.begin(); herd.end();
   crowd.begin(); crowd.end(false);
   parts.begin(); parts.end();
   for (const c of made) { g.remove(c.root); const pool = herdPool.get(c.k) ?? []; pool.push(c); herdPool.set(c.k, pool); }
-  if (probe.PERF) console.log(`[perf] shaders warmed in ${(performance.now() - t0).toFixed(0)} ms (${(R.renderer.info.programs ?? []).length} programs)`);
+  if (probe.PERF) console.log(`[perf] shaders warmed in ${(performance.now() - t0).toFixed(0)} ms (${R.renderer.info.memory.programs} programs)`);
   probe.mark('warm');
 })();
 
