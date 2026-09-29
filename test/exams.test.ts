@@ -45,6 +45,9 @@ const ALSO_WRONG: Record<string, string[]> = {
   'now-you-see-it': ['(summon :serpent 20) (after 2 (say (count (summons))))'],
   // the playtest's loophole: two power-1 tickles once beat par
   'double-tap': ['(bolt target 1) (after 2 (bolt target 1))'],
+  // playtest round 2: power-0.01 blows once passed these two for two mana
+  'area-or-single': ['(if (>= (count (enemies 6)) 3) (nova 6 0.01) (bolt (first (enemies 30)) 0.01))'],
+  'weakest-link': ['(let es (enemies 30)) (let lo (min (hp (or (nth es 0) (first es))) (hp (or (nth es 1) (first es))) (hp (or (nth es 2) (first es))) (hp (or (nth es 3) (first es))))) (each e es (when (= (hp e) lo) (bolt e 0.01)))'],
 };
 
 const SECRET = 'owl-test-secret';

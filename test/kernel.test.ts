@@ -204,6 +204,10 @@ describe('duels, progression and reputation', () => {
     const plain = w.damage(a.id, t.id, 10, 'lightning', ['Stupefy!']);
     const lev = w.damage(a.id, t.id, 10, 'lightning', ['Wingardium Leviosa!']);
     expect(lev / plain).toBeCloseTo(3, 5);
+    // the achievement says "knocked out a troll": a hit alone is not that (playtest round 2)
+    expect(a.achievements).not.toContain('leviosa');
+    t.hp = 5;
+    w.damage(a.id, t.id, 10, 'lightning', ['Wingardium Leviosa!']);
     expect(a.achievements).toContain('leviosa');
   });
 });

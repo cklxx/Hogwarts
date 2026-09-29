@@ -34,6 +34,7 @@ export const QD_PAIRS: readonly [House, House][] = [
 ];
 export const QD_START_FRAC = 0.3, QD_CALL_S = 45, QD_PLAY_S = 240, QD_SNITCH_AFTER_S = 60, QD_RESULT_S = 20;
 export const QD_FLY = 1.5, QD_FILL = 3, QD_SIDE_MAX = 7, QD_BENCH_R = 44;
+export const QD_GOAL_LINE_S = 15;
 export const QD_GOAL = 10, QD_SNITCH = 150, QD_HOOP_R = 1.6, QD_THROW_V = 16, QD_THROW_MAX = 24, QD_AUTO_THROW = 15;
 export const QD_BLUDGER_V = 7.5, QD_BLUDGER_DMG = 6, QD_BLUDGER_RETARGET_S = 8, QD_BEAT_R = 1.4;
 /** The Snitch: cruising speed; a seeker within QD_DART_R makes it dart off at QD_DART_V (faster than you fly), then it must rest QD_DART_CD_S. */
@@ -83,6 +84,10 @@ export function qdFlying(world: World, w: Wizard): boolean {
   return !!m && m.phase === 'play' && !!m.roster[w.id] && d2(w.pos, QD_PITCH) <= QD_BENCH_R;
 }
 export const qdPlaying = (world: World, wid: string) => { const m = world.qd.match; return !!m && m.phase === 'play' && !!m.roster[wid]; };
+/** On this match's roster at all (called or playing). */
+export const qdOnTeam = (world: World, wid: string) => { const m = world.qd.match; return !!m && m.phase !== 'done' && !!m.roster[wid]; };
+/** In the Duelling Club (queued or in a match): not free for Quidditch. */
+const inDuel = (world: World, wid: string) => { const d = world.duel; return d.queue.some((q) => q.id === wid) || (!!d.match && (d.match.a === wid || d.match.b === wid)); };
 
 function schedule(world: World) {
   const len = world.term.endsAt - world.term.startedAt;
@@ -106,7 +111,7 @@ export function qdJoin(world: World, wid: string, role?: QdRole) {
   const side = m.sides.indexOf(w.house);
   if (side < 0) throw new Error(`This match is ${m.sides[0]} v ${m.sides[1]}: cheer from the stands. 这一场是${houseZh[m.sides[0]]}对${houseZh[m.sides[1]]}：去看台上加油吧。`);
   if (!world.isActive(w)) throw new Error('You cannot play while stunned or in Azkaban. 被击晕或在阿兹卡班时不能上场。');
-  if (world.duel.match && (world.duel.match.a === wid || world.duel.match.b === wid)) throw new Error('Finish your duel first. 先打完你的决斗。');
+  if (inDuel(world, wid)) throw new Error('You are in the Duelling Club: finish or leave it first (duel_club leave). 你在决斗俱乐部里：先打完或退出（duel_club leave）。');
   const p = m.roster[wid];
   if (p) { if (role) p.wantSeeker = role === 'seeker'; return qdStatus(world, wid); }
   if (Object.values(m.roster).filter((x) => x.side === side).length >= QD_SIDE_MAX) throw new Error('Your team is full. 你们队满员了。');
@@ -176,7 +181,7 @@ function startPlay(world: World, m: QdMatch) {
   m.until = world.now + s.play;
   m.snitchAt = world.now + s.snitch;
   // NPCs fill each side: their own house first, then guests nobody else has taken
-  const npcs = [...world.wizards.values()].filter((w) => w.npc && world.isActive(w) && !m.roster[w.id]);
+  const npcs = [...world.wizards.values()].filter((w) => w.npc && world.isActive(w) && !m.roster[w.id] && !inDuel(world, w.id));
   for (const side of [0, 1] as const) {
     const have = () => Object.values(m.roster).filter((x) => x.side === side).length;
     for (const w of [...npcs.filter((x) => x.house === m.sides[side]), ...npcs.filter((x) => x.house !== m.sides[side])]) {
@@ -309,7 +314,10 @@ function goal(world: World, m: QdMatch, id: string, p: QdPlayer) {
   const q = m.quaffle;
   world.fx({ k: 'levelup', x: q.x, z: q.z, h: w?.handle });
   q.x = QD_PITCH.x; q.z = QD_PITCH.z; q.flying = 0; q.carrier = null; q.thrower = null; q.deadUntil = world.now + 2;
-  lee(world, `${w?.name ?? '?'} scores! ${m.sides[0]} ${m.score[0]} – ${m.score[1]} ${m.sides[1]}.`, `${w?.name ?? '?'} 进球！${houseZh[m.sides[0]]} ${m.score[0]} : ${m.score[1]} ${houseZh[m.sides[1]]}。`);
+  // a guest (an NPC from another house filling in) is named as one; at most one goal line every QD_GOAL_LINE_S (it drowned the event feed)
+  const guest = w && w.house !== m.sides[p.side];
+  const who = { en: `${w?.name ?? '?'}${guest ? ` (guest for ${m.sides[p.side]})` : ''}`, zh: `${w?.name ?? '?'}${guest ? `（替${houseZh[m.sides[p.side]]}客串）` : ''}` };
+  if (world.banter(['qd:goal', QD_GOAL_LINE_S])) lee(world, `${who.en} scores! ${m.sides[0]} ${m.score[0]} – ${m.score[1]} ${m.sides[1]}.`, `${who.zh} 进球！${houseZh[m.sides[0]]} ${m.score[0]} : ${m.score[1]} ${houseZh[m.sides[1]]}。`);
 }
 
 function stepBludgers(world: World, m: QdMatch, dt: number) {

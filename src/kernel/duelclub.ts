@@ -15,6 +15,7 @@
  *   DUEL_TERM_CAP rewarded wins per wizard per term — Lean `duel_club_term_bounded`.
  * - The club is closed while the Minister's rules forbid PvP, or while the stage lies in a safe zone.
  */
+import { qdOnTeam, qdPlaying } from './quidditch.js';
 import type { World } from './world.js';
 import type { Wizard } from './types.js';
 
@@ -54,7 +55,8 @@ export function duelGrant(l: DuelLedger, winner: string, loser: string, now: num
   l.wins[winner] = wins;
   if (!rematch) l.pairs[key] = now;
   const why: 'ok' | 'npc' | 'rematch' | 'cap' = npc ? 'npc' : rematch ? 'rematch' : rep ? 'ok' : 'cap';
-  return { rep, xpWinner: rematch ? 0 : npc ? Math.round(DUEL_WIN_XP / 2) : DUEL_WIN_XP, xpLoser: rematch || npc ? 0 : DUEL_LOSS_XP, why };
+  // NPC sparring always pays its (half) XP — the rematch gap guards reputation between players, not practice
+  return { rep, xpWinner: npc ? Math.round(DUEL_WIN_XP / 2) : rematch ? 0 : DUEL_WIN_XP, xpLoser: rematch || npc ? 0 : DUEL_LOSS_XP, why };
 }
 
 /** Is `id` in the match that is fighting right now? */
@@ -81,6 +83,7 @@ export function duelJoin(world: World, wid: string) {
   if (closed) throw new Error(closed);
   if (!world.isActive(w)) throw new Error('Not while you are stunned or in Azkaban. 被击晕或在阿兹卡班时不能报名。');
   if (inMatch(c, wid)) throw new Error('You are duelling right now. 你正在决斗。');
+  if (qdPlaying(world, wid)) throw new Error('You are playing Quidditch: leave the pitch first (quidditch leave). 你正在打魁地奇：先下场（quidditch leave）。');
   if (!c.queue.some((q) => q.id === wid)) {
     if (c.queue.length >= DUEL_QUEUE_MAX) throw new Error('The queue is full; try again soon. 排队的人满了，等一会儿。');
     c.queue.push({ id: wid, at: world.now });
@@ -108,8 +111,9 @@ export function duelStatus(world: World, wid: string | null) {
     queue: c.queue.length, you: pos >= 0 ? { position: pos + 1 } : inMatch(c, wid) ? { inMatch: true } : null,
     match: m ? { a: name(m.a), b: name(m.b), phase: m.phase, secondsLeft: Math.max(0, Math.ceil(phaseEnd(m) - world.now)) } : null,
     winsThisTerm: wid ? (c.ledger.term === world.term.n ? c.ledger.wins[wid] ?? 0 : 0) : 0,
-    rules: { winRep: DUEL_WIN_REP, winXp: DUEL_WIN_XP, lossXp: DUEL_LOSS_XP, rewardedWinsPerTerm: DUEL_TERM_CAP, samePairEveryMinutes: DUEL_PAIR_GAP_S / 60, fightSeconds: DUEL_FIGHT_S },
-    last: c.last.slice(-5).map((r) => ({ a: name(r.a), b: name(r.b), winner: r.winner ? name(r.winner) : null, secs: r.secs })),
+    rules: { winRep: DUEL_WIN_REP, winXp: DUEL_WIN_XP, sparringWinXp: Math.round(DUEL_WIN_XP / 2), lossXp: DUEL_LOSS_XP, rewardedWinsPerTerm: DUEL_TERM_CAP, samePairEveryMinutes: DUEL_PAIR_GAP_S / 60, fightSeconds: DUEL_FIGHT_S },
+    /** The last five, newest first. */
+    last: c.last.slice(-5).reverse().map((r) => ({ a: name(r.a), b: name(r.b), winner: r.winner ? name(r.winner) : null, secs: r.secs })),
   };
 }
 
@@ -142,7 +146,8 @@ function startMatch(world: World, a: Wizard, b: Wizard, npc: boolean) {
   }
   const stats = Object.fromEntries([a, b].map((w) => [w.id, { dealt: 0, hits: 0, reflects0: w.stats.reflects ?? 0, dodges0: w.stats.dodges ?? 0 }]));
   c.match = { id: ++c.seq, a: a.id, b: b.id, phase: 'bow', at: world.now, npc, stats };
-  world.emit('duel', `Duelling Club: ${a.name} (${a.house}) against ${b.name} (${b.house})! Wands up — bow.`, { zh: `决斗俱乐部：${a.name} 对 ${b.name}！举杖——鞠躬。` });
+  const kind = npc ? { en: 'sparring with an NPC: XP only', zh: '和 NPC 陪练：只给经验' } : { en: 'rated: a win you fight for pays reputation', zh: '计分赛：打出来的胜利给声望' };
+  world.emit('duel', `Duelling Club: ${a.name} (${a.house}) against ${b.name} (${b.house}) — ${kind.en}. Wands up — bow.`, { zh: `决斗俱乐部：${a.name} 对 ${b.name}（${kind.zh}）！举杖——鞠躬。` });
 }
 
 function endMatch(world: World, winner: string | null, how: 'knockout' | 'forfeit' | 'time') {
@@ -201,14 +206,15 @@ export function stepDuelClub(world: World) {
   }
   if (duelClosed(world)) return;
   // drop whoever is no longer in play, then pair the first two, or give a lone wizard an NPC to spar with
-  c.queue = c.queue.filter((q) => { const w = world.wizards.get(q.id); return !!w && world.online(w) && world.isActive(w); });
+  c.queue = c.queue.filter((q) => { const w = world.wizards.get(q.id); return !!w && world.online(w) && world.isActive(w) && !qdPlaying(world, q.id); });
   if (c.queue.length >= 2) {
     const a = world.wizards.get(c.queue[0].id)!, b = world.wizards.get(c.queue[1].id)!;
     return startMatch(world, a, b, !!(a.npc || b.npc));
   }
   if (c.queue.length === 1 && world.now - c.queue[0].at >= DUEL_NPC_AFTER_S) {
     const a = world.wizards.get(c.queue[0].id)!;
-    const npc = [...world.wizards.values()].find((w) => w.npc && world.isActive(w));
+    // an NPC who is free: not flying in this term's Quidditch match (playtest round 2: one NPC in both stood still, then flew off the stage)
+    const npc = [...world.wizards.values()].find((w) => w.npc && world.isActive(w) && !qdOnTeam(world, w.id));
     if (npc) startMatch(world, a, npc, true);
   }
 }

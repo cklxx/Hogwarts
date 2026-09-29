@@ -903,6 +903,13 @@ export class World {
       if (this.now < (w.cooldowns[spell.id] ?? 0)) return fail(`${spell.name} is recharging (${(w.cooldowns[spell.id] - this.now).toFixed(1)}s). 「${zhSpell(spell.name)}」还在冷却。 retry_after=${retry(w.cooldowns[spell.id])}`);
     }
     const target = this.resolveTarget(opts.target, wid);
+    // an attack aimed at someone you may not harm: say so, spend nothing (it used to fly, fizzle on arrival, and cost mana)
+    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.canHarm(wid, target)) {
+      const t = this.entity(target)!;
+      const why = this.duelOpponent(target) !== undefined ? 'they are in a Duelling Club match' : this.duelOpponent(wid) !== undefined ? 'only your duel opponent can be hit now' : this.inSafe(t.pos) || this.inSafe(w.pos) ? 'a safe zone' : 'the rules (house, PvP, or they are down)';
+      const whyZh = this.duelOpponent(target) !== undefined ? '对方正在决斗' : this.duelOpponent(wid) !== undefined ? '决斗中只能打你的对手' : this.inSafe(t.pos) || this.inSafe(w.pos) ? '安全区' : '规则（学院、PvP，或对方已倒下）';
+      return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
+    }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     if (!opts.dryRun && Math.hypot(aim.x - w.pos.x, aim.z - w.pos.z) > 0.1) w.facing = Math.atan2(aim.x - w.pos.x, -(aim.z - w.pos.z));
     const curse = unforgivable(spell.name, spell.incantation);
@@ -1314,6 +1321,27 @@ export class World {
    * continues and nobody is set up for a one-shot).
    */
   damage(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean; hex?: boolean } = {}): number {
+    const before = this.entity(dstId), wasUp = !!before && before.hp > 0 && !(this.wizards.get(dstId)?.st.stunnedUntil);
+    const dealt = this.damageInner(srcId, dstId, amount, element, tags, opts);
+    if (srcId && dealt > 0 && !opts.dot && !opts.hex) {
+      const after = this.entity(dstId), aw = this.wizards.get(dstId);
+      this.noteHit(this.credit(srcId) ?? srcId, dstId, before?.name ?? '?', dealt, wasUp && (!after || after.hp <= 0 || !!aw?.st.stunnedUntil));
+    }
+    return dealt;
+  }
+  /** Your last few hits (look.yourHits): an agent's bolt lands after cast returns, and nothing else said whether it hit. */
+  private hits = new Map<string, { at: number; id: string; name: string; dmg: number; down: boolean }[]>();
+  private noteHit(by: string, id: string, name: string, dmg: number, down: boolean) {
+    if (!this.wizards.has(by)) return;
+    const l = this.hits.get(by) ?? [];
+    l.push({ at: this.now, id, name, dmg: Math.round(dmg * 10) / 10, down });
+    if (l.length > HITS_KEPT) l.shift();
+    this.hits.set(by, l);
+  }
+  recentHits(wid: string) {
+    return (this.hits.get(wid) ?? []).filter((h) => this.now - h.at <= HITS_SHOWN_S).map((h) => ({ secondsAgo: round(this.now - h.at), target: h.id, name: h.name, damage: h.dmg, down: h.down || undefined })).reverse();
+  }
+  private damageInner(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean; hex?: boolean } = {}): number {
     if (!(opts.hex ? this.jinxBites(srcId, dstId) : this.canHarm(srcId, dstId))) return 0;
     const rb = this.rules;
     let a = amount * rb.combat.damageMultiplier * (rb.combat.elementMultipliers[element] ?? 1);
@@ -1337,11 +1365,11 @@ export class World {
       const def = CREATURES[c.kind];
       a *= def.weak[element] ?? 1;
       if (def.allDamage && !opts.patronus) a *= def.allDamage;
-      if (c.kind === 'troll' && tags.some(isLeviosa)) {
-        a *= 3;
-        if (sw) this.achieve(sw, 'leviosa');
-      }
+      const leviosa = c.kind === 'troll' && tags.some(isLeviosa);
+      if (leviosa) a *= 3;
       c.hp -= a;
+      // the achievement says "knocked out a troll": it waits for the troll to go down to a Leviosa (playtest round 2)
+      if (leviosa && sw && c.hp <= 0) this.achieve(sw, 'leviosa');
       const bw = by ? this.wizards.get(by) : undefined;
       if (bw) {
         c.lastHitBy = bw.id;
@@ -1431,7 +1459,9 @@ export class World {
     } else {
       const c = by ? this.creatures.get(by) : undefined;
       if (c?.ev) wheelKissed(this, w, c);
-      const pool = CREATURE_STUN[c ? c.kind : 'willow'];
+      // "should have said Wingardium Leviosa" is no joke for someone whose book has it
+      const said = w.spells.some((x) => isLeviosa(x.incantation));
+      const pool = CREATURE_STUN[c ? c.kind : 'willow']?.filter((l) => !(said && /Leviosa/.test(l.en)));
       const q = pool && this.banter([w.npc ? 'stun:npc' : 'stun', w.npc ? MEME.STUN_GAP_S * 4 : MEME.STUN_GAP_S]) ? fill(this.quip(pool, w.handle), { v: w.name }) : null;
       this.emit('combat', `${c ? `${w.name} was overwhelmed by a ${CREATURES[c.kind].name}.` : `${w.name} was flattened by the Whomping Willow.`}${q ? ` ${q.en}` : ''}`, { who: [w.id], zh: `${c ? `${w.name} 被${zhCreature(c.kind)}击倒了。` : `${w.name} 被打人柳拍扁了。`}${q ? q.zh : ''}` });
     }
@@ -1535,6 +1565,14 @@ export class World {
   cupOf(w: Wizard): CupLedger {
     if (!w.cup || w.cup.term !== this.term.n) w.cup = blankLedger(this.term.n);
     return w.cup;
+  }
+  /**
+   * The reputation a Minister needs: the Rulebook's figure for a standard 15-minute term, scaled down with a shorter
+   * one (a 5-minute LAN term needs a third), never above the rule and never below 10.
+   */
+  ministerBar(): number {
+    const r = this.rules.terms;
+    return Math.max(Math.min(r.ministerMinReputation, 10), Math.round(r.ministerMinReputation * Math.min(1, r.lengthSeconds / 900)));
   }
   /** 决胜时刻: the multiplier on a house point gained right now. */
   cupMultNow() { return cupMult(this.term.endsAt - this.now, CUP_FINAL_S, this.rules.terms.finalMinuteMultiplier); }
@@ -2037,7 +2075,7 @@ export class World {
     const w = this.need(wid);
     if (w.decreeCharges < 1) {
       const m = this.flags.ministerId ? this.wizards.get(this.flags.ministerId) : undefined;
-      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the wizard with the highest reputation (min ${this.rules.terms.ministerMinReputation}).`);
+      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the wizard with the highest reputation (min ${this.ministerBar()}).`);
     }
     const full = { ...patch } as Record<string, unknown>;
     if (proclamation) full.proclamation = proclamation;
@@ -2124,7 +2162,7 @@ export class World {
     const top = [...this.wizards.values()].filter((w) => !w.npc).sort((a, b) => b.reputation - a.reputation)[0];
     const cupZh = winner ? `${zhHouse(winner)}以 ${Math.round(points[winner])} 分赢得学院杯！城堡挂满了${zhHouse(winner)}的旗帜。` : '没有学院得分。';
     const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
-    if (top && top.reputation >= this.rules.terms.ministerMinReputation) {
+    if (top && top.reputation >= this.ministerBar()) {
       top.decreeCharges = 1;
       top.wasMinister = true;
       this.flags.ministerId = top.id;
@@ -2134,11 +2172,17 @@ export class World {
       this.emit('term', 'You are Minister for Magic. Use the `decree` MCP tool (try dry_run first) to change the Rulebook — once.', { to: top.id, zh: '你是魔法部长了。用 MCP 的 decree 工具（先 dry_run 预演）改写规则书 —— 只有一次机会。' });
     } else {
       this.flags.ministerId = null;
-      this.emit('term', `End of term ${this.term.n}. ${cup} Nobody has the ${this.rules.terms.ministerMinReputation} reputation needed to be Minister.`, { zh: `第 ${this.term.n} 学期结束。${cupZh} 没有人达到当部长所需的 ${this.rules.terms.ministerMinReputation} 声望。` });
+      this.emit('term', `End of term ${this.term.n}. ${cup} Nobody has the ${this.ministerBar()} reputation needed to be Minister.`, { zh: `第 ${this.term.n} 学期结束。${cupZh} 没有人达到当部长所需的 ${this.ministerBar()} 声望。` });
     }
     for (const w of this.wizards.values()) {
+      const before = w.reputation;
       w.reputation *= this.rules.terms.reputationDecay;
       w.termReputation = 0;
+      // say it: every playtester thought the halving was a bug
+      if (!w.npc && before >= 1) {
+        const keep = Math.round(this.rules.terms.reputationDecay * 100);
+        this.emit('term', `Term over: your reputation ${Math.round(before)} → ${Math.round(w.reputation)} (${keep}% carries into the next term; the rest was this term's race).`, { to: w.id, zh: `学期结束：你的声望 ${Math.round(before)} → ${Math.round(w.reputation)}（${keep}% 带进下学期，其余是这学期的比赛）。` });
+      }
     }
     this.term = { n: this.term.n + 1, startedAt: this.now, endsAt: this.now + this.rules.terms.lengthSeconds };
     this.flags.chests = { term: this.term.n, opened: {} }; // every chest refills
@@ -3451,6 +3495,15 @@ export class World {
   }
 
   // ------------------------------------------------------------------ views
+  /** The running school event as a place to go and a thing to aim at (look.schoolEvent). */
+  private lookEvent(w: Wizard) {
+    const v = wheelView(this) as { id?: string; x?: number; z?: number; s?: { x: number; z: number }; px?: number; pz?: number } | null;
+    if (!v?.id || v.x === undefined || v.z === undefined) return null;
+    const target = v.id === 'snitch' && v.s ? { x: v.s.x, z: v.s.z, how: 'stand within 1.5 m for 0.5 s, or cast a bolt with aim_x/aim_z at it' }
+      : v.id === 'peeves' && v.px !== undefined ? { x: v.px, z: v.pz!, how: 'cast any bolt with aim_x/aim_z at him (he is not a creature: no id)' } : null;
+    return { id: v.id, x: v.x, z: v.z, dist: round(dist({ x: v.x, z: v.z }, w.pos)), ...(target ? { target } : {}), more: 'school_events' };
+  }
+
   look(wid: string, radius = 40) {
     const w = this.need(wid);
     const r = Math.min(80, radius);
@@ -3472,6 +3525,10 @@ export class World {
       you: { x: round(w.pos.x), z: round(w.pos.z), facing: round(w.facing), place: this.placeName(w.pos), safeZone: this.inSafe(w.pos), onGrounds: this.onGrounds(w.pos), lawless: this.inLawless(w.pos) },
       time: { hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather },
       wizards, creatures, landmarks,
+      // what an agent could not see before (playtest round 2): your own recent hits, the school event's target, a chest in sight
+      yourHits: this.recentHits(w.id),
+      schoolEvent: this.lookEvent(w),
+      chests: chestsLeft(this).filter((c) => dist(c, w.pos) <= CHEST_SIGHT).map((c) => ({ id: c.id, x: round(c.x), z: round(c.z), dist: round(dist(c, w.pos)), howTo: 'walk within 2.6 m, then open_chest' })),
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
     };
   }
@@ -3494,8 +3551,8 @@ export class World {
       minister: m ? { name: m.name, decreeUnspent: m.decreeCharges > 0 } : null,
       darkLord: this.darkLordView(),
       darkLordRule: `The reputation #1 (min ${DARK_LORD_MIN_REP}, seen in the last ${DARK_LORD_SEEN_S / 60} minutes) is the Dark Lord: +${DARK_LORD_POWER_PCT - 100}% damage, whereabouts announced every ${DARK_LORD_BROADCAST_S}s, and a stun steals 30% of their reputation. A challenger needs 110% of theirs to take the mark.`,
-      ministerMinReputation: this.rules.terms.ministerMinReputation,
-      ministerRule: `At the end of each term the highest-reputation wizard (min ${this.rules.terms.ministerMinReputation}) becomes Minister for Magic and may issue one decree.`,
+      ministerMinReputation: this.ministerBar(),
+      ministerRule: `At the end of each term the highest-reputation wizard (min ${this.ministerBar()}) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
       houseCups: this.houseCups.slice(-5),
       loopholeFirstFoundBy: this.flags.loopholeFoundBy,
     };
@@ -3851,6 +3908,9 @@ const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, 
  */
 /** How long the joint-Patronus badge stays lit after your last joint hit. */
 const DA_JOINT_BADGE_S = 6;
+const HITS_KEPT = 8, HITS_SHOWN_S = 30;
+/** How near a hidden chest has to be before look shows it (about what a browser player would spot). */
+const CHEST_SIGHT = 12;
 const HARM_EFFECTS = new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova']);
 const HELP_EFFECTS = new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend']);
 export const spellKind = (effects: readonly string[]): 'harm' | 'help' | 'self' =>

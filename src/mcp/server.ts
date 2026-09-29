@@ -14,7 +14,7 @@ import { FailWindow } from '../server/limits.js';
 import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { browseMarket, copySpell, forkSpell, marketSpell, publishSpell, unpublishSpell } from '../kernel/market.js';
 import { DUEL_FIGHT_S, DUEL_NPC_AFTER_S, DUEL_PAIR_GAP_S, DUEL_STAGE, DUEL_TERM_CAP, DUEL_WIN_REP, duelJoin, duelLeave, duelStatus } from '../kernel/duelclub.js';
-import { QD_BLUDGER_DMG, QD_CUP_MAX, QD_FLY, QD_GOAL, QD_PITCH, QD_REP_MAX, QD_SNITCH, type QdRole, qdChase, qdJoin, qdLeave, qdStatus, qdThrow } from '../kernel/quidditch.js';
+import { qdOnTeam, QD_BLUDGER_DMG, QD_CUP_MAX, QD_FLY, QD_GOAL, QD_PITCH, QD_REP_MAX, QD_SNITCH, type QdRole, qdChase, qdJoin, qdLeave, qdStatus, qdThrow } from '../kernel/quidditch.js';
 import { grimoire } from './grimoire.js';
 import { schoolEvents } from '../kernel/wheel.js';
 import { albumOf } from '../kernel/cards.js';
@@ -31,6 +31,8 @@ export interface McpSession {
   /** Client address: pairing and login failures are counted per address. */
   ip?: string;
   allowEnrol?: () => boolean;
+  /** The refusal (with retry_after) when allowEnrol says no. */
+  enrolBusy?: () => string;
   /** Failed logins per address (LOGIN_FAIL_PER_IP_PER_MIN), shared by every session of the server. */
   loginFails?: FailWindow;
   /**
@@ -264,7 +266,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     description: 'Create a new wizard and bind this session to it. The Sorting Hat and Ollivander do the rest. Returns a secret key ("token") — keep it (see "remember" in the result); it is how you come back as this wizard.',
     inputSchema: { name: z.string().min(2).max(24), house_preference: z.string().optional().describe('Gryffindor | Hufflepuff | Ravenclaw | Slytherin | "not Slytherin"') },
   }, async ({ name, house_preference }: { name: string; house_preference?: string }) => {
-    if (session.allowEnrol && !session.allowEnrol()) return fail('The Sorting Hat needs a rest: too many enrolments from your address. Try again in a few minutes.');
+    if (session.allowEnrol && !session.allowEnrol()) return fail(session.enrolBusy?.() ?? 'The Sorting Hat needs a rest: too many enrolments from your address. Try again in a few minutes.');
     try {
       const { wizard, sorting } = world.enroll(name, house_preference);
       session.wizardId = wizard.id;
@@ -467,11 +469,18 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const mine = () => world.inboxFor(w.id, start.ev);
     const fromHuman = (e: WorldEvent) => e.type === 'owl' && e.from === 'player' && !isConfirmAnswer(w.owlbox, e.owl?.re);
     const maxMana = () => world.privateState(w.id).maxMana;
+    // whatever you wait for, a wait never sleeps through your own knock-out (playtest round 2: "hp 6 -> 0" on the way to a troll)
+    const maxHp = () => world.privateState(w.id).maxHp;
+    const downAtStart = w.st.stunnedUntil > 0;
+    const danger = () => (!downAtStart && w.st.stunnedUntil > 0 ? 'knocked_out' : w.hp < start.hp - 5 && w.hp <= maxHp() * 0.3 ? 'danger' : null);
+    // Lee Jordan's commentary does not wake someone who is not playing (it drowned every other event)
+    const wakes = (e: WorldEvent) => e.type !== 'quidditch' || qdOnTeam(world, w.id) || e.to === w.id;
     const done = () => {
+      if (danger()) return true;
       switch (until) {
         case 'arrived': return start.walking && !w.goal;
         case 'hurt': return w.hp < start.hp - 0.5;
-        case 'event': return mine().length > 0;
+        case 'event': return mine().some(wakes);
         case 'owl': return mine().some(fromHuman);
         case 'mana_full': return w.mana >= maxMana() - 0.5;
         default: return false;
@@ -486,7 +495,8 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const r1 = (n: number) => Math.round(n * 10) / 10;
     const evs = mine();
     return out({
-      waited: r1(world.now - start.t), reason: done() ? until : 'time',
+      waited: r1(world.now - start.t), reason: danger() ?? (done() ? until : 'time'),
+      ...(danger() ? { warning: danger() === 'knocked_out' ? 'You were knocked out: the Hospital Wing has you for a while.' : 'Low health: heal (Episkey), shield, or get away before you go on.' } : {}),
       hp: `${Math.round(start.hp)} -> ${Math.round(w.hp)}`, mana: `${Math.round(start.mana)} -> ${Math.round(w.mana)}`,
       moved: r1(Math.hypot(w.pos.x - start.x, w.pos.z - start.z)), at: { x: r1(w.pos.x), z: r1(w.pos.z), place: world.placeName(w.pos) },
       walking: !!w.goal, state: world.whoami(w.id).state,
@@ -504,7 +514,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('cast', {
     title: 'Cast a spell',
-    description: 'Cast a spell from your book at a target (creature id from look, or a wizard handle/name) or at a point. Returns what happened, mana spent, or why it fizzled. Swish and flick. (一挥，一抖。)',
+    description: 'Cast a spell from your book at a target (creature id from look, or a wizard handle/name) or at a point. Returns what was cast, mana spent, or why it fizzled; a bolt lands a moment later — look.yourHits then says what you hit, for how much, and what went down. An attack aimed at someone you may not harm is refused with the reason (no mana). Swish and flick. (一挥，一抖。)',
     inputSchema: {
       spell: z.string().describe('spell name, id, or hotbar key 1-6'),
       target: z.string().optional(),

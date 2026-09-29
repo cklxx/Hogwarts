@@ -311,7 +311,12 @@ export function stepWheel(w: World, dt: number) {
   if (e) {
     if (e.outcome === 'on') {
       EVENTS[e.id].tick?.(w, e, dt);
-      if (e.outcome === 'on' && w.now >= e.endsAt) settle(w, e, 'lost');
+      if (e.outcome === 'on' && w.now >= e.endsAt) {
+        // the Room of Requirement is won by whoever found it, even if fewer than three did before it closed
+        const found = e.id === 'room' ? e.d.claimed ?? [] : [];
+        if (found.length && !e.d.hero) e.d.hero = w.wizards.get(found[0])?.name;
+        settle(w, e, found.length ? 'won' : 'lost');
+      }
     }
     if (e.outcome !== 'on') finish(w, e);
     return;

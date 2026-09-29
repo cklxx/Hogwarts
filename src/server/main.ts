@@ -109,6 +109,12 @@ function allowEnrol(req: IncomingMessage) {
   enrolLog.set(ip, recent);
   return true;
 }
+/** Seconds until this address may enrol again (the oldest of its five leaves the window). */
+function enrolWait(req: IncomingMessage) {
+  const l = enrolLog.get(clientIp(req)) ?? [];
+  return l.length ? Math.max(1, Math.ceil((l[0] + 10 * 60_000 - Date.now()) / 1000)) : 1;
+}
+const enrolBusy = (req: IncomingMessage) => { const n = enrolWait(req); return `The Sorting Hat needs a rest: too many enrolments from here. Try again in ${n}s. 分院帽要歇一会儿：这里入学的人太多了，${n} 秒后再试。 retry_after=${n}`; };
 
 // Failed logins per client address: docs/AGENT_LINK.md §A.2. Every place a key is presented counts a wrong
 // one (MCP login, an MCP initialize with a Bearer header, the WebSocket upgrade, /api/me, /api/owls).
@@ -237,7 +243,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
       return json(res, 503, { jsonrpc: '2.0', error: { code: -32000, message: `Too many open MCP sessions; try again in ${Math.ceil(MCP_EVICT_IDLE_MS / 1000)}s. retry_after=${Math.ceil(MCP_EVICT_IDLE_MS / 1000)}` }, id: null });
     }
     const session: McpSession = {
-      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req),
+      wizardId: typeof keyedBy === 'object' ? keyedBy.id : null, baseUrl: baseFor(req), ip: clientIp(req), allowEnrol: () => allowEnrol(req), enrolBusy: () => enrolBusy(req),
       loginFails, forgeFails, sessionsOf, rotated: (wid, tok, keep) => rotated(wid, tok, { keepMcp: keep }),
     };
     if (session.wizardId) world.touch(session.wizardId);
@@ -263,7 +269,7 @@ const http = createServer(async (req, res) => {
     }
     if (url.pathname === '/mcp') return await handleMcp(req, res, url);
     if (url.pathname === '/api/enroll' && req.method === 'POST') {
-      if (!allowEnrol(req)) return json(res, 429, { error: 'The Sorting Hat needs a rest: too many enrolments from here. Try again in a few minutes.' });
+      if (!allowEnrol(req)) { res.setHeader('Retry-After', String(enrolWait(req))); return json(res, 429, { error: enrolBusy(req) }); }
       const b = (await readBody(req)) as { name?: string; house?: string } | undefined;
       try {
         const { wizard, sorting } = world.enroll(String(b?.name ?? ''), b?.house);

@@ -69,7 +69,7 @@ export function thinkNpcs(world: World) {
     const d = derived(w, world.rules);
 
     // 魁地奇 (quidditch.ts): on a team, the match steers you
-    if (qdPlaying(world, w.id)) continue;
+    if (qdPlaying(world, w.id) && !(world.duel.match && (world.duel.match.a === w.id || world.duel.match.b === w.id))) continue;
 
     // 决斗俱乐部 (duelclub.ts): a sparring partner — still until the countdown ends, then only the opponent, gently
     // (no healing, a Stupefy about every other thought), so a first-year can beat a seventh-year NPC

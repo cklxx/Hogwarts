@@ -71,6 +71,8 @@ export interface Spy {
   dot?: boolean;
   text?: string;
   kind?: string;
+  /** A nova's power (its `amount` is the radius). */
+  power?: number;
 }
 interface Frame { t: number; summons: number; afflicted: Set<string> }
 
@@ -200,7 +202,7 @@ function spyOn(w: World, log: Spy[]) {
   const apparate = w.apparate.bind(w);
   w.apparate = (who, to) => { log.push({ t: t(), k: 'apparate', src: who.id }); apparate(who, to); };
   const nova = w.nova.bind(w);
-  w.nova = (who, radius, power, element, tags) => { log.push({ t: t(), k: 'nova', src: who.id, amount: radius, element }); nova(who, radius, power, element, tags); };
+  w.nova = (who, radius, power, element, tags) => { log.push({ t: t(), k: 'nova', src: who.id, amount: radius, element, power }); nova(who, radius, power, element, tags); };
   const proj = w.spawnProjectile.bind(w);
   w.spawnProjectile = (who, kind, to, homing, power, element, secs, tags) => {
     log.push({ t: t(), k: 'projectile', src: who.id, dst: homing ?? undefined, kind, amount: power, element });
@@ -415,7 +417,7 @@ export const EXAMS: ExamDef[] = [
   {
     id: 'double-tap', year: 2, subject: 'dada',
     title: L('双响炮', 'Double Tap'),
-    brief: L('一次施法，击中你锁定的目标恰好两次，每次至少 5 点伤害（巨怪皮厚，会减伤），第二次至少比第一次晚 1.5 秒。', 'From ONE cast, hit the creature you are targeting exactly twice, each hit dealing at least 5 damage (trolls resist), the second at least 1.5 s after the first.'),
+    brief: L('一次施法，击中你锁定的目标恰好两次，每次至少 5 点伤害（巨怪皮厚，会减伤），第二次至少比第一次晚 1.5 秒（算的是命中时间：魔弹要飞一会儿，目标也会朝你走来）。', 'From ONE cast, hit the creature you are targeting exactly twice, each hit dealing at least 5 damage (trolls resist), the second at least 1.5 s after the first (hits count, not casts: a bolt takes a while to fly, and the target walks towards you).'),
     hint: L('`(after 秒 ...)` 让一段程序稍后运行（它是独立的事务）。', '`(after secs ...)` runs a block later (as its own transaction).'),
     par: { nodes: 11, gas: 8, mana: 24 }, seconds: 4.5,
     cases: [
@@ -513,8 +515,8 @@ export const EXAMS: ExamDef[] = [
   {
     id: 'area-or-single', year: 3, subject: 'dada',
     title: L('看人下菜', 'Area or Single'),
-    brief: L('如果 6 米内站着至少三个敌人，就用一发 nova 把它们一起炸飞；否则只向 30 米内最近的敌人发一发魔弹，不许 nova。',
-      'If three or more enemies stand within 6 m of you, blast them with one nova. Otherwise fire one bolt at the nearest enemy within 30 m — and no nova.'),
+    brief: L('如果 6 米内站着至少三个敌人，就用一发 nova 把它们一起炸飞；否则只向 30 米内最近的敌人发一发魔弹，不许 nova。每发威力至少 5。',
+      'If three or more enemies stand within 6 m of you, blast them with one nova. Otherwise fire one bolt at the nearest enemy within 30 m — and no nova. Power at least 5 per blow.'),
     hint: L('`count` 数列表长度；`if` 两个分支各放一种效果。', '`count` measures a list; put one effect in each branch of an `if`.'),
     par: { nodes: 22, gas: 15, mana: 33 },
     cases: [
@@ -527,8 +529,8 @@ export const EXAMS: ExamDef[] = [
   {
     id: 'weakest-link', year: 3, subject: 'dada',
     title: L('最弱的一环', 'The Weakest Link'),
-    brief: L('只发一发魔弹，打向 30 米内生命值最低的那个敌人（最多四个敌人；最弱的往往不是最近的）。',
-      'Exactly one bolt, at the enemy with the lowest health within 30 m (at most four enemies; the weakest is rarely the nearest).'),
+    brief: L('只发一发魔弹，打向 30 米内生命值最低的那个敌人（最多四个敌人；最弱的往往不是最近的）。威力至少 5。',
+      'Exactly one bolt, at the enemy with the lowest health within 30 m (at most four enemies; the weakest is rarely the nearest). Power at least 5.'),
     hint: L('没有循环变量可以累加：`min` 可以一次比较好几个数；`(or (nth xs 3) (first xs))` 能在列表不够长时顶上。',
       'There is no accumulator: `min` compares several numbers at once, and `(or (nth xs 3) (first xs))` stands in when the list is short.'),
     par: { nodes: 62, gas: 66, mana: 12 },
@@ -648,8 +650,20 @@ function freezeCheck(r: Run): Line | null {
   return missed.length ? L(`没冻住：${missed.join('、')}。`, `Not frozen: ${missed.join(', ')}.`) : null;
 }
 
+/**
+ * A DADA exam's blow has to be a real one (playtest round 2: power 0.01 passed weakest-link and area-or-single for
+ * two mana): every bolt and nova at least EXAM_MIN_POWER.
+ */
+export const EXAM_MIN_POWER = 5;
+function tickle(r: Run): Line | null {
+  const weak = [...mine(r, 'projectile').map((x) => x.amount ?? 0), ...mine(r, 'nova').map((x) => x.power ?? 0)].find((p) => p < EXAM_MIN_POWER - 1e-6);
+  return weak === undefined ? null : L(`有一发威力只有 ${fmt(weak)}；这门课每发至少 ${EXAM_MIN_POWER}，挠痒痒不算。`, `One blow had power ${fmt(weak)}; this exam wants at least ${EXAM_MIN_POWER} per blow (a tickle does not count).`);
+}
+
 function areaCheck(r: Run): Line | null {
   const novas = mine(r, 'nova').length, bolts = mine(r, 'projectile');
+  const t = tickle(r);
+  if (t) return t;
   if (r.s.answer === 'nova') {
     if (novas !== 1) return L(`6 米内有至少三个敌人，应该放一发 nova（你放了 ${novas} 发）。`, `Three or more enemies within 6 m: one nova wanted (you cast ${novas}).`);
     if (bolts.length) return L('放了 nova 还额外发了魔弹。', 'A nova and bolts as well: one nova only.');
@@ -663,6 +677,8 @@ function areaCheck(r: Run): Line | null {
 
 function weakestCheck(r: Run): Line | null {
   const bolts = mine(r, 'projectile');
+  const t = tickle(r);
+  if (t) return t;
   const want = r.s.get('weakest')[0];
   if (bolts.length !== 1) return L(`你发了 ${bolts.length} 发魔弹，只许一发。`, `You fired ${bolts.length} bolts; exactly one is allowed.`);
   if (bolts[0].dst !== want) return L(`打错了：最弱的是 ${nameOf(r, want)}（${fmt(r.s.world.creatures.get(want)?.hp ?? 0)} 点生命）。`, `Wrong target: the weakest is the ${nameOf(r, want)}.`);
