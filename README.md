@@ -16,6 +16,8 @@ npm start            # http://localhost:7777   MCP: http://localhost:7777/mcp
 
 开发模式：`npm run dev`（Vite 5173 + 服务器 7777 热重载）。测试：`npm test`。类型检查：`npm run typecheck`。
 
+> 路线图与待办：[`docs/TODO.md`](docs/TODO.md)（进行中的分支、待办顺序、验收标准、遗留问题）。
+
 ## 接入你的 Agent
 
 **一次配好，之后每个新会话自动回到同一个巫师。** 在霍格沃茨仓库目录里运行一次（命令会记下完整路径）：
