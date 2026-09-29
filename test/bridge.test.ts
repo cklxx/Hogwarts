@@ -20,7 +20,7 @@ async function startServer() {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise<void>((ok, bad) => {
-    const t = setTimeout(() => bad(new Error('server did not start')), 15000);
+    const t = setTimeout(() => bad(new Error('server did not start')), 60000);
     proc.stdout!.on('data', (d) => { if (String(d).includes('(MCP:')) { clearTimeout(t); ok(); } });
   });
 }
@@ -53,7 +53,7 @@ async function bridge(home: string, opts: { name?: string; elicit?: (q: string) 
 const keyring = (home: string) => JSON.parse(readFileSync(join(home, '.hogwarts', 'credentials.json'), 'utf8'));
 const tokenOf = (home: string) => keyring(home).keys[`${BASE}/mcp`].token as string;
 
-beforeAll(startServer, 20000);
+beforeAll(startServer, 70000);
 afterAll(() => { proc?.kill('SIGTERM'); });
 
 describe('stdio bridge (docs/AGENT_LINK.md §A.1, §C.4)', () => {

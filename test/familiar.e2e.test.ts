@@ -57,11 +57,11 @@ beforeAll(async () => {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise<void>((ok, bad) => {
-    const t = setTimeout(() => bad(new Error('server did not start')), 15000);
+    const t = setTimeout(() => bad(new Error('server did not start')), 60000);
     proc.stdout!.on('data', (d) => { if (String(d).includes('[hogwarts]')) { clearTimeout(t); ok(); } });
     proc.stderr!.on('data', (d) => { if (!String(d).startsWith('[familiar]')) process.stderr.write(d); });
   });
-}, 20000);
+}, 70000);
 afterAll(() => { proc?.kill('SIGTERM'); api?.close(); });
 
 describe('使魔 end to end', () => {

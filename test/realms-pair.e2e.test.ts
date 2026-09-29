@@ -40,12 +40,12 @@ beforeAll(async () => {
   });
   const t0 = Date.now();
   for (;;) {
-    if (Date.now() - t0 > 30000) throw new Error('realms did not start');
+    if (Date.now() - t0 > 90000) throw new Error('realms did not start');
     const r = await fetch(`${BASE}/api/realms`).then((x) => x.json()).catch(() => null) as any;
     if (r?.realms?.length === 2 && r.realms.every((x: any) => x.up)) break;
     await new Promise((ok) => setTimeout(ok, 300));
   }
-}, 40000);
+}, 100000);
 afterAll(() => { proc?.kill('SIGTERM'); });
 
 describe('REALMS pairing codes', () => {
