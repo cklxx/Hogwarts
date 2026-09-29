@@ -59,7 +59,7 @@
   <div id="veil"><div><span class="spark"></span><p class="lore"></p></div></div>
 
   <div id="hud" hidden>
-    <div id="topleft"><div id="me"></div><div id="agentbox" hidden></div></div>
+    <div id="topleft"><div id="me"></div><div id="agentbox" hidden></div><div id="goal" hidden></div></div>
     <div id="clock"></div>
     <div id="feed"></div>
     <div id="bars">
@@ -110,6 +110,7 @@
       <div id="trunk-cure" class="row"></div>
       <ul id="trunk-list"></ul>
       <div id="trunk-msg" class="err"></div>
+      <div id="shop"></div>
     </div>
     <div id="overlay" hidden></div>
     <canvas id="minimap" width="220" height="220" hidden></canvas>
@@ -129,9 +130,11 @@
     <div id="map" class="parchment" hidden><h2 data-zh="活点地图">The Marauder's Map</h2><canvas width="640" height="640"></canvas><ul></ul></div>
     <div id="book" class="sheet" hidden>
       <h2><span data-zh="咒语书 <small>咒语就是 Runes 程序 · <kbd>B</kbd></small>">Spellbook <small>spells are Runes programs · <kbd>B</kbd></small></span> <button class="x" data-close="book" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+      <div id="book-bar" aria-label="Hotbar"></div>
       <div class="cols">
         <ul id="book-list"></ul>
         <div class="editor">
+          <div id="sp-tpl" hidden></div>
           <div class="row"><input id="sp-name" maxlength="40" placeholder="Spell name" data-zh-ph="咒语名" /><input id="sp-inc" maxlength="60" placeholder="Incantation (what you shout)" data-zh-ph="咒文（施法时喊出的话）" /></div>
           <textarea id="sp-src" spellcheck="false" placeholder="(bolt (or target aim) 14 :fire)"></textarea>
           <div class="row">
@@ -140,8 +143,10 @@
             <button id="sp-forge" data-zh="铸造">Forge</button>
             <button id="sp-cast" class="ghost" title="Cast the selected spell at your aim" data-zh-title="对准瞄准点施放所选咒语" data-zh="施放">Cast</button>
             <button id="sp-forget" class="ghost quiet" data-zh="遗忘">Unlearn</button>
+            <button id="sp-agent-btn" class="ghost" title="Open the owl to your agent with this draft and its error" data-zh-title="把这段草稿和报错写进给 Agent 的猫头鹰" data-zh="🦉 让 Agent 帮我写">🦉 Ask my agent</button>
           </div>
           <pre id="sp-out" data-zh="在左边选一个咒语阅读它的源码，或者写一个新的。模拟是免费的。">Pick a spell on the left to read its source, or write a new one. Simulate is free.</pre>
+          <div id="sp-agent" hidden></div>
         </div>
       </div>
       <details><summary data-zh="魔法书（Grimoire）—— 完整的语言参考">Grimoire — the full language reference</summary><pre id="grimoire"></pre></details>

@@ -127,15 +127,19 @@ describe('MCP over streamable HTTP', () => {
     const { token } = (await r.json()) as { token: string };
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}`);
     const got = new Set<string>();
+    let bought: unknown = null;
     await new Promise<void>((ok) => {
       ws.on('message', (m) => {
         const msg = JSON.parse(String(m));
         got.add(msg.t);
-        if (msg.t === 'welcome') ws.send(JSON.stringify({ t: 'cast', key: '1' }));
-        if (got.has('welcome') && got.has('snap') && got.has('me') && got.has('cast')) ok();
+        if (msg.t === 'welcome') { ws.send(JSON.stringify({ t: 'cast', key: '1' })); ws.send(JSON.stringify({ t: 'buy', item: 'amulet' })); }
+        if (msg.t === 'bought') bought = msg.r;
+        if (got.has('welcome') && got.has('snap') && got.has('me') && got.has('cast') && got.has('bought')) ok();
       });
     });
-    expect([...got]).toEqual(expect.arrayContaining(['welcome', 'snap', 'me', 'cast']));
+    expect([...got]).toEqual(expect.arrayContaining(['welcome', 'snap', 'me', 'cast', 'bought']));
+    // the browser shop: a preset forged into your own trunk and worn (src/server/shop.ts)
+    expect(bought).toMatchObject({ item: '生命护符', slot: 'amulet', equipped: true });
 
     // the O.W.L. exams panel: {t:'exams'} lists the week, {t:'sit'} grades a submission (kernel/exams.ts)
     const next = (t: string) => new Promise<any>((ok, bad) => {

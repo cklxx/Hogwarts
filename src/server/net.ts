@@ -45,6 +45,8 @@ export const LIMITS: Record<string, [number, number]> = {
   equip: [4, 8],
   unequip: [4, 8],
   destroy: [2, 5],
+  // the browser shop (shop.ts): each buy is a forge, so it is as tight as forging
+  buy: [1, 4],
   // Owl Post (docs/AGENT_LINK.md §C.5). The kernel also caps owls at OWL_PER_MIN a minute per side.
   owl: [1, 5],
   answer: [2, 5],

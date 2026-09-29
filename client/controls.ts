@@ -208,7 +208,7 @@ export function createControls(d: ControlsDeps) {
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
   const fullCd = new Map<string, number>();
   const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null }[] = [];
-  let seals: { tier: number; zh: string; name: string; pages: { page: number; where: string; collected: boolean }[] }[] | null = null;
+  let seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] | null = null;
   let sealsAsked = -1, lastRead = -1e9;
   let hotbarSig = '';
   /** A phone or tablet: no hover, a coarse pointer. (Touch laptops keep the mouse UI; their touches still work.) */
@@ -351,7 +351,8 @@ export function createControls(d: ControlsDeps) {
     if (t - lastTab > 4) tabbed = new Set();
     lastTab = t;
     const p = myPos();
-    const list = hostilesAhead(45, 42, false);
+    // wild creatures first: a newcomer's Tab should find the pixie, not a rival player
+    const list = hostilesAhead(45, 42, true);
     if (!list.length || !p) { d.toast(L('前方没有可以攻击的目标。转动镜头（右键拖动 / Q E）再试试。', 'No foe ahead. Turn the camera (right-drag / Q E) and try again.')); return; }
     let next = list.find((k) => !tabbed.has(k) && k !== target);
     if (!next) { tabbed = new Set(); next = list.find((k) => k !== target) ?? list[0]; }
@@ -475,6 +476,8 @@ export function createControls(d: ControlsDeps) {
     if (seals) {
       for (const s of seals) {
         if (s.tier <= me.seals) continue;
+        // a seal below its year will not even speak to you: no prompt at the spawn for a first-year
+        if (me.year < (s.requiresYear ?? 1)) continue;
         for (const pg of s.pages) {
           if (pg.collected) continue;
           const l = LANDMARKS.find((x) => x.name === pg.where);
@@ -857,7 +860,7 @@ export function createControls(d: ControlsDeps) {
       ${row(L('指向', 'Hover'), L('鼠标靠近谁，谁就会被高亮（红 = 敌对，绿 = 友方，黄 = 中立）。NPC 同学是黄色的：不招惹它就不会动手；想和它决斗就先锁定再按数字键', 'Whatever the cursor is near lights up (red foe, green friend, yellow neutral). NPC classmates are yellow: they leave you alone unless attacked; to duel one, target it and press a spell key'))}
       ${row(L('左键 敌人', 'Click foe'), L('锁定它并施放当前的攻击咒语（高亮的快捷栏格子）', 'Target it and cast your current attack spell (the highlighted slot)'))}
       ${row('1 – 6', L('施放快捷栏咒语。没有目标时自动挑选：攻击咒语 → 前方最近的敌人；治疗 / 护盾 → 你指向的队友或你自己；快快复苏 → 最近倒下的同伴', 'Cast a hotbar spell. With no target it picks one: attacks → nearest foe ahead; heals/shields → the friend you point at, or you; Rennervate → the nearest fallen friend'))}
-      ${row('Tab', L('在前方的敌人之间切换目标（由近及远）', 'Cycle through foes ahead, nearest first'))}
+      ${row('Tab', L('在前方的敌人之间切换目标（先魔物、后巫师，由近及远）', 'Cycle through foes ahead: creatures first, then wizards, nearest first'))}
       ${row('Esc', L('取消目标（没有目标时打开菜单）', 'Clear the target (opens the menu when there is none)'))}
       ${row(L('Shift + 左键', 'Shift + click'), L('对鼠标所指的地面施放当前咒语', 'Cast your current spell at the ground under the cursor'))}
       </table></div><div>
@@ -874,7 +877,7 @@ export function createControls(d: ControlsDeps) {
       </table>
       <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom.')}</p>
       </div></div>
-      <p class="row"><button id="help-tutorial" class="ghost">${L('重新开始新手引导', 'Restart the tutorial')}</button> <button id="help-close">${L('关闭', 'Close')}</button></p>`;
+      <p class="row"><button id="help-goal" class="ghost">${L('显示「下一步」提示', 'Show the next-goal line')}</button> <button id="help-tutorial" class="ghost">${L('重新开始新手引导', 'Restart the tutorial')}</button> <button id="help-close">${L('关闭', 'Close')}</button></p>`;
     $('#help-close').onclick = () => toggleHelp(false);
     $('#help-tutorial').onclick = () => { toggleHelp(false); tutorial.restart(); };
   }
@@ -891,6 +894,8 @@ export function createControls(d: ControlsDeps) {
     openOwl: () => d.panels.owl(true),
     pair: () => d.pair(),
     agent: d.agent,
+    walkTo: (x, z) => { lastGoto = 0; walkTo(x, z); },
+    panelOpen: () => PANELS.some((id) => !document.getElementById(id)?.hidden),
   });
 
   // ------------------------------------------------------------------ server replies (routed from main.ts)
@@ -912,7 +917,7 @@ export function createControls(d: ControlsDeps) {
     spellInfo.clear();
     for (const s of spells) spellInfo.set(s.id, { incantation: s.incantation, effects: s.effects });
   }
-  function onSeals(section: { seals: { tier: number; zh: string; name: string; pages: { page: number; where: string; collected: boolean }[] }[] }) {
+  function onSeals(section: { seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] }) {
     seals = section.seals;
   }
 
@@ -966,7 +971,7 @@ function makeTargetRing() {
   return g;
 }
 
-// ------------------------------------------------------------------ onboarding (6 steps, skippable, remembered; the 6th only with an agent connected)
+// ------------------------------------------------------------------ onboarding (7 steps, skippable, remembered; the 7th only with an agent connected)
 type CastInfo = { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null };
 interface TutorialDeps {
   me: () => CMe | null;
@@ -981,13 +986,18 @@ interface TutorialDeps {
   openOwl: () => void;
   pair: () => void;
   agent: () => AgentView | null;
+  walkTo: (x: number, z: number) => void;
+  /** A big panel is open (the coach mark then moves above it instead of hiding behind it). */
+  panelOpen: () => boolean;
 }
+/** The door of the Great Hall faces the courtyard; walking to just inside it (shared/map.ts ZONES great_hall). */
+const HALL = { x: 0, z: -50 };
 function createTutorial(t: TutorialDeps) {
   const KEY = 'hogwarts.tutorial';
   const load = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
   const save = (v: string) => { try { localStorage.setItem(KEY, v); } catch { /* private mode */ } };
   const saved = load();
-  let step = saved === 'done' ? -1 : Math.max(0, Math.min(5, Number(saved) || 0));
+  let step = saved === 'done' ? -1 : Math.max(0, Math.min(6, Number(saved) || 0));
   let start: { x: number; z: number } | null = null;
   let doneUntil = 0;
   let lastHtml = '';
@@ -998,6 +1008,7 @@ function createTutorial(t: TutorialDeps) {
     if (b.dataset.act === 'skip') finish(false);
     if (b.dataset.act === 'menu') { t.openMenu(); notify('menu'); }
     if (b.dataset.act === 'book') t.openBook();
+    if (b.dataset.act === 'hall') t.walkTo(HALL.x, HALL.z);
     if (b.dataset.act === 'pair') t.pair();
     if (b.dataset.act === 'owl') t.openOwl();
     if (b.dataset.act === 'later') finish(true);
@@ -1018,6 +1029,12 @@ function createTutorial(t: TutorialDeps) {
     }
     if (!best) return `<span class="dir">${L('附近没有小精灵，任何野生魔物都行', 'no pixie near: any wild creature will do')}</span>`;
     return `<span class="dir"><span class="arrow" style="transform:rotate(${(best.a + t.yaw()).toFixed(2)}rad)">↑</span>${L(`小精灵 ${Math.round(best.d)} 米`, `pixie ${Math.round(best.d)} m`)}</span>`;
+  }
+  function hallHint(): string {
+    const p = t.myPos();
+    if (!p) return '';
+    const d = Math.hypot(HALL.x - p.x, HALL.z - p.z), a = Math.atan2(HALL.x - p.x, -(HALL.z - p.z));
+    return `<span class="dir"><span class="arrow" style="transform:rotate(${(a + t.yaw()).toFixed(2)}rad)">↑</span>${L(`大礼堂 ${Math.round(d)} 米`, `Great Hall ${Math.round(d)} m`)}</span>`;
   }
   /** One short line per step, placed beside the control it talks about (`at`); the help panel (H) has the long version. */
   type Step = { at: 'bottom' | 'topleft' | 'topright'; line: () => string; acts?: () => string; live?: () => string };
@@ -1041,7 +1058,13 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'bottom',
-      line: () => L(`按 ${key('B')} 打开<b>咒语书</b>：每个咒语都是一段 Runes 程序`, `${key('B')} opens the <b>spellbook</b>: every spell is a Runes program`),
+      line: () => L('走进<b>大礼堂（安全区）</b>再学写咒语：那里没有魔物，也不能决斗', 'Walk into the <b>Great Hall (safe zone)</b> before you learn to write spells: no creatures, no duels'),
+      acts: () => `<button data-act="hall">${L('带我去', 'Take me there')}</button>`,
+      live: hallHint,
+    },
+    {
+      at: 'bottom',
+      line: () => L(`按 ${key('B')} 打开<b>咒语书</b>：咒语就是 Runes 程序（也能用模板拼）`, `${key('B')} opens the <b>spellbook</b>: every spell is a Runes program (or start from a template)`),
       acts: () => `<button data-act="book">${L('打开', 'Open')}</button>`,
     },
     {
@@ -1073,16 +1096,19 @@ function createTutorial(t: TutorialDeps) {
         const html = `<span class="tut-n">✦</span><span class="tut-line">${L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
         el.dataset.at = 'bottom';
+        if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;
         el.hidden = false;
       } else el.hidden = true;
       return;
     }
     // the last step (talk to your agent) only appears while an agent is connected
-    if (step === 5 && !t.agent()?.connected) { el.hidden = true; return; }
+    if (step === 6 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
     const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
     if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
     el.dataset.at = s.at;
+    // never behind an open panel: above it instead
+    if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;
     const live = el.querySelector('.tut-live') as HTMLElement;
     const lv = s.live?.() ?? '';
     if (live.innerHTML !== lv) live.innerHTML = lv;
@@ -1110,15 +1136,21 @@ function createTutorial(t: TutorialDeps) {
       if (p && !start) start = { x: p.x, z: p.z };
       if (p && start && Math.hypot(p.x - start.x, p.z - start.z) > 3) { advance(); return; }
     }
-    if (step === 3 && me.ui.includes('tempus')) { advance(); return; }
-    if (step === 4 && t.agent()?.connected) { advance(); return; }
+    if (step === 2) {
+      const p = t.myPos();
+      if (p && zonesAt(p.x, p.z).includes('great_hall')) { advance(); return; }
+    }
+    if (step === 4 && me.ui.includes('tempus')) { advance(); return; }
+    if (step === 5 && t.agent()?.connected) { advance(); return; }
     render();
   }
   function notify(ev: 'cast' | 'book' | 'menu' | 'owl', c?: CastInfo) {
     if (step < 0) return;
     if (ev === 'cast' && step === 1 && c && c.kind === 'harm' && c.targetKind && c.targetKind !== 'wizard') advance();
-    else if (ev === 'book' && step === 2) advance();
-    else if (ev === 'owl' && step === 5) advance();
+    else if (ev === 'book' && step === 3) advance();
+    // opened the spellbook before walking to the hall: that is what the hall was for, move on
+    else if (ev === 'book' && step === 2) { step = 3; advance(); }
+    else if (ev === 'owl' && step === 6) advance();
   }
   function restart() { step = 0; start = null; doneUntil = 0; save('0'); render(); }
   /** Still teaching (a step, or the closing word): the full key line stays up meanwhile. */

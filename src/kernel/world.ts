@@ -4,7 +4,7 @@ import {
   ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
-  type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
+  type CreatureKind, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
 } from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, SPAWN, WORLD_HALF, ZONES, mulberry32, type ZoneId } from '../shared/map.js';
 import { canonFor, ollivander } from '../lore/wands.js';
@@ -2647,6 +2647,7 @@ export class World {
         return s ? { id: s.id, name: s.name, cd: Math.max(0, round((w.cooldowns[s.id] ?? 0) - this.now)), kind: spellKind(s.effects) } : null;
       }),
       stunned: w.st.stunnedUntil ? Math.max(0, round(w.st.stunnedUntil - this.now)) : 0,
+      down: w.st.stunnedUntil ? this.knockedOutBy(w) : null,
       jailed: w.st.jailedUntil ? Math.max(0, round(w.st.jailedUntil - this.now)) : 0,
       decree: w.decreeCharges > 0,
       title: this.title(w),
@@ -2657,6 +2658,22 @@ export class World {
       hex: this.hexState(w),
       agent: this.agentState(w),
     };
+  }
+
+  /**
+   * While you are stunned: what put you down (the stun overlay's advice). `k` is the creature kind, 'wizard'
+   * (with their public name), 'willow', or null when nothing is known; `n` how many wild creatures of that kind
+   * stand within 12 m. Read off lastHurtBy, which the knock-out's own damage() call set.
+   */
+  knockedOutBy(w: Wizard): { k: CreatureKind | 'wizard' | 'willow' | null; n: number; name?: string } {
+    const by = w.lastHurtBy;
+    const kw = by && by !== w.id ? this.wizards.get(by) : undefined;
+    if (kw) return { k: 'wizard', n: 1, name: kw.name };
+    const c = by ? this.creatures.get(by) : undefined;
+    if (!c) return { k: !by && dist(w.pos, WILLOW) < 12 ? 'willow' : null, n: 0 };
+    let n = 0;
+    for (const x of this.creatures.values()) if (x.kind === c.kind && !x.owner && dist(x.pos, w.pos) < 12) n++;
+    return { k: c.kind, n: Math.max(1, n) };
   }
 
   /**

@@ -18,6 +18,7 @@ import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server
 import { FORGE_FAIL_PER_MIN, LOGIN_FAIL_PER_IP_PER_MIN } from '../shared/constants.js';
 import { FAMILIAR_OFF, Familiars, anthropicCreate, familiarConfig } from './familiar.js';
 import { SnapshotFanout } from './fanout.js';
+import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
 
@@ -292,7 +293,9 @@ type ClientMsg =
   | { t: 'familiar'; on: boolean; kind?: string }
   // O.W.L. exams (kernel/exams.ts)
   | { t: 'exams' }
-  | { t: 'sit'; id: string; source: string };
+  | { t: 'sit'; id: string; source: string }
+  // the browser shop: a fixed preset forged into your own trunk (shop.ts)
+  | { t: 'buy'; item: string; lang?: string };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -343,6 +346,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
       case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
       case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;
+      case 'buy': reply({ t: 'bought', r: buyPreset(world, wid, String(m.item ?? ''), m.lang === 'en' ? 'en' : 'zh') }); book(); break;
     }
   } catch (e) {
     reply({ t: 'err', error: (e as Error).message });

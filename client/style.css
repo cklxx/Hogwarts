@@ -129,7 +129,7 @@ body:has(#gate:not([hidden])) { background: radial-gradient(ellipse at 50% 40%, 
 
 /* ------------------------------------------------------------------ HUD: quiet text on soft veils */
 .veiled { background: var(--veil); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border-radius: 10px; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
-#topleft { position: fixed; top: 12px; left: 14px; display: flex; align-items: center; gap: 8px; max-width: min(620px, 60vw); z-index: 5; }
+#topleft { position: fixed; top: 12px; left: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: min(620px, 60vw); z-index: 5; }
 #me { padding: 4px 12px 5px; font-size: var(--fs-body); line-height: 1.5; }
 #me .who { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 #me .who > b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
@@ -179,7 +179,7 @@ body:has(#gate:not([hidden])) { background: radial-gradient(ellipse at 50% 40%, 
 
 /* the feed: a few lines that come and go */
 #feed { position: fixed; left: 14px; top: calc(var(--tl-bottom, 48px) + 8px); width: min(420px, 38vw); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; pointer-events: none; z-index: 1; }
-body:has(#tutorial[data-at="topleft"]:not([hidden])) #feed { top: calc(var(--tl-bottom, 48px) + 62px); }
+body:has(#tutorial[data-at="topleft"]:not([hidden]):not([data-over])) #feed { top: calc(var(--tl-bottom, 48px) + var(--tut-h, 46px) + 18px); }
 #feed div { max-width: 100%; padding: 3px 11px 4px; border-radius: 9px; font-size: var(--fs-cap); line-height: 1.6; color: var(--text); background: var(--veil); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   text-shadow: 0 1px 2px rgba(0, 0, 0, .7); animation: fadein .35s var(--ease) both; transition: opacity 1.2s; }
 #feed div.out { opacity: 0; }
@@ -241,6 +241,7 @@ body:has(#tutorial[data-at="topleft"]:not([hidden])) #feed { top: calc(var(--tl-
 #banner.out { opacity: 0; }
 #overlay { position: fixed; inset: 0; display: grid; place-items: center; font-size: var(--fs-display); letter-spacing: .12em; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .25), rgba(0, 0, 0, .6)); pointer-events: none; text-align: center; text-shadow: var(--halo); z-index: 3; }
 #overlay small { display: block; margin-top: 8px; font-size: var(--fs-body); letter-spacing: .04em; color: var(--dim); }
+#overlay small.adv { max-width: min(34em, calc(100vw - 32px)); margin: 14px auto 0; padding: 8px 16px; color: var(--text); line-height: 1.6; border-top: 1px solid var(--gold-faint); }
 
 /* the curse banner (me.hex): what is on you, how to end it; news of a parcel lands here too */
 #cursebar { position: fixed; left: 50%; top: 78px; transform: translateX(-50%); z-index: 3; width: max-content; max-width: min(36em, calc(100vw - 28px)); padding: 8px 18px 10px; text-align: center;
@@ -286,7 +287,7 @@ body:has(#tutorial[data-at="topleft"]:not([hidden])) #feed { top: calc(var(--tl-
 #crosshair.ally { border-color: #7dff9a; box-shadow: 0 0 8px #7dff9a; }
 
 /* the tutorial: one coach mark beside the thing it talks about */
-#tutorial { position: fixed; z-index: 4; display: flex; align-items: center; gap: 10px; width: max-content; max-width: min(640px, calc(100vw - 28px)); padding: 7px 8px 7px 14px;
+#tutorial { position: fixed; z-index: 7; display: flex; align-items: center; gap: 10px; width: max-content; max-width: min(640px, calc(100vw - 28px)); padding: 7px 8px 7px 14px;
   background: var(--glass-2); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border: 1px solid var(--gold-line); border-radius: 999px; box-shadow: var(--shadow), 0 0 18px rgba(226, 194, 122, .14);
   font-size: var(--fs-body); line-height: 1.5; animation: fadein .4s var(--ease) both; }
 #tutorial[data-at="bottom"] { left: 50%; bottom: calc(var(--bars-h, 110px) + 16px); transform: translateX(-50%); }
@@ -301,7 +302,25 @@ body:has(#tutorial[data-at="topleft"]:not([hidden])) #feed { top: calc(var(--tl-
 #tutorial .tut-skip { width: 26px; height: 26px; padding: 0; display: inline-grid; place-items: center; background: transparent; border-color: transparent; color: var(--faint); }
 #tutorial .tut-skip:hover { color: var(--text); }
 #tutorial[data-at="bottom"]::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg); background: var(--glass-2); border-right: 1px solid var(--gold-line); border-bottom: 1px solid var(--gold-line); }
-#tutorial.flash { animation: tflash .8s; }
+#tutorial.flash, #goal.flash { animation: tflash .8s; }
+/* a panel is open: the coach mark sits above it, never behind it */
+#tutorial[data-over] { top: max(6px, env(safe-area-inset-top)); bottom: auto; left: 50%; right: auto; transform: translateX(-50%); }
+#tutorial[data-over]::after { display: none; }
+
+/* the next goal (下一步): one quiet line under your name, the coach mark's voice at a lower volume */
+#goal { flex-basis: 100%; max-width: min(460px, 100%); font-size: var(--fs-cap); line-height: 1.5; }
+#goal .g-row { display: inline-flex; align-items: center; max-width: 100%; border: 1px solid var(--gold-faint); border-radius: 999px; background: var(--veil); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+#goal .g-line { min-width: 0; padding: 3px 4px 3px 12px; border: 0; background: transparent; color: var(--text); font-size: var(--fs-cap); letter-spacing: .03em; text-align: left; display: flex; gap: 8px; align-items: baseline; box-shadow: none; }
+#goal .g-line:hover { box-shadow: none; color: #fff3d3; }
+#goal .g-k { flex: none; color: var(--gold); letter-spacing: .08em; }
+#goal .g-k::before { content: '✦ '; }
+#goal .g-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#goal .g-x { flex: none; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border-color: transparent; background: transparent; color: var(--faint); }
+#goal .g-x .ic { width: 14px; height: 14px; }
+#goal .g-x:hover { color: var(--text); box-shadow: none; }
+#goal .g-why { margin-top: 6px; padding: 8px 12px; border: 1px solid var(--gold-line); border-radius: var(--r); background: var(--glass-2); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); color: var(--dim); box-shadow: var(--shadow); animation: fadein .25s var(--ease) both; }
+#goal .g-acts { margin-top: 6px; }
+#goal .g-acts button { padding: 3px 12px; }
 @keyframes tflash { 0% { box-shadow: 0 0 0 rgba(226, 194, 122, 0); } 40% { box-shadow: 0 0 30px rgba(226, 194, 122, .7); } 100% { box-shadow: var(--shadow); } }
 
 /* chat: appears on Enter, gone when empty */
@@ -340,6 +359,37 @@ body.touch #crosshair, body.touch #help { display: none; }
 #book .row input { flex: 1; min-width: 120px; }
 #sp-src { width: 100%; min-height: 190px; font: 13.5px/1.55 var(--mono); letter-spacing: 0; padding: 10px 12px; background: rgba(0, 0, 0, .38); }
 #sp-out, #grimoire { max-height: 30vh; }
+/* the hotbar inside the spellbook: drop a spell on a cell, or click the numbers after a spell */
+#book-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 12px; }
+#book-bar .bb-h { font-size: var(--fs-cap); color: var(--gold); letter-spacing: .08em; margin-right: 4px; }
+#book-bar .bb-cell { position: relative; min-width: 88px; max-width: 132px; height: 34px; padding: 7px 8px 0 20px; border: 1px solid var(--gold-faint); border-radius: 9px; background: rgba(0, 0, 0, .25); font-size: var(--fs-cap); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: border-color .2s, background .2s; }
+#book-bar .bb-cell b { position: absolute; left: 7px; top: 8px; font: 600 11px/1.3 var(--serif); color: var(--gold); }
+#book-bar .bb-cell.empty span { color: var(--faint); }
+#book-bar.drag .bb-cell { border-style: dashed; border-color: var(--gold-line); }
+#book-bar .bb-cell.over, #book-bar .bb-cell:hover { border-color: var(--gold); background: rgba(226, 194, 122, .1); }
+#book-bar .bb-hint { flex-basis: 100%; }
+.bk-slots { display: flex; gap: 3px; margin-top: 4px; }
+.bk-slot { width: 22px; height: 22px; padding: 0; border-radius: 6px; font: 600 11px/1 var(--serif); letter-spacing: 0; background: transparent; border-color: var(--gold-faint); color: var(--faint); }
+.bk-slot:hover:not(:disabled) { color: var(--text); box-shadow: none; }
+.bk-slot.on { background: var(--gold); border-color: var(--gold); color: #1b1206; }
+#book-list li.tpl-entry b { color: var(--gold); }
+/* templates (从模板开始) */
+#sp-tpl { margin-bottom: 8px; padding: 10px 12px; border: 1px solid var(--gold-line); border-radius: 10px; background: rgba(226, 194, 122, .05); }
+#sp-tpl .tp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#sp-tpl .tp-chip { padding: 3px 12px; }
+#sp-tpl .tp-chip.on { background: rgba(226, 194, 122, .35); border-color: var(--gold); color: #fff3d3; }
+#sp-tpl .tp-chip small { color: var(--faint); }
+#sp-tpl .tp-desc { margin: 8px 0 4px; max-width: none; }
+#sp-tpl .tp-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 16px; }
+#sp-tpl .tp-p { display: grid; grid-template-columns: 5.5em 1fr 3.4em; align-items: center; gap: 8px; font-size: var(--fs-cap); color: var(--dim); }
+#sp-tpl .tp-p select { grid-column: 2 / 4; font-size: var(--fs-cap); padding: 3px 6px; min-width: 0; }
+#sp-tpl .tp-p b { color: var(--text); text-align: right; font-weight: 600; }
+#sp-tpl input[type="range"] { accent-color: var(--gold); min-width: 0; padding: 0; background: none; border: 0; }
+#sp-tpl .tp-foot { margin: 8px 0 0; max-width: none; }
+#book .editor:has(#sp-tpl:not([hidden])) #sp-src { min-height: 96px; height: 96px; }
+#sp-agent { margin-top: 8px; padding: 8px 12px; border: 1px solid rgba(195, 166, 255, .4); border-radius: 10px; background: rgba(90, 60, 150, .12); font-size: var(--fs-cap); }
+#sp-agent p { margin: 4px 0; max-width: none; }
+#sp-agent pre { margin: 4px 0; max-height: 22vh; }
 #sp-out.bad { color: var(--bad); } #sp-out.good { color: var(--ok); }
 
 #seals { inset: 5vh 6vw; }
@@ -411,7 +461,12 @@ body.touch #crosshair, body.touch #help { display: none; }
 #trunk-list .ti-mods { font-size: var(--fs-cap); margin: 3px 0 6px; }
 #trunk-list .ti-mods .pos { color: var(--ok); } #trunk-list .ti-mods .neg { color: var(--bad); font-weight: 600; }
 #trunk-list .ti-acts { display: flex; gap: 6px; flex-wrap: wrap; }
-#trunk-list .ti-acts button { padding: 3px 12px; }
+#trunk-list .ti-acts button, .shop-list .ti-acts button { padding: 3px 12px; }
+#trunk-msg.ok { color: var(--ok); min-height: 1.2em; font-size: var(--fs-cap); }
+.shop-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px; }
+.shop-list li { border: 1px solid var(--gold-faint); border-radius: 10px; padding: 8px 12px; background: rgba(226, 194, 122, .05); }
+.shop-list .ti-mods { font-size: var(--fs-cap); margin: 3px 0 6px; }
+.shop-list .ti-mods .pos { color: var(--ok); }
 .tb { display: inline-block; font-size: 12px; line-height: 1.6; padding: 0 8px; border-radius: 9px; background: rgba(255, 255, 255, .08); color: var(--dim); margin-left: 2px; }
 .tb.eq { background: rgba(226, 194, 122, .85); color: #1b1206; } .tb.curse { background: rgba(120, 60, 200, .55); color: #f3eaff; } .tb.anon { background: rgba(255, 255, 255, .14); color: var(--text); }
 
@@ -428,6 +483,12 @@ body.touch #crosshair, body.touch #help { display: none; }
   #me .stats { white-space: normal; }
   #feed { width: min(300px, calc(100vw - 90px)); }
   #feed div:nth-last-child(n+3) { display: none; }
+  #goal { max-width: calc(100vw - 150px); }
+  /* narrow: a top-right coach mark spans the width, so it sits under the name line and pushes the feed down like a top-left one */
+  #tutorial[data-at="topright"] { top: calc(var(--tl-bottom, 48px) + 8px); }
+  body:has(#tutorial[data-at="topright"]:not([hidden]):not([data-over])) #feed { top: calc(var(--tl-bottom, 48px) + var(--tut-h, 46px) + 18px); }
+  #book-bar .bb-cell { min-width: 0; flex: 1 1 28%; }
+  #book-bar .bb-hint { display: none; }
   #clock .procl { display: none; }
   #clock .time { white-space: normal; }
   #owl { top: 8vh; right: 8px; }
