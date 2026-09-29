@@ -25,6 +25,8 @@ import {
   pointsAward, type Line,
 } from '../lore/memes.js';
 import { type CastReport, execute } from './magic.js';
+import { lookOf } from './glamour.js';
+import { cleanGlamour, glamourKey, type Glamour } from '../shared/glamour.js';
 import { dist, resolve, solidAt } from './physics.js';
 import { findPath } from './pathfind.js';
 import { thinkNpcs } from './npc.js';
@@ -491,7 +493,7 @@ export class World {
     const c = this.creatures.get(id);
     const auras = w?.auras ?? c?.auras ?? [];
     if (auras.some((a) => a.until > this.now && isDebuff(a.k))) return true;
-    if (w) return w.st.rootedUntil > this.now || w.st.disarmedUntil > this.now || w.st.silencedUntil > this.now || this.boundItems(w).length > 0;
+    if (w) return w.st.rootedUntil > this.now || w.st.disarmedUntil > this.now || w.st.silencedUntil > this.now || this.boundItems(w).length > 0 || (w.jinxLook?.until ?? 0) > this.now;
     return !!c && c.rootedUntil > this.now;
   }
 
@@ -541,6 +543,7 @@ export class World {
       t.st.rootedUntil = 0; t.st.disarmedUntil = 0;
       t.st.silencedUntil = 0; t.st.silenceBy = null; t.st.silenceSrc = null; // (silenceCdUntil stays: the casting window is kept)
       t.respiteUntil = this.now + HEX_RESPITE_S;
+      t.jinxLook = null; // a Colour-Change jinx on your robes ends too
       if (src === t) {
         const freed = this.boundItems(t);
         for (const it of freed) { it.bound = false; it.boundUntil = undefined; }
@@ -548,6 +551,20 @@ export class World {
       }
     } else t.rootedUntil = 0;
     this.fx({ k: 'heal', x: t.pos.x, z: t.pos.z, h: 'handle' in t ? t.handle : undefined });
+  }
+
+  // ------------------------------------------------------------------ transfiguration of self (magic.ts: glamour)
+  /** Your own look, for good (null = your house colours). Only a glamour spell calls this. */
+  setLook(w: Wizard, look: Glamour | null) {
+    w.look = look; // (the browser shimmers the wizard when the snapshot's look changes)
+  }
+
+  /** A Colour-Change jinx: `look` laid over t's own for secs (magic.ts checked canHarm, the range and the cap). */
+  jinxLook(src: Wizard, t: Wizard, look: Glamour, secs: number) {
+    t.jinxLook = { look, until: this.now + secs, src: src.id };
+    this.emit('curse', `${src.name} jinxed your robes with a Colour-Change Charm! It wears off in ${Math.round(secs)}s, or cast Finite Incantatem (cleanse) on yourself.`, {
+      to: t.id, who: [src.id, t.id], zh: `${src.name} 对你的长袍施了变色咒！${Math.round(secs)} 秒后消退，或者对自己念「咒立停 Finite Incantatem」。`,
+    });
   }
 
   regen(src: Wizard, t: Wizard, rate: number, secs: number) {
@@ -633,6 +650,7 @@ export class World {
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
       ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false, auras: [], tearsAt: 0,
       hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, agentPaused: false, agentSeen: null, goalBy: null,
+      look: null, jinxLook: null,
     };
     this.grantCurriculum(w);
     w.mana = derived(w, this.rules).maxMana;
@@ -2523,6 +2541,8 @@ export class World {
       cursedItemsStuck: this.boundItems(w).map((i) => ({ item: i.name, id: i.id, slot: i.slot, secondsLeft: Math.ceil((i.boundUntil ?? 0) - this.now) })),
       hexRespiteFor: w.respiteUntil > this.now ? round(w.respiteUntil - this.now) : 0,
       agent: { paused: w.agentPaused, goal: w.agentGoal },
+      // read-only: a look changes only through a spell with (glamour ...) — see the grimoire
+      appearance: { look: glamourKey(w.look) ?? 'house colours', colourJinxFor: (w.jinxLook?.until ?? 0) > this.now ? round(w.jinxLook!.until - this.now) : 0 },
     };
   }
 
@@ -2565,7 +2585,8 @@ export class World {
       if (w.npc) s += 'N';
       if (w.st.silencedUntil > this.now) s += 'Q';
       s += auraFlags(w.auras, this.now);
-      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text };
+      // g: the glamour (shared/glamour.ts glamourKey, e.g. "velvet:7a1f2b:d4af37:::"), absent for the house look
+      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text, g: glamourKey(lookOf(w, this.now)) };
     });
     return {
       t: round(this.now), hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather, term: { n: this.term.n, left: Math.max(0, Math.round(this.term.endsAt - this.now)) },
@@ -2651,7 +2672,7 @@ export class World {
     return {
       version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       // agentPaused / agentSeen / goalBy are session state, not saved (the owlbox, its ids and the watermark are)
-      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined })),
+      wizards: [...this.wizards.values()].map((w) => ({ ...w, connections: 0, input: { dx: 0, dz: 0 }, goal: null, route: [], say: null, agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined, jinxLook: null })),
     };
   }
 
@@ -2670,7 +2691,7 @@ export class World {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {
         auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false,
-        hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null,
+        hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, look: null,
       };
       const wz: Wizard = {
         ...later, ...x, route: [], lastMcpAt: -1e9, lastSeenAt: x.lastSeenAt ?? data.now,
@@ -2680,6 +2701,8 @@ export class World {
           silenceBy: x.st?.silenceBy ?? null, silenceSrc: x.st?.silenceSrc ?? null,
         },
         agentPaused: false, agentSeen: null, goalBy: null, steerAt: undefined,
+        // v0.9 transfiguration: a saved look is data from disk (sanitised); a jinx on it does not outlive a restart
+        look: cleanGlamour(x.look), jinxLook: null,
       };
       wz.owlSeq = Math.max(wz.owlSeq, ...wz.owlbox.map((m) => m.id));
       w.tokenIndex.set(wz.token, wz.id);

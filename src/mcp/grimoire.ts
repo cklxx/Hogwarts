@@ -4,6 +4,7 @@ import { MOD_LIMITS, gasLimit, itemBudget, maxNodes, spellbookSize } from '../ke
 import type { Rulebook } from '../kernel/rulebook.js';
 import { CURRICULUM } from '../lore/spells.js';
 import { PRIMS, SPECIAL_DOCS, capsFor } from '../runes/primitives.js';
+import { GLAMOUR_MATERIALS, GLAMOUR_PARTS, GLAMOUR_PRANK_MAX_S, GLAMOUR_PRANK_YEAR, MATERIAL_DEFS, NAMED_COLOURS, PART_DOCS } from '../shared/glamour.js';
 
 /** The spell-language manual, generated from the same tables the interpreter uses. */
 export function grimoire(year: number, rb: Rulebook, seals = 0): string {
@@ -60,6 +61,26 @@ YOUR CAPS AT YEAR ${year}${seals ? ` WITH ${seals} SEAL(S) BROKEN` : ''}
   original spells in your book: ${spellbookSize(year)}
 
 ELEMENTS  ${ELEMENTS.map((e) => ':' + e).join(' ')}
+
+TRANSFIGURATION OF SELF (glamour) — the ONLY way your look changes is a spell you (or your agent) write
+  parts    ${GLAMOUR_PARTS.map((p) => `:${p} ${PART_DOCS[p].doc}`).join(' | ')}
+  colours  "#7a1f2b" or "#b5f" (strings), (list 122 31 43) (0..255, clamped), or a name:
+           ${Object.keys(NAMED_COLOURS).map((c) => ':' + c).join(' ')}
+           nil puts one part back to your house default; :reset puts everything back first.
+  materials
+${GLAMOUR_MATERIALS.map((m) => { const d = MATERIAL_DEFS[m]; const lock = d.year > year ? `  [LOCKED: year ${d.year}]` : d.seals > seals ? `  [SEALED: seal ${d.seals}]` : ''; return `    :${m.padEnd(10)} y${d.year}${d.seals ? ` + seal ${d.seals}` : ''}, +${d.cost} mana — ${d.doc}${lock}`; }).join('\n')}
+  Your own look lasts until you change it. From year ${GLAMOUR_PRANK_YEAR}, :on <wizard> :secs n (<=${GLAMOUR_PRANK_MAX_S}) lays a
+  Colour-Change jinx on someone you may duel (PvP rules, outside safe zones); Finite Incantatem ends it.
+  The Cloak of Invisibility is a Deathly Hallow: no spell forges it.
+
+  ; Vestimentum, your way: burgundy velvet, gold trim, a charcoal hat
+  (glamour :robe "#7a1f2b" :trim :gold :hat "#222" :material :velvet)
+  ; year 5: the Great Hall's night sky, with a pale blue wand-light
+  (glamour :robe :midnight :trim :silver :glow "#9fd8ff" :material :starlight)
+  ; year 2 prank: a duelling rival goes pink for 30s
+  (when target (glamour :on target :robe :pink :hat :pink :secs 30))
+  ; Reparifarge: back to your house look
+  (glamour :reset)
 CREATURES
 ${Object.values(CREATURES).map((c) => `  ${c.name.padEnd(16)} hp ${c.hp}, weak to ${Object.entries(c.weak).filter(([, v]) => (v ?? 1) > 1).map(([k, v]) => `${k} x${v}`).join(', ') || '—'}${c.allDamage ? `, takes x${c.allDamage} from non-Patronus magic` : ''}${c.nightOnly ? ', night only' : ''}. ${c.lore}`).join('\n')}
 

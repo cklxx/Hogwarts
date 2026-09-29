@@ -27,6 +27,9 @@ export const CURRICULUM: Curriculum[] = [
   { year: 5, name: 'Reducto', incantation: 'Reducto!', note: 'Reductor Curse', source: '(bolt (or target aim) 36 :lightning)' },
   { year: 6, name: 'Apparition', incantation: '*crack*', note: 'Destination, Determination, Deliberation. Not on the grounds.', source: '(apparate (ahead 25))' },
   { year: 7, name: 'Confringo', incantation: 'Confringo!', note: 'Blasting Curse', source: '(nova 8 34 :fire)' },
+  // Transfiguration of self (变形术): the only way a wizard's look ever changes is a spell like these
+  { year: 1, name: 'Vestimentum', incantation: 'Vestimentum!', note: 'Transfigures your robes: velvet in your house colour with gold trim. Rewrite it to wear anything (see glamour in the grimoire).', source: '(glamour :robe (house self) :trim :gold :material :velvet)' },
+  { year: 1, name: 'Reparifarge', incantation: 'Reparifarge!', note: 'Untransfiguration: your robes, hat and wand-light return to your house look.', source: '(glamour :reset)' },
 ];
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');

@@ -1,5 +1,5 @@
 import { type Node, RuneError, parse } from './parser.js';
-import { CONSTANTS, PRIM_BY_NAME, SPECIAL_FORMS } from './primitives.js';
+import { CONSTANTS, type Gate, PRIM_BY_NAME, SPECIAL_FORMS } from './primitives.js';
 
 export interface Analysis {
   program: Node[];
@@ -23,6 +23,8 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
   let minSeals = 0;
   let usesAfter = false;
   const prims = new Set<string>();
+  /** Requirements found in literal arguments (e.g. a year-6 glamour material). */
+  const gates: Gate[] = [];
 
   const walk = (n: Node, scope: Set<string>) => {
     nodes++;
@@ -97,6 +99,11 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
     prims.add(name);
     minYear = Math.max(minYear, p.year);
     minSeals = Math.max(minSeals, p.seals ?? 0);
+    for (const g of p.check?.(rest, n) ?? []) {
+      gates.push(g);
+      minYear = Math.max(minYear, g.year);
+      minSeals = Math.max(minSeals, g.seals);
+    }
     rest.forEach((r) => walk(r, scope));
   };
 
@@ -107,11 +114,11 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
   const effects = primitives.filter((p) => PRIM_BY_NAME.get(p)!.kind === 'effect');
   if (limits) {
     if (minYear > limits.year) {
-      const blockers = primitives.filter((p) => PRIM_BY_NAME.get(p)!.year > limits.year);
+      const blockers = [...primitives.filter((p) => PRIM_BY_NAME.get(p)!.year > limits.year), ...gates.filter((g) => g.year > limits.year).map((g) => g.what)];
       throw new RuneError(`this spell needs year ${minYear} magic (${usesAfter && limits.year < 2 ? 'after, ' : ''}${blockers.join(', ')}); you are year ${limits.year}`);
     }
     if (minSeals > (limits.seals ?? 0)) {
-      const blockers = primitives.filter((p) => (PRIM_BY_NAME.get(p)!.seals ?? 0) > (limits.seals ?? 0));
+      const blockers = [...primitives.filter((p) => (PRIM_BY_NAME.get(p)!.seals ?? 0) > (limits.seals ?? 0)), ...gates.filter((g) => g.seals > (limits.seals ?? 0)).map((g) => g.what)];
       throw new RuneError(`${blockers.join(', ')} lies behind seal ${minSeals} of the Restricted Section; you have broken ${limits.seals ?? 0}`);
     }
     if (nodes > limits.maxNodes) throw new RuneError(`spell too complex: ${nodes} nodes > your limit ${limits.maxNodes}`);

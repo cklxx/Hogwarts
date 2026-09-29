@@ -30,7 +30,7 @@ export const SUMMON_YEAR: Record<SummonKind, number> = { serpent: 2, birds: 3 };
 
 export const EFFECT_PRIMITIVES = [
   'bolt', 'heal', 'shield', 'push', 'haste', 'root', 'nova', 'disarm', 'patronus', 'apparate', 'light', 'say', 'reveal', 'chain', 'storm',
-  'regen', 'mend', 'revive', 'cleanse', 'summon',
+  'regen', 'mend', 'revive', 'cleanse', 'summon', 'glamour',
 ] as const;
 export type EffectPrimitive = (typeof EFFECT_PRIMITIVES)[number];
 
