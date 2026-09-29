@@ -46,4 +46,13 @@ describe('the /tls page', () => {
     expect(html).toContain('https://10.37.1.20:7443/');
     expect(html).not.toMatch(/ca-key/);
   });
+
+  it('offers the Chrome/Edge switch for this exact address first, and needs nothing when the certificate is trusted', () => {
+    const html = tlsPage({ httpBase: 'http://10.37.1.20:7777', httpsUrl: 'https://10.37.1.20:7443/', hasCa: true });
+    expect(html).toContain('unsafely-treat-insecure-origin-as-secure');
+    expect(html.indexOf('chrome://flags')).toBeLessThan(html.indexOf('security add-trusted-cert'));
+    const trusted = tlsPage({ httpBase: 'http://10.37.1.20:7777', httpsUrl: 'https://game.example.com:7443/', hasCa: false, trusted: true });
+    expect(trusted).toContain('不用装任何东西');
+    expect(trusted).not.toContain('certutil');
+  });
 });

@@ -2,7 +2,7 @@
 import { adoptedSessionId, clientIp, realm, realmWorker } from './realms.js';
 import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, watchFile, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import type { TLSSocket } from 'node:tls';
@@ -69,9 +69,17 @@ if (process.env.HTTPS !== '0' && !OWN_CERT && realm.mode !== 'worker') {
   }
 }
 const TLS = process.env.HTTPS !== '0' && existsSync(TLS_CERT) && existsSync(TLS_KEY);
+/**
+ * PLAY_HOST: the name players reach the HTTPS game at when TLS_CERT is a publicly trusted certificate for it (e.g.
+ * Let's Encrypt for game.example.com, whose DNS points at this LAN address). Then nobody installs anything: play
+ * links use it, and a browser that opens the plain-HTTP page is sent there.
+ */
+const PLAY_HOST = /^[A-Za-z0-9.\-]+$/.test(process.env.PLAY_HOST ?? '') ? process.env.PLAY_HOST! : undefined;
+const PLAY_ORIGIN = PLAY_HOST && TLS ? `https://${PLAY_HOST}${HTTPS_PORT === 443 ? '' : `:${HTTPS_PORT}`}` : undefined;
 const hostOf = (req: IncomingMessage) => String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim().replace(/:\d+$/, '');
 /** The origin a browser should play on: the HTTPS one when TLS is on (WebGPU), else the one it used. */
 function playBaseFor(req: IncomingMessage): string {
+  if (PLAY_ORIGIN) return PLAY_ORIGIN;
   if (process.env.PUBLIC_URL || !TLS) return baseFor(req);
   const h = hostOf(req);
   return /^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/.test(h) ? `https://${h}:${HTTPS_PORT}` : baseFor(req);
@@ -279,6 +287,11 @@ const http = createServer(async (req, res) => {
       return res.end();
     }
     if (url.pathname === '/mcp') return await handleMcp(req, res, url);
+    // with a trusted certificate (PLAY_HOST), a browser opening the plain-HTTP game goes to the HTTPS one (WebGPU)
+    if (PLAY_ORIGIN && req.method === 'GET' && url.pathname === '/' && !(req.socket as TLSSocket).encrypted && String(req.headers.accept ?? '').includes('text/html')) {
+      res.writeHead(302, { location: `${PLAY_ORIGIN}/${url.search}` });
+      return res.end();
+    }
     if (url.pathname === '/api/enroll' && req.method === 'POST') {
       if (!allowEnrol(req)) return json(res, 429, { error: 'The Sorting Hat needs a rest: too many enrolments from here. Try again in a few minutes.' });
       const b = (await readBody(req)) as { name?: string; house?: string } | undefined;
@@ -293,7 +306,7 @@ const http = createServer(async (req, res) => {
     if (url.pathname === '/tls' || url.pathname === '/tls/') {
       const h = hostOf(req);
       const ok = /^[A-Za-z0-9.\-]+$/.test(h);
-      const page = tlsPage({ httpBase: ok ? `http://${h}:${PORT}` : PUBLIC_URL, httpsUrl: TLS && ok ? `https://${h}:${HTTPS_PORT}/` : null, hasCa: !!(caPath && existsSync(caPath)) });
+      const page = tlsPage({ httpBase: ok ? `http://${h}:${PORT}` : PUBLIC_URL, httpsUrl: PLAY_ORIGIN ? `${PLAY_ORIGIN}/` : TLS && ok ? `https://${h}:${HTTPS_PORT}/` : null, hasCa: !PLAY_ORIGIN && !!(caPath && existsSync(caPath)), trusted: !!PLAY_ORIGIN });
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(page);
     }
@@ -537,7 +550,13 @@ if (TLS && realm.mode !== 'worker') {
   https.on('request', (req, res) => http.emit('request', req, res));
   https.on('upgrade', (req, socket, head) => http.emit('upgrade', req, socket, head));
   https.on('error', (e) => console.error(`[hogwarts] HTTPS on ${HOST}:${HTTPS_PORT} failed:`, (e as Error).message));
-  https.listen(HTTPS_PORT, HOST, () => console.log(`[hogwarts] HTTPS（WebGPU 需要）: https://${LAN ?? 'localhost'}:${HTTPS_PORT}   每台电脑第一次先打开 http://${LAN ?? 'localhost'}:${PORT}/tls 信任证书`));
+  https.listen(HTTPS_PORT, HOST, () => console.log(PLAY_ORIGIN
+    ? `[hogwarts] HTTPS（WebGPU 需要）: ${PLAY_ORIGIN}   受信任证书，玩家直接打开即可`
+    : `[hogwarts] HTTPS（WebGPU 需要）: https://${LAN ?? 'localhost'}:${HTTPS_PORT}   每台电脑第一次先打开 http://${LAN ?? 'localhost'}:${PORT}/tls 信任证书`));
+  // renewed certificates (acme.sh / certbot every ~60 days, or a new LAN address) are picked up without a restart
+  watchFile(TLS_CERT, { interval: 60_000 }, () => {
+    try { https.setSecureContext({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) }); console.log('[hogwarts:tls] 证书已更新，已热加载'); } catch (e) { console.warn('[hogwarts:tls] 证书热加载失败：', (e as Error).message); }
+  });
 } else if (!TLS && realm.mode !== 'worker') {
   console.log(`[hogwarts] 提示：浏览器只在 HTTPS 或 localhost 下提供 WebGPU；这台机器没有 openssl/mkcert，无法自动生成证书。可用 ssh -L ${PORT}:localhost:${PORT} 转发后打开 http://localhost:${PORT}`);
 }

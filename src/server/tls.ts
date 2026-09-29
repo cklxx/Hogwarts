@@ -94,16 +94,20 @@ export function certCovers(certPath: string, hosts: string[]): boolean {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /** The /tls page: why, one-line trust commands per OS with this server's address filled in, and the HTTPS link. */
-export function tlsPage(o: { httpBase: string; httpsUrl: string | null; hasCa: boolean }): string {
+export function tlsPage(o: { httpBase: string; httpsUrl: string | null; hasCa: boolean; trusted?: boolean }): string {
   const ca = `${o.httpBase}/tls/ca.pem`;
   const cmd = {
     mac: `curl -fsSLo ~/Downloads/hogwarts-ca.pem ${ca} && sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/Downloads/hogwarts-ca.pem`,
     win: `curl.exe -fsSLo $env:TEMP\\hogwarts-ca.pem ${ca}; certutil -addstore -f ROOT $env:TEMP\\hogwarts-ca.pem`,
     linux: `curl -fsSLo /tmp/hogwarts-ca.pem ${ca} && certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n hogwarts-lan -i /tmp/hogwarts-ca.pem`,
   };
-  const body = !o.hasCa || !o.httpsUrl
-    ? `<p>这台服务器还没有证书（需要 openssl 或 mkcert）。在服务器上运行 <code>npm run cert</code> 后重启。</p>`
-    : `<ol>
+  const origin = o.httpBase.replace(/\/$/, '');
+  const flag = `<p class="way"><b>最快（Chrome / Edge，30 秒，不装证书）</b>：地址栏打开 <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>（Edge 用 <code>edge://flags/…</code>），在输入框填 <code>${esc(origin)}</code>，选 Enabled，点 Relaunch，然后照常打开 <a href="${esc(origin)}/">${esc(origin)}</a>。只对这一个地址生效；Firefox、Safari 没有这个开关，用下面的证书。</p>`;
+  const body = o.trusted && o.httpsUrl
+    ? `<p>这台服务器用的是受信任的证书，不用装任何东西：直接打开 <a href="${esc(o.httpsUrl)}">${esc(o.httpsUrl)}</a>。</p>`
+    : !o.hasCa || !o.httpsUrl
+    ? `${flag}<p class="hint">这台服务器还没有证书（需要 openssl 或 mkcert），所以暂时只能用上面的开关。在服务器上运行 <code>npm run cert</code> 后重启即可用证书。</p>`
+    : `${flag}<p class="way"><b>或者装证书（所有浏览器，只需一次）</b>：</p><ol>
   <li><b>在你这台电脑上执行一行命令</b>（下载并信任本服务器的 CA，只需一次）：
     <h3>macOS（终端，需要输入开机密码）</h3><pre>${esc(cmd.mac)}</pre>
     <h3>Windows（以管理员身份打开 PowerShell）</h3><pre>${esc(cmd.win)}</pre>
@@ -115,7 +119,7 @@ export function tlsPage(o: { httpBase: string; httpsUrl: string | null; hasCa: b
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>开启 WebGPU · 霍格沃茨</title>
 <style>body{margin:0;background:#1a120b;color:#2a1b0f;font:16px/1.7 'LXGW WenKai','Songti SC',serif}main{max-width:760px;margin:32px auto;padding:28px 34px;background:#f2e6c9;border-radius:6px;box-shadow:0 8px 30px #000a}
 h1{font-size:28px;margin:0 0 8px}h3{font-size:15px;margin:14px 0 4px;color:#5b4029}pre{white-space:pre-wrap;word-break:break-all;background:#fff8e6;border:1px solid #d9c08a;padding:10px 12px;border-radius:4px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace}
-.hint{color:#5b4029;font-size:14px}a{color:#962024}code{background:#fff8e6;padding:0 4px}</style></head><body><main>
+.hint{color:#5b4029;font-size:14px}.way{margin:14px 0 4px}a{color:#962024}code{background:#fff8e6;padding:0 4px}</style></head><body><main>
 <h1>开启 WebGPU</h1>
 <p>浏览器只在 <b>HTTPS 或 localhost</b> 下提供 WebGPU。你现在用局域网 HTTP 打开，所以游戏在用 WebGL 2（画面相同，粒子与草地少一些）。想用 WebGPU：</p>
 ${body}

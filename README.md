@@ -53,11 +53,33 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 
 ### 用局域网 IP 访问时开启 WebGPU（HTTPS）
 
-浏览器只在 **HTTPS 或 localhost** 下提供 WebGPU。用 `http://10.x.x.x:7777` 这类局域网地址打开时会自动退回 WebGL 2。三种办法：
+浏览器只在 **HTTPS 或 localhost** 下提供 WebGPU。用 `http://10.x.x.x:7777` 这类局域网地址打开时会自动退回 WebGL 2。按人数选：
 
-1. **HTTPS（推荐，服务器已自动配好）**：服务器启动时自动生成证书（有 openssl 即可，放在 `data/tls/`，已在 `.gitignore` 里），并**另外**在 `https://<IP>:7443` 提供游戏（`HTTPS_PORT` 可改，`HTTPS=0` 关闭）。每台玩游戏的电脑第一次先打开 `http://<IP>:7777/tls`，复制页面上对应系统的一行命令执行（下载并信任本服务器的 CA；信任根证书需要系统管理员确认，所以这一步没法替你点），重启浏览器后打开 `https://<IP>:7443`。这个 CA 带名称约束，只能签 localhost、局域网地址和这台服务器自己的地址，签不了公网网站；私钥不出服务器。游戏在 WebGL 2 下也会在角落提示「开启 WebGPU →」。MCP 仍走 `http://<IP>:7777/mcp`。想用 mkcert 的 CA 或加主机名：`npm run cert -- my-devbox.lan`；用自己的证书：`TLS_CERT=… TLS_KEY=…`。
-2. **SSH 端口转发**：`ssh -L 7777:localhost:7777 开发机`，然后打开 `http://localhost:7777`。
-3. **Chrome 临时办法**：`chrome://flags/#unsafely-treat-insecure-origin-as-secure` 里填入 `http://<IP>:7777`。
+**内网给很多人玩（推荐）：用自己的域名申请受信任证书，玩家什么都不用装。**
+需要一个域名（任意域名都行，只用它的一个子域），以及能调 DNS API 的 token。证书靠 DNS 验证签发，服务器不用暴露到公网。
+
+```bash
+# 1. 在 DNS 里加一条 A 记录：game.example.com → 10.37.x.x（服务器的内网 IP）
+# 2. 申请证书（acme.sh 支持 150+ 家 DNS；阿里云 Ali_Key/Ali_Secret + dns_ali，DNSPod DP_Id/DP_Key + dns_dp，Cloudflare CF_Token + dns_cf）
+curl https://get.acme.sh | sh -s email=you@example.com
+export Ali_Key=… Ali_Secret=…
+~/.acme.sh/acme.sh --issue --server letsencrypt --dns dns_ali -d game.example.com
+mkdir -p data/tls/own && ~/.acme.sh/acme.sh --install-cert -d game.example.com \
+  --fullchain-file "$PWD/data/tls/own/fullchain.pem" --key-file "$PWD/data/tls/own/key.pem"
+# 3. 启动（acme.sh 每 60 天自动续期，服务器每分钟检查证书文件并热加载，不用重启）
+PLAY_HOST=game.example.com TLS_CERT=data/tls/own/fullchain.pem TLS_KEY=data/tls/own/key.pem npm start
+```
+
+之后大家打开 `https://game.example.com:7443` 即可；有人打开旧的 `http://10.37.x.x:7777` 会被自动跳转过去，游戏和 Agent 给出的游戏链接也都用这个域名。想去掉端口号：`HTTPS_PORT=443`（需要 root，或 `sudo setcap cap_net_bind_service=+ep $(which node)`）。
+注意：部分路由器和公司 DNS 开了「DNS rebinding 保护」，会丢弃指向内网 IP 的公网解析；遇到打不开时，把这条 A 记录加在公司内网 DNS 里（证书验证只看公网的 TXT 记录，不受影响）。公司有 IT 统一管理电脑的话，也可以让 IT 通过组策略/MDM 把 `/tls/ca.pem` 推到所有电脑，效果相同，不需要域名。
+
+**几个人玩，没有域名：**
+
+1. **Chrome / Edge 开关（30 秒，不装证书）**：`chrome://flags/#unsafely-treat-insecure-origin-as-secure` 填入 `http://<IP>:7777`，选 Enabled 并重启浏览器。只对这个地址生效；Firefox、Safari 没有。
+2. **信任本服务器的 CA（所有浏览器）**：服务器启动时自动生成证书（有 openssl 即可，放在 `data/tls/`，已在 `.gitignore` 里），并**另外**在 `https://<IP>:7443` 提供游戏（`HTTPS_PORT` 可改，`HTTPS=0` 关闭）。每台电脑第一次打开 `http://<IP>:7777/tls`，复制对应系统的一行命令执行（信任根证书需要系统管理员确认，这一步没法替你点），重启浏览器后打开 `https://<IP>:7443`。这个 CA 带名称约束，只能签 localhost、局域网地址和这台服务器自己的地址，签不了公网网站；私钥不出服务器。想用 mkcert 的 CA 或加主机名：`npm run cert -- my-devbox.lan`。
+3. **SSH 端口转发**：`ssh -L 7777:localhost:7777 开发机`，然后打开 `http://localhost:7777`。
+
+游戏在 WebGL 2 下会在角落提示「开启 WebGPU →」，点开就是 `/tls` 页面，上面列着这些办法。MCP 始终走 `http://<IP>:7777/mcp`。
 
 在 HTTPS 页面里连接 Agent 时，游戏给出的命令仍指向 HTTP 的 MCP 地址；Agent 生成的游戏链接会指向 HTTPS 地址。`?perf=1` 右上角显示当前实际用的是 WebGPU 还是 WebGL 2。
 
