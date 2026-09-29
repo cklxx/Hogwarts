@@ -31,7 +31,7 @@
 |---|---|---|
 | P0 | 服务器：`GET /api/version`（名称、版本、构建号、协议号、在线人数）；UDP 局域网发现（端口同 `PORT`，只回应私网/本机/同网段，限频；`DISCOVERY=0` 关）；`npm run find` 列出局域网服务器。客户端：服务器换了新构建时提示「游戏已更新」，空闲 1 分钟（或标签页在后台）自动刷新，写咒语、打字时不刷新 | 已完成（`wf/shell`） |
 | P1 | Tauri 2 壳（`desktop/`）：服务器列表（发现 + 手动输入 + 记住上次，上次的服务器在线就直接进）、直接加载服务器页面（内容永远与服务器同版本）、密钥存系统钥匙串（每个服务器一条，失效随之删除）、F11 全屏、Ctrl+Shift+S 换服务器、外部链接走系统浏览器；GitHub Actions 构建 Windows / macOS / Linux 安装包（不签名） | 已完成：Linux 上端到端实测（Xvfb + Secret Service：自动发现 → 钥匙串登录 → 别处换钥后旧钥删除，`desktop/test-gui.sh`）；Windows / macOS 待真机安装验证 |
-| P2 | 一键连接我的 Agent：`hogwarts-desktop --mcp-stdio` 是 MCP stdio 服务器，转发到服务器 `/mcp`，密钥从钥匙串读；enroll/login/pair/rotate_key 发出的新钥先存钥匙串再从模型看到的文字里抹掉；服务器重启自动重建会话；启动器按钮写入 Claude Desktop 配置（留 .bak）或运行 `claude mcp add`；桌面客户端里的猫头鹰邮递显示这条命令 | 已完成：桥的端到端测试（钥匙串 / 精简环境两种）、Claude Desktop 配置写入、`claude mcp get hogwarts` → Connected（Linux）。待做：真机 Claude Desktop 验收；Rust 桥还没有「猫头鹰推送」（`notifications/claude/channel`） |
+| P2 | 一键连接我的 Agent：`hogwarts-desktop --mcp-stdio` 是 MCP stdio 服务器，转发到服务器 `/mcp`，密钥从钥匙串读；enroll/login/pair/rotate_key 发出的新钥先存钥匙串再从模型看到的文字里抹掉；服务器重启自动重建会话；启动器按钮写入 Claude Desktop 配置（留 .bak）或运行 `claude mcp add`；桌面客户端里的猫头鹰邮递显示这条命令 | 已完成：桥的端到端测试（钥匙串 / 精简环境两种）、Claude Desktop 配置写入、`claude mcp get hogwarts` → Connected（Linux）。待做：真机 Claude Desktop 验收。Rust 桥的猫头鹰推送已加（`3eb90af`） |
 | P3 | 可选：壳内恢复 WebGPU（从 `205ed7b` 取回），浏览器版继续 WebGL | 视真机测量决定 |
 | P4 | **看 Agent 玩** | 就是看着自己的巫师在动：观看模式（`V`，按键不接管 Agent，「接管」才接手）+ Agent 面板（目标、最近 12 次调用、它施放的咒语的源码）。观看链接、排行榜「观看」、只读观看者连接已按需求删掉（简化：`wf/plugins`） |
 
@@ -63,8 +63,8 @@
    - 快捷栏拖拽只能拖到咒语书内的格子，不能直接拖到屏幕底部的快捷栏。
    - 测试：重负载机器上个别重测试（3000 随机世界、空间索引）需要较长超时。
    - ~~新手引导条压住咒语书书眉；手机竖屏顶部重叠~~ 已修：引导条在面板上方时咒语书 / 封印面板往下让；手机竖屏顶部改成纵向堆叠（身份卡 → 学院杯 → 目标框 → 黑魔王条 → 时钟 / 信息栏），学院杯在 390px 宽内放得下；提示条在引导条上方。
-   - **试玩第 2 轮遗留**（`docs/PLAYTEST.md` 第 2 轮）：MCP 决斗时反弹 / 翻滚几乎用不上（往返 0.85 秒 > 反弹窗口 0.35 秒）：~~`wait until:"incoming"`~~ 已加（50 毫秒轮询，回复来源和剩余秒数，够提前举盾；远处的弹能翻滚躲开），完美反弹仍要触发式咒语；~~决斗匹配不看年级~~ 已修（先配相差 ≤1 年级的，第一位等满 20 秒后谁都行；status 已有 `match.hp`）；Runes 缺 `set!`（~~`min-by`~~ 已加 `min-by` / `max-by`，四年级），simulate 不展开 `after` 块；考试可以无限重试（只影响排名）；~~say 口令没有生效反馈~~ 已修（`say` 回 `answered`）；~~fork 的 `announced` 与 publish 不一致~~（不是 bug：每位作者 10 分钟只播报一次，现在 note 里写明）；Revelio 对 Agent 不显示内容；friendlyFire 默认开，追踪弹会误伤挡路的队友，还能拿「决斗者」成就。
-   - 桌面客户端：安装包未签名（macOS 公证、Windows 代码签名）；壳本身没有自动更新（Tauri updater）；Rust 版 MCP 桥还没有 Node 桥的「猫头鹰推送」（`notifications/claude/channel`）。
+   - **试玩第 2 轮遗留**（`docs/PLAYTEST.md` 第 2 轮）：MCP 决斗时反弹 / 翻滚几乎用不上（往返 0.85 秒 > 反弹窗口 0.35 秒）：~~`wait until:"incoming"`~~ 已加（50 毫秒轮询，回复来源和剩余秒数，够提前举盾；远处的弹能翻滚躲开），完美反弹仍要触发式咒语；~~决斗匹配不看年级~~ 已修（先配相差 ≤1 年级的，第一位等满 20 秒后谁都行；status 已有 `match.hp`）；~~Runes 缺 `set!`~~ 已加（四年级，`min-by` / `max-by` 同年）；~~simulate 不展开 `after` 块~~ 已修（`t+N 秒：…`，按届时剩余法力估算）；考试可以无限重试（只影响排名）；~~say 口令没有生效反馈~~ 已修（`say` 回 `answered`）；~~fork 的 `announced` 与 publish 不一致~~（不是 bug：每位作者 10 分钟只播报一次，现在 note 里写明）；~~Revelio 对 Agent 不显示内容~~ 已修（MCP `look` 按已点亮的角落多出 `tempus` / `revelio` / `pointMe` 文字雷达 / `homenum`）；friendlyFire 默认开，追踪弹会误伤挡路的队友，还能拿「决斗者」成就。
+   - 桌面客户端：安装包未签名（macOS 公证、Windows 代码签名）；壳本身没有自动更新（Tauri updater）；~~Rust 版 MCP 桥还没有「猫头鹰推送」~~ 已加（`3eb90af`）。
    - 渲染器已退回 WebGL（`WebGLRenderer`，见「已完成」）。以后可选：做一个微客户端（桌面壳，从 localhost 或自带证书加载），在里面启用 WebGPU、系统字体与更高帧率；浏览器版保持 WebGL。
    - 咒语集市：物品上的 charm 不受集市禁令约束（只管咒语书里的咒语）；禁令按「集市编号 + 一字不差的源码」判断，改一个字就能绕过（政治，不是 DRM）；版税只从集市抄本/改编来，偷师（study_spell）的抄本不付版税；集市页没有分页以外的无限滚动。
    - Hex 形式化模型在「无规则区 + 5 个发送者」配置下未跑完（1810 万状态无违例），CI 只跑单发送者版本 `HexLawless`。
@@ -74,6 +74,8 @@
 
 | 内容 | 提交 |
 |---|---|
+| 试玩第 2 轮遗留（Runes）：`set!`、simulate 展开 `after`、Agent 能看到 Revelio 等显形咒点亮的内容 | `wf/runes` |
+| 密钥不再进地址：服务器只认请求头 / 浏览器 WebSocket 子协议 `hw-key.`，`?token=` 一律 401；桌面 Rust 桥加了猫头鹰推送（`notifications/claude/channel`） | `3eb90af` |
 | 玩法插件化：决斗俱乐部、魁地奇、事件轮盘、集市、O.W.L. 考试改成 `Feature`（`src/kernel/feature.ts` / `features.ts`：`step` `stepLate` `wire` `save`/`load` `moveMult` `castBlock` `helpBlock` `bolt` `npc` `tools` `ws`），内核只遍历预建的 `HOOKS`；MCP 工具、WebSocket 操作、快照字段、存档都走注册表，加一个玩法 = 新写一个模块 + 在 `FEATURES` 里加一行；客户端同理（`client/features.ts`）。看 Agent 玩简化为看自己的巫师（删掉观看链接和只读观看者）。内核压测与 main 持平（噪声内，`docs/PERF.md`） | `ea7f63b`（`wf/plugins`） |
 | 好玩第 1 步：学院杯比赛化（顶部四院比分 + 倒计时、决胜时刻 ×2、颁奖卡：冠军 / MVP / 决斗 / 猎手 / 事件英雄、礼堂换旗；所有来源的学院分走同一个每人每学期上限、永不为负）、校园事件轮盘（注册表：巨怪 / 金色飞贼 / 宵禁费尔奇与洛丽丝夫人 / 摄魂怪 / 皮皮鬼墨水 / 有求必应屋；种子确定、同时最多一件、按期结束、奖励只发一次）、82 张巧克力蛙画片（四种稀有度、五个套装称号、重复换加隆、不卖）、14 个隐藏宝箱（每学期刷新）；MCP `school_events` `frog_cards` `open_chest`；Lean `cup_*` + TLA+ `EventWheel.tla`（+ 非空性见证） | `wf/fun` |
 | 渲染器退回 WebGL：去掉 `WebGPURenderer`/TSL（`wf/webgpu`）与为它做的 HTTPS 证书流程。原因：局域网 HTTP 玩家本来就拿不到 WebGPU，而 WebGPU 渲染器的 WebGL 2 回退比经典渲染器慢（同一台机器 SwiftShader、1280x720、高画质：帧率 0.24–0.25 → 0.49–0.54 fps，首帧 42.3 → 25.0 s，着色器预热 18.5 → 0.16 s，JS 下载 355 → 268 KB；只看方向）。WebGPU 版的实现留在 git 历史（`205ed7b`），`docs/PERF.md` 保留其测量 | `wf/webgl` |
