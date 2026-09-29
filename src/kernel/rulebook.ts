@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, type EffectPrimitive, type Element, type WildKind } from '../shared/constants.js';
+import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, type EffectPrimitive, type Element, type WildKind } from '../shared/constants.js';
 
 /**
  * The Rulebook is ALL the policy of the world. The kernel is pure mechanism and reads every tunable
@@ -119,6 +119,15 @@ export const RulebookSchema = z.object({
     })
     .prefault({})
     .describe('AI agents (MCP) acting for wizards'),
+  market: z
+    .object({
+      banned: z.array(z.string().regex(MARKET_ID_RE)).max(MARKET_BAN_MAX).default([]).describe('咒语集市: market spells (ids like "m_1a") banned by decree — casting them, or any copy of them, fizzles for everyone. They can still be read.'),
+      promoted: z.array(z.string().regex(MARKET_ID_RE)).max(MARKET_PROMOTE_MAX).default([]).describe('Market spells featured on the 推荐 shelf (must be published and not banned)'),
+      royalties: z.boolean().default(true).describe('When someone else casts your market spell, you gain a little reputation (+1 per distinct caster per spell per day, +0.3 to a fork\'s parent author)'),
+      dailyCap: z.number().int().min(0).max(MARKET_CAP_MAX).default(MARKET_CAP_DEFAULT).describe('Most reputation one wizard can earn from royalties in a day'),
+    })
+    .prefault({})
+    .describe('The spell market (咒语集市): published spells, copies and forks'),
   laws: z.array(LawSchema).max(5).default([]).describe('Standing laws: Runes programs the world runs on events'),
   proclamation: z.string().max(280).default('Draco dormiens nunquam titillandus.'),
 });

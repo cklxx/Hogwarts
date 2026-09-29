@@ -11,7 +11,11 @@ const sprite = new Set([...html.matchAll(/<symbol id="i-([^"]+)"/g)].map((m) => 
 describe('the ink set (client/ink.ts, index.html #ink)', () => {
   it('has a drawing for every icon the client names', () => {
     const named = new Set<string>();
-    for (const f of readdirSync(new URL('../client/', import.meta.url)).filter((f) => f.endsWith('.ts') || f.endsWith('.html'))) {
+    const files = [
+      ...readdirSync(new URL('../client/', import.meta.url)).filter((f) => f.endsWith('.ts') || f.endsWith('.html')),
+      ...readdirSync(new URL('../client/panels/', import.meta.url)).filter((f) => f.endsWith('.ts')).map((f) => `panels/${f}`),
+    ];
+    for (const f of files) {
       const src = readFileSync(new URL(`../client/${f}`, import.meta.url), 'utf8');
       for (const m of src.matchAll(/\bic\('([a-z0-9-]+)'/g)) named.add(m[1]);
       for (const m of src.matchAll(/href="#i-([a-z0-9-]+)"/g)) named.add(m[1]);

@@ -1,0 +1,249 @@
+/* ==================================================================================================
+   The panels (client/panels/*.ts): the Dark Lord, Dumbledore's Army, 偷师, the O.W.L.s, the familiar, the agent's
+   concentration and the lawless zone. Same parchment and ink as style.css: the surfaces reuse .sheet and the torn
+   edge; this file only places things and adds a few inks (the Dark Mark's green, the lawless red).
+   ================================================================================================== */
+:root { --dark: #1f4a2c; --dark-l: #3f7a4a; --blood: #7a1418; }
+
+/* ------------------------------------------------------------------ the top-centre stack (ribbon, lawless label, veto card, joint spell) */
+#pn-top { position: fixed; left: 50%; top: calc(92px * var(--u)); transform: translateX(-50%); z-index: 3; display: flex; flex-direction: column; align-items: center; gap: calc(8px * var(--u));
+  width: max-content; max-width: min(40em, calc(100vw - calc(28px * var(--u)))); pointer-events: none; }
+#pn-top > * { pointer-events: auto; }
+#pn-top > div { --edge: calc(9px * var(--u)); border: var(--edge) solid transparent; border-image: url('/ui/edge.svg') 30 / var(--edge) / 0 round;
+  background: var(--paper-bg); background-clip: padding-box, padding-box, padding-box; color: var(--ink);
+  display: flex; align-items: center; gap: calc(10px * var(--u)); padding: calc(3px * var(--u)) calc(16px * var(--u)) calc(4px * var(--u)) calc(10px * var(--u));
+  font-size: var(--fs-body); line-height: 1.5; box-shadow: inset 0 0 calc(16px * var(--u)) rgba(120, 72, 22, .42), var(--shadow); animation: fadein .35s var(--ease) both; }
+#pn-top > div > svg.ic { width: calc(30px * var(--u)); height: calc(30px * var(--u)); vertical-align: 0; }
+#pn-top small { font-size: var(--fs-cap); }
+/* you are the Dark Lord: the ribbon in blood-red ink */
+#pn-top .dl-ribbon { color: var(--blood); box-shadow: inset 0 0 calc(16px * var(--u)) rgba(120, 72, 22, .42), inset 0 0 0 calc(1.5px * var(--u)) rgba(122, 20, 24, .55), 0 0 calc(18px * var(--u)) rgba(40, 110, 60, .45); }
+#pn-top .dl-ribbon b { color: var(--blood); }
+#pn-top .dl-ribbon svg.ic { --ic-f2: var(--dark-l); }
+#pn-top .lawless-label { color: var(--blood); font-weight: 500; box-shadow: inset 0 0 calc(16px * var(--u)) rgba(120, 72, 22, .42), inset 0 0 0 calc(2px * var(--u)) rgba(150, 20, 20, .6), var(--shadow); }
+#pn-top .lawless-label svg.ic { --ic-s: var(--blood); --ic-t: var(--blood); }
+#pn-top .joint { color: var(--indigo); box-shadow: inset 0 0 calc(16px * var(--u)) rgba(120, 72, 22, .42), 0 0 calc(18px * var(--u)) rgba(125, 156, 196, .75); }
+#pn-top .vt-mini { color: var(--ink); box-shadow: inset 0 0 calc(16px * var(--u)) rgba(120, 72, 22, .42), inset 0 0 0 calc(2px * var(--u)) rgba(150, 32, 36, .55), var(--shadow); }
+#pn-top .vt-mini b { color: var(--wax); }
+#pn-top .vt-mini button { padding: calc(3px * var(--u)) calc(14px * var(--u)); font-size: calc(15px * var(--t)); }
+#pn-top .vt-mini button kbd { color: var(--ink); }
+body.touch #pn-top kbd { display: none; }
+
+/* ------------------------------------------------------------------ 无规则区: red ink creeping in from the edges */
+#lawless { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(110, 10, 12, .28) 80%, rgba(80, 4, 6, .6));
+  box-shadow: inset 0 0 0 calc(5px * var(--u)) rgba(122, 20, 24, .55), inset 0 0 calc(60px * var(--u)) rgba(122, 20, 24, .55); animation: breathe 4s ease-in-out infinite; }
+
+/* ------------------------------------------------------------------ the compass to the Dark Lord (under the clock) */
+#dl-compass { --edge: calc(7px * var(--u)); border: var(--edge) solid transparent; border-image: url('/ui/edge.svg') 30 / var(--edge) / 0 round;
+  background: var(--paper-bg); background-clip: padding-box, padding-box, padding-box; box-shadow: inset 0 0 calc(14px * var(--u)) rgba(120, 72, 22, .42), 0 0 calc(12px * var(--u)) rgba(40, 110, 60, .35);
+  display: flex; align-items: center; gap: calc(9px * var(--u)); padding: calc(2px * var(--u)) calc(12px * var(--u)) calc(2px * var(--u)) calc(8px * var(--u)); font-size: var(--fs-body); max-width: 100%; }
+#dl-compass > svg.ic { width: calc(30px * var(--u)); height: calc(30px * var(--u)); vertical-align: 0; --ic-f2: var(--dark-l); }
+#dl-compass .dc-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dl-compass .dc-t b { color: var(--dark); margin-right: calc(4px * var(--u)); }
+#dl-compass .dc-t small { margin-left: calc(6px * var(--u)); }
+#dl-compass .dc-d { flex: none; display: inline-flex; align-items: center; gap: calc(4px * var(--u)); color: var(--dark); }
+#dl-compass .arrow { display: inline-block; width: 1.1em; text-align: center; color: var(--wax); font-weight: 700; font-size: calc(19px * var(--t)); }
+#dl-compass .num { font-size: calc(18px * var(--t)); }
+
+/* ------------------------------------------------------------------ 偷师: the slip under the clock, the block in the spellbook */
+#studyslip { --edge: calc(10px * var(--u)); border: var(--edge) solid transparent; border-image: url('/ui/edge.svg') 30 / var(--edge) / 0 round;
+  background: var(--paper-bg); background-clip: padding-box, padding-box, padding-box; box-shadow: inset 0 0 calc(18px * var(--u)) rgba(120, 72, 22, .42), inset calc(3px * var(--u)) 0 0 var(--indigo), var(--shadow);
+  width: min(calc(380px * var(--u)), 100%); padding: calc(4px * var(--u)) calc(12px * var(--u)) calc(9px * var(--u)); font-size: var(--fs-body); animation: fadein .3s var(--ease) both; }
+#studyslip .ss-h { display: flex; align-items: center; gap: calc(6px * var(--u)); color: var(--indigo); }
+#studyslip .ss-h svg.ic { width: calc(24px * var(--u)); height: calc(24px * var(--u)); vertical-align: 0; }
+#studyslip .ss-h .x { margin-left: auto; width: calc(28px * var(--u)); height: calc(28px * var(--u)); }
+#studyslip p { margin: calc(2px * var(--u)) 0 calc(6px * var(--u)); }
+#studyslip .ss-a, #book-study .st-a { display: flex; gap: calc(8px * var(--u)); flex-wrap: wrap; }
+#studyslip button, #book-study button { padding: calc(3px * var(--u)) calc(12px * var(--u)); font-size: calc(15px * var(--t)); }
+#studyslip button svg.ic, #book-study button svg.ic { width: calc(19px * var(--u)); height: calc(19px * var(--u)); }
+#book-study { flex: none; margin: calc(10px * var(--u)) 0 0; padding: calc(4px * var(--u)) calc(10px * var(--u)) calc(6px * var(--u)); border: calc(1.4px * var(--u)) dashed rgba(39, 70, 111, .55); border-radius: calc(4px * var(--u)); background: rgba(39, 70, 111, .06); max-height: 34%; overflow: auto; }
+#book-study h4 { margin: calc(2px * var(--u)) 0 calc(4px * var(--u)); display: flex; align-items: baseline; flex-wrap: wrap; gap: calc(4px * var(--u)) calc(10px * var(--u)); font: 400 calc(21px * var(--t))/1.3 var(--brush); color: var(--indigo); letter-spacing: .06em; }
+html:lang(en) #book-study h4 { font: 700 calc(18px * var(--t))/1.3 var(--latin); }
+#book-study h4 svg.ic { width: calc(22px * var(--u)); height: calc(22px * var(--u)); vertical-align: -.2em; align-self: center; }
+#book-study h4 small { font: 400 var(--fs-cap)/1.4 var(--cjk); letter-spacing: 0; }
+#book-study ul { list-style: none; margin: 0; padding: 0; }
+#book-study li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: calc(6px * var(--u)) calc(10px * var(--u)); padding: calc(5px * var(--u)) 0; border-top: calc(1px * var(--u)) solid var(--hair); }
+#book-study li:first-child { border-top: 0; }
+#book-study .st-t { min-width: 0; }
+#book-study .st-t b { display: block; font-size: calc(17px * var(--t)); font-weight: 500; }
+#book-study .st-t small { display: block; }
+#book-study .ready { color: var(--verdigris); font-weight: 600; }
+
+/* ------------------------------------------------------------------ the agent's concentration: a small tube beside the owl */
+#agentbox .ab-focus { position: absolute; left: calc(100% + calc(4px * var(--u))); top: calc(8px * var(--u)); width: calc(8px * var(--u)); height: calc(40px * var(--u));
+  border: calc(1.4px * var(--u)) solid var(--ink); border-radius: calc(4px * var(--u)); background: rgba(255, 250, 235, .55); overflow: hidden; display: flex; align-items: flex-end; }
+#agentbox .ab-focus i { display: block; width: 100%; background: linear-gradient(#5a82b9, #27466f); transition: height .4s; }
+#agentbox .ab-focus.low i { background: linear-gradient(#d4574c, #8f1b1f); }
+#agentbox .ab-focus[data-tip]:hover::after { left: calc(14px * var(--u)); top: 0; }
+
+/* ------------------------------------------------------------------ the familiar (Owl panel, Owl Post) */
+.fam { margin: calc(4px * var(--u)) 0 calc(8px * var(--u)); padding: calc(6px * var(--u)) calc(12px * var(--u)) calc(8px * var(--u)); border: calc(1.4px * var(--u)) dashed rgba(91, 64, 41, .55); border-radius: calc(4px * var(--u)); background: rgba(255, 250, 235, .3); font-size: var(--fs-body); }
+.fam.is-on { border-style: solid; border-color: rgba(36, 85, 72, .55); background: rgba(36, 85, 72, .06); }
+.fam-h { display: flex; align-items: center; flex-wrap: wrap; gap: calc(4px * var(--u)) calc(8px * var(--u)); }
+.fam-h svg.ic { width: calc(28px * var(--u)); height: calc(28px * var(--u)); vertical-align: 0; --ic-f2: #f7ecd0; }
+.fam-h b { font-size: calc(17px * var(--t)); }
+.fam p { margin: calc(5px * var(--u)) 0; max-width: none; }
+.fam-st .dot { margin-right: calc(7px * var(--u)); vertical-align: .05em; }
+.fam-st.on { color: var(--verdigris); } .fam-st.busy { color: var(--indigo); } .fam-st.dormant, .fam-st.tired { color: var(--ochre); }
+.fam .dot { display: inline-block; width: calc(9px * var(--u)); height: calc(9px * var(--u)); border-radius: 50%; background: #8d8272; flex: none; }
+.fam .dot.on { background: #3d7a3a; box-shadow: 0 0 0 calc(2px * var(--u)) rgba(61, 122, 58, .25); } .fam .dot.paused { background: #c99a2a; }
+.fam-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(7px * var(--u)); margin-top: calc(6px * var(--u)); }
+.fam-row button { padding: calc(4px * var(--u)) calc(14px * var(--u)); font-size: calc(15px * var(--t)); }
+.fam-row .fam-k { color: var(--ink); background: rgba(255, 250, 235, .4); box-shadow: none; text-shadow: none; border: calc(1.4px * var(--u)) solid rgba(91, 64, 41, .6);
+  border-radius: calc(3px * var(--u)) calc(6px * var(--u)) calc(4px * var(--u)) calc(5px * var(--u)); padding: calc(2px * var(--u)) calc(11px * var(--u)) calc(2px * var(--u)) calc(6px * var(--u)); font-weight: 400; }
+.fam-row .fam-k svg.ic { width: calc(26px * var(--u)); height: calc(26px * var(--u)); --ic-s: var(--ink); --ic-t: var(--ink); --ic-fo: rgba(190, 140, 70, .28); --ic-f2o: initial; }
+.fam-row .fam-k.on { border-color: var(--indigo); background: rgba(39, 70, 111, .1); color: var(--indigo); font-weight: 500; box-shadow: inset 0 0 0 calc(1px * var(--u)) var(--indigo); }
+.fam-row .fam-k:disabled:not(.on) { opacity: .45; }
+.fam-row .fam-k:disabled.on { opacity: 1; filter: none; cursor: default; }
+#owl-fam .fam { margin-top: 0; }
+
+/* ------------------------------------------------------------------ the leaderboard's and the Owl Post's entries */
+.pn-dl svg.ic { width: calc(24px * var(--u)); height: calc(24px * var(--u)); margin-right: calc(4px * var(--u)); --ic-f2: var(--dark-l); }
+.pn-dl b { color: var(--dark); }
+.pn-da, .pn-links { display: flex; flex-wrap: wrap; align-items: center; gap: calc(8px * var(--u)); }
+.pn-da button svg.ic, .pn-links button svg.ic { width: calc(22px * var(--u)); height: calc(22px * var(--u)); }
+
+/* ------------------------------------------------------------------ 邓布利多军 (J) */
+#da { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(640px * var(--u)), calc(100vw - calc(28px * var(--u)))); max-height: 88vh; }
+#da .da-stand { font-size: calc(18px * var(--t)); font-weight: 500; }
+#da .da-stand.in { color: var(--verdigris); } #da .da-stand.can { color: var(--indigo); } #da .da-stand.no { color: var(--wax); }
+#da .da-stats { display: flex; flex-wrap: wrap; gap: calc(8px * var(--u)) calc(22px * var(--u)); margin: calc(8px * var(--u)) 0; }
+#da .da-stats span { display: inline-flex; align-items: baseline; gap: calc(4px * var(--u)); }
+#da .da-stats .num { font-size: calc(24px * var(--t)); color: var(--ink); }
+#da .da-stats .met { color: var(--verdigris); }
+#da .da-stats svg.ic { width: calc(18px * var(--u)); height: calc(18px * var(--u)); align-self: center; }
+#da .row button svg.ic { width: calc(22px * var(--u)); height: calc(22px * var(--u)); }
+#da .ok { color: var(--verdigris); }
+#da .da-mem { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: calc(4px * var(--u)) calc(18px * var(--u)); }
+#da .da-mem li { display: inline-flex; align-items: center; gap: calc(6px * var(--u)); }
+#da .dot { display: inline-block; width: calc(9px * var(--u)); height: calc(9px * var(--u)); border-radius: 50%; background: #8d8272; }
+#da .dot.on { background: #3d7a3a; }
+/* the veto card: a big sealed order, wax clock, vote pips */
+.veto { margin: calc(14px * var(--u)) 0 calc(4px * var(--u)); padding: calc(10px * var(--u)) calc(18px * var(--u)) calc(12px * var(--u)); border: calc(1.6px * var(--u)) solid rgba(91, 64, 41, .5); border-radius: calc(4px * var(--u)) calc(7px * var(--u)) calc(5px * var(--u)) calc(6px * var(--u)); background: rgba(255, 250, 235, .35); }
+.veto.big { border: calc(2px * var(--u)) solid var(--wax); background: rgba(150, 32, 36, .06); box-shadow: inset 0 0 0 calc(4px * var(--u)) rgba(242, 230, 201, .9), inset 0 0 0 calc(5.5px * var(--u)) rgba(150, 32, 36, .4); }
+.veto.idle p { margin: calc(4px * var(--u)) 0 0; color: var(--ink2); }
+.veto .vt-h { display: flex; align-items: center; gap: calc(10px * var(--u)); }
+.veto .vt-h svg.ic { width: calc(34px * var(--u)); height: calc(34px * var(--u)); vertical-align: 0; }
+.veto .vt-h b { font: 400 calc(30px * var(--t))/1.15 var(--brush); color: var(--wax); letter-spacing: .08em; }
+html:lang(en) .veto .vt-h b { font: 700 calc(26px * var(--t))/1.15 var(--latin); }
+.veto.idle .vt-h b { font-size: calc(22px * var(--t)); color: var(--ink); }
+.veto .vt-clock { margin-left: auto; min-width: 3.4em; text-align: center; padding: calc(2px * var(--u)) calc(12px * var(--u)); border-radius: calc(20px * var(--u)); color: #fff4e4; font-size: calc(24px * var(--t));
+  background: radial-gradient(circle at 35% 30%, #c0403a, #7a1418 72%); box-shadow: 0 calc(1px * var(--u)) calc(3px * var(--u)) rgba(0, 0, 0, .45); }
+.veto .vt-who { margin: calc(8px * var(--u)) 0 calc(4px * var(--u)); }
+.veto .vt-ch { margin: calc(4px * var(--u)) 0 calc(8px * var(--u)); padding-left: calc(20px * var(--u)); font-size: var(--fs-cap); }
+.veto .vt-votes { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6px * var(--u)) calc(14px * var(--u)); margin: calc(6px * var(--u)) 0; }
+.veto .vt-votes .num { font-size: calc(19px * var(--t)); }
+.veto .pips { display: inline-flex; gap: calc(6px * var(--u)); }
+.veto .pips i { width: calc(18px * var(--u)); height: calc(18px * var(--u)); border-radius: 50%; border: calc(1.8px * var(--u)) solid var(--wax); background: rgba(255, 250, 235, .5); }
+.veto .pips i.on { background: radial-gradient(circle at 35% 30%, #d4574c, #8f1b1f 70%); }
+.veto .warn { color: var(--wax); margin: calc(4px * var(--u)) 0; }
+.veto .vt-act { margin-top: calc(10px * var(--u)); display: flex; align-items: center; gap: calc(10px * var(--u)); }
+.veto .vt-go { font-size: calc(19px * var(--t)); padding: calc(8px * var(--u)) calc(26px * var(--u)); letter-spacing: .12em; }
+.veto .vt-go svg.ic { width: calc(24px * var(--u)); height: calc(24px * var(--u)); }
+.veto .vt-done { display: inline-flex; align-items: center; gap: calc(6px * var(--u)); color: var(--verdigris); font-weight: 500; }
+.veto .vt-done svg.ic { width: calc(20px * var(--u)); height: calc(20px * var(--u)); }
+
+/* ------------------------------------------------------------------ O.W.L. (K) */
+#exams { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(1080px * var(--u)), calc(100vw - calc(28px * var(--u)))); height: min(calc(760px * var(--u)), 90vh); display: flex; flex-direction: column; }
+#exams h2 small b { color: var(--ink); }
+#exams .ex-sub { margin: 0 0 calc(8px * var(--u)); max-width: none; }
+#exams .ex-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(calc(230px * var(--u)), 30%) minmax(0, 1fr); gap: calc(18px * var(--u)); }
+#exams .ex-cols > nav { min-height: 0; overflow: auto; scrollbar-width: thin; border-right: calc(1px * var(--u)) solid var(--hair); padding-right: calc(10px * var(--u)); }
+#exams .ex-page { min-height: 0; overflow: auto; scrollbar-width: thin; padding-right: calc(4px * var(--u)); }
+.ex-list { list-style: none; margin: 0; padding: 0; }
+.ex-list li { position: relative; display: grid; grid-template-columns: calc(42px * var(--u)) minmax(0, 1fr); gap: calc(10px * var(--u)); align-items: center; padding: calc(6px * var(--u)) calc(6px * var(--u)); cursor: pointer; border-bottom: calc(1px * var(--u)) solid rgba(91, 64, 41, .24); }
+.ex-list li:hover { background: rgba(120, 80, 30, .07); }
+.ex-list li.sel { background: linear-gradient(90deg, rgba(150, 32, 36, .13), transparent 90%); }
+.ex-list li.sel::before { content: ''; position: absolute; left: -10px; top: 50%; width: calc(6px * var(--u)); height: calc(28px * var(--u)); margin-top: -14px; background: var(--wax); border-radius: calc(2px * var(--u)); }
+.ex-list li.locked { color: var(--ink3); }
+.ex-list .ex-t { min-width: 0; }
+.ex-list .ex-t b { display: block; font-size: calc(17px * var(--t)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-list .ex-t small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* grades: a wax seal for a pass, an ink ring for a fail, the Troll a green-grey lump */
+.grade { display: inline-grid; place-items: center; width: calc(34px * var(--u)); height: calc(34px * var(--u)); border-radius: 50%; font: 700 calc(19px * var(--t))/1 var(--latin); letter-spacing: 0; vertical-align: middle; }
+.grade.pass { color: #fff4e4; background: radial-gradient(circle at 35% 30%, #c0403a, #7a1418 72%); box-shadow: 0 calc(1px * var(--u)) calc(2px * var(--u)) rgba(0, 0, 0, .45); }
+.grade.g-O { background: radial-gradient(circle at 35% 30%, #e8bf55, #a07a1c 72%); color: #2a1b0f; }
+.grade.fail { color: var(--wax); border: calc(2px * var(--u)) solid var(--wax); background: rgba(255, 250, 235, .5); }
+.grade.g-T { color: #f1ead0; border: 0; background: radial-gradient(circle at 40% 35%, #8a9270, #4f573e 75%); box-shadow: 0 calc(1px * var(--u)) calc(2px * var(--u)) rgba(0, 0, 0, .45); }
+.grade.none { color: var(--ink3); border: calc(1.4px * var(--u)) dashed rgba(91, 64, 41, .5); font-size: calc(16px * var(--t)); }
+.grade.none svg.ic { width: calc(18px * var(--u)); height: calc(18px * var(--u)); }
+.grade.big { width: calc(62px * var(--u)); height: calc(62px * var(--u)); font-size: calc(36px * var(--t)); flex: none; }
+.ex-page .ex-title { margin-top: 0; font: 400 calc(30px * var(--t))/1.2 var(--brush); letter-spacing: .04em; flex-wrap: wrap; }
+html:lang(en) .ex-page .ex-title { font: 700 calc(26px * var(--t))/1.2 var(--latin); }
+.ex-page .ex-title::before { display: none; }
+.ex-page .ex-title small { font: 400 var(--fs-cap)/1.4 var(--cjk); }
+.ex-page .ex-brief { font-size: calc(17px * var(--t)); max-width: none; }
+.ex-page .ex-par .num { font-size: calc(18px * var(--t)); color: var(--wax); }
+.ex-page .ex-best .grade { width: calc(28px * var(--u)); height: calc(28px * var(--u)); font-size: calc(16px * var(--t)); }
+.ex-page .warn { color: var(--wax); }
+.ex-acts button svg.ic { width: calc(20px * var(--u)); height: calc(20px * var(--u)); }
+.ex-acts select { font-size: calc(15px * var(--t)); max-width: 16em; }
+/* the Runes editor: the spellbook's code box (#sp-src) */
+textarea.runes { width: 100%; min-height: calc(130px * var(--u)); resize: vertical; font: calc(15.5px * var(--t))/1.55 var(--mono); letter-spacing: 0; padding: calc(9px * var(--u)) calc(14px * var(--u)); color: #23170c;
+  background: rgba(120, 80, 30, .1); border: 0; border-left: calc(3px * var(--u)) solid var(--ink2); }
+textarea.runes:focus { background: rgba(120, 80, 30, .14); border-left-color: var(--wax); }
+/* the report: a CI log on parchment */
+.ci { margin: calc(12px * var(--u)) 0; padding: calc(10px * var(--u)) calc(14px * var(--u)); border-left: calc(4px * var(--u)) solid var(--verdigris); background: rgba(36, 85, 72, .06); }
+.ci.fail { border-left-color: var(--wax); background: rgba(150, 32, 36, .05); }
+.ci-head { display: flex; align-items: center; gap: calc(14px * var(--u)); }
+.ci-head b { font-size: calc(19px * var(--t)); }
+.ci.pass .ci-head b { color: var(--verdigris); } .ci.fail .ci-head b { color: var(--wax); }
+.ci .meme { margin-top: calc(2px * var(--u)); color: var(--ink2); }
+.ci .meme.troll { font: 400 calc(22px * var(--t))/1.4 var(--brush); color: #4f573e; letter-spacing: .04em; }
+.ci-cases { list-style: none; margin: calc(10px * var(--u)) 0; padding: 0; font-family: var(--cjk); }
+.ci-cases li { display: grid; grid-template-columns: calc(22px * var(--u)) minmax(0, 1fr); gap: calc(8px * var(--u)); padding: calc(4px * var(--u)) 0; border-top: calc(1px * var(--u)) dashed var(--hair); }
+.ci-cases .ck { font: 700 calc(18px * var(--t))/1.5 var(--mono); }
+.ci-cases li.ok .ck { color: var(--verdigris); } .ci-cases li.bad .ck { color: var(--wax); }
+.ci-cases b { font-weight: 500; }
+.ci-cases .why { color: var(--wax); font-size: var(--fs-cap); }
+.ci-err { color: var(--wax) !important; }
+.ci-score .num { font-size: calc(22px * var(--t)); color: var(--ink); }
+.ci-hint, .ci-rew { display: flex; align-items: center; gap: calc(6px * var(--u)); }
+.ci-hint svg.ic, .ci-rew svg.ic { width: calc(20px * var(--u)); height: calc(20px * var(--u)); flex: none; }
+.ci-rew { color: var(--verdigris); font-weight: 500; }
+.ci-ach { display: flex; flex-wrap: wrap; gap: calc(8px * var(--u)); }
+.ci .ach { display: inline-flex; align-items: center; gap: calc(5px * var(--u)); padding: calc(1px * var(--u)) calc(10px * var(--u)); border: calc(1.4px * var(--u)) solid var(--ochre); border-radius: calc(12px * var(--u)); color: var(--ochre); font-weight: 500; }
+.ci .ach svg.ic { width: calc(18px * var(--u)); height: calc(18px * var(--u)); }
+.ex-board { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
+.ex-board th, .ex-board td { padding: calc(4px * var(--u)) calc(8px * var(--u)); border-bottom: calc(1px * var(--u)) solid var(--hair); text-align: left; }
+.ex-board th { color: var(--ink2); font-weight: 500; border-bottom: calc(1.5px * var(--u)) solid var(--ink2); }
+.ex-board td:not(:nth-child(2)) { font-family: var(--latin); font-weight: 700; font-feature-settings: 'lnum' 1, 'tnum' 1; }
+.ex-board tr.you td { background: rgba(150, 32, 36, .08); }
+.ex-board .grade { width: calc(26px * var(--u)); height: calc(26px * var(--u)); font-size: calc(15px * var(--t)); }
+#exams .ex-rules { margin-top: calc(8px * var(--u)); }
+#exams .ex-rules p { max-width: none; font-size: var(--fs-cap); }
+
+/* the spellbook's O.W.L. tab sits beside the 咒语集市 tab (a wax-red drawing, like the market's gold coin) */
+#book-list li.owl-entry svg.ic { --ic-f2: var(--wax); }
+
+/* ------------------------------------------------------------------ small screens */
+@media (max-width: 800px) {
+  #exams { height: calc(100vh - calc(16px * var(--u))); width: calc(100vw - calc(16px * var(--u))); }
+  #exams .ex-cols { display: flex; flex-direction: column; overflow: auto; }
+  #exams .ex-cols > nav, #exams .ex-page { flex: none; min-height: auto; overflow: visible; border: 0; padding: 0; }
+  .ex-list { display: flex; gap: calc(6px * var(--u)); overflow-x: auto; padding-bottom: calc(4px * var(--u)); }
+  .ex-list li { flex: 0 0 min(calc(220px * var(--u)), 62vw); border: calc(1.2px * var(--u)) solid rgba(91, 64, 41, .35); border-radius: calc(4px * var(--u)); }
+  .ex-list li.sel::before { display: none; }
+  .ex-list li.sel { border-color: var(--wax); }
+  /* narrow: the top belongs to the name card and the right column, so the stack sits above the dock */
+  #pn-top { top: auto; bottom: calc(var(--bars-h, calc(150px * var(--u))) + calc(60px * var(--u))); }
+}
+@media (max-width: 520px) {
+  #da { width: calc(100vw - calc(16px * var(--u))); max-height: calc(100vh - calc(16px * var(--u))); }
+  #pn-top { max-width: calc(100vw - calc(20px * var(--u))); }
+  body.touch #pn-top { left: calc(50% - calc(30px * var(--u))); max-width: calc(100vw - calc(84px * var(--u))); }
+  #pn-top .vm-who { display: none; }
+  #pn-top > div { font-size: calc(15px * var(--t)); }
+  .veto .vt-h b { font-size: calc(25px * var(--t)); }
+  #agentbox .ab-focus { left: auto; right: calc(100% + calc(4px * var(--u))); }
+  .ex-board th:nth-child(n+5), .ex-board td:nth-child(n+5) { display: none; }
+}
+@media (max-height: 500px) {
+  #pn-top { top: auto; bottom: calc(var(--bars-h, calc(110px * var(--u))) + calc(46px * var(--u))); max-width: min(34em, 60vw); gap: calc(4px * var(--u)); }
+  #pn-top > div { padding-top: 0; padding-bottom: 0; }
+}
+
+/* ------------------------------------------------------------------ the help panel (H): keys grouped by the three pillars */
+#helppanel .help-pillars { max-width: none; margin: 0 0 calc(4px * var(--u)); padding: calc(6px * var(--u)) calc(12px * var(--u)); border-left: calc(3px * var(--u)) solid var(--wax); background: rgba(150, 32, 36, .05); }
+#helppanel .help-pillars b { color: var(--wax); font-weight: 600; }
+#helppanel h3.pillar .pl-n { font: 400 calc(22px * var(--t))/1 var(--brush); color: var(--wax); }

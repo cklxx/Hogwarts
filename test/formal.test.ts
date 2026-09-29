@@ -15,6 +15,8 @@ import {
 } from '../src/kernel/progression.js';
 import { titleIndex } from '../src/lore/titles.js';
 import { World } from '../src/kernel/world.js';
+import { royaltyGrant, royaltyStep } from '../src/kernel/market.js';
+import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
 import { mulberry32 } from '../src/shared/map.js';
 import type { Creature, Item, Wizard } from '../src/kernel/types.js';
 import * as K from '../src/shared/constants.js';
@@ -32,9 +34,13 @@ type UnfairVectors = {
   stealPct: [number, number, number, number, number, number][]; darkLordTakes: [number, number, number][]; jointPct: [number, number][];
   vetoPasses: [number, number, number][]; focusAfter: [number, number, number, number, number][];
 };
+type MarketVectors = {
+  constants: Record<string, number>; royaltyGrant: [number, number, number, number][];
+  days: { cap: number; casts: [number, number, number, number, number][]; earned: number[]; given: [number, number, number, number][] }[];
+};
 const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.url), 'utf8')) as {
   yearForXp: [number, number][]; titleIndex: [number, number, number, number, number][]; steal: [number, number, number][];
-  agentLink: AgentLinkVectors; unfair: UnfairVectors;
+  agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors;
 };
 
 describe('Lean conformance vectors', () => {
@@ -139,6 +145,45 @@ describe('Lean conformance vectors: 不公平，但好玩 (duel_steal_cap, duel_
     for (const [n, p] of U.jointPct) expect([n, jointPct(n)]).toEqual([n, p]);
     for (const [n, v, p] of U.vetoPasses) expect([n, v, vetoPasses(n, v) ? 1 : 0]).toEqual([n, v, p]);
     for (const [p, m, r, d, f] of U.focusAfter) expect([p, m, r, d, focusAfter(p, m, r, d)]).toEqual([p, m, r, d, f]);
+  });
+});
+
+describe('Lean conformance vectors: 咒语集市 royalties (royalty_day_capped, royalty_per_pair, royalty_not_self, royalty_npc)', () => {
+  const M = V.market;
+  it('every constant is the same number in Lean and in src/shared/constants.ts', () => {
+    expect(M.constants).toEqual({
+      MARKET_AUTHOR_TENTHS: K.MARKET_AUTHOR_TENTHS, MARKET_PARENT_TENTHS: K.MARKET_PARENT_TENTHS, MARKET_DAY_S: K.MARKET_DAY_S,
+      MARKET_CAP_DEFAULT: K.MARKET_CAP_DEFAULT, MARKET_CAP_MAX: K.MARKET_CAP_MAX, MARKET_ANNOUNCE_S: K.MARKET_ANNOUNCE_S,
+      MARKET_MAX_VERSIONS: K.MARKET_MAX_VERSIONS, MARKET_MAX_PER_AUTHOR: K.MARKET_MAX_PER_AUTHOR, MARKET_BAN_MAX: K.MARKET_BAN_MAX,
+      MARKET_PROMOTE_MAX: K.MARKET_PROMOTE_MAX,
+    });
+    // the rulebook's defaults and bounds are the proved ones
+    const rb = defaultRulebook();
+    expect(rb.market.dailyCap).toBe(K.MARKET_CAP_DEFAULT);
+    expect(applyPatch(rb, { market: { dailyCap: K.MARKET_CAP_MAX } }).ok).toBe(true);
+    expect(applyPatch(rb, { market: { dailyCap: K.MARKET_CAP_MAX + 1 } }).ok).toBe(false);
+  });
+  it('royaltyGrant', () => { for (const [e, sh, c, g] of M.royaltyGrant) expect([e, sh, c, royaltyGrant(e, sh, c)]).toEqual([e, sh, c, g]); });
+  it('whole days of casts replayed through royaltyStep give the same ledger', () => {
+    expect(M.days.length).toBeGreaterThan(5);
+    for (const day of M.days) {
+      const L = { paid: {} as Record<string, number>, earned: {} as Record<string, number> };
+      const pgiven = new Map<string, number>();
+      for (const [s, c, a, p, npc] of day.casts) {
+        const r = royaltyStep(L, { spell: `s${s}`, caster: `w${c}`, author: `w${a}`, parent: p < 0 ? null : `w${p}`, npc: npc === 1 }, day.cap);
+        if (r.parent) pgiven.set(`${s}|${c}`, (pgiven.get(`${s}|${c}`) ?? 0) + r.parent);
+      }
+      expect(day.earned.map((_, i) => L.earned[`w${i}`] ?? 0)).toEqual(day.earned);
+      const given: [number, number, number, number][] = [];
+      for (let s = 0; s < 6; s++) for (let c = 0; c < 7; c++) {
+        const g = L.paid[`s${s}|w${c}`] ?? 0, pg = pgiven.get(`${s}|${c}`) ?? 0;
+        if (g + pg > 0) given.push([s, c, g, pg]);
+      }
+      expect(given).toEqual(day.given);
+      // and the proved bounds, on the vectors themselves
+      for (const e of day.earned) expect(e).toBeLessThanOrEqual(day.cap);
+      for (const [, , g, pg] of day.given) { expect(g).toBeLessThanOrEqual(K.MARKET_AUTHOR_TENTHS); expect(pg).toBeLessThanOrEqual(K.MARKET_PARENT_TENTHS); }
+    }
   });
 });
 

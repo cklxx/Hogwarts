@@ -52,8 +52,8 @@ export const houseIcon = (house: string) => HOUSE_ICON[house] ?? 'seal';
 
 /** A line of news in the feed, by its event type (World.emit). */
 const FEED_ICON: Record<string, string> = {
-  chat: 'quill', combat: 'stupefy', creature: 'target', curse: 'finite', da: 'figures', dark: 'arcane', decree: 'seal', egg: 'star',
-  elder: 'wand', forge: 'scroll', level: 'star', system: 'owl', term: 'hourglass', achievement: 'cup', azkaban: 'chain', owl: 'letter',
+  chat: 'quill', combat: 'stupefy', creature: 'target', curse: 'finite', da: 'patronus', dark: 'darkmark', decree: 'seal', egg: 'star',
+  elder: 'wand', forge: 'scroll', level: 'star', system: 'owl', term: 'hourglass', achievement: 'cup', azkaban: 'chain', owl: 'letter', market: 'coin',
 };
 export const feedIcon = (type: string) => FEED_ICON[type] ?? 'quill';
 

@@ -160,60 +160,86 @@ export interface GoalState {
   customSpells: number | null;
   /** Items in your trunk, or null before the armory arrived. */
   items: number | null;
+  /** This week's O.W.L.s: passed, how many, how many your year may sit (null before the list arrived). */
+  exams?: { passed: number; of: number; open: number } | null;
+  /** Dumbledore's Army as it stands for you (null before the server said). */
+  da?: { member: boolean; eligible: boolean } | null;
+  /** You wear the Dark Mark. */
+  darkLord?: boolean;
 }
-export type GoalAct = { cast: string } | { open: 'book' | 'tpl' | 'seals' | 'trunk' | 'board' | 'owl' };
-export interface Goal { key: string; text: string; why: string; act?: GoalAct; actLabel?: string }
+export type GoalAct = { cast: string } | { open: 'book' | 'tpl' | 'seals' | 'trunk' | 'board' | 'owl' | 'exams' | 'da' };
+/** `pillar`: which of the three paths of play (README 怎么玩) the goal belongs to — 1 fight and duel, 2 write spells, 3 politics. */
+export interface Goal { key: string; text: string; why: string; act?: GoalAct; actLabel?: string; pillar?: 1 | 2 | 3 }
 const PIXIE_XP = CREATURES.pixie.xp;
 
-/** Exactly one next goal, derived from your own state (privateState + armory); null at the very end. */
+/** The Restricted Section, offered as an elective once you are in year 2 (never before, never as the next step). */
+const elective = (s: GoalState) => s.year >= 2 && s.seals < 4
+  ? L(' 选修：禁书区（R）的封印谜题能提高咒语上限，不在主线上。', ' Elective: the Restricted Section (R) has seal puzzles that raise your caps; not on the main path.')
+  : '';
+
+/**
+ * Exactly one next goal, derived from your own state (privateState + armory + the panels); null at the very end.
+ * It walks the three pillars in turn — ① fight (pixies, gear, year 2) ② write (a spell of your own, an O.W.L.)
+ * ③ politics (the DA, reputation, Minister) — and never sends you to the seals, which stay an elective.
+ */
 export function nextGoal(s: GoalState): Goal | null {
   const has = (k: string) => s.ui.includes(k);
   if (!has('revelio')) return {
-    key: 'revelio', text: L('施放「原形立现」，看清自己的斤两', 'Cast Revelio to see your own measure'),
+    key: 'revelio', pillar: 1, text: L('施放「原形立现」，看清自己的斤两', 'Cast Revelio to see your own measure'),
     why: L('原形立现会点亮左上角：年级、声望、加隆、下一个称号。点下面的按钮直接施放（它不在快捷栏上，咒语书里也能找到）。', 'Revelio lights the top-left corner: your year, reputation, Galleons and next title. The button casts it (it is not on the hotbar; the spellbook has it too).'),
     act: { cast: 'Revelio' }, actLabel: L('施放', 'Cast'),
   };
+  if (s.decree) return {
+    key: 'decree', pillar: 3, text: L('你是魔法部长：颁布一道法令', 'You are Minister: issue a decree'),
+    why: L('法令能改写世界规则（MCP 的 decree）。让你的 Agent 帮你起草。小心：颁布后 180 秒内，邓布利多军可以投票否决它。', 'A decree rewrites the rules of the world (MCP: decree). Ask your agent to draft one. Careful: for 180 s after, Dumbledore\'s Army may vote it down.'),
+    act: { open: 'owl' }, actLabel: L('写信给 Agent', 'Write to your agent'),
+  };
   if (s.year === 1 && s.xp < PIXIE_XP * 5) return {
-    key: 'pixies', text: L(`打 5 只康沃尔郡小精灵（${Math.min(5, Math.floor(s.xp / PIXIE_XP))}/5）`, `Defeat 5 Cornish Pixies (${Math.min(5, Math.floor(s.xp / PIXIE_XP))}/5)`),
+    key: 'pixies', pillar: 1, text: L(`打 5 只康沃尔郡小精灵（${Math.min(5, Math.floor(s.xp / PIXIE_XP))}/5）`, `Defeat 5 Cornish Pixies (${Math.min(5, Math.floor(s.xp / PIXIE_XP))}/5)`),
     why: L(`小精灵成群住在城堡东南的草地上。点击一只或按 Tab 锁定，再按 1。它们怕冰：2 年级学会「${spellName('Glacius')}」打得更快。被围住了就按「${spellName('Protego')}」，或者退回大礼堂（安全区）。`, 'Pixies swarm the lawn south-east of the castle. Click one (or Tab), then 1. They hate ice: Glacius in year 2 kills them faster. Surrounded? Protego, or back to the Great Hall (safe zone).'),
   };
   if (s.items === 0 && s.galleons >= 15) return {
-    key: 'shop', text: L(`用 ${s.galleons} 加隆买一件装备`, `Spend your ${s.galleons} Galleons on gear`),
+    key: 'shop', pillar: 1, text: L(`用 ${s.galleons} 加隆买一件装备`, `Spend your ${s.galleons} Galleons on gear`),
     why: L('打开行囊（T），商店里有护符、扫帚、指环和长袍。买下会自动穿上，生命、移速或回蓝马上变好。', 'Open the trunk (T): the shop sells an amulet, a broom, a ring and a robe. Bought gear is worn at once.'),
     act: { open: 'trunk' }, actLabel: L('打开商店', 'Open the shop'),
   };
+  if (s.customSpells === 0) return {
+    key: 'spell', pillar: 2, text: L('写你的第一个咒语：用模板，或让 Agent 帮你写', 'Write your first spell: from a template, or ask your agent'),
+    why: L('咒语就是 Runes 程序。咒语书里「从模板开始」用下拉框和滑块就能拼出一个；或者点「🦉 让 Agent 帮我写」（没有 Agent？在猫头鹰邮递里召唤使魔）。', 'Spells are Runes programs. "Start from a template" in the spellbook builds one from menus and sliders; or press "🦉 Ask my agent" (no agent? summon a familiar in the Owl Post).'),
+    act: { open: 'tpl' }, actLabel: L('从模板开始', 'Templates'),
+  };
   if (s.year === 1) return {
-    key: 'year2', text: L(`升到 2 年级（经验 ${s.xp}/${s.xpNext ?? '—'}）`, `Reach year 2 (${s.xp}/${s.xpNext ?? '—'} XP)`),
-    why: L(`打魔物攒经验：小精灵 ${PIXIE_XP}、魔鬼网 ${CREATURES.snare.xp}、八眼巨蛛 ${CREATURES.spider.xp}。2 年级会学到「${spellName('Glacius')}」「${spellName('Finite Incantatem')}」「${spellName('Serpensortia')}」「${spellName('Point Me')}」，还能读禁书区的书页。`, `Defeat creatures for XP (pixie ${PIXIE_XP}, snare ${CREATURES.snare.xp}, acromantula ${CREATURES.spider.xp}). Year 2 brings Glacius, Finite Incantatem, Serpensortia, Point Me and the Restricted Section's pages.`),
+    key: 'year2', pillar: 1, text: L(`升到 2 年级（经验 ${s.xp}/${s.xpNext ?? '—'}）`, `Reach year 2 (${s.xp}/${s.xpNext ?? '—'} XP)`),
+    why: L(`打魔物攒经验：小精灵 ${PIXIE_XP}、魔鬼网 ${CREATURES.snare.xp}、八眼巨蛛 ${CREATURES.spider.xp}；O.W.L. 考试（K）及格也给经验。2 年级会学到「${spellName('Glacius')}」「${spellName('Finite Incantatem')}」「${spellName('Serpensortia')}」「${spellName('Point Me')}」和「${spellName('Expelliarmus')}」。`, `Defeat creatures for XP (pixie ${PIXIE_XP}, snare ${CREATURES.snare.xp}, acromantula ${CREATURES.spider.xp}); passing an O.W.L. (K) pays XP too. Year 2 brings Glacius, Finite Incantatem, Serpensortia, Point Me and Expelliarmus.`),
   };
   if (!has('point-me')) return {
-    key: 'pointme', text: L(`施放「${spellName('Point Me')}」解锁小地图`, 'Cast Point Me to unlock the minimap'),
+    key: 'pointme', pillar: 1, text: L(`施放「${spellName('Point Me')}」解锁小地图`, 'Cast Point Me to unlock the minimap'),
     why: L('给我指路会点亮左下角的小地图：墙、湖、魔物和同学都在上面。', 'Point Me lights the minimap in the bottom-left corner: walls, the lake, creatures and classmates.'),
     act: { cast: 'Point Me' }, actLabel: L('施放', 'Cast'),
   };
-  if (s.customSpells === 0) return {
-    key: 'spell', text: L('写你的第一个咒语：用模板，或让 Agent 帮你写', 'Write your first spell: from a template, or ask your agent'),
-    why: L('咒语就是 Runes 程序。咒语书里「从模板开始」用下拉框和滑块就能拼出一个；或者点「🦉 让 Agent 帮我写」。', 'Spells are Runes programs. "Start from a template" in the spellbook builds one from menus and sliders; or press "🦉 Ask my agent".'),
-    act: { open: 'tpl' }, actLabel: L('从模板开始', 'Templates'),
+  if (s.exams && s.exams.open > 0 && s.exams.passed === 0) return {
+    key: 'owl', pillar: 2, text: L(`通过一门 O.W.L. 考试（本周 ${s.exams.passed}/${s.exams.of}）`, `Pass an O.W.L. (${s.exams.passed}/${s.exams.of} this week)`),
+    why: L('每周 6 道实战考题：交一段 Runes，隐藏用例像单元测试一样评分，越省节点、gas 和法力分越高。及格给经验、加隆和声望，每题还有排行榜。按 K，或点咒语书里「咒语集市」旁边的「考试」。', 'Six exams a week: hand in Runes, graded by hidden cases like unit tests; fewer nodes, gas and mana score higher. A pass pays XP, Galleons and reputation, and every exam has a leaderboard. K, or the O.W.L. tab in the spellbook beside the market.'),
+    act: { open: 'exams' }, actLabel: L('去考试', 'Sit an exam'),
   };
-  if (s.seals === 0) return {
-    key: 'pages', text: L('去地标读禁书区书页（第一道封印）', 'Read the Restricted Section pages (First Seal)'),
-    why: L('第一道封印的书页在庭院和大礼堂。站到地标旁按 F 阅读；读完全部书页，研究符文，说出答案字就能破解封印。按 R 看进度。', 'The First Seal\'s pages rest in the Courtyard and the Great Hall. Stand by the landmark and press F. With every page, study the runes and speak the answer. R shows your progress.'),
-    act: { open: 'seals' }, actLabel: L('禁书区', 'Restricted Section'),
+  if (s.darkLord) return {
+    key: 'darklord', pillar: 3, text: L('你是黑魔王：守住声望第一', 'You are the Dark Lord: hold on to first place'),
+    why: L('伤害 +15%，但你的位置每 60 秒向全服公开，击晕你的人夺走你 30% 的声望。撑到学期末，你就是魔法部长。', 'Damage +15%, but your whereabouts are announced every 60 s and whoever stuns you takes 30% of your reputation. Last to the term\'s end and you are Minister.'),
+    act: { open: 'board' }, actLabel: L('排行榜', 'Leaderboard'),
   };
-  if (s.decree) return {
-    key: 'decree', text: L('你是魔法部长：颁布一道法令', 'You are Minister: issue a decree'),
-    why: L('法令能改写世界规则（MCP 的 decree）。让你的 Agent 帮你起草。', 'A decree rewrites the rules of the world (MCP: decree). Ask your agent to draft one.'),
-    act: { open: 'owl' }, actLabel: L('写信给 Agent', 'Write to your agent'),
+  if (s.da && s.da.eligible && !s.da.member && s.year >= 2) return {
+    key: 'da', pillar: 3, text: L('加入邓布利多军：弱者抱团', "Join Dumbledore's Army: the underdogs band together"),
+    why: L('声望不高也能改变世界：成员一起能在法令颁布后 180 秒内投票否决它，三人以上同时打中一个目标伤害 ×1.25。按 J。', 'Low reputation can still change the world: members can vote down a decree within 180 s, and three hitting one target deal ×1.25. Press J.'),
+    act: { open: 'da' }, actLabel: L('邓布利多军', "Dumbledore's Army"),
   };
   if (s.reputation < 100) return {
-    key: 'cup', text: L(`为学院杯赢声望（${s.reputation}/100）`, `Win reputation for the House Cup (${s.reputation}/100)`),
-    why: L('打魔物、决斗、破封印都加声望。学期结束时声望最高（至少 100）的人成为魔法部长。按 L 看排名。', 'Creatures, duels and seals all earn reputation. At term end the top wizard (at least 100) becomes Minister for Magic. L shows the ranks.'),
+    key: 'cup', pillar: 3, text: L(`打怪与决斗，为学院杯赢声望（${s.reputation}/100）`, `Fight and duel for House Cup reputation (${s.reputation}/100)`),
+    why: L('打魔物、和其他学院的巫师决斗、考 O.W.L. 都加声望（击晕强者夺走得更多）。学期结束时声望最高（至少 100）的人成为魔法部长。按 L 看排名。', 'Creatures, duels with other houses and O.W.L.s earn reputation (stunning the strong takes more). At term end the top wizard (at least 100) becomes Minister for Magic. L shows the ranks.') + elective(s),
     act: { open: 'board' }, actLabel: L('排行榜', 'Leaderboard'),
   };
   return {
-    key: 'minister', text: L('成为魔法部长：学期结束时声望第一', 'Become Minister for Magic: top reputation at term end'),
-    why: L('学期结束时声望最高（至少 100）的巫师成为魔法部长，可以颁布一道法令改写世界规则。', 'At the end of each term the highest-reputation wizard (min 100) becomes Minister and may issue one decree.'),
+    key: 'minister', pillar: 3, text: L('成为魔法部长：学期结束时声望第一', 'Become Minister for Magic: top reputation at term end'),
+    why: L('学期结束时声望最高（至少 100）的巫师成为魔法部长，可以颁布一道法令改写世界规则；声望 ≥150 的第一名还会戴上黑魔标记（伤害 +15%，但位置公开）。', 'At the end of each term the highest-reputation wizard (min 100) becomes Minister and may issue one decree; the top one with 150+ also wears the Dark Mark (+15% damage, but seen by all).') + elective(s),
     act: { open: 'board' }, actLabel: L('排行榜', 'Leaderboard'),
   };
 }
