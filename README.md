@@ -51,38 +51,6 @@ stdio 桥会把密钥存进 `~/.hogwarts/credentials.json`（0600），并把它
 - 示例：`npm run bot -- "Neville Longbottom"` 是一个脚本化"Agent"，通过 MCP 入学、铸造自己的咒语、按弱点挑选法术猎杀生物。
 - 没有 Agent 也能写咒语：游戏里按 `B` 打开**咒语书**，可阅读课本咒语源码、编写 Runes、免费模拟、铸造并放上快捷栏；底部附完整 Grimoire。
 
-### 用局域网 IP 访问时开启 WebGPU（HTTPS）
-
-浏览器只在 **HTTPS 或 localhost** 下提供 WebGPU。用 `http://10.x.x.x:7777` 这类局域网地址打开时会自动退回 WebGL 2。按人数选：
-
-**内网给很多人玩（推荐）：用自己的域名申请受信任证书，玩家什么都不用装。**
-需要一个域名（任意域名都行，只用它的一个子域），以及能调 DNS API 的 token。证书靠 DNS 验证签发，服务器不用暴露到公网。
-
-```bash
-# 1. 在 DNS 里加一条 A 记录：game.example.com → 10.37.x.x（服务器的内网 IP）
-# 2. 申请证书（acme.sh 支持 150+ 家 DNS；阿里云 Ali_Key/Ali_Secret + dns_ali，DNSPod DP_Id/DP_Key + dns_dp，Cloudflare CF_Token + dns_cf）
-curl https://get.acme.sh | sh -s email=you@example.com
-export Ali_Key=… Ali_Secret=…
-~/.acme.sh/acme.sh --issue --server letsencrypt --dns dns_ali -d game.example.com
-mkdir -p data/tls/own && ~/.acme.sh/acme.sh --install-cert -d game.example.com \
-  --fullchain-file "$PWD/data/tls/own/fullchain.pem" --key-file "$PWD/data/tls/own/key.pem"
-# 3. 启动（acme.sh 每 60 天自动续期，服务器每分钟检查证书文件并热加载，不用重启）
-PLAY_HOST=game.example.com TLS_CERT=data/tls/own/fullchain.pem TLS_KEY=data/tls/own/key.pem npm start
-```
-
-之后大家打开 `https://game.example.com:7443` 即可；有人打开旧的 `http://10.37.x.x:7777` 会被自动跳转过去，游戏和 Agent 给出的游戏链接也都用这个域名。想去掉端口号：`HTTPS_PORT=443`（需要 root，或 `sudo setcap cap_net_bind_service=+ep $(which node)`）。
-注意：部分路由器和公司 DNS 开了「DNS rebinding 保护」，会丢弃指向内网 IP 的公网解析；遇到打不开时，把这条 A 记录加在公司内网 DNS 里（证书验证只看公网的 TXT 记录，不受影响）。公司有 IT 统一管理电脑的话，也可以让 IT 通过组策略/MDM 把 `/tls/ca.pem` 推到所有电脑，效果相同，不需要域名。
-
-**几个人玩，没有域名：**
-
-1. **Chrome / Edge 开关（30 秒，不装证书）**：`chrome://flags/#unsafely-treat-insecure-origin-as-secure` 填入 `http://<IP>:7777`，选 Enabled 并重启浏览器。只对这个地址生效；Firefox、Safari 没有。
-2. **信任本服务器的 CA（所有浏览器）**：服务器启动时自动生成证书（有 openssl 即可，放在 `data/tls/`，已在 `.gitignore` 里），并**另外**在 `https://<IP>:7443` 提供游戏（`HTTPS_PORT` 可改，`HTTPS=0` 关闭）。每台电脑第一次打开 `http://<IP>:7777/tls`，复制对应系统的一行命令执行（信任根证书需要系统管理员确认，这一步没法替你点），重启浏览器后打开 `https://<IP>:7443`。这个 CA 带名称约束，只能签 localhost、局域网地址和这台服务器自己的地址，签不了公网网站；私钥不出服务器。想用 mkcert 的 CA 或加主机名：`npm run cert -- my-devbox.lan`。
-3. **SSH 端口转发**：`ssh -L 7777:localhost:7777 开发机`，然后打开 `http://localhost:7777`。
-
-游戏在 WebGL 2 下会在角落提示「开启 WebGPU →」，点开就是 `/tls` 页面，上面列着这些办法。MCP 始终走 `http://<IP>:7777/mcp`。
-
-在 HTTPS 页面里连接 Agent 时，游戏给出的命令仍指向 HTTP 的 MCP 地址；Agent 生成的游戏链接会指向 HTTPS 地址。`?perf=1` 右上角显示当前实际用的是 WebGPU 还是 WebGL 2。
-
 ### 边玩边和你的 Agent 说话
 
 - 按 `O`（或聊天框以 `@agent ` 开头）打开**猫头鹰**：只有你和你的 Agent 能看到。Agent 用 `tell_player` 回你，可以带 2–4 个选项按钮提问；用 `listen` / `wait(until:"owl")` 收你的信。
@@ -246,10 +214,10 @@ HUD 四个角默认是暗的，要用魔法点亮（新原语 `reveal`）：**Te
 
 ### 画面
 默认「绘本」画风：表面贴图在浏览器启动时用 canvas 手绘（笔触石砖 + 高度图当 bumpMap、石板瓦、鹅卵石、木纹、都铎式灰泥木框、草地），按世界尺寸铺 UV（砖在任何墙上都一样大），地面用低频顶点色做冷暖色块。光照：手绘渐变天空随游戏时间变色 → 暖色主光（白天太阳、夜里月亮，阴影跟随玩家）+ 冷色补光 + 天空/地面半球光 → 柔和的卡通分层光照、角色轮廓光、朝太阳变暖的雾 → 由手绘天空烘焙的环境光 → HDR → 只让光源发光的 Bloom（窗户、蜡烛、灯笼、咒语）→ 调色（部长的 skyTint、冷影暖光、纸纹、暗角）→ Neutral 色调映射；高画质下建筑与人物有墨线描边。`?style=real` 保留写实画风：开源 PBR 贴图（`client/public/textures/CREDITS.md`）、Preetham 物理天空、Poly Haven HDRI、镜头光晕、ACES。
-**渲染器：WebGPU**（three.js `WebGPURenderer`），浏览器不支持 WebGPU 时自动回退 WebGL 2（`?gpu=webgl` 可强制）。所有着色器都用 TSL（three.js 节点着色语言）写成，同一份代码编译成 WGSL 或 GLSL，两条后端画面一致。WebGPU 下另有计算着色器：**GPU 粒子模拟**（存储缓冲，高画质预算 13 万粒子、低画质 3.3 万；火花与余烬落地会弹跳；只模拟和绘制仍可能存活的那一段环形缓冲）和 **GPU 草地**（每帧在计算着色器里按地形高度/草密度纹理生成约 2.4 万个草簇位置，逐簇视锥剔除、远处稀疏，原子计数写入间接绘制参数，整片草地一次 draw call，CPU 每帧只设 4 个 uniform）；WebGL 2 回退走原来的顶点着色器粒子与 CPU 分块草地。后期处理是一张节点图：场景（多重采样 HDR）→ Bloom → 调色 + 色调映射 + sRGB 一次输出。
-飞行中的咒语借用光源池照亮周围；黑湖是 TSL 写的水面（实时反射、涟漪扭曲）；夜晚有萤火虫、火把闪烁、星空与月亮；雨雪、灯笼、萤火虫、旗帜飘动都在顶点着色器里算，CPU 不再逐点更新。
+**渲染器：WebGL 2**（three.js `WebGLRenderer`；绘本光照、描边、换装材质都是对内置材质的着色器补丁）。后期处理：多重采样 HDR → Bloom（`UnrealBloomPass`）→ 调色 + 色调映射。咒语拖尾、火花、烟雾由一个 GPU 粒子池负责：CPU 只写入粒子出生时的参数，运动在顶点着色器里按年龄解析计算。
+飞行中的咒语借用光源池照亮周围；黑湖是带实时反射的水面着色器；夜晚有萤火虫、火把闪烁、星空与月亮。
 v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发光魔杖尖，走路摆臂/袍摆、施法抬杖动作）；换装材质（天鹅绒、丝绸、龙鳞、镜面、星光、火焰、幽灵：高画质用物理材质的光泽/清漆/虹彩，星光、火焰、幽灵带动画发光）；玩家周围的风吹草地（高画质约 7 万片草叶）和随风摆动的树冠；礼堂坡屋顶、尖拱发光窗、角楼尖塔与学院色三角旗、指针显示游戏时间的钟楼表盘。
-画质自动检测：手机/平板直接从低画质开始，其余前 3 秒平均帧时 > 45ms 自动降档（关 Bloom、关湖面反射、草地缩小、0.5–0.75x 像素、2x MSAA、粒子预算降到四分之一）；`?q=low` / `?q=high` 可强制。两档内都有动态分辨率（按帧时自动升降像素比，`?dyn=0` 关闭）。`?perf=1` 显示叠层：当前后端（WebGPU / WebGL 2 及回退原因）、帧率、JS 与 GPU 时间、draw call、三角形、着色器程序与管线数、粒子与草地数量；`?compute=0` 让 WebGPU 也走回退路径（对比用）。性能数据见 `docs/PERF.md`。
+画质自动检测：手机/平板直接从低画质开始，其余前 3 秒平均帧时 > 45ms 自动降档（关 Bloom、关湖面反射、草地缩小、0.5–0.75x 像素、2x MSAA）；`?q=low` / `?q=high` 可强制。两档内都有动态分辨率（按帧时自动升降像素比，`?dyn=0` 关闭）。`?perf=1` 显示叠层：帧率、JS 时间、draw call、三角形、着色器程序数。性能数据见 `docs/PERF.md`。
 
 ## 学院杯、校园事件与巧克力蛙画片
 

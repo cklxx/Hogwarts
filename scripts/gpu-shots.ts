@@ -1,6 +1,6 @@
 /**
- * Screenshot comparison harness for the renderer: the same world, the same camera spots, the same hours, on
- * either backend (WebGPU or WebGL2), so pictures from two builds or two backends can be laid side by side.
+ * Screenshot comparison harness for the renderer: the same world, the same camera spots, the same hours, so
+ * pictures from two builds can be laid side by side (e.g. before and after a shading change).
  *
  *   npx vite build && npx tsx scripts/gpu-shots.ts --gpu=webgpu|webgl [--label=x] [--out=dir] [--port=9004]
  *        [--size=960x540] [--shots=castle-dusk,courtyard-day,...] [--wait=6] [--url=&extra=1] [--serve]
@@ -9,8 +9,8 @@
  * silk, scales, mirror, flame, starlight, ghost), 24 bots walking and casting in the courtyard (spells in
  * flight), the aurora decreed. Each shot pins the camera, the hour and the weather through `?capture=1`
  * (client/capture.ts), waits `--wait` seconds, and writes `<out>/<label>-<shot>.png` with the HUD hidden.
- * `--gpu=webgl` adds `?gpu=webgl` (the WebGL2 fallback of the WebGPU renderer; a build before it simply ignores
- * it). Headless Chromium renders both through SwiftShader: slow, but pixel-comparable.
+ * `--gpu=webgl` adds `?gpu=webgl` (only meaningful for builds from the WebGPU period, 205ed7b..e38c005; the
+ * WebGLRenderer client ignores it). Headless Chromium renders through SwiftShader: slow, but pixel-comparable.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';

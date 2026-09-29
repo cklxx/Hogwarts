@@ -27,7 +27,7 @@ async function call(c: Client, name: string, args: Record<string, unknown> = {})
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hogwarts-'));
   proc = spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {
-    env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', HTTPS: '0', HOGWARTS_DATA: join(dir, 'world.json'), PUBLIC_URL: BASE },
+    env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', HOGWARTS_DATA: join(dir, 'world.json'), PUBLIC_URL: BASE },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise<void>((ok, bad) => {

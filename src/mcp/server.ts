@@ -24,8 +24,6 @@ import { albumOf } from '../kernel/cards.js';
 export interface McpSession {
   wizardId: string | null;
   baseUrl: string;
-  /** Where the browser should play (the HTTPS origin when the server has TLS, else baseUrl): WebGPU needs a secure context. */
-  playUrl?: string;
   /** The MCP session id, once initialized (main.ts sets it). */
   id?: string;
   /** Client address: pairing and login failures are counted per address. */
@@ -255,7 +253,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
       return out({
         welcome: `${wizard.name}, ${wizard.house}.`, sorting, ...bindResult(wizard.id, {
           // the key rides in the fragment: browsers never send it to the server, so it is in no log
-          play: `${session.playUrl ?? baseUrl}/#k=${wizard.token}`,
+          play: `${baseUrl}/#k=${wizard.token}`,
           playNote: 'Give your human this link to play the same wizard in the browser.',
         }),
         next: 'Call whoami, then grimoire, then look.',
@@ -310,7 +308,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     return {
       rotated: true, name: w.name, registry: w.id, token,
       note: 'The old key no longer works anywhere. This session stays connected; your other agent sessions and every open game tab of this wizard were disconnected (a thief\'s too).',
-      play: `${session.playUrl ?? baseUrl}/#k=${token}`,
+      play: `${baseUrl}/#k=${token}`,
       playNote: 'Your human needs the new key to play in the browser again: give them this link (or the key).',
       remember: rememberBlock(w.name, w.id), connect: connectBlock(baseUrl),
     };

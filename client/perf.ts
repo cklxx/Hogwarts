@@ -1,11 +1,10 @@
-import type * as THREE from 'three/webgpu';
+import type * as THREE from 'three';
 
 /**
  * Client performance probe, inert unless the page is opened with `?perf=1`.
  *
- * - An overlay (top right, under the clock): the GPU backend (WebGPU, or WebGL 2 and why), fps, frame ms
- *   (mean / worst of the last second), JS ms per frame, draw calls, triangles, shader programs and render
- *   pipelines, and what the compute passes hold (particles alive / budget, grass clumps).
+ * - An overlay (top right, under the clock): fps, frame ms (mean / worst of the last second), JS ms per
+ *   frame, draw calls, triangles, programs.
  * - `window.__perf` for scripts/perf-client.ts: per-frame samples (frame interval, JS time per section,
  *   draw calls, triangles), counters (WebSocket bytes and messages, JSON.parse time) and load marks.
  *
@@ -17,7 +16,7 @@ export const PERF = typeof location !== 'undefined' && new URLSearchParams(locat
 export type Section = 'msg' | 'parse' | 'apply' | 'hud' | 'ctl' | 'anim' | 'world' | 'fx' | 'render';
 const SECTIONS: Section[] = ['msg', 'parse', 'apply', 'hud', 'ctl', 'anim', 'world', 'fx', 'render'];
 
-interface Frame { t: number; dt: number; js: number; calls: number; tris: number; gpu: number; s: Record<string, number> }
+interface Frame { t: number; dt: number; js: number; calls: number; tris: number; s: Record<string, number> }
 const MAX = 20000;
 const state = {
   frames: [] as Frame[],
@@ -25,16 +24,11 @@ const state = {
   acc: Object.fromEntries(SECTIONS.map((k) => [k, 0])) as Record<Section, number>,
   counters: { wsBytes: 0, wsMsgs: 0, snaps: 0, snapBytes: 0 },
   marks: {} as Record<string, number>,
-  renderer: null as THREE.WebGPURenderer | null,
-  extra: null as Extra | null,
+  renderer: null as THREE.WebGLRenderer | null,
   last: 0,
   scene: null as THREE.Scene | null,
   passes: {} as Record<string, number>,
   frameStart: 0,
-  /** GPU ms of the last frame whose timestamp queries resolved (WebGPU with timestamp-query only; else 0). */
-  gpuMs: 0,
-  gpuPending: false,
-  gpuFrames: 0,
 };
 
 /** performance.now() when the probe is on, else 0 (pass it to `end`). */
@@ -54,37 +48,28 @@ export function mark(name: string) {
   if (PERF && !(name in state.marks)) state.marks[name] = performance.now();
 }
 
-/** What the probe reports besides renderer.info: the backend and the compute passes' contents. */
-interface Extra {
-  backend: string;
-  fallback?: string;
-  particles?: () => { glow: { drawn: number; capacity: number }; smoke: { drawn: number; capacity: number } } | undefined;
-  grass?: () => { kind: string; budget: number } | undefined;
-}
-/**
- * Call once with the renderer: the probe then sums renderer.info over every pass of a frame (three.js's
- * node renderer counts draw calls per frame in info.render.drawCalls; every pass, the shadow map and the
- * lake's mirror included, is a renderer.render() call, counted here by what it draws into).
- */
-export function attach(renderer: THREE.WebGPURenderer, scene?: THREE.Scene, extra?: Extra) {
+/** Call once with the renderer: the probe then sums renderer.info over every pass of a frame. */
+export function attach(renderer: THREE.WebGLRenderer, scene?: THREE.Scene) {
   if (!PERF) return;
   state.renderer = renderer;
   state.scene = scene ?? null;
-  state.extra = extra ?? null;
-  // a harness hook (perf-client --dump: see what every shader program was built for, from the warm-up on)
-  (globalThis as unknown as { __perfHook?: (r: THREE.WebGPURenderer) => void }).__perfHook?.(renderer);
   renderer.info.autoReset = false;
+  // draw calls per pass (shadow maps render through renderBufferDirect, not render(): they land in the next pass)
+  const sm = renderer.shadowMap as unknown as { render: (...a: unknown[]) => void };
+  const shadow = sm.render.bind(sm);
+  sm.render = (...a: unknown[]) => {
+    const c0 = renderer.info.render.calls;
+    shadow(...a);
+    state.passes['shadow-map'] = (state.passes['shadow-map'] ?? 0) + renderer.info.render.calls - c0;
+  };
   const render = renderer.render.bind(renderer);
-  renderer.render = ((sc: THREE.Object3D, cam: THREE.Camera) => {
-    const c0 = renderer.info.render.drawCalls;
+  renderer.render = (sc, cam) => {
+    const c0 = renderer.info.render.calls;
+    render(sc, cam);
     const rt = renderer.getRenderTarget();
-    const out = render(sc, cam);
-    const key = (cam as THREE.Camera & { isShadowCamera?: boolean }).type === 'OrthographicCamera' && rt && rt.depthTexture && !(sc as THREE.Mesh).isMesh
-      ? 'shadow-map'
-      : `${sc.type}:${rt ? `${rt.width}x${rt.height}` : 'screen'}:${cam.type}`;
-    state.passes[key] = (state.passes[key] ?? 0) + renderer.info.render.drawCalls - c0;
-    return out;
-  }) as typeof renderer.render;
+    const key = `${(sc as THREE.Object3D).type}:${rt ? `${rt.width}x${rt.height}` : 'screen'}:${(cam as THREE.Camera).type}`;
+    state.passes[key] = (state.passes[key] ?? 0) + renderer.info.render.calls - c0;
+  };
   (globalThis as unknown as { __perf: unknown }).__perf = api;
   overlay();
 }
@@ -101,20 +86,7 @@ export function frameEnd() {
   let js = 0;
   const s: Record<string, number> = {};
   for (const k of SECTIONS) { const v = state.acc[k]; s[k] = v; js += k === 'parse' || k === 'apply' ? 0 : v; state.acc[k] = 0; } // parse/apply are inside msg
-  const f: Frame = { t: now, dt: state.last ? now - state.last : 0, js, calls: info?.render.drawCalls ?? 0, tris: info?.render.triangles ?? 0, gpu: state.gpuMs, s };
-  const r = state.renderer as (THREE.WebGPURenderer & { backend: { trackTimestamp?: boolean } }) | null;
-  state.gpuFrames++;
-  if (r?.backend.trackTimestamp && !state.gpuPending) {
-    // GPU time of the render and compute passes (resolved asynchronously: lands in a later frame's sample). A
-    // resolve sums every query since the last one: divide by the frames it covers.
-    state.gpuPending = true;
-    const frames = state.gpuFrames;
-    state.gpuFrames = 0;
-    Promise.all([r.resolveTimestampsAsync('render'), r.resolveTimestampsAsync('compute')])
-      .then(([a, b]) => { state.gpuMs = ((Number(a) || 0) + (Number(b) || 0)) / Math.max(1, frames); })
-      .catch(() => {})
-      .finally(() => { state.gpuPending = false; });
-  }
+  const f: Frame = { t: now, dt: state.last ? now - state.last : 0, js, calls: info?.render.calls ?? 0, tris: info?.render.triangles ?? 0, s };
   // the rAF callback's own time outside the marked sections
   s.frame = now - state.frameStart;
   state.last = now;
@@ -128,33 +100,12 @@ const api = {
   get marks() { return state.marks; },
   info() {
     const i = state.renderer?.info;
-    const pl = pipelines();
-    return i ? { programs: i.memory.programs, pipelines: pl?.caches.size ?? 0, geometries: i.memory.geometries, textures: i.memory.textures, compute: i.compute.frameCalls } : null;
+    return i ? { programs: i.programs?.length ?? 0, geometries: i.memory.geometries, textures: i.memory.textures } : null;
   },
-  /** 'webgpu' or 'webgl', and why WebGPU was not used. */
-  get backend() { return state.extra ? `${state.extra.backend}${state.extra.fallback ? ` (${state.extra.fallback})` : ''}` : 'unknown'; },
-  /** Particles drawn (the live window) and budgets, grass clumps. */
-  gpuWork() {
-    const p = state.extra?.particles?.(), g = state.extra?.grass?.();
-    return { glow: p?.glow.drawn ?? 0, glowBudget: p?.glow.capacity ?? 0, smoke: p?.smoke.drawn ?? 0, smokeBudget: p?.smoke.capacity ?? 0, grass: g?.kind ?? '', grassBudget: g?.budget ?? 0 };
-  },
-  /** The scene (for poking at from a script: hide a mesh by name and look again). */
-  get scene() { return state.scene; },
-  get renderer() { return state.renderer; },
   /** Draw calls per render() since the last reset, keyed by scene type, target size and camera. */
   get passes() { return state.passes; },
   /** The shader programs three.js holds (name and cache key head), to see what compiled when. */
-  /** A shader's code by the id programs() lists (debugging what compiled when). */
-  programCode(id: number) {
-    const pl = pipelines() as unknown as { programs: Record<string, Map<string, { id: number; code: string }>> } | null;
-    for (const m of Object.values(pl?.programs ?? {})) for (const p of m.values()) if (p.id === id) return p.code;
-    return '';
-  },
-  programs() {
-    const pl = pipelines();
-    if (!pl) return [];
-    return (['vertex', 'fragment', 'compute'] as const).flatMap((k) => [...pl.programs[k].values()].map((p) => `${k} ${p.name} #${p.id}`));
-  },
+  programs() { return (state.renderer?.info.programs ?? []).map((p) => `${p.name} ${String(p.cacheKey).slice(0, 60)}`); },
   /** What the scene holds: visible drawables grouped by their top-level ancestor, and shadow casters. */
   census() {
     const out: Record<string, { n: number; casters: number; tris: number; instances: number }> = {};
@@ -196,11 +147,6 @@ const api = {
   },
 };
 
-/** three.js's pipeline cache (programs by stage, pipelines by key): internal, read for the probe only. */
-function pipelines() {
-  return (state.renderer as unknown as { _pipelines?: { caches: Map<string, unknown>; programs: Record<'vertex' | 'fragment' | 'compute', Map<string, { name: string; id: number }>> } } | null)?._pipelines ?? null;
-}
-
 function overlay() {
   const el = document.createElement('div');
   el.id = 'perf';
@@ -215,11 +161,7 @@ function overlay() {
     const js = fr.reduce((a, f) => a + f.js, 0) / fr.length;
     const last = fr[fr.length - 1];
     const i = api.info();
-    const g = api.gpuWork();
-    const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : `${n}`);
-    const gpu = fr.filter((x) => x.gpu > 0);
-    const gpuMs = gpu.length ? gpu.reduce((a, x) => a + x.gpu, 0) / gpu.length : 0;
-    const text = `${api.backend === 'webgpu' ? 'WebGPU' : api.backend.replace(/^webgl/, 'WebGL 2')}\n${(1000 / mean).toFixed(0)} fps  ${mean.toFixed(1)} / ${worst.toFixed(0)} ms  ${state.renderer?.getPixelRatio().toFixed(2)}x\nJS ${js.toFixed(2)} ms/frame${gpuMs ? `  GPU ${gpuMs.toFixed(2)} ms` : ''}\n${last.calls} calls  ${(last.tris / 1000).toFixed(0)}k tris\n${i?.programs ?? 0} programs  ${i?.pipelines ?? 0} pipelines  ${i?.textures ?? 0} tex\nparticles ${k(g.glow + g.smoke)} / ${k(g.glowBudget + g.smokeBudget)}  grass ${g.grass} ${k(g.grassBudget)}${i?.compute ? `  ${i.compute} compute` : ''}`;
+    const text = `${(1000 / mean).toFixed(0)} fps  ${mean.toFixed(1)} / ${worst.toFixed(0)} ms  ${state.renderer?.getPixelRatio().toFixed(2)}x\nJS ${js.toFixed(2)} ms/frame\n${last.calls} calls  ${(last.tris / 1000).toFixed(0)}k tris\n${i?.programs ?? 0} programs  ${i?.textures ?? 0} tex`;
     if (el.textContent !== text) el.textContent = text;
   }, 500);
 }

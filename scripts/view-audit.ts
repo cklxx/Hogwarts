@@ -2,7 +2,7 @@
  * Can you always see your wizard? The camera audit of client/view.ts, on the real scene in headless Chromium.
  *
  *   npx vite build && npx tsx scripts/view-audit.ts [--port=8840] [--n=500] [--seed=11] [--q=high|low]
- *        [--min=99] [--gpu=webgpu|webgl] [--chromium=/opt/pw-browsers/chromium] [--playwright=<playwright-core/index.mjs>]
+ *        [--min=99] [--chromium=/opt/pw-browsers/chromium] [--playwright=<playwright-core/index.mjs>]
  *
  * Starts `src/server/main.ts` on a scratch world, opens the client with `?debug=view`, and runs
  * `window.__view.audit(n, seed)` twice: with the camera as it is (spring arm, occluder fading) and as it was
@@ -19,11 +19,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Map(process.argv.slice(2).map((a) => { const s = a.replace(/^--/, ''), i = s.indexOf('='); return (i < 0 ? [s, '1'] : [s.slice(0, i), s.slice(i + 1)]) as [string, string]; }));
+const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1'] as [string, string]; }));
 const opt = (k: string, d: string) => args.get(k) ?? d;
 const PORT = Number(opt('port', '8840')), N = Number(opt('n', '500')), SEED = Number(opt('seed', '11')), Q = opt('q', 'high'), MIN = Number(opt('min', '99'));
-/** webgpu (default: the renderer's WebGPU backend) or webgl (its WebGL 2 fallback, ?gpu=webgl). */
-const GPU = opt('gpu', 'webgpu');
 const PW = process.env.PLAYWRIGHT_CORE ?? opt('playwright', '/tmp/claude-0/-home-user-Hogwarts/f6d5f4cd-c14a-5196-b6e5-05eb73ec4d18/scratchpad/node_modules/playwright-core/index.mjs');
 const CHROMIUM = opt('chromium', process.env.CHROMIUM ?? '/opt/pw-browsers/chromium');
 
@@ -35,20 +33,19 @@ await new Promise<void>((ok, fail) => {
 });
 let code = 0;
 try {
-  const base = `http://localhost:${PORT}`; // (a secure context: WebGPU wants one)
+  const base = `http://127.0.0.1:${PORT}`;
   const { token } = (await (await fetch(`${base}/api/enroll`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Audit' + Math.floor(Math.random() * 900 + 100) }) })).json()) as { token: string };
   const { chromium } = await import(pathToFileURL(PW).href);
-  // WebGPU on SwiftShader's Vulkan, WebGL on ANGLE's SwiftShader (with WebGPU on SwiftShader alone this Chromium loses the device)
-  const browser = await chromium.launch({ executablePath: CHROMIUM, args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ executablePath: CHROMIUM, args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await page.goto(`${base}/?q=${Q}&debug=view${GPU === 'webgl' ? '&gpu=webgl' : ''}#k=${encodeURIComponent(token)}`, { waitUntil: 'load' });
+  await page.goto(`${base}/?q=${Q}&debug=view#k=${encodeURIComponent(token)}`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!(window as unknown as { __view?: { me(): unknown } }).__view?.me(), null, { timeout: 300000 });
   type Report = { n: number; pct: number; pctNoFade: number; head: number; chest: number; knees: number; fadeOn: number; byArea: Record<string, [number, number]>; misses: unknown[]; ms: number };
   const run = (old: boolean) => page.evaluate(([n, seed, old]: [number, number, boolean]) => (window as unknown as { __view: { audit(n: number, s: number, o: boolean): Report } }).__view.audit(n, seed, old), [N, SEED, old] as [number, number, boolean]) as Promise<Report>;
   const now = await run(false), before = await run(true);
   const row = (name: string, r: Report) => console.log(`${name.padEnd(8)} seen ${String(r.pct).padStart(5)} %  (head ${r.head}, chest ${r.chest}, knees ${r.knees} of ${r.n}; without the fade ${r.pctNoFade} %; fade on in ${r.fadeOn})  ` +
     Object.entries(r.byArea).map(([a, [n, ok]]) => `${a} ${ok}/${n}`).join(', ') + `  [${r.ms} ms]`);
-  console.log(`camera audit: ${N} samples, seed ${SEED}, q=${Q}, gpu=${GPU}`);
+  console.log(`camera audit: ${N} samples, seed ${SEED}, q=${Q}`);
   row('now', now);
   row('before', before);
   if (now.misses.length) console.log('missed:', JSON.stringify(now.misses, null, 1));
