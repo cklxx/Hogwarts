@@ -53,6 +53,8 @@ describe('MCP over streamable HTTP', () => {
     const me = await call(c, 'whoami');
     expect(me.data.house).toBe('Gryffindor');
     expect(me.data.registry).toMatch(/^wz_/);
+    expect(me.data.quote.zh).toMatch(/[一-鿿]/); // a line of flavour for the agent (lore/memes.ts)
+    expect(me.data.quote.en).toBeTruthy();
 
     const g = await call(c, 'grimoire');
     expect(g.text).toContain('RUNES');
@@ -61,6 +63,7 @@ describe('MCP over streamable HTTP', () => {
     const bad = await call(c, 'forge_spell', { name: 'Oops', source: '(bolt target' });
     expect(bad.isError).toBe(true);
     expect(bad.text).toMatch(/unclosed/);
+    expect(bad.text).toMatch(/🪄/); // and a joke about it (spells are code)
 
     const f = await call(c, 'forge_spell', { name: 'Frostbite', incantation: 'Glacies Mordax!', source: '(bolt (ahead 12) 12 :ice)', slot: 6 });
     expect(f.isError).toBe(false);
@@ -78,6 +81,7 @@ describe('MCP over streamable HTTP', () => {
 
     const look = await call(c, 'look');
     expect(look.data.you.place).toBeTruthy();
+    expect(look.data.time.remark.zh).toMatch(/[一-鿿]/);
 
     // A second wizard, via a second agent session using a token header.
     const c2 = await client();

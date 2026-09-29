@@ -118,7 +118,8 @@ export interface Wizard {
   connections: number;
   marauderUntil: number;
   say: { text: string; until: number } | null;
-  eggs: { rorCrossings: number[]; rorSide: number; inErised: boolean };
+  /** Easter-egg state. pointsTerm: the term in which this wizard last awarded house points ("Ten points to …!"). */
+  eggs: { rorCrossings: number[]; rorSide: number; inErised: boolean; pointsTerm?: number };
   lastDuel: Record<string, number>;
   hurtAt: number;
   /** Id of whoever last damaged this wizard. */

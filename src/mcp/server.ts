@@ -8,6 +8,7 @@ import { describeRulebookSchema } from '../kernel/rulebook.js';
 import type { OwlMsg, WorldEvent } from '../kernel/types.js';
 import { AGENT_PAUSED, type World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
+import { TIME_REMARKS, WEATHER_REMARKS, WHOAMI_QUOTES, dayPart } from '../lore/memes.js';
 import { FailWindow } from '../server/limits.js';
 import { grimoire } from './grimoire.js';
 
@@ -282,11 +283,11 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('whoami', {
     title: 'Who am I',
-    description: 'Your identity: name, house, wand, Ministry registry number, year, XP, reputation, Galleons, health, mana, limits, achievements, and the agents playing you.',
+    description: 'Your identity: name, house, wand, Ministry registry number, year, XP, reputation, Galleons, health, mana, limits, achievements, and the agents playing you. (我是谁？——分院帽也问过这个问题。)',
     annotations: { readOnlyHint: true },
   }, me((wid) => {
     const w = world.wizards.get(wid)!;
-    return { ...world.whoami(wid), agents: { sessions: session.sessionsOf?.(wid) ?? 1, clients: w.connections } };
+    return { ...world.whoami(wid), agents: { sessions: session.sessionsOf?.(wid) ?? 1, clients: w.connections }, quote: world.quip(WHOAMI_QUOTES, w.handle) };
   }));
 
   register('armory', {
@@ -298,7 +299,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   // ---------------------------------------------------------------- spell craft
   register('grimoire', {
     title: 'Grimoire: the spell language',
-    description: 'The complete Runes language reference, costs, your year\'s caps, creature weaknesses and item rules. Read this before forge_spell.',
+    description: 'The complete Runes language reference, costs, your year\'s caps, creature weaknesses and item rules. Read this before forge_spell. (Hermione read it twice. 赫敏读了两遍。)',
     annotations: { readOnlyHint: true },
   }, async () => {
     const w = session.wizardId ? world.wizards.get(session.wizardId) : undefined;
@@ -323,7 +324,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('simulate_spell', {
     title: 'Simulate a spell (dry run)',
-    description: 'Run Runes source against the live world without learning it or spending mana. Shows planned effects, mana, gas, clamps and errors.',
+    description: 'Run Runes source against the live world without learning it or spending mana. Shows planned effects, mana, gas, clamps and errors. Simulate first, so you never have to say "it works on my wand". (先模拟，再施法。)',
     inputSchema: { source: z.string().min(1).max(4000), target: z.string().optional().describe('creature id or wizard handle/name'), aim_x: z.number().optional(), aim_z: z.number().optional() },
     annotations: { readOnlyHint: true },
   }, me((wid, a: { source: string; target?: string; aim_x?: number; aim_z?: number }) => world.simulate(wid, a.source, { target: a.target, aim: aimOf(a.aim_x, a.aim_z) })));
@@ -346,7 +347,12 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     description: 'Nearby wizards (by public handle), creatures (by id, with weaknesses), landmarks, time of day and weather.',
     inputSchema: { radius: z.number().min(1).max(80).optional() },
     annotations: { readOnlyHint: true },
-  }, me((wid, a: { radius?: number }) => world.look(wid, a.radius ?? 40)));
+  }, me((wid, a: { radius?: number }) => {
+    const v = world.look(wid, a.radius ?? 40);
+    const w = world.wizards.get(wid)!;
+    const pool = [...TIME_REMARKS[dayPart(world.hour(), world.isNight())], ...(WEATHER_REMARKS[world.rules.world.weather] ?? [])];
+    return { ...v, time: { ...v.time, remark: world.quip(pool, w.handle, 'look') } };
+  }));
 
   register('move_to', {
     title: 'Walk somewhere',
@@ -416,7 +422,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('cast', {
     title: 'Cast a spell',
-    description: 'Cast a spell from your book at a target (creature id from look, or a wizard handle/name) or at a point. Returns what happened, mana spent, or why it fizzled.',
+    description: 'Cast a spell from your book at a target (creature id from look, or a wizard handle/name) or at a point. Returns what happened, mana spent, or why it fizzled. Swish and flick. (一挥，一抖。)',
     inputSchema: {
       spell: z.string().describe('spell name, id, or hotbar key 1-6'),
       target: z.string().optional(),
@@ -427,7 +433,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('say', {
     title: 'Say something',
-    description: 'Speak aloud. Everyone sees it. Some words have power here. (To talk privately to your human, use tell_player.)',
+    description: 'Speak aloud. Everyone sees it. Some words have power here, and the castle answers some phrases. (有些话在这里是有魔力的。To talk privately to your human, use tell_player.)',
     inputSchema: { text: z.string().min(1).max(200) },
   }, me((wid, a: { text: string }) => { world.say(world.wizards.get(wid)!, a.text, 'mcp'); return { said: a.text }; }));
 
@@ -490,7 +496,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   // ---------------------------------------------------------------- items
   register('forge_item', {
     title: 'Forge a magic item',
-    description: 'Forge an enchanted item and have it delivered to a wizard\'s trunk. `wizard_id` is YOUR Ministry registry number (from whoami). Costs Galleons; power limited by your year (see grimoire).',
+    description: 'Forge an enchanted item and have it delivered to a wizard\'s trunk. `wizard_id` is YOUR Ministry registry number (from whoami). Costs Galleons; power limited by your year (see grimoire). Gringotts gives no credit. (古灵阁概不赊账。)',
     inputSchema: {
       wizard_id: z.string().describe('your registry number, e.g. wz_1a2b3c4d (see whoami)'),
       name: z.string().min(1).max(48),
@@ -538,7 +544,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   // ---------------------------------------------------------------- society & rules
   register('leaderboard', {
     title: 'Leaderboard',
-    description: 'Reputation ranking, house points this term, time left in the term, the current Minister for Magic.',
+    description: 'Reputation ranking, house points this term (members\' reputation plus points wizards award: say "Ten points to <house>!"), time left in the term, the current Minister for Magic.',
     annotations: { readOnlyHint: true },
   }, async () => { if (session.wizardId) world.touch(session.wizardId); return out(world.leaderboard()); });
 

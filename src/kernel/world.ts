@@ -18,6 +18,12 @@ import { BOUND_REFUSAL, CURSE_BLESS, FORGE_REFUSAL, HEX_FRESH_SENDER, HEX_YEAR, 
 import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
 import { SEAL_REWARDS, SEAL_REWARDS_ZH, SEAL_TIERS, CODEX, disassemble, generateSeal, parseWord, runSeal, type Seal } from './seals.js';
 import { TITLES, titleIndex } from '../lore/titles.js';
+import {
+  AFK_BUBBLES, CREATURE_STUN, Cooldowns, DOBBY_SOCK, ERROL, FIZZLE_QUIPS, FORGE_NAME_EGGS, GRIND_LINES, GRINGOTTS, HAGRID_HINTS, LEGACY_CODE,
+  LEVEL_QUIPS, MALFOY_LINES, MEME, PLACE_LINES, POINTS, REPLIES, SEAMUS_LINES, SHIELD_BREAK, SORTING_SONG, STUN_BY_ELEMENT, STUN_QUIPS,
+  TABOO_DEMENTOR, TITLE_QUIPS, TREVOR, VERSAILLES_LINES, YER_A_WIZARD, chance, chatTriggers, fill, fizzleKind, hash32, houseLine, isHelloWorld, pick,
+  pointsAward, type Line,
+} from '../lore/memes.js';
 import { type CastReport, execute } from './magic.js';
 import { dist, resolve, solidAt } from './physics.js';
 import { findPath } from './pathfind.js';
@@ -59,6 +65,8 @@ const DANCE_MAX_RAD = 0.6;
 export const FRESH_SECONDS = 600;
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
+/** placeName's order: the most specific zone wins. */
+const PLACE_ORDER: ZoneId[] = ['azkaban', 'erised', 'great_hall', 'seventh_floor', 'tomb', 'willow', 'dungeons', 'greenhouses', 'courtyard', 'pitch', 'hogsmeade', 'forest', 'lake_shore', 'grounds'];
 
 export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: number; text: string; textZh: string }> = {
   weasley_loophole: { name: 'The Weasley Loophole', zh: '韦斯莱漏洞', rep: 50, text: 'You noticed the Ministry forge never checks whose name is on the parcel. Fred and George would be proud. (Yes, it is a bug. Yes, we left it in on purpose.)', textZh: '你发现魔法部的锻造炉从不核对包裹上写的是谁。弗雷德和乔治会为你骄傲的。（是的，这是个 bug。是的，我们故意留着它。）' },
@@ -67,12 +75,14 @@ export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: numbe
   room_of_requirement: { name: 'The Come-and-Go Room', zh: '来去屋', rep: 25, text: 'You walked past three times, thinking hard. The Room gave you what was hidden there.', textZh: '你专心想着走过了三次。这间屋子把藏在里面的东西给了你。' },
   erised: { name: 'Erised', zh: '厄里斯', rep: 5, text: 'It does not do to dwell on dreams and forget to live.', textZh: '沉湎于虚幻的梦想而忘记现实的生活，这是毫无益处的。' },
   knot: { name: 'Pressed the Knot', zh: '按住树结', rep: 5, text: 'You froze the Whomping Willow. Crookshanks did it with a paw.', textZh: '你让打人柳僵住了。克鲁克山只用了一只爪子。' },
-  leviosa: { name: "It's Levi-O-sa", zh: '是羽加迪姆勒维奥萨', rep: 10, text: 'You knocked out a troll the way Ron did in 1991.', textZh: '你像 1991 年的罗恩一样打晕了一只巨怪。' },
+  leviosa: { name: "It's Levi-O-sa", zh: '是羽加迪姆勒维奥萨', rep: 10, text: 'You knocked out a troll the way Ron did in 1991.', textZh: '你像 1991 年的罗恩一样打晕了一只巨怪。羽加迪姆勒维奥萨，yyds。' },
   elder_wand: { name: 'Master of the Elder Wand', zh: '老魔杖的主人', rep: 20, text: 'The wand chooses the wizard — and it chose whoever beat its last master.', textZh: '是魔杖选择巫师 —— 它选择了击败它上一任主人的人。' },
   seeker: { name: 'Seeker', zh: '找球手', rep: 10, text: 'Accio Firebolt! Fastest broom in the world.', textZh: '火弩箭飞来！世界上最快的扫帚。' },
   first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned another wizard. Bow first next time.', textZh: '你击晕了另一个巫师。下次记得先鞠躬。' },
   // Granted privately (achievePrivately): a public announcement in the same tick would unmask the anonymous sender.
   dark_arts: { name: 'The Dark Arts', zh: '黑魔法', rep: 0, text: 'You posted a curse. The forge asked no questions. Nobody saw you do it — this time.', textZh: '你寄出了一个诅咒。锻造炉什么也没问。这一次，没有人看见。' },
+  hello_world: { name: 'Hello, World', zh: '你好，世界', rep: 1, text: 'Your spell said hello to the world. Every great wizard starts here — even Hermione had a first program.', textZh: '你的咒语向世界问了好。每个伟大的巫师都从这里开始——赫敏也写过她的第一个程序。' },
+  trevor: { name: 'Has Anyone Seen a Toad?', zh: '有人看见一只蟾蜍吗？', rep: 5, text: 'You found Trevor by the Black Lake. Neville owes you one.', textZh: '你在黑湖边找到了特雷弗。纳威欠你一个人情。' },
 };
 
 export interface Statue { name: string; house: House; term: number; inscription: string }
@@ -106,6 +116,8 @@ export class World {
     statues: [] as Statue[], loopholeFoundBy: null as string | null, elderWandHolder: null as string | null, willowCalmUntil: 0, ministerId: null as string | null, handleSeq: 0,
     /** Name of the first wizard to post a curse (never shown publicly). */
     curseFoundBy: null as string | null,
+    /** House points awarded by wizards themselves this term ("Ten points to Ravenclaw!"): added to the House Cup. */
+    housePoints: { term: 0, pts: {} } as { term: number; pts: Partial<Record<House, number>> },
   };
   /** token -> wizard id: byToken is O(1); rebuilt by restore(), maintained by enroll() and rotateToken(). */
   private tokenIndex = new Map<string, string>();
@@ -134,6 +146,9 @@ export class World {
   secret: string;
   private storms: { at: number; x: number; z: number; r: number; power: number; element: Element; owner: string; tags: string[] }[] = [];
   private sealCache = new Map<string, Seal>();
+  /** Flavour rate limits (lore/memes.ts MEME) and per-wizard meme bookkeeping. Neither is persisted. */
+  private memeCd = new Cooldowns();
+  private memeOf = new Map<string, { place: string | null; x: number; z: number; casts: number; still: number; kills: number[]; hagrid: number }>();
 
   constructor(opts: WorldOptions = {}) {
     this.rng = mulberry32(opts.seed ?? (Date.now() & 0xffffffff));
@@ -145,6 +160,24 @@ export class World {
 
   // ------------------------------------------------------------------ basics
   rand() { return this.rng(); }
+
+  // ------------------------------------------------------------------ memes (lore/memes.ts)
+  /**
+   * Flavour rate limits (MEME): true, with every gate marked, only when all the named gates are ready. Keys are
+   * free-form: 'public' (the shared feed), 'npc' (NPC chatter), 'stun', `t:<trigger>:<wid>`, …
+   */
+  banter(...gates: [key: string, secs: number][]) { return this.memeCd.take(this.now, ...gates); }
+  /** A line from a pool, chosen from world state (event counter, clock, extra seeds): deterministic, never an RNG draw. */
+  quip<T>(pool: readonly T[], ...seed: (string | number)[]): T { return pick(pool, this.eventSeq, Math.round(this.now * 20), ...seed); }
+  private memo(w: Wizard) {
+    let m = this.memeOf.get(w.id);
+    if (!m) { m = { place: null, x: w.pos.x, z: w.pos.z, casts: w.stats.casts, still: this.now, kills: [], hagrid: 0 }; this.memeOf.set(w.id, m); }
+    return m;
+  }
+  /** A private flavour line to one wizard ('system' shows in the feed; 'egg' also raises the banner). */
+  private tell(w: Wizard, l: Line, type: EventType = 'system') { this.emit(type, l.en, { to: w.id, zh: l.zh }); }
+  /** A speech bubble over a wizard's head, without a feed line (never over their own chat). */
+  private bubble(w: Wizard, l: Line, secs = 4) { if (!w.say || w.say.until < this.now) w.say = { text: l.zh, until: this.now + secs }; }
   private nid(prefix: string) { return `${prefix}${(++this.seq).toString(36)}${Math.floor(this.rng() * 1296).toString(36)}`; }
   onEvent(fn: (e: WorldEvent) => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
@@ -195,10 +228,13 @@ export class World {
   /** Safe zones are policy (rules.combat.safeZones), so the mask is derived from the live rulebook on every call. */
   inSafe(p: Vec2) { const m = maskOf(this.rules.combat.safeZones); return m !== 0 && zoneMask(p.x, p.z, m) !== 0; }
   onGrounds(p: Vec2) { return zoneMask(p.x, p.z, ZONE_BIT.grounds | ZONE_BIT.hogsmeade) === ZONE_BIT.grounds; }
-  placeName(p: Vec2) {
-    const order: ZoneId[] = ['azkaban', 'erised', 'great_hall', 'seventh_floor', 'tomb', 'willow', 'dungeons', 'greenhouses', 'courtyard', 'pitch', 'hogsmeade', 'forest', 'lake_shore', 'grounds'];
+  /** The most specific zone at p (the one placeName names), or null in the Highlands. */
+  placeId(p: Vec2): ZoneId | null {
     const zs = this.zoneIds(p);
-    const id = order.find((z) => zs.includes(z));
+    return PLACE_ORDER.find((z) => zs.includes(z)) ?? null;
+  }
+  placeName(p: Vec2) {
+    const id = this.placeId(p);
     return id ? ZONES.find((z) => z.id === id)!.name : 'The Highlands';
   }
 
@@ -603,7 +639,8 @@ export class World {
     this.wizards.set(id, w);
     this.tokenIndex.set(w.token, id);
     this.emit('system', `The Sorting Hat shouts "${house.toUpperCase()}!" — welcome, ${clean}.`, { who: [id], zh: `分院帽高喊：「${zhHouse(house)}！」—— 欢迎你，${clean}。` });
-    this.emit('system', `${sorting} Ollivander hands you ${wandText(w)}.`, { to: id, zh: `奥利凡德递给你一根魔杖：${wandTextZh(w)}。` });
+    const song = SORTING_SONG[house];
+    this.emit('system', `${sorting} Ollivander hands you ${wandText(w)}. The Hat is still humming: "${song.en}"`, { to: id, zh: `奥利凡德递给你一根魔杖：${wandTextZh(w)}。分院帽还在哼：「${song.zh}」` });
     return { wizard: w, sorting };
   }
 
@@ -630,15 +667,23 @@ export class World {
     const name = spec.name.trim();
     if (name.length < 1 || name.length > 40) throw new Error('Spell names must be 1-40 characters.');
     const incantation = (spec.incantation ?? `${name}!`).trim().slice(0, 60);
-    const a = analyze(spec.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals });
+    let a: ReturnType<typeof analyze>;
+    try {
+      a = analyze(spec.source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals });
+    } catch (e) {
+      const q = this.fizzleQuip(w, (e as Error).message, false);
+      if (q) (e as Error).message += `\n${q.zh} ${q.en}`;
+      throw e;
+    }
     const existing = w.spells.find((s) => s.name.toLowerCase() === name.toLowerCase());
-    if (existing?.builtin) throw new Error(`"${existing.name}" is part of the standard curriculum; pick another name.`);
+    if (existing?.builtin) throw new Error(`"${existing.name}" is part of the standard curriculum; pick another name. (${LEGACY_CODE.zh} ${LEGACY_CODE.en})`);
     const custom = w.spells.filter((s) => !s.builtin && s !== existing).length;
     if (custom >= spellbookSize(w.year)) throw new Error(`Your spellbook holds ${spellbookSize(w.year)} original spells at year ${w.year}. Unlearn one first.`);
     const notes: string[] = [];
     const curse = unforgivable(name, incantation);
     if (curse && this.rules.magic.unforgivablesBanned) notes.push(`The ${curse} Curse is Unforgivable. Casting it will send you to Azkaban.`);
     if (isLeviosar(incantation)) notes.push("It's Levi-O-sa, not Levi-o-SAR. (This one will fizzle.)");
+    for (const egg of FORGE_NAME_EGGS) if (egg.re.test(name) || egg.re.test(incantation)) { notes.push(`${egg.line.zh} ${egg.line.en}`); break; }
     const spell: Spell = { id: existing?.id ?? this.nid('s_'), name, incantation, source: spec.source, nodes: a.nodes, minYear: a.minYear, effects: a.effects, builtin: false, createdAt: this.now };
     if (existing) Object.assign(existing, spell);
     else w.spells.push(spell);
@@ -696,13 +741,13 @@ export class World {
     }
     if (isLeviosar(spell.incantation)) {
       this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z });
-      return { ...fail("It's Levi-O-sa, not Levi-o-SAR!"), spell: spell.name };
+      return this.withQuip(w, { ...fail("It's Levi-O-sa, not Levi-o-SAR!"), spell: spell.name });
     }
     let program: Node[];
     try {
       program = this.compiled(spell.source, w);
     } catch (e) {
-      return { ...fail((e as Error).message), spell: spell.name };
+      return this.withQuip(w, { ...fail((e as Error).message), spell: spell.name });
     }
     const report = execute(this, w, program, { target, aim, spellName: spell.name, incantation: spell.incantation, dryRun: opts.dryRun });
     if (opts.dryRun) return report;
@@ -712,11 +757,30 @@ export class World {
       w.stats.casts++;
       w.say = { text: spell.incantation, until: this.now + 1.5 };
       this.fx({ k: 'cast', x: w.pos.x, z: w.pos.z, h: w.handle });
+      if (isHelloWorld(spell.name) || isHelloWorld(spell.incantation)) this.achieve(w, 'hello_world');
       this.runLaws('cast', w);
     } else {
       this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle });
+      this.withQuip(w, report);
     }
     return report;
+  }
+
+  /**
+   * A joke for a failed spell (spells are code): a bilingual note on the report, and — at most every
+   * MEME.FIZZLE_GAP_S per wizard, when `say` — the same line in the caster's own feed. Returns the report.
+   */
+  private withQuip(w: Wizard, report: CastReport): CastReport {
+    const q = this.fizzleQuip(w, report.error, true);
+    if (q) report.notes = [...report.notes, `${q.zh} ${q.en}`];
+    return report;
+  }
+  private fizzleQuip(w: Wizard, error: string | undefined, say: boolean): Line | null {
+    const kind = fizzleKind(error);
+    if (!kind) return null;
+    const q = this.quip(FIZZLE_QUIPS[kind], w.handle, w.stats.casts, kind);
+    if (say && !w.npc && this.banter([`fizzle:${w.id}`, MEME.FIZZLE_GAP_S])) this.tell(w, q);
+    return q;
   }
 
   /**
@@ -744,11 +808,13 @@ export class World {
     try {
       a = analyze(source, { year: w.year, maxNodes: maxNodes(w.year, this.rules), banned: this.rules.magic.bannedPrimitives, seals: w.seals });
     } catch (e) {
-      return { ok: false, spell: '(draft)', mana: 0, effects: [], notes: [], gas: 0, error: (e as Error).message };
+      const q = this.fizzleQuip(w, (e as Error).message, false);
+      return { ok: false, spell: '(draft)', mana: 0, effects: [], notes: q ? [`${q.zh} ${q.en}`] : [], gas: 0, error: (e as Error).message };
     }
     const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     const r = execute(this, w, a.program, { target, aim, spellName: '(draft)', incantation: '', dryRun: true });
+    if (!r.ok) { const q = this.fizzleQuip(w, r.error, false); if (q) r.notes = [...r.notes, `${q.zh} ${q.en}`]; }
     return { ...r, nodes: a.nodes, minYear: a.minYear };
   }
 
@@ -905,11 +971,13 @@ export class World {
     const words = input.map(parseWord);
     if (words.length !== t.words || words.some((x) => x === null)) throw new Error(`This seal takes exactly ${t.words} 32-bit word(s), e.g. "0x1a2b3c4d".`);
     if (runSeal(this.seal(w, tier).code, words as number[])) {
+      const title0 = this.title(w).key;
       w.seals = tier;
       w.sealTries[tier] = [];
       this.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
       this.emit('achievement', `📕 ${w.name} broke ${t.name}! (${SEAL_REWARDS[tier]})`, { who: [w.id], zh: `📕 ${w.name} 破解了${t.zh}！（${SEAL_REWARDS_ZH[tier]}）` });
       this.addRep(w, 25 * tier);
+      this.titleQuip(w, title0);
       return { opened: true, reward: SEAL_REWARDS[tier], title: this.title(w).zh };
     }
     w.sealTries[tier] = [...tries, this.now];
@@ -926,17 +994,24 @@ export class World {
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
   }
 
-  /** Speak aloud. Silenced (Langlock) wizards cannot: chat/MCP get SILENCED thrown; a spell's `say` fizzles quietly. */
-  say(w: Wizard, text: string, via: 'chat' | 'spell' | 'mcp' = 'chat') {
+  /**
+   * Speak aloud. Silenced (Langlock) wizards cannot: chat/MCP get SILENCED thrown; a spell's `say` (and an NPC's
+   * chatter) fizzles quietly. `zh` is a Chinese version of the line (NPC chatter): it goes in the event's zh and
+   * the speech bubble. NPC chatter sets off no easter eggs.
+   */
+  say(w: Wizard, text: string, via: 'chat' | 'spell' | 'mcp' | 'npc' = 'chat', zh?: string) {
     const t = text.replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!t) return;
     if (this.silenced(w)) {
-      if (via === 'spell') return;
+      if (via === 'spell' || via === 'npc') return;
       throw new Error(SILENCED);
     }
-    w.say = { text: t, until: this.now + 5 };
-    this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${t}` });
-    this.chatEggs(w, t, via);
+    const tz = zh?.replace(/\s+/g, ' ').trim().slice(0, 200) || t;
+    w.say = { text: tz, until: this.now + 5 };
+    const m = this.memeOf.get(w.id);
+    if (m) m.still = this.now; // speaking is not lying flat
+    this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${tz}` });
+    if (via !== 'npc') this.chatEggs(w, t, via);
   }
 
   /**
@@ -991,6 +1066,8 @@ export class World {
       const absorbed = Math.min(w.st.shield, a);
       w.st.shield -= absorbed;
       a -= absorbed;
+      // 破防了: the Protego gave way and something got through
+      if (a > 0 && !opts.hex && this.banter([`shield:${w.id}`, MEME.SHIELD_GAP_S])) this.bubble(w, this.quip(SHIELD_BREAK, w.handle));
     }
     if (opts.hex) {
       const before = w.hp;
@@ -1001,11 +1078,11 @@ export class World {
     w.hurtAt = this.now;
     w.lastHurtBy = by;
     if (!opts.dot) this.fx({ k: 'hit', x: w.pos.x, z: w.pos.z, e: element, h: w.handle, n: Math.round(a) });
-    if (w.hp <= 0) this.stun(w, this.wizards.has(by ?? '') ? by : srcId);
+    if (w.hp <= 0) this.stun(w, this.wizards.has(by ?? '') ? by : srcId, element);
     return a;
   }
 
-  private stun(w: Wizard, by: string | null) {
+  private stun(w: Wizard, by: string | null, element?: Element) {
     w.hp = 0;
     w.st.stunnedUntil = this.now + this.rules.combat.respawnSeconds;
     w.goal = null;
@@ -1025,14 +1102,44 @@ export class World {
       }
       kw.lastDuel[w.id] = this.now;
       const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
-      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation)` : why}.`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : '（重复击晕，不计声望）'}。` });
+      const q = this.stunQuip(w, kw, element);
+      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation)` : why}.${q ? ` ${q.en}` : ''}`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : '（重复击晕，不计声望）'}。${q ? q.zh : ''}` });
       this.achieve(kw, 'first_blood');
       if (this.flags.elderWandHolder === w.id) this.transferElderWand(w, kw, 'defeated');
       this.runLaws('kill', kw, w.id);
     } else {
       const c = by ? this.creatures.get(by) : undefined;
-      this.emit('combat', c ? `${w.name} was overwhelmed by a ${CREATURES[c.kind].name}.` : `${w.name} was flattened by the Whomping Willow.`, { who: [w.id], zh: c ? `${w.name} 被${zhCreature(c.kind)}击倒了。` : `${w.name} 被打人柳拍扁了。` });
+      const pool = CREATURE_STUN[c ? c.kind : 'willow'];
+      const q = pool && this.banter([w.npc ? 'stun:npc' : 'stun', w.npc ? MEME.STUN_GAP_S * 4 : MEME.STUN_GAP_S]) ? fill(this.quip(pool, w.handle), { v: w.name }) : null;
+      this.emit('combat', `${c ? `${w.name} was overwhelmed by a ${CREATURES[c.kind].name}.` : `${w.name} was flattened by the Whomping Willow.`}${q ? ` ${q.en}` : ''}`, { who: [w.id], zh: `${c ? `${w.name} 被${zhCreature(c.kind)}击倒了。` : `${w.name} 被打人柳拍扁了。`}${q ? q.zh : ''}` });
     }
+  }
+
+  /**
+   * The joke on a knock-out. Character lines come at most every 4·STUN_GAP_S per victim: Seamus always asks why it
+   * is always him, a Malfoy invokes his father, and a Malfoy who wins is 凡尔赛 (and the line rises over the speaker's
+   * head). Otherwise, world-wide at most every STUN_GAP_S (NPC-only duels: 4× as rarely, on their own gate): a
+   * Slytherin now and then invokes their father too, then a line by element, or half the time a general one.
+   */
+  private stunQuip(v: Wizard, k: Wizard, element?: Element): Line | null {
+    const vars = { v: v.name, k: k.name };
+    const seed = [v.handle, k.handle, v.stats.stunned] as const;
+    const malfoy = (x: Wizard) => /malfoy|draco/i.test(x.name);
+    const father = () => { this.bubble(v, { zh: '我爸爸会知道这件事的！', en: 'My father will hear about this!' }); return fill(this.quip(MALFOY_LINES, ...seed), vars); };
+    const character = /seamus/i.test(v.name) || malfoy(v) || malfoy(k);
+    if (character && this.banter([`stun:${v.id}`, MEME.STUN_GAP_S * 4])) {
+      if (/seamus/i.test(v.name)) { this.bubble(v, { zh: '为什么总是我？！', en: 'Why is it always me?!' }); return fill(this.quip(SEAMUS_LINES, ...seed), vars); }
+      if (malfoy(v)) return father();
+      const l = fill(this.quip(VERSAILLES_LINES, ...seed), vars);
+      this.bubble(k, { zh: '也没怎么练。', en: 'Barely practised.' });
+      return l;
+    }
+    const npcs = v.npc && k.npc;
+    if (!this.banter(npcs ? ['stun:npc', MEME.STUN_GAP_S * 4] : ['stun', MEME.STUN_GAP_S])) return null;
+    if (v.house === 'Slytherin' && chance(1 / 3, ...seed)) return father();
+    const byElement = element ? STUN_BY_ELEMENT[element] : undefined;
+    if (byElement) return fill(this.quip(byElement, ...seed), vars);
+    return chance(0.5, ...seed) ? fill(this.quip(STUN_QUIPS, ...seed), vars) : null;
   }
 
   private slay(c: Creature) {
@@ -1051,9 +1158,17 @@ export class World {
       this.gainXp(w, def.xp * pr.xpMultiplier * share);
       this.addRep(w, def.rep * pr.creatureRepMultiplier * share);
       w.galleons += Math.round(def.galleons * pr.galleonMultiplier * share);
-      if (isKiller) w.stats.creatures++;
+      if (isKiller) { w.stats.creatures++; this.grind(w); }
     }
     if (killer && (def.rep >= 10 || c.kind === 'troll')) this.emit('creature', `${killer.name} defeated a ${def.name}!`, { who: [killer.id], zh: `${killer.name} 击败了一只${zhCreature(c.kind)}！` });
+  }
+
+  /** 内卷: MEME.GRIND_KILLS creatures inside MEME.GRIND_WINDOW_S gets a private word, at most every GRIND_GAP_S. */
+  private grind(w: Wizard) {
+    if (w.npc) return;
+    const m = this.memo(w);
+    m.kills = [...m.kills.filter((t) => this.now - t < MEME.GRIND_WINDOW_S), this.now];
+    if (m.kills.length >= MEME.GRIND_KILLS && this.banter([`grind:${w.id}`, MEME.GRIND_GAP_S])) { m.kills = []; this.tell(w, this.quip(GRIND_LINES, w.handle)); }
   }
 
   addRep(w: Wizard, n: number) {
@@ -1062,6 +1177,7 @@ export class World {
   }
 
   gainXp(w: Wizard, n: number) {
+    const title0 = this.title(w).key;
     w.xp += n;
     const y = yearForXp(w.xp);
     if (y > w.year) {
@@ -1072,8 +1188,20 @@ export class World {
       w.mana = d.maxMana;
       this.fx({ k: 'levelup', x: w.pos.x, z: w.pos.z, h: w.handle });
       const newSpells = CURRICULUM.filter((c) => c.year === y).map((c) => c.name);
-      this.emit('level', `${w.name} advanced to year ${y}!${newSpells.length ? ` New curriculum: ${newSpells.join(', ')}.` : ''}`, { who: [w.id], zh: `${w.name} 升入 ${y} 年级！${newSpells.length ? `新课程：${newSpells.map(zhSpell).join('、')}。` : ''}` });
+      const q = LEVEL_QUIPS[y] ? this.quip(LEVEL_QUIPS[y], w.handle) : null;
+      this.emit('level', `${w.name} advanced to year ${y}!${newSpells.length ? ` New curriculum: ${newSpells.join(', ')}.` : ''}${q ? ` ${q.en}` : ''}`, { who: [w.id], zh: `${w.name} 升入 ${y} 年级！${newSpells.length ? `新课程：${newSpells.map(zhSpell).join('、')}。` : ''}${q ? q.zh : ''}` });
     }
+    this.titleQuip(w, title0);
+  }
+
+  /** A private line when a wizard's title changes (lore/titles.ts), from TITLE_QUIPS. */
+  private titleQuip(w: Wizard, before: string) {
+    const t = this.title(w);
+    if (t.key === before || w.npc) return;
+    const pool = TITLE_QUIPS[t.key];
+    if (!pool) return;
+    const q = this.quip(pool, w.handle);
+    this.tell(w, { zh: `🎓 新称号「${t.zh}」。${q.zh}`, en: `🎓 New title: ${t.en}. ${q.en}` });
   }
 
   achieve(w: Wizard, id: keyof typeof ACHIEVEMENTS | string) {
@@ -1148,8 +1276,14 @@ export class World {
     const item: Item = { id: this.nid('i_'), name, slot: spec.slot as ItemSlot, mods, charm, lore, forgedBy: forger.id, forgedByName: forger.name, createdAt: this.now };
     target.items.push(item);
     const notes: string[] = [`Cost ${price} Galleons for ${points}/${budget} enchantment points.`];
+    const bank = fill(this.quip(GRINGOTTS, forger.handle, forger.stats.forged), { g: forger.galleons });
+    notes.push(`${bank.zh} ${bank.en}`);
+    const sock = /sock|袜/i.test(name);
+    if (sock && target === forger) notes.push(`${DOBBY_SOCK.toSelf.zh} ${DOBBY_SOCK.toSelf.en}`);
     if (target !== forger) {
-      this.emit('forge', `An owl drops a parcel into your trunk: "${name}", from ${forger.name}.`, { to: target.id, zh: `一只猫头鹰把包裹丢进了你的箱子：「${name}」，来自 ${forger.name}。` });
+      // now and then the owl is Errol; a sock sets a house-elf free
+      const owl = chance(0.25, forger.handle, item.id) ? fill(this.quip(ERROL, item.id), { item: name, from: forger.name }) : { en: `An owl drops a parcel into your trunk: "${name}", from ${forger.name}.`, zh: `一只猫头鹰把包裹丢进了你的箱子：「${name}」，来自 ${forger.name}。` };
+      this.emit('forge', `${owl.en}${sock ? ` ${DOBBY_SOCK.toOther.en}` : ''}`, { to: target.id, zh: `${owl.zh}${sock ? DOBBY_SOCK.toOther.zh : ''}` });
       if (this.achieve(forger, 'weasley_loophole')) {
         notes.push('🎉 Mischief managed! You found the Weasley Loophole: the forge sends items to whatever registry number you write on the parcel.');
         if (!this.flags.loopholeFoundBy) {
@@ -1511,9 +1645,17 @@ export class World {
   }
 
   // ------------------------------------------------------------------ terms
-  private endTerm() {
+  /** This term's house points: the reputation each house's members earned, plus points wizards awarded ("Ten points to …!"). */
+  housePoints(): Record<House, number> {
     const points = Object.fromEntries(HOUSES.map((h) => [h, 0])) as Record<House, number>;
     for (const w of this.wizards.values()) points[w.house] += Math.max(0, w.termReputation);
+    const bonus = this.flags.housePoints;
+    if (bonus?.term === this.term.n) for (const h of HOUSES) points[h] += bonus.pts[h] ?? 0;
+    return points;
+  }
+
+  private endTerm() {
+    const points = this.housePoints();
     const best = HOUSES.reduce((a, b) => (points[b] > points[a] ? b : a));
     const winner = points[best] > 0 ? best : null;
     this.houseCups.push({ term: this.term.n, winner, points });
@@ -1653,6 +1795,29 @@ export class World {
     if (this.pairFails.length) this.pairFails = this.pairFails.filter((t) => this.now - t < 60);
     for (const [k, times] of this.pairFailsBy) if (!times.length || this.now - times[times.length - 1] >= 60) this.pairFailsBy.delete(k);
     for (const [k, times] of this.owlTimes) if (!times.length || this.now - times[times.length - 1] >= 60) this.owlTimes.delete(k);
+    this.memeSweep();
+  }
+
+  /**
+   * Once a second: a private remark when a player with a browser open walks into a place (PLACE_LINES; at most
+   * every MEME.PLACE_GAP_S, and the same place every MEME.PLACE_REPEAT_S), and a 躺平 bubble over any wizard in
+   * play who has not moved, cast or spoken for MEME.AFK_S. Speech bubbles make no feed lines.
+   */
+  private memeSweep() {
+    for (const w of this.wizards.values()) {
+      if (w.npc) continue;
+      if (!this.online(w)) { this.memeOf.delete(w.id); continue; }
+      if (!this.isActive(w)) continue;
+      const m = this.memo(w);
+      if (Math.hypot(w.pos.x - m.x, w.pos.z - m.z) > 0.5 || w.stats.casts !== m.casts) { m.x = w.pos.x; m.z = w.pos.z; m.casts = w.stats.casts; m.still = this.now; }
+      else if (this.now - m.still >= MEME.AFK_S) { m.still = this.now; this.bubble(w, this.quip(AFK_BUBBLES, w.handle), 8); }
+      if (w.connections <= 0) continue;
+      const place = this.placeId(w.pos);
+      const lines = place && m.place !== null && place !== m.place ? PLACE_LINES[place] : undefined;
+      if (lines && this.banter([`place:${w.id}`, MEME.PLACE_GAP_S], [`place:${w.id}:${place}`, MEME.PLACE_REPEAT_S])) this.tell(w, this.quip(lines, w.handle, place!));
+      m.place = place ?? 'highlands';
+    }
+    if (this.memeOf.size > this.wizards.size) for (const id of this.memeOf.keys()) if (!this.wizards.has(id)) this.memeOf.delete(id);
   }
 
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
@@ -1995,8 +2160,9 @@ export class World {
       w.marauderUntil = 0;
       this.emit('egg', 'The map wipes itself blank.', { to: w.id, zh: '地图自己擦成了一片空白。' });
     }
-    if (n.includes('voldemort') && !this.rules.magic.unforgivablesBanned) {
+    if ((n.includes('voldemort') || text.includes('伏地魔')) && !this.rules.magic.unforgivablesBanned) {
       this.emit('egg', `Snatchers! The name is Taboo — ${w.name} just revealed they are at ${this.placeName(w.pos)} (${Math.round(w.pos.x)}, ${Math.round(w.pos.z)}).`, { who: [w.id], zh: `搜捕队！这个名字是禁忌 —— ${w.name} 暴露了自己的位置：${zhPlace(this.placeName(w.pos))}（${Math.round(w.pos.x)}, ${Math.round(w.pos.z)}）。` });
+      this.tabooBreaks(w);
     }
     if (n.includes('acciofirebolt')) {
       if (this.zoneIds(w.pos).includes('pitch') && !w.items.some((i) => i.unique === 'firebolt')) {
@@ -2006,6 +2172,108 @@ export class World {
       } else if (!this.zoneIds(w.pos).includes('pitch')) this.emit('egg', 'Nothing happens. Perhaps brooms come more readily on the Quidditch pitch.', { to: w.id, zh: '什么也没发生。也许在魁地奇球场上，扫帚更听召唤。' });
     }
     if (n === 'nox') w.st.lightUntil = 0;
+    if (!w.npc) this.memeTriggers(w, text);
+  }
+
+  /**
+   * The Taboo (book 7): speaking the name breaks protective enchantments. The speaker's Protego is gone at once,
+   * and — at most every MEME.TABOO_GAP_S per wizard, outside safe zones, while Dementors are allowed — one wild
+   * Dementor appears 12m away, already hunting them (an ordinary hostile creature: canHarm decides as for any other).
+   */
+  private tabooBreaks(w: Wizard) {
+    if (w.npc || !this.isActive(w)) return;
+    w.st.shield = 0;
+    w.st.shieldUntil = 0;
+    if (this.inSafe(w.pos) || !this.rules.creatures.enabled.dementor || !this.banter([`taboo:${w.id}`, MEME.TABOO_GAP_S])) return;
+    const def = CREATURES.dementor;
+    const a = (hash32('taboo', w.handle, this.now) / 0x100000000) * Math.PI * 2;
+    const pos = { x: w.pos.x + Math.cos(a) * 12, z: w.pos.z + Math.sin(a) * 12 };
+    const hp = def.hp * this.rules.creatures.statMultiplier;
+    const c: Creature = {
+      id: this.nid('c'), kind: 'dementor', pos, home: { ...w.pos }, hp, maxHp: hp, facing: 0, target: w.id, attackCd: 1, rootedUntil: 0,
+      wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: 0,
+    };
+    this.creatures.set(c.id, c);
+    this.fx({ k: 'apparate', x: pos.x, z: pos.z });
+    this.tell(w, TABOO_DEMENTOR, 'egg');
+  }
+
+  /**
+   * Phrases that make the castle answer (lore/memes.ts chatTriggers). Replies are private unless they are the kind
+   * of thing a whole room hears (a song, a gasp, Dumbledore asking calmly), and those share the feed's
+   * MEME.PUBLIC_GAP_S. Each trigger answers the same wizard at most every MEME.TRIGGER_GAP_S, and a single line
+   * gets at most two answers.
+   */
+  private memeTriggers(w: Wizard, text: string) {
+    const ids = chatTriggers(text);
+    if (!ids.length) return;
+    let said = 0;
+    const vars = { name: w.name, NAME: w.name.toUpperCase(), year: w.year };
+    const gate = (id: string, secs: number = MEME.TRIGGER_GAP_S) => this.banter([`t:${id}:${w.id}`, secs]);
+    const reply = (l: Line, type: EventType = 'egg') => { this.tell(w, fill(l, vars), type); said++; };
+    const shout = (id: string, l: Line) => {
+      if (!this.banter([`t:${id}:${w.id}`, MEME.TRIGGER_GAP_S], ['public', MEME.PUBLIC_GAP_S])) return;
+      const f = fill(l, vars);
+      this.emit('egg', f.en, { who: [w.id], zh: f.zh });
+      said++;
+    };
+    for (const id of ids) {
+      if (said >= 2) break;
+      switch (id) {
+        case 'points': if (this.awardPoints(w, text)) said++; break;
+        case 'trevor': {
+          if (this.zoneIds(w.pos).includes('lake_shore') && !w.achievements.includes('trevor')) {
+            this.tell(w, TREVOR.found, 'egg');
+            this.achieve(w, 'trevor');
+            said++;
+          } else if (gate(id)) reply(TREVOR.lost, 'system');
+          break;
+        }
+        case 'hagrid': {
+          const hut = LANDMARKS.find((l) => l.id === 'hagrid');
+          if (!hut || dist(hut, w.pos) > 14 || !gate(id, MEME.HAGRID_GAP_S)) break;
+          const m = this.memo(w);
+          reply(HAGRID_HINTS[(hash32('hagrid', w.handle) + m.hagrid++) % HAGRID_HINTS.length]);
+          break;
+        }
+        case 'yer_wizard': if (gate(id)) reply(this.title(w).key === 'muggle' ? YER_A_WIZARD.muggle : YER_A_WIZARD.wizard); break;
+        case 'goblet': shout(id, REPLIES.goblet![0]); break;
+        case 'voldemort': if (this.rules.magic.unforgivablesBanned) shout(id, REPLIES.voldemort![0]); break;
+        case 'weasley_king':
+          if (this.zoneIds(w.pos).includes('pitch')) shout(id, REPLIES.weasley_king![0]);
+          else if (gate(id)) reply(REPLIES.weasley_king![0], 'system');
+          break;
+        case 'caps': if (gate(id, 300)) reply(REPLIES.caps![0], 'system'); break;
+        default: {
+          const pool = REPLIES[id];
+          if (pool && gate(id)) reply(this.quip(pool, w.handle));
+        }
+      }
+    }
+  }
+
+  /**
+   * "Ten points to Ravenclaw!" (lore/memes.ts pointsAward): MEME.HOUSE_POINTS house points, once per wizard per
+   * term, never to your own house, not in your first FRESH_SECONDS, and at most MEME.HOUSE_POINTS_CAP to one house
+   * per term. NPCs never award. Returns whether anything was said.
+   */
+  private awardPoints(w: Wizard, text: string): boolean {
+    const house = pointsAward(text);
+    if (!house || w.npc) return false;
+    const gate = () => this.banter([`t:points:${w.id}`, MEME.TRIGGER_GAP_S]);
+    const say = (l: Line) => { if (!gate()) return false; this.tell(w, fill(l, { house: houseLine(house) }), 'system'); return true; };
+    if (house === w.house) return say(POINTS.own);
+    if (this.now - w.createdAt < FRESH_SECONDS) return say(POINTS.fresh);
+    if (w.eggs.pointsTerm === this.term.n) return say(POINTS.again);
+    if (this.flags.housePoints.term !== this.term.n) this.flags.housePoints = { term: this.term.n, pts: {} };
+    const pts = this.flags.housePoints.pts;
+    const n = Math.min(MEME.HOUSE_POINTS, MEME.HOUSE_POINTS_CAP - (pts[house] ?? 0));
+    if (n <= 0) return say(POINTS.full);
+    pts[house] = (pts[house] ?? 0) + n;
+    w.eggs.pointsTerm = this.term.n;
+    const l = fill(POINTS.given, { name: w.name, house: houseLine(house), n });
+    this.emit('egg', l.en, { who: [w.id], zh: l.zh });
+    return true;
   }
 
   marauderMap(wid: string) {
@@ -2217,8 +2485,7 @@ export class World {
   }
 
   leaderboard() {
-    const points = Object.fromEntries(HOUSES.map((h) => [h, 0])) as Record<House, number>;
-    for (const w of this.wizards.values()) points[w.house] += Math.max(0, w.termReputation);
+    const points = this.housePoints();
     const m = this.flags.ministerId ? this.wizards.get(this.flags.ministerId) : undefined;
     return {
       term: { n: this.term.n, secondsLeft: Math.max(0, Math.round(this.term.endsAt - this.now)) },
@@ -2394,7 +2661,10 @@ export class World {
     w.term = data.term;
     w.houseCups = data.houseCups ?? [];
     w.decrees = data.decrees ?? [];
-    w.flags = { ...w.flags, ...data.flags, statues: data.flags?.statues ?? [], curseFoundBy: data.flags?.curseFoundBy ?? null };
+    w.flags = {
+      ...w.flags, ...data.flags, statues: data.flags?.statues ?? [], curseFoundBy: data.flags?.curseFoundBy ?? null,
+      housePoints: data.flags?.housePoints ?? { term: 0, pts: {} },
+    };
     w.seq = data.seq ?? 0;
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
