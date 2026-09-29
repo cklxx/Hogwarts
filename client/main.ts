@@ -25,6 +25,7 @@ import { PAIR_TTL_S } from '../src/shared/constants';
 import { TIPS } from '../src/lore/memes';
 import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
 import * as probe from './perf';
+import { createMarket } from './market';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
@@ -337,7 +338,8 @@ function connect() {
       else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
       if (!$('#trunk').hidden) send({ t: 'book' }); // Finite Incantatem / Revelio change what the trunk shows
     }
-    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); }
+    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); market.onBook(); }
+    else if (msg.t === 'market') market.onMessage(msg); // 咒语集市 (client/market.ts)
     else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
     else if (msg.t === 'token') onToken(String(msg.token ?? ''));
     else if (msg.t === 'owls' && Array.isArray(msg.owls)) { for (const o of msg.owls) owlFromMsg(o); renderOwl(); }
@@ -350,7 +352,8 @@ function connect() {
     else if (msg.t === 'err') {
       ctl.onError();
       const text = `✗ ${tr(String(msg.error ?? ''))}`;
-      if (!$('#book').hidden) bookOut(text, 'bad');
+      if (market.onError(text)) { /* shown on the market page */ }
+      else if (!$('#book').hidden) bookOut(text, 'bad');
       else if (onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
       else toast(text);
     }
@@ -1299,9 +1302,12 @@ let bookSel: string | null = null;
 let bookBar: (string | null)[] = [null, null, null, null, null, null];
 /** The last error the editor showed (handed to your agent by "🦉 Ask my agent"). */
 let lastBookErr = '';
+/** 咒语集市: the market page laid over the open book (client/market.ts), opened from its tab in the list. */
+const market = createMarket($('#book'), { send: (o) => send(o), year: () => me?.year ?? 1, spells: () => bookSpells });
 function toggleBook(force?: boolean) {
   const b = $('#book');
   b.hidden = !(force ?? b.hidden);
+  if (b.hidden) market.close();
   if (!b.hidden) { solo(b); b.dataset.house = me?.house ?? ''; send({ t: 'book' }); ctl.notify('book'); }
 }
 function bookOut(text: string, cls = '') {
@@ -1325,6 +1331,7 @@ function renderBookList() {
     `<button type="button" class="bk-slot${slotOf(s.id) === n ? ' on' : ''}" data-slot="${n}" data-spell="${esc(s.id)}" title="${esc(slotOf(s.id) === n ? L(`在 ${n} 号栏 · 再点一下取下`, `On slot ${n} · click again to remove`) : L(`放到 ${n} 号栏`, `Put on slot ${n}`))}">${n}</button>`).join('')}</span>`;
   $('#book-list').innerHTML = `<li data-id="" class="tab${!bookSel && !tplKey ? ' sel' : ''}" title="${esc(L('自己写一个', 'write your own'))}">${ic('plus')}${L('新咒语', 'New spell')}</li>`
     + `<li data-tpl="1" class="tab tpl-entry${tplKey ? ' sel' : ''}" title="${esc(L('不用写代码：选一选、拖一拖', 'no code: pick and slide'))}">${ic('scroll')}${L('从模板开始', 'Start from a template')}</li>`
+    + `<li data-market="1" class="tab mk-entry" title="${esc(L('别人发布的咒语：抄、改编、发布你自己的', 'spells others published: copy, fork, publish yours'))}">${ic('coin')}${L('咒语集市', 'Spell market')}</li>`
     + bookSpells.map((s) => `<li data-id="${esc(s.id)}" draggable="true" class="${s.id === bookSel ? 'sel' : ''}" title="${esc(spellLabel(s))}"><span class="sp-ic">${ic(spellIcon(s.name, s.effects, s.source))}</span>`
       + `<span class="sp-tx"><b>${s.builtin && lang === 'zh' ? `${esc(spellName(s.name))}<span class="lat">${esc(s.name)}</span>` : `<span class="${isLatin(s.name) ? 'lat' : ''}">${esc(s.name)}</span>`}</b>`
       + `<small>${L(`${YEAR_ZH[s.minYear] ?? s.minYear}年级`, `Year ${s.minYear}`)} · ${s.nodes} ${L('节点', 'nodes')} · ${esc(s.effects.join(', ') || '—')}</small></span>${keys(s)}</li>`).join('');
@@ -1361,7 +1368,8 @@ $('#book-list').addEventListener('click', (e) => {
   if (k) { assignSlot(k.dataset.spell!, Number(k.dataset.slot)); return; }
   const li = t.closest('li') as HTMLElement | null;
   if (!li) return;
-  if (li.dataset.tpl) openTemplates();
+  if (li.dataset.market) market.open();
+  else if (li.dataset.tpl) openTemplates();
   else loadSpell(li.dataset.id || null);
 });
 $('#book-list').addEventListener('dragstart', (e) => {

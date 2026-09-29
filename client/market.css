@@ -1,0 +1,90 @@
+/* 咒语集市 — the market spread laid over the open spellbook (client/market.ts). Parchment components from style.css:
+   .page / .fld / .tb / .hint / button.ghost / button.quiet, and the book list's .sp-ic / .sp-tx rows. */
+#book.mk-on .cols > .page { visibility: hidden; }
+#book .mk { position: absolute; inset: 0; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+#book .mk[hidden] { display: none; }
+#book .mk .page { visibility: visible; }
+#book .mk-l { display: flex; flex-direction: column; }
+#book .mk-l > * { flex-shrink: 0; }
+#book .mk-back { margin: 0 0 calc(8px * var(--u)); gap: calc(12px * var(--u)); }
+#book .mk-back button svg.ic { width: calc(22px * var(--u)); height: calc(22px * var(--u)); }
+#book .mk-roy { font-size: calc(15px * var(--t)); color: var(--ink2); display: inline-flex; align-items: center; gap: calc(4px * var(--u)); flex-wrap: wrap; }
+#book .mk-roy b { color: var(--verdigris); }
+#book .mk-roy svg.ic { width: calc(22px * var(--u)); height: calc(22px * var(--u)); }
+
+#book .mk-filters { display: flex; flex-wrap: wrap; gap: calc(6px * var(--u)) calc(10px * var(--u)); align-items: center; margin: 0 0 calc(8px * var(--u)); }
+#book .mk-filters .mk-q { flex: 1 1 calc(220px * var(--u)); }
+#book .mk-filters select { font-size: calc(15px * var(--t)); padding: calc(2px * var(--u)) calc(5px * var(--u)); }
+#book .mk-chk { display: inline-flex; align-items: center; gap: calc(4px * var(--u)); font-size: calc(15px * var(--t)); color: var(--ink2); cursor: pointer; white-space: nowrap; }
+
+#book .mk-shelf h3 { margin: calc(4px * var(--u)) 0; font-size: calc(16px * var(--t)); }
+#book .mk-shelf h3 small { font-weight: 400; }
+#book .mk-chips { display: flex; flex-wrap: wrap; gap: calc(6px * var(--u)); margin: 0 0 calc(8px * var(--u)); }
+#book .mk-chip { display: inline-flex; align-items: center; gap: calc(5px * var(--u)); padding: calc(2px * var(--u)) calc(10px * var(--u)) calc(2px * var(--u)) calc(4px * var(--u)); font: 400 calc(15px * var(--t))/1.4 var(--cjk); color: var(--ink); background: rgba(184, 135, 29, .12); border: calc(1.3px * var(--u)) solid var(--ochre); border-radius: calc(16px * var(--u)); box-shadow: none; text-shadow: none; }
+#book .mk-chip:hover { background: rgba(184, 135, 29, .24); filter: none; }
+#book .mk-chip svg.ic { width: calc(24px * var(--u)); height: calc(24px * var(--u)); }
+#book .mk-chip small { color: var(--ink2); font-size: calc(14px * var(--t)); }
+#book .mk-chip .lat, #book .mk .lat { font-family: var(--latin), var(--cjk); font-style: italic; font-weight: 600; }
+
+#book .mk-list { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-height: calc(90px * var(--u)); overflow: auto; scrollbar-width: thin; }
+#book .mk-list li { display: grid; grid-template-columns: calc(48px * var(--u)) minmax(0, 1fr) auto; align-items: center; gap: calc(10px * var(--u)); padding: calc(6px * var(--u)) calc(4px * var(--u)); border-top: calc(1px * var(--u)) solid var(--hair); cursor: pointer; }
+#book .mk-list li:first-child { border-top: 0; }
+#book .mk-list li:hover, #book .mk-list li:focus-visible { background: rgba(120, 80, 30, .07); outline: none; }
+#book .mk-list li.sel { background: linear-gradient(90deg, rgba(150, 32, 36, .13), transparent 85%); }
+#book .mk-list li.banned .sp-ic { border-style: dashed; opacity: .7; }
+#book .mk-list li.mk-empty { display: block; cursor: default; color: var(--ink2); font-size: var(--fs-body); line-height: var(--lh); }
+#book .mk-list .sp-ic { width: calc(46px * var(--u)); height: calc(46px * var(--u)); border-radius: 50%; display: grid; place-items: center; border: calc(1.5px * var(--u)) solid rgba(42, 27, 15, .55); background: rgba(255, 248, 230, .5); }
+#book .mk-list .sp-ic svg.ic { width: calc(34px * var(--u)); height: calc(34px * var(--u)); vertical-align: 0; }
+#book .mk-list .sp-tx { min-width: 0; }
+#book .mk-list .sp-tx b { display: block; font-size: calc(18px * var(--t)); font-weight: 500; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#book .mk-list small:not(.mk-v) { display: block; font-size: calc(14.5px * var(--t)); color: var(--ink2); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#book .mk-v { display: inline; font: 600 calc(14px * var(--t)) var(--latin); color: var(--ink3); }
+#book .mk-bs { display: flex; flex-wrap: wrap; gap: calc(4px * var(--u)); justify-content: flex-end; }
+#book .mk-b { display: inline-flex; align-items: center; gap: calc(2px * var(--u)); font-size: calc(13.5px * var(--t)); line-height: 1.5; padding: 0 calc(7px * var(--u)); border-radius: calc(2px * var(--u)); border: calc(1.2px * var(--u)) solid rgba(91, 64, 41, .5); color: var(--ink2); white-space: nowrap; }
+#book .mk-b svg.ic { width: calc(16px * var(--u)); height: calc(16px * var(--u)); }
+#book .mk-b.promo { border-color: var(--ochre); color: var(--ochre); background: rgba(184, 135, 29, .12); font-weight: 500; }
+#book .mk-b.ban { border-color: var(--wax); color: var(--wax); background: rgba(150, 32, 36, .08); font-weight: 500; }
+#book .mk-b.mine { border-color: var(--indigo); color: var(--indigo); }
+#book .mk-b.off { border-style: dashed; }
+#book .mk-b.fork { border-color: var(--verdigris); color: var(--verdigris); }
+#book .mk-more { justify-content: center; margin: calc(6px * var(--u)) 0 0; }
+
+#book .mk-r { display: flex; flex-direction: column; }
+#book .mk-r > * { flex-shrink: 0; }
+#book .mk-detail .pg-title svg.ic { width: calc(34px * var(--u)); height: calc(34px * var(--u)); align-self: center; }
+#book .mk-detail > .mk-bs { justify-content: flex-start; margin: 0 0 calc(4px * var(--u)); }
+#book .mk-desc { margin: calc(4px * var(--u)) 0; font-size: var(--fs-body); color: var(--ink); max-width: none; }
+#book .mk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: calc(4px * var(--u)) calc(8px * var(--u)); margin: calc(4px * var(--u)) 0; font-size: calc(15px * var(--t)); color: var(--ink2); max-width: none; }
+#book .mk-meta select { font-size: calc(15px * var(--t)); }
+#book .mk-inc { font-size: calc(18px * var(--t)); color: var(--ink); }
+#book .mk-banned { color: var(--wax); display: flex; gap: calc(6px * var(--u)); align-items: flex-start; max-width: none; }
+#book .mk-banned svg.ic { flex: none; width: calc(22px * var(--u)); height: calc(22px * var(--u)); }
+#book .mk-src { font: 400 calc(15px * var(--t))/1.55 var(--mono); max-height: calc(220px * var(--u)); margin: calc(6px * var(--u)) 0; }
+#book .mk-stats { margin: calc(4px * var(--u)) 0; }
+#book .mk-line { margin: calc(4px * var(--u)) 0; font-size: calc(15px * var(--t)); max-width: none; display: flex; flex-wrap: wrap; align-items: center; gap: calc(4px * var(--u)); }
+#book .mk-line svg.ic { width: calc(20px * var(--u)); height: calc(20px * var(--u)); }
+#book .mk-line small { color: var(--ink2); }
+#book .linky { border: 0; background: none; box-shadow: none; text-shadow: none; padding: 0; color: var(--indigo); font: inherit; text-decoration: underline; text-underline-offset: calc(3px * var(--u)); cursor: pointer; }
+#book .linky:hover { filter: none; color: var(--wax); }
+#book .mk-acts .fld, #book .mk-forkbox .fld { flex: 1 1 calc(160px * var(--u)); }
+#book .mk-pub .fld { flex: none; }
+#book .mk-pub { display: flex; flex-direction: column; gap: calc(8px * var(--u)); }
+#book .mk-pub select { flex: 1; min-width: 0; border: 0; background: transparent; font-size: calc(17px * var(--t)); }
+#book .mk-why { color: var(--wax); }
+#book .mk-forkbox h3 small { font-weight: 400; }
+#book .mk-fsrc { width: 100%; min-height: calc(110px * var(--u)); box-sizing: border-box; font: 400 calc(15px * var(--t))/1.55 var(--mono); }
+#book .mk-out { min-height: 0; margin: calc(6px * var(--u)) 0 0; }
+#book .mk-out:empty { display: none; }
+#book .mk-out.good { border-left-color: var(--verdigris); }
+#book .mk-out.bad { border-left-color: var(--wax); color: var(--wax-d); }
+
+/* the 集市 tab in the spellbook's list */
+#book-list li.mk-entry svg.ic { --ic-f2: #e9c46a; }
+
+@media (max-width: 800px) {
+  #book.mk-on .cols > .page { display: none; }
+  #book .mk { position: static; grid-template-columns: minmax(0, 1fr); }
+  #book .mk .page { min-width: 0; }
+  #book .mk-filters .mk-q { flex-basis: 100%; }
+  #book .mk-list { max-height: 44vh; }
+}

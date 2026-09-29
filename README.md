@@ -226,7 +226,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 
 ## MCP 工具
 
-`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `dumbledores_army` `join_dumbledores_army` `leave_dumbledores_army` `veto_decree` `study_spell` `owl_exams` `sit_exam` `exam_leaderboard` `marauders_map` `hogwarts_a_history`（行动类工具消耗专注力，见「不公平，但好玩」）；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
+`restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `dumbledores_army` `join_dumbledores_army` `leave_dumbledores_army` `veto_decree` `study_spell` `market_browse` `market_spell` `publish_spell` `unpublish_spell` `copy_spell` `fork_spell` `owl_exams` `sit_exam` `exam_leaderboard` `marauders_map` `hogwarts_a_history`（行动类工具消耗专注力，见「不公平，但好玩」）；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
 
 ## 不公平，但好玩
 
@@ -243,6 +243,17 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 - **弱者的反制**：**除你武器（Expelliarmus，二年级）**的缴械与年级、称号、装备、黑魔标记都无关：打中就是 2 秒没有魔杖（缴械老魔杖主人照样夺走忠诚）。
 
 形式化：Lean `steal_tier_mono` `duel_steal_cap`（≤30%）`duel_steal_mono`（对受害者声望单调）`duel_steal_dark` `steal_newcomer`/`steal_normal`/`steal_dark_lord` `duel_conserves_curve`（守恒，推广了原来的 `duel_conserves`）`dark_lord_no_flap` `joint_bounded` `veto_strict_majority` `focus_bounded`，向量由 `test/formal.test.ts` 与 TS 逐项比对；TLA+ `DAVeto`（每学期至多一次否决、只在窗口内、只在法定人数与过半数时、法令状态与规则书一致；每条守卫删掉后 TLC 都能找到反例）；`Hex` 加入 `lawless`、新增 `HexLawless`。给客户端的数据形状见 `docs/UNFAIR.md`。
+
+## 咒语集市
+
+咒语是社交对象：写好的咒语可以**发布**到集市，别人可以**抄走**或**改编（fork）**，别人每施放一次你的咒语，你就涨一点声望。全部在内核里（`src/kernel/market.ts`，数字在 `src/shared/constants.ts`），浏览器里在咒语书的「咒语集市」标签页。
+
+- **发布**（`publish_spell`）：只能发布自己写的咒语（课本咒语、抄本、偷师来的都不行——抄本请 fork）。每次发布是一个**不可修改的版本**（v1、v2……，最多 16 个）；标签来自效果原语、源码里的元素和 `(after …)`，最低年级来自静态检查器。每人最多 12 个在架；**下架**（`unpublish_spell`）只是藏起来，已有的抄本照样署原作者、照样能用。上架公告每位作者每 10 分钟最多一次。
+- **抄**（`copy_spell`）：按**你自己的**年级上限、封印、禁用原语和咒语书容量铸造（失败什么也不花）；抄本记下作者（`origin`）和集市编号（`market`）。
+- **改编**（`fork_spell`）：抄 + 改 + 以你的名义发布，源码必须和原版不同；家谱（lineage）一路记到最初的作者，下架的祖先显示为「已下架」。
+- **版税**：别人（不是你自己、不是 NPC、不是入学不到 10 分钟的新号）成功施放你的集市咒语，每人每咒语每天 **+1 声望**；有人施放**改编自你的**咒语，你另得 **+0.3**；每人每天版税**最多 20**（`rules.market.dailyCap`，宪法上限 50）。每天换日时私下告诉你「过去一天有 N 位巫师施放了你的咒语」。
+- **政治**：规则书新增 `market: { banned: [] (≤16), promoted: [] (≤8), royalties: true, dailyCap: 20 (0–50) }`。部长法令 `{"market":{"banned":["m_4"]}}` **禁用**一个集市咒语：谁施放它（包括所有抄本、以及一字不差的同款源码）都只冒一缕青烟，但仍然可以阅读；`promoted` 把咒语放上「推荐」书架（必须在架、不能同时被禁）。邓布利多军**否决**那道法令即解禁/撤推荐；作者下架后自动离开推荐书架。
+- 形式化：Lean `royalty_day_capped`（任意一天的施法序列下，每人版税 ≤ 上限）、`royalty_per_pair`（同一施法者同一咒语每天 ≤ 1 声望，改编的上游 ≤ 0.3）、`royalty_not_self`、`royalty_npc`，整天的伪随机施法序列作为向量与 TS 的 `royaltyStep` 逐项比对；TLA+ `Market.tla`（发布/下架/法令/否决/施法/换日：被禁的咒语永不生效、推荐 ⊆ 在架且不被禁、版税有界、不给自己、不给 NPC；每条守卫删掉后 TLC 都能找到反例）。
 
 ## 真实的霍格沃茨
 
@@ -275,7 +286,7 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 `REALMS=N` 启动 N 个独立世界进程（前门代理 HTTP、按 token/cookie 路由 WebSocket 与 MCP，`/api/realms` 查看人数）；64 核机器建议 `REALMS=56`，估算约 2.8 万在线，瓶颈是网卡而不是 CPU。方法、表格与假设见 `docs/PERF.md`，压测：`npx tsx scripts/bench.ts`。
 
 ## 形式化验证
-`formal/`：13 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、邓布利多军否决、封印）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒（含不对称夺取曲线 ≤30%、单调）、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
+`formal/`：14 个 **TLA+** 规约（敌我关系、施法事务、生命周期与召唤、老魔杖唯一性、学期/部长/法令、邓布利多军否决、封印、咒语集市）用 TLC 穷举模型检查，外加 **Lean 4** 证明（成长单调、称号单调、决斗声望守恒（含不对称夺取曲线 ≤30%、单调）、事务原子性、每次施法效果 ≤ E·(1+A)、治疗/光环/召唤上限、法令合宪、Feistel 单射→封印唯一解、集市版税每日有界）。Lean 输出的测试向量由 vitest 与 TS 实现逐项比对；TLA+ 的敌我不变式在 3000 个随机真实世界上复核。详见 `formal/README.md`，CI 每次推送都会跑。
 
 ## 已知限制与取舍
 

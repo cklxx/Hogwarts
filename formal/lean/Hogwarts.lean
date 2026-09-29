@@ -623,6 +623,250 @@ def unfairVectors : String :=
   obj [("constants", consts), ("stealTiers", tiers), ("stealTier", arr tierV), ("stealPct", arr pctV), ("darkLordTakes", arr takesV),
     ("jointPct", arr jointV), ("vetoPasses", arr vetoV), ("focusAfter", arr focusV)]
 
+/-! ## 咒语集市 — the spell market's royalties (src/kernel/market.ts `royaltyStep`, README 咒语集市)
+
+Royalties are counted in tenths of a reputation point. A successful cast of a market spell by an eligible
+caster pays the spell's author MARKET_AUTHOR_TENTHS (unless the caster is the author) and a fork's parent
+author MARKET_PARENT_TENTHS (unless that is the caster or the author), once per (spell, caster) per day, each
+within the day's cap. Proved: nobody earns more than the cap in a day (`royalty_day_capped`), a (spell,
+caster) pair pays the author at most one reputation point a day however often it is cast (`royalty_per_pair`)
+and the parent at most its share (`royalty_parent_per_pair`), the caster is never paid by their own cast
+(`royalty_not_self`), an NPC or a fresh enrolee pays nothing (`royalty_npc`). -/
+
+def MARKET_AUTHOR_TENTHS : Nat := 10
+def MARKET_PARENT_TENTHS : Nat := 3
+def MARKET_DAY_S : Nat := 86400
+def MARKET_CAP_DEFAULT : Nat := 20
+def MARKET_CAP_MAX : Nat := 50
+def MARKET_ANNOUNCE_S : Nat := 600
+def MARKET_MAX_VERSIONS : Nat := 16
+def MARKET_MAX_PER_AUTHOR : Nat := 12
+def MARKET_BAN_MAX : Nat := 16
+def MARKET_PROMOTE_MAX : Nat := 8
+
+/-- market.ts `royaltyGrant`: the share, or what is left under the cap. -/
+def royaltyGrant (earned share cap : Nat) : Nat := min share (cap - earned)
+
+theorem royalty_grant_le (e s c : Nat) : royaltyGrant e s c ≤ s := Nat.min_le_left _ _
+theorem royalty_grant_cap {e c : Nat} (s : Nat) (h : e ≤ c) : e + royaltyGrant e s c ≤ c := by
+  unfold royaltyGrant; rw [Nat.min_def]; split <;> omega
+
+/-- One successful cast of a market spell (ids as numbers). `npc`: the caster pays no royalty. -/
+structure RCast where
+  spell : Nat
+  caster : Nat
+  author : Nat
+  parent : Option Nat
+  npc : Bool
+
+/-- A table of numbers by id. (A structure, not a bare function, so that `#eval` builds each update once
+    instead of re-running the whole chain on every lookup; `t a` reads it.) -/
+structure Tab where
+  app : Nat → Nat
+structure Tab2 where
+  app : Nat → Nat → Nat
+instance : CoeFun Tab (fun _ => Nat → Nat) := ⟨Tab.app⟩
+instance : CoeFun Tab2 (fun _ => Nat → Nat → Nat) := ⟨Tab2.app⟩
+
+/-- The day's ledger: the (spell, caster) pairs spent, what each pair paid the author (`given`) and the
+    parent (`pgiven`), and each wizard's earnings today. -/
+structure Ledger where
+  paid : List (Nat × Nat)
+  given : Tab2
+  pgiven : Tab2
+  earned : Tab
+
+def Ledger.empty : Ledger := ⟨[], ⟨fun _ _ => 0⟩, ⟨fun _ _ => 0⟩, ⟨fun _ => 0⟩⟩
+
+@[noinline] def upd (f : Tab) (k v : Nat) : Tab := ⟨fun x => if x = k then v else f x⟩
+@[noinline] def upd2 (f : Tab2) (s c v : Nat) : Tab2 := ⟨fun x y => if x = s ∧ y = c then v else f x y⟩
+
+/-- Pay `a` up to `share` under the cap. -/
+def bump (cap share : Nat) (f : Tab) (a : Nat) : Tab := upd f a (f a + royaltyGrant (f a) share cap)
+
+/-- The parent who may be paid: not the caster, not the author. -/
+def parentOf (e : RCast) : Option Nat :=
+  match e.parent with
+  | some p => if p = e.caster ∨ p = e.author then none else some p
+  | none => none
+
+def authorGrant (cap : Nat) (d : Ledger) (e : RCast) : Nat :=
+  if e.caster = e.author then 0 else royaltyGrant (d.earned e.author) MARKET_AUTHOR_TENTHS cap
+def afterAuthor (cap : Nat) (d : Ledger) (e : RCast) : Tab :=
+  if e.caster = e.author then d.earned else bump cap MARKET_AUTHOR_TENTHS d.earned e.author
+def parentGrant (cap : Nat) (f : Tab) : Option Nat → Nat
+  | some p => royaltyGrant (f p) MARKET_PARENT_TENTHS cap
+  | none => 0
+def afterParent (cap : Nat) (f : Tab) : Option Nat → Tab
+  | some p => bump cap MARKET_PARENT_TENTHS f p
+  | none => f
+
+/-- Nothing to do: an NPC, nobody but the caster to pay, or this pair already paid today. -/
+def skip (d : Ledger) (e : RCast) : Bool :=
+  e.npc || (decide (e.caster = e.author) && (parentOf e).isNone) || decide ((e.spell, e.caster) ∈ d.paid)
+
+/-- market.ts `royaltyStep`. -/
+def royaltyStep (cap : Nat) (d : Ledger) (e : RCast) : Ledger :=
+  if skip d e then d
+  else
+    let f := afterAuthor cap d e
+    { paid := (e.spell, e.caster) :: d.paid,
+      given := upd2 d.given e.spell e.caster (d.given e.spell e.caster + authorGrant cap d e),
+      pgiven := upd2 d.pgiven e.spell e.caster (d.pgiven e.spell e.caster + parentGrant cap f (parentOf e)),
+      earned := afterParent cap f (parentOf e) }
+
+/-- A day of casts. -/
+def runDay (cap : Nat) (es : List RCast) : Ledger := es.foldl (royaltyStep cap) Ledger.empty
+
+/-- What stays true all day. -/
+def Good (cap : Nat) (d : Ledger) : Prop :=
+  (∀ a, d.earned a ≤ cap) ∧ (∀ s c, d.given s c ≤ MARKET_AUTHOR_TENTHS) ∧ (∀ s c, d.pgiven s c ≤ MARKET_PARENT_TENTHS)
+  ∧ (∀ s c, (s, c) ∉ d.paid → d.given s c = 0 ∧ d.pgiven s c = 0)
+
+theorem bump_le {cap share : Nat} {f : Tab} (a : Nat) (h : ∀ x, f x ≤ cap) : ∀ x, bump cap share f a x ≤ cap := by
+  intro x; simp only [bump, upd]
+  split
+  · exact royalty_grant_cap share (h a)
+  · exact h x
+
+theorem bump_other {cap share : Nat} {f : Tab} {a x : Nat} (hx : x ≠ a) : bump cap share f a x = f x := by
+  simp [bump, upd, hx]
+
+theorem afterAuthor_le {cap : Nat} {d : Ledger} (e : RCast) (h : ∀ x, d.earned x ≤ cap) : ∀ x, afterAuthor cap d e x ≤ cap := by
+  unfold afterAuthor; split
+  · exact h
+  · exact bump_le _ h
+
+theorem afterParent_le {cap : Nat} {f : Tab} (o : Option Nat) (h : ∀ x, f x ≤ cap) : ∀ x, afterParent cap f o x ≤ cap := by
+  cases o with
+  | none => exact h
+  | some p => exact bump_le p h
+
+theorem authorGrant_le (cap : Nat) (d : Ledger) (e : RCast) : authorGrant cap d e ≤ MARKET_AUTHOR_TENTHS := by
+  unfold authorGrant; split
+  · exact Nat.zero_le _
+  · exact royalty_grant_le _ _ _
+
+theorem parentGrant_le (cap : Nat) (f : Tab) (o : Option Nat) : parentGrant cap f o ≤ MARKET_PARENT_TENTHS := by
+  cases o with
+  | none => exact Nat.zero_le _
+  | some p => exact royalty_grant_le _ _ _
+
+theorem step_good {cap : Nat} {d : Ledger} (e : RCast) (h : Good cap d) : Good cap (royaltyStep cap d e) := by
+  obtain ⟨h1, h2, h3, h4⟩ := h
+  unfold royaltyStep
+  split
+  · exact ⟨h1, h2, h3, h4⟩
+  · rename_i hs
+    have hk : (e.spell, e.caster) ∉ d.paid := by
+      intro m; apply hs; unfold skip; simp [m]
+    have ⟨g0, p0⟩ := h4 _ _ hk
+    refine ⟨afterParent_le _ (afterAuthor_le e h1), ?_, ?_, ?_⟩
+    · intro s c; simp only [upd2]; split
+      · rename_i hsc; obtain ⟨rfl, rfl⟩ := hsc; rw [g0]; simpa using authorGrant_le cap d e
+      · exact h2 s c
+    · intro s c; simp only [upd2]; split
+      · rename_i hsc; obtain ⟨rfl, rfl⟩ := hsc; rw [p0]; simpa using parentGrant_le cap _ _
+      · exact h3 s c
+    · intro s c hn
+      have hne : ¬ (s = e.spell ∧ c = e.caster) := by
+        rintro ⟨rfl, rfl⟩; exact hn (List.mem_cons_self ..)
+      have hn' : (s, c) ∉ d.paid := fun m => hn (List.mem_cons_of_mem _ m)
+      simp only [upd2, hne, if_false]
+      exact h4 s c hn'
+
+theorem good_empty (cap : Nat) : Good cap Ledger.empty :=
+  ⟨fun _ => Nat.zero_le _, fun _ _ => Nat.zero_le _, fun _ _ => Nat.zero_le _, fun _ _ _ => ⟨rfl, rfl⟩⟩
+
+theorem good_foldl {cap : Nat} (es : List RCast) : ∀ d, Good cap d → Good cap (es.foldl (royaltyStep cap) d) := by
+  induction es with
+  | nil => intro d h; exact h
+  | cons e es ih => intro d h; exact ih _ (step_good e h)
+
+theorem good_run (cap : Nat) (es : List RCast) : Good cap (runDay cap es) := good_foldl es _ (good_empty cap)
+
+/-- royalty_day_capped: whatever the day's casts, nobody earns more than the cap from royalties. -/
+theorem royalty_day_capped (cap : Nat) (es : List RCast) (a : Nat) : (runDay cap es).earned a ≤ cap := (good_run cap es).1 a
+/-- royalty_per_pair: one caster casting one spell any number of times pays its author at most one point a day. -/
+theorem royalty_per_pair (cap : Nat) (es : List RCast) (s c : Nat) : (runDay cap es).given s c ≤ MARKET_AUTHOR_TENTHS := (good_run cap es).2.1 s c
+theorem royalty_parent_per_pair (cap : Nat) (es : List RCast) (s c : Nat) : (runDay cap es).pgiven s c ≤ MARKET_PARENT_TENTHS := (good_run cap es).2.2.1 s c
+/-- In reputation points: at most `dailyCap` a day (the cap in tenths is dailyCap · 10), at most 1 per pair. -/
+theorem royalty_points (dailyCap : Nat) (es : List RCast) (a s c : Nat) :
+    (runDay (dailyCap * 10) es).earned a ≤ dailyCap * 10 ∧ (runDay (dailyCap * 10) es).given s c ≤ 1 * 10 :=
+  ⟨royalty_day_capped _ es a, royalty_per_pair _ es s c⟩
+
+/-- royalty_npc: an NPC's (or a fresh enrolee's) cast changes nothing. -/
+theorem royalty_npc (cap : Nat) (d : Ledger) (e : RCast) (h : e.npc = true) : royaltyStep cap d e = d := by
+  unfold royaltyStep skip; simp [h]
+
+/-- royalty_not_self: a cast never pays its caster. -/
+theorem royalty_not_self (cap : Nat) (d : Ledger) (e : RCast) : (royaltyStep cap d e).earned e.caster = d.earned e.caster := by
+  unfold royaltyStep; split
+  · rfl
+  · have hp : ∀ p, parentOf e = some p → e.caster ≠ p := by
+      intro p hp; unfold parentOf at hp
+      cases h : e.parent with
+      | none => simp [h] at hp
+      | some q => simp [h] at hp; obtain ⟨⟨h1, _⟩, rfl⟩ := hp; exact fun h => h1 h.symm
+    have ha : afterAuthor cap d e e.caster = d.earned e.caster := by
+      unfold afterAuthor; split
+      · rfl
+      · rename_i hne; exact bump_other hne
+    show afterParent cap (afterAuthor cap d e) (parentOf e) e.caster = d.earned e.caster
+    cases hq : parentOf e with
+    | none => simpa [afterParent] using ha
+    | some p => simp only [afterParent]; rw [bump_other (hp p hq)]; exact ha
+
+/-- A cast of an already-paid pair pays nothing more. -/
+theorem royalty_once (cap : Nat) (d : Ledger) (e : RCast) (h : (e.spell, e.caster) ∈ d.paid) : royaltyStep cap d e = d := by
+  unfold royaltyStep skip; simp [h]
+
+/-- The default cap is inside its constitutional bound. -/
+theorem market_cap_default_ok : MARKET_CAP_DEFAULT ≤ MARKET_CAP_MAX := by decide
+
+/-- The market part of the vectors: constants, and whole days of pseudo-random casts replayed by the TypeScript. -/
+def marketVectors : String :=
+  let q (s : String) : String := "\"" ++ s ++ "\""
+  let arr (xs : List String) : String := "[" ++ ",".intercalate xs ++ "]"
+  let obj (xs : List (String × String)) : String := "{" ++ ",".intercalate (xs.map fun (k, v) => q k ++ ":" ++ v) ++ "}"
+  let consts := obj [
+    ("MARKET_AUTHOR_TENTHS", toString MARKET_AUTHOR_TENTHS), ("MARKET_PARENT_TENTHS", toString MARKET_PARENT_TENTHS),
+    ("MARKET_DAY_S", toString MARKET_DAY_S), ("MARKET_CAP_DEFAULT", toString MARKET_CAP_DEFAULT), ("MARKET_CAP_MAX", toString MARKET_CAP_MAX),
+    ("MARKET_ANNOUNCE_S", toString MARKET_ANNOUNCE_S), ("MARKET_MAX_VERSIONS", toString MARKET_MAX_VERSIONS),
+    ("MARKET_MAX_PER_AUTHOR", toString MARKET_MAX_PER_AUTHOR), ("MARKET_BAN_MAX", toString MARKET_BAN_MAX), ("MARKET_PROMOTE_MAX", toString MARKET_PROMOTE_MAX)]
+  let grants := Id.run do
+    let mut out : List String := []
+    for e in [0, 3, 10, 19, 20, 25, 60] do
+      for s in [3, 10] do
+        for c in [0, 5, 20, 26, 200] do
+          out := out ++ [s!"[{e},{s},{c},{royaltyGrant e s c}]"]
+    return out
+  let lcg (x : Nat) : Nat := (x * 1103515245 + 12345) % 2147483648
+  let days := Id.run do
+    let mut out : List String := []
+    let mut x := 2026
+    for cap in [0, 5, 13, 25, 40, 200, 500] do
+      let mut es : List RCast := []
+      for _ in [0:60] do
+        x := lcg x; let s := x / 65536 % 6
+        x := lcg x; let c := x / 65536 % 7
+        x := lcg x; let a := x / 65536 % 5
+        x := lcg x; let pr := x / 65536 % 9
+        x := lcg x; let n := x / 65536 % 11
+        es := es ++ [⟨s, c, a, if pr < 6 then none else some (pr - 6), n == 0⟩]
+      let d := runDay cap es
+      let evs := es.map fun e => s!"[{e.spell},{e.caster},{e.author},{match e.parent with | some p => (p : Int) | none => (-1 : Int)},{if e.npc then 1 else 0}]"
+      let earned := (List.range 7).map fun a => toString (d.earned a)
+      let given := Id.run do
+        let mut g : List String := []
+        for s in List.range 6 do
+          for c in List.range 7 do
+            if d.given s c + d.pgiven s c > 0 then g := g ++ [s!"[{s},{c},{d.given s c},{d.pgiven s c}]"]
+        return g
+      out := out ++ [obj [("cap", toString cap), ("casts", arr evs), ("earned", arr earned), ("given", arr given)]]
+    return out
+  obj [("constants", consts), ("royaltyGrant", arr grants), ("days", arr days)]
+
 /-! ## Conformance vectors (compared with the TypeScript code in test/formal.test.ts) -/
 
 /-- The agent-link part of the vectors: every shared constant, and samples of each floor/cost function. -/
@@ -718,7 +962,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ "}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 
