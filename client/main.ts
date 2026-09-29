@@ -8,7 +8,8 @@ import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { heightAt } from './terrain';
 import { makeAuraRing, makeBolt, makeCreature, makeWizard, releaseWizardLook, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
-import { agentView, agoText, createControls, curseText, routeChat, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
+import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
+import { TIPS } from '../src/lore/memes';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
 interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
@@ -63,11 +64,21 @@ async function gate(): Promise<string> {
     if (r?.ok) { await readAccount(r); return saved; }
     if (r && r.status === 401) dropToken();
   }
-  return new Promise((done) => {
+  veil(false);
+  $('#gate').hidden = false;
+  const stopTips = rotateTips($('#gate-tip'), 8000);
+  return new Promise<string>((done) => {
     const err = $('#gate-err');
+    let house = '';
+    $('#gate-house').addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+      if (!b) return;
+      house = b.dataset.house ?? '';
+      $('#gate-house').querySelectorAll('button').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+    });
     try { if (sessionStorage.getItem('hogwarts.keyChanged')) { sessionStorage.removeItem('hogwarts.keyChanged'); err.textContent = L('你的猫头鹰邮递密钥已在别处更换（比如你的 Agent 调用了 rotate_key）。请用新密钥登录：用 stdio 桥的话它在 ~/.hogwarts/credentials.json。', 'Your Owl Post key was changed elsewhere (for example your agent called rotate_key). Log in with the new key; with the stdio bridge it is in ~/.hogwarts/credentials.json.'); } } catch { /* ignore */ }
     $('#gate-go').onclick = async () => {
-      const r = await fetch('/api/enroll', { method: 'POST', body: JSON.stringify({ name: $<HTMLInputElement>('#gate-name').value, house: $<HTMLSelectElement>('#gate-house').value }) });
+      const r = await fetch('/api/enroll', { method: 'POST', body: JSON.stringify({ name: $<HTMLInputElement>('#gate-name').value, house }) });
       const j = await r.json().catch(() => ({ error: 'The owl got lost. Try again.' }));
       if (!r.ok) { err.textContent = tr(j.error); return; }
       saveToken(j.token);
@@ -85,7 +96,39 @@ async function gate(): Promise<string> {
       done(t);
     };
     $<HTMLInputElement>('#gate-name').onkeydown = (e) => { if (e.key === 'Enter') $('#gate-go').click(); };
-  });
+    $<HTMLInputElement>('#gate-token').onkeydown = (e) => { if (e.key === 'Enter') $('#gate-login').click(); };
+    setTimeout(() => $<HTMLInputElement>('#gate-name').focus(), 50);
+  }).finally(stopTips);
+}
+
+// ------------------------------------------------------------------ the loading veil (before the gate, and until the first snapshot)
+let stopVeilTips: (() => void) | null = null;
+function veil(on: boolean) {
+  const v = $('#veil');
+  if (on) {
+    v.hidden = false; v.classList.remove('gone');
+    stopVeilTips ??= rotateTips(v.querySelector('.lore') as HTMLElement, 6000);
+  } else if (!v.hidden) {
+    v.classList.add('gone');
+    stopVeilTips?.(); stopVeilTips = null;
+    setTimeout(() => { if (v.classList.contains('gone')) v.hidden = true; }, 1000);
+  }
+}
+
+// ------------------------------------------------------------------ lore: one line at a time (src/lore/memes.ts TIPS)
+let tipBag: number[] = [];
+function nextTip(): string {
+  if (!TIPS.length) return '';
+  if (!tipBag.length) tipBag = TIPS.map((_, i) => i).sort(() => Math.random() - 0.5);
+  const t = TIPS[tipBag.pop()!];
+  return L(t.zh, t.en);
+}
+/** Show a tip in `el` now and every `ms`, crossfading; returns a stop function that hides it. */
+function rotateTips(el: HTMLElement, ms: number): () => void {
+  const show = () => { const t = nextTip(); el.hidden = !t; el.style.opacity = '0'; setTimeout(() => { el.textContent = t; el.style.opacity = ''; }, 350); };
+  show();
+  const id = setInterval(show, ms);
+  return () => { clearInterval(id); el.hidden = true; };
 }
 
 // ------------------------------------------------------------------ rendering setup
@@ -140,11 +183,13 @@ function connect() {
     if (msg.t === 'welcome') {
       myHandle = msg.handle;
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
-      for (const e of msg.events ?? []) feed(e, false);
+      const hist: Ev[] = msg.events ?? [];
+      for (const e of hist) if (e.type === 'owl' || e.type === 'ask') feed(e, false);
+      for (const e of hist.filter((x) => x.type !== 'owl' && x.type !== 'ask' && !x.to).slice(-2)) feed(e, false);
       menuInfo(msg.mcpUrl);
       if (msg.pair?.code) onPairCode(msg.pair);
     }
-    else if (msg.t === 'snap') apply(msg.s);
+    else if (msg.t === 'snap') { if (!snap) setTimeout(() => veil(false), 600); apply(msg.s); }
     else if (msg.t === 'me') me = msg.s;
     else if (msg.t === 'event') feed(msg.e, true);
     else if (msg.t === 'cast') {
@@ -368,73 +413,124 @@ function spawnFx(f: Fx) {
 }
 
 // ------------------------------------------------------------------ HUD
+/**
+ * Everything the world says lands in exactly one place: the private Owl Post in its panel, a curse in the curse banner,
+ * big news (decree, term, your own egg or achievement) in the centre banner, your own errors as a toast; the feed keeps
+ * the rest, at most FEED_MAX lines, each fading after FEED_S seconds.
+ */
+const FEED_MAX = 4;
+const FEED_S = 6;
 function feed(e: Ev, fresh: boolean) {
   // the private Owl Post lives in its own panel, never in the public feed
   if (e.type === 'owl' || e.type === 'ask') { onOwlEvent(e, fresh); return; }
-  const d = document.createElement('div');
-  d.className = `${e.type} ${e.to ? 'private' : ''}`;
   const text = lang === 'zh' && e.zh ? e.zh : e.text;
+  // a curse addressed to you belongs to the curse banner (and the trunk), not to the feed
+  if (e.type === 'curse' && e.to) {
+    if (fresh) { curseNews = { text, until: performance.now() + 12000 }; if (!$('#trunk').hidden) send({ t: 'book' }); }
+    return;
+  }
+  if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'egg' && e.to) || (e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000')))) { banner(text); return; }
+  // history from before you arrived: only the last couple of public lines, and they fade like the rest
+  feedLine(text, `${e.type}${e.to ? ' private' : ''}`);
+}
+function feedLine(text: string, cls: string) {
+  const box = $('#feed');
+  const d = document.createElement('div');
+  d.className = cls;
   d.textContent = text;
-  $('#feed').append(d);
-  while ($('#feed').children.length > 14) $('#feed').firstChild!.remove();
-  if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'egg' && e.to) || (e.type === 'curse' && e.to) || e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000'))) banner(text);
-  if (fresh && e.type === 'curse' && !$('#trunk').hidden) send({ t: 'book' });
+  box.append(d);
+  while (box.children.length > FEED_MAX) box.firstChild!.remove();
+  setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 1300); }, FEED_S * 1000 + Math.min(4000, text.length * 40));
 }
 let bannerT = 0;
 function banner(text: string) {
   const b = $('#banner');
   b.textContent = text;
+  b.classList.remove('out');
   b.hidden = false;
-  bannerT = 8;
+  bannerT = 7;
 }
-function toast(text: string) { feed({ id: 0, type: 'system', text, to: 'me' }, false); }
+/** A line for you alone (an error, a note from a cast): one at a time, above the hotbar, then gone. */
+let toastTimer = 0;
+function toast(text: string) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.remove('out');
+  t.hidden = false;
+  t.classList.add('veiled');
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { t.classList.add('out'); toastTimer = window.setTimeout(() => { t.hidden = true; }, 800); }, 3500 + Math.min(4000, text.length * 45));
+  lastLore = performance.now(); // a toast and an idle tip never share the space
+  $('#lore').classList.remove('show');
+}
+/** Private news of a curse (arrival, Finite, Revelio, wearing off), shown in the curse banner for a few seconds. */
+let curseNews: { text: string; until: number } | null = null;
+
+/** A dark corner of the HUD: a faint rune whose tooltip says which spell lights it. */
+const rune = (icon: string, tip: string, cls = '') => `<button type="button" class="rune ${cls}" data-tip="${esc(tip)}" aria-label="${esc(tip)}"><svg class="ic"><use href="#i-${icon}"/></svg></button>`;
+const setHtml = (el: HTMLElement, html: string) => { if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; } };
+/** Longest cooldown seen per hotbar spell since it was last ready: the sweep's full circle. */
+const cdMax = new Map<string, number>();
 
 function hud() {
   if (!me || !snap) return;
   const has = (k: string) => me!.ui.includes(k);
-  // top-left: always your title and name; Revelio reveals your own measure
-  $('#me').innerHTML = `<div class="house" style="color:${wizardColor(me.house)}"><span class="title">${esc(L(me.title.zh, `${me.title.zh} ${me.title.en}`))}</span> ${esc(me.name)} · ${houseName(me.house)}</div>` +
-    (has('revelio')
-      ? L(`<div>${me.year} 年级 · ⭐ 声望 ${me.reputation} · 🪙 ${me.galleons} 加隆 · 📕 封印 ${me.seals}/4</div>`, `<div>Year ${me.year} · ⭐ ${me.reputation} reputation · 🪙 ${me.galleons} Galleons · 📕 ${me.seals}/4 seals</div>`) + (me.title.next ? `<div class="hint">${L('下一级', 'Next')}: ${esc(me.title.next.zh)} ${esc(me.title.next.en)} — ${esc(me.title.next.how)}</div>` : '')
-      : L('<div class="locked">✨ 施放 <b>原形立现 Revelio</b> 才能看清自己的斤两</div>', '<div class="locked">✨ Cast <b>Revelio</b> to see your own measure</div>')) +
-    (me.decree ? L('<div style="color:#9fd3ff">⚖️ 魔法部长 —— 你手握一道未颁布的法令（MCP: decree）</div>', '<div style="color:#9fd3ff">⚖️ Minister for Magic — you hold an unspent decree (MCP: decree)</div>') : '');
+  // top-left: one quiet line (title · name · house); Revelio reveals your own measure
+  const stats = has('revelio')
+    ? `<div class="stats">${L(`${me.year} 年级 · 声望 <span class="num">${me.reputation}</span> · <span class="num">${me.galleons}</span> 加隆 · 封印 <span class="num">${me.seals}</span>/4`, `Year ${me.year} · <span class="num">${me.reputation}</span> reputation · <span class="num">${me.galleons}</span> Galleons · <span class="num">${me.seals}</span>/4 seals`)}${me.title.next ? ` · <span title="${esc(me.title.next.how)}">${L('下一级', 'next')}: ${esc(L(me.title.next.zh, me.title.next.en))}</span>` : ''}</div>`
+    : '';
+  setHtml($('#me'), `<div class="who" title="${esc(houseName(me.house))}"><span class="dot" style="color:${wizardColor(me.house)}"></span><span class="title">${esc(L(me.title.zh, me.title.en))}</span><b>${esc(me.name)}</b><span class="sep">·</span><span class="house">${houseName(me.house)}</span>` +
+    (has('revelio') ? '' : rune('eye', L('施放「原形立现 Revelio」，才能看清自己的斤两', 'Cast Revelio to see your own measure'))) + '</div>' + stats +
+    (me.decree ? `<div class="decree">${L('魔法部长 —— 你手握一道未颁布的法令（MCP: decree）', 'Minister for Magic — you hold an unspent decree (MCP: decree)')}</div>` : ''));
+  $('#me').classList.add('veiled');
   // top-right: Tempus
   const h = snap.hour;
   const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
-  $('#clock').innerHTML = has('tempus')
-    ? `${snap.night ? '🌙' : '☀️'} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather)}<br/>${L(`第 ${snap.term.n} 学期 · 剩余 ${fmtT(snap.term.left)}`, `Term ${snap.term.n} ends in ${fmtT(snap.term.left)}`)}<br/><i style="opacity:.8">"${esc(me.proclamation)}"</i>`
-    : `<span class="locked">${L('🕰️ 施放 <b>时间显现 Tempus</b> 才知道现在几点', '🕰️ Cast <b>Tempus</b> to know the hour')}</span><br/><i style="opacity:.8">"${esc(me.proclamation)}"</i>`;
+  const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather);
+  const procl = me.proclamation ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
+  setHtml($('#clock'), has('tempus')
+    ? `<div class="time veiled">${snap.night ? '☾' : '☼'} <span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</div>${procl}`
+    : rune('hourglass', L('施放「时间显现 Tempus」，才知道现在几点', 'Cast Tempus to know the hour'), 'tip-r') + procl);
   // bottom-right: Homenum Revelio
   const pres = $('#presence');
   if (has('homenum')) {
     const my = wizards.get(myHandle);
     const near = snap.w.filter((x) => x.h !== myHandle && my && Math.hypot(x.x - my.root.position.x, x.z - my.root.position.z) < 60)
       .map((x) => ({ x, d: Math.hypot(x.x - my!.root.position.x, x.z - my!.root.position.z), a: Math.atan2(x.x - my!.root.position.x, -(x.z - my!.root.position.z)) }))
-      .sort((a, b) => a.d - b.d).slice(0, 6);
-    pres.innerHTML = `<b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${a + camYaw}rad)">↑</span> <span style="color:${wizardColor(x.ho)}">[${esc(x.t)}] ${esc(x.n)}</span> ${Math.round(d)}m${x.s.includes('X') ? ' 💫' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`);
-  } else pres.innerHTML = L('<span class="locked">👁️ 三年级：施放 <b>人形显身</b> 感知身边的人</span>', '<span class="locked">👁️ Year 3: cast <b>Homenum Revelio</b> to sense who is near</span>');
-  bar('.hp', me.hp, me.maxHp, `${me.hp} / ${me.maxHp}`);
-  bar('.mana', me.mana, me.maxMana, `${me.mana} / ${me.maxMana} ${L('法力', 'mana')}`);
+      .sort((a, b) => a.d - b.d).slice(0, 5);
+    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span style="color:${wizardColor(x.ho)}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L('60 米内没有人。', 'No one within 60m.')}</div>`) + '</div>');
+  } else setHtml(pres, rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
+  // bottom-left: Point Me lights the minimap
+  $('#minimap').hidden = !has('point-me');
+  setHtml($('#pointme'), rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
+  bar('.hp', me.hp, me.maxHp, `${L('生命', 'HP')} ${Math.round(me.hp)} / ${me.maxHp}`);
+  bar('.mana', me.mana, me.maxMana, `${Math.round(me.mana)} / ${me.maxMana} ${L('法力', 'mana')}`);
   bar('.xp', me.xpNext ? me.xp : 1, me.xpNext ?? 1, '');
   const hb = $('#hotbar');
-  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => '<div><span></span><b></b><i></i></div>').join('');
+  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => '<div><span></span><b></b><i></i><em></em></div>').join('');
   me.hotbar.forEach((s, i) => {
     const el = hb.children[i] as HTMLElement;
     el.classList.toggle('sel', i === ctl.selected);
+    el.classList.toggle('empty', !s);
     el.dataset.kind = s?.kind ?? '';
-    (el.children[0] as HTMLElement).textContent = s ? spellName(s.name) : '—';
+    const name = s ? spellName(s.name) : '·';
+    if (el.children[0].textContent !== name) el.children[0].textContent = name;
     (el.children[1] as HTMLElement).textContent = String(i + 1);
-    (el.children[2] as HTMLElement).style.height = s && s.cd > 0 ? `${Math.min(100, s.cd * 40)}%` : '0';
+    const cd = s && s.cd > 0 ? s.cd : 0;
+    if (s) { if (cd > 0) cdMax.set(s.id, Math.max(cdMax.get(s.id) ?? 0, cd)); else cdMax.delete(s.id); }
+    (el.children[2] as HTMLElement).style.setProperty('--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
+    (el.children[3] as HTMLElement).textContent = cd >= 1 ? String(Math.ceil(cd)) : '';
     el.onclick = () => ctl.castSlot(i);
   });
   ctl.hud();
   const ov = $('#overlay');
-  if (me.jailed) { ov.hidden = false; ov.innerHTML = L(`⛓️ 阿兹卡班<br/><small>摄魂怪会在 ${me.jailed.toFixed(0)} 秒后放你出去</small>`, `⛓️ Azkaban<br/><small>The Dementors will release you in ${me.jailed.toFixed(0)}s</small>`); }
-  else if (me.stunned) { ov.hidden = false; ov.innerHTML = L(`💫 被击晕了<br/><small>庞弗雷夫人正在给你治疗…… ${me.stunned.toFixed(1)} 秒</small>`, `💫 Stunned<br/><small>Madam Pomfrey is patching you up… ${me.stunned.toFixed(1)}s</small>`); }
+  if (me.jailed) { ov.hidden = false; ov.innerHTML = L(`<div>阿兹卡班<small>摄魂怪会在 <span class="num">${me.jailed.toFixed(0)}</span> 秒后放你出去</small></div>`, `<div>Azkaban<small>The Dementors will release you in <span class="num">${me.jailed.toFixed(0)}</span>s</small></div>`); }
+  else if (me.stunned) { ov.hidden = false; ov.innerHTML = L(`<div>被击晕了<small>庞弗雷夫人正在给你治疗…… <span class="num">${me.stunned.toFixed(1)}</span> 秒</small></div>`, `<div>Stunned<small>Madam Pomfrey is patching you up… <span class="num">${me.stunned.toFixed(1)}</span>s</small></div>`); }
   else ov.hidden = true;
   drawMinimap();
   drawMarauder();
   linkHud();
+  trackBars();
 }
 const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
@@ -449,19 +545,13 @@ function drawMinimap() {
   const g = c.getContext('2d')!;
   const my = wizards.get(myHandle);
   if (!my || !snap) return;
-  if (!me?.ui.includes('point-me')) {
-    // bottom-left stays dark until the Four-Point Spell
-    g.clearRect(0, 0, 220, 220);
-    g.fillStyle = 'rgba(10,10,20,.7)'; g.beginPath(); g.arc(110, 110, 108, 0, 7); g.fill();
-    g.fillStyle = '#d4af37'; g.font = 'italic 15px Georgia'; g.textAlign = 'center';
-    g.fillText(L('二年级：施放', 'Year 2: cast'), 110, 100); g.fillText(L('给我指路', 'Point Me'), 110, 122); g.textAlign = 'left';
-    return;
-  }
+  // bottom-left stays dark (a faint rune, see hud) until the Four-Point Spell
+  if (!me?.ui.includes('point-me')) return;
   const cx = my.root.position.x, cz = my.root.position.z, S = 1.1;
   g.clearRect(0, 0, 220, 220);
   g.save();
   g.beginPath(); g.arc(110, 110, 108, 0, Math.PI * 2); g.clip();
-  g.fillStyle = 'rgba(40,60,30,.6)'; g.fillRect(0, 0, 220, 220);
+  g.fillStyle = 'rgba(22,26,30,.78)'; g.fillRect(0, 0, 220, 220);
   const P = (x: number, z: number) => [110 + (x - cx) * S, 110 + (z - cz) * S] as const;
   for (const o of OBSTACLES) {
     if (o.style === 'tree') continue;
@@ -471,7 +561,7 @@ function drawMinimap() {
   }
   for (const c2 of snap.c) { const [a, b] = P(c2.x, c2.z); g.fillStyle = '#ff5050'; g.fillRect(a - 1.5, b - 1.5, 3, 3); }
   for (const w of snap.w) { const [a, b] = P(w.x, w.z); g.fillStyle = w.h === myHandle ? '#ffffff' : '#' + HOUSE_COLORS[w.ho].toString(16).padStart(6, '0'); g.beginPath(); g.arc(a, b, w.h === myHandle ? 4 : 3, 0, 7); g.fill(); }
-  g.fillStyle = '#fff'; g.font = '10px Georgia';
+  g.fillStyle = '#f4ecd9'; g.font = '13px Georgia, serif';
   for (const l of LANDMARKS) { const [a, b] = P(l.x, l.z); if (a > 0 && a < 220 && b > 0 && b < 220) g.fillText(l.name, a + 3, b); }
   g.restore();
 }
@@ -502,8 +592,9 @@ async function showBoard() {
   const b = $('#board');
   if (!b.hidden) { b.hidden = true; return; }
   const lb = await (await fetch('/api/leaderboard')).json();
-  b.innerHTML = `<h2>${L(`第 ${lb.term.n} 学期 —— 剩余 ${fmtT(lb.term.secondsLeft)}`, `Term ${lb.term.n} — ${fmtT(lb.term.secondsLeft)} left`)}</h2>
-    <p><b>${L('学院分', 'House points')}:</b> ${Object.entries(lb.housePoints).map(([h, p]) => `${houseName(h)} ${p}`).join(' · ')}</p>
+  solo(b);
+  b.innerHTML = `<h2><span>${L('排行榜', 'Leaderboard')} <small>${L(`第 ${lb.term.n} 学期 · 剩余 <span class="num">${fmtT(lb.term.secondsLeft)}</span>`, `term ${lb.term.n} · <span class="num">${fmtT(lb.term.secondsLeft)}</span> left`)} · <kbd>L</kbd></small></span> <button class="x" data-close="board" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+    <p><b>${L('学院分', 'House points')}:</b> <span class="num">${Object.entries(lb.housePoints).map(([h, p]) => `${houseName(h)} ${p}`).join(' · ')}</span></p>
     <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : '—'}<br/><small>${L('每学期结束时，声望最高（至少 100）的玩家成为魔法部长，可以颁布一道法令改写世界规则。', esc(lb.ministerRule))}</small></p>
     <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th></tr>
     ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
@@ -540,7 +631,7 @@ function menuInfo(url?: string) {
   // "$PWD" is expanded by the shell when the command is added, so the saved entry holds an absolute path and works from any directory
   const bridge = `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
   const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
-  $('#menu').innerHTML = `<h2>${L('猫头鹰邮递', 'Owl Post')} <small>${L('—— 按 Esc 关闭', '— Esc to close')}</small></h2>
+  $('#menu').innerHTML = `<h2><span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button class="x" data-close="menu" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
     <section class="op-first">
       <h3>${L('连接你的 Agent', 'Connect your agent')}</h3>
       <div id="op-pair"></div>
@@ -555,8 +646,8 @@ function menuInfo(url?: string) {
     <div id="op-key"></div>
     <p class="op-registry">${L('你的登记号', 'Your registry number')}: <code>${esc(account.registry || '—')}</code><br/><span class="hint">${L('登记号是魔法部的公开记录，猫头鹰凭它投递包裹。', 'Your registry number is a public Ministry record: owls deliver parcels by it.')}</span></p>
     <p id="op-msg" class="hint"></p>
-    <p>${L('语言 Language：', 'Language 语言: ')}<button id="lang-zh">中文</button> <button id="lang-en">English</button></p>
-    <p><button id="logout" class="ghost">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></p>`;
+    <div class="op-foot"><span>${L('语言 Language', 'Language 语言')} <button id="lang-zh" class="${lang === 'zh' ? '' : 'ghost'}">中文</button> <button id="lang-en" class="${lang === 'en' ? '' : 'ghost'}">English</button></span>
+    <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div>`;
   $('#lang-zh').onclick = () => setLang('zh');
   $('#lang-en').onclick = () => setLang('en');
   $('#logout').onclick = () => { dropToken(); location.reload(); };
@@ -766,6 +857,7 @@ function toggleOwl(force?: boolean) {
   const p = $('#owl');
   p.hidden = !(force ?? p.hidden);
   if (!p.hidden) {
+    solo(p);
     owlUnread = 0;
     owlDirty = true;
     $('#owlpop').hidden = true;
@@ -810,54 +902,78 @@ function sendChat(raw: string) {
   else askWhere(r.word, r.text, r.rest);
 }
 
-// ------------------------------------------------------------------ agent presence widget (HUD, from me.agent)
+// ------------------------------------------------------------------ agent presence: an owl glyph with a status dot; hover, focus or click opens its card
 let lastAgentHtml = '';
 function renderAgentBox() {
   const el = $('#agentbox');
+  if (!me) return;
   const a = agentNow();
-  let html = '';
-  if (a && (a.connected || a.paused)) {
-    const act = a.ago !== null ? ` · ${agoText(a.ago)}${a.tool ? `：<code>${esc(a.tool)}</code>` : ''}` : '';
-    html = `<div>🤖 <b>${esc(a.client)}</b> ${a.paused ? L('已暂停', 'paused') : L('已连接', 'connected')}${act}</div>`
-      + (a.goal ? `<div class="ab-goal">🎯 ${L('目标', 'Goal')}: ${esc(a.goal)}</div>` : '')
-      + `<div class="ab-row"><button data-act="pause" class="${a.paused ? '' : 'ghost'}">${a.paused ? L('▶ 继续 Agent', '▶ Resume agent') : L('⏸ 暂停 Agent', '⏸ Pause agent')}</button> <button data-act="owl" class="ghost">🦉 O${owlUnread ? ` <b class="ab-n">${owlUnread}</b>` : ''}</button></div>`;
-  } else if (owlUnread) {
-    html = `<div class="ab-row"><button data-act="owl" class="ghost">🦉 ${L('新猫头鹰', 'New owls')} <b class="ab-n">${owlUnread}</b></button></div>`;
-  } else if (me) {
-    html = `<div class="hint">🤖 ${L('Agent 未连接 · Esc → 生成配对码', 'No agent · Esc → pairing code')}</div>`;
+  const live = !!a && (a.connected || a.paused);
+  if (!el.firstElementChild) {
+    el.innerHTML = `<button type="button" class="ab-glyph" aria-label="Agent"><svg class="ic"><use href="#i-owl"/></svg><span class="ab-dot"></span><b class="ab-n" hidden></b></button><div class="ab-card" role="dialog"></div>`;
+    el.hidden = false;
   }
-  if (html !== lastAgentHtml) {
-    el.innerHTML = html; lastAgentHtml = html; el.hidden = !html;
-    el.classList.toggle('ab-idle', !!html && !(a && (a.connected || a.paused)) && !owlUnread);
+  el.classList.toggle('on', live && !a!.paused);
+  el.classList.toggle('paused', live && a!.paused);
+  const n = el.querySelector('.ab-glyph .ab-n') as HTMLElement;
+  n.hidden = !owlUnread; n.textContent = String(owlUnread);
+  let html: string;
+  if (live) {
+    const act = a!.ago !== null ? `<div class="hint">${agoText(a!.ago)}${a!.tool ? `：<code>${esc(a!.tool)}</code>` : ''}</div>` : '';
+    html = `<div><b>${esc(a!.client)}</b> ${a!.paused ? L('已暂停', 'paused') : L('已连接', 'connected')}</div>${act}`
+      + (a!.goal ? `<div class="ab-goal">${L('目标', 'Goal')}：${esc(a!.goal)}</div>` : '')
+      + `<div class="ab-row"><button data-act="pause" class="${a!.paused ? '' : 'ghost'}">${a!.paused ? L('▶ 让它继续', '▶ Resume agent') : L('⏸ 暂停 Agent', '⏸ Pause agent')}</button> <button data-act="owl" class="ghost">${L('写信', 'Write')} <kbd>O</kbd>${owlUnread ? ` <b class="ab-n">${owlUnread}</b>` : ''}</button></div>`;
+  } else {
+    html = `<div><b>${L('你的 Agent 还没来', 'No agent yet')}</b></div><div class="hint">${L('生成一个配对码，对你的 Agent（例如 Claude Code）念出来，它就能替你走路、施法、写咒语。', 'Get a pairing code and read it to your agent (e.g. Claude Code): it can then walk, cast and write spells for you.')}</div>`
+      + `<div class="ab-row"><button data-act="pair">${L('生成配对码', 'Get a pairing code')}</button>${owlUnread ? ` <button data-act="owl" class="ghost">${L('新猫头鹰', 'New owls')} <b class="ab-n">${owlUnread}</b></button>` : ''}</div>`;
   }
+  if (html !== lastAgentHtml) { (el.querySelector('.ab-card') as HTMLElement).innerHTML = html; lastAgentHtml = html; }
 }
-// short (landscape phone) screens put the chat box right under the top-left stack, which grows with the agent widget
-new ResizeObserver(() => {
-  const r = $('#topleft').getBoundingClientRect();
-  document.documentElement.style.setProperty('--tl-bottom', `${Math.round(r.bottom)}px`);
-}).observe($('#topleft'));
+/** The bottom stack's height, so toasts, the chat line and the coach mark sit just above it (read by hud() at 10 Hz). */
+let barsH = -1, tlBottom = -1;
+function trackBars() {
+  const h = Math.round(innerHeight - $('#bars').getBoundingClientRect().top);
+  if (h !== barsH && h > 0) { barsH = h; document.documentElement.style.setProperty('--bars-h', `${h}px`); }
+  const tl = Math.round($('#topleft').getBoundingClientRect().bottom);
+  if (tl !== tlBottom && tl > 0) { tlBottom = tl; document.documentElement.style.setProperty('--tl-bottom', `${tl}px`); }
+}
 $('#agentbox').addEventListener('click', (e) => {
+  const el = $('#agentbox');
   const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
   if (!b) return;
+  if (b.classList.contains('ab-glyph')) { el.classList.toggle('open'); return; }
+  el.classList.remove('open');
   if (b.dataset.act === 'pause') send({ t: 'pause', on: !me?.agent?.paused });
   if (b.dataset.act === 'owl') toggleOwl(true);
+  if (b.dataset.act === 'pair') pairNow();
+  (document.activeElement as HTMLElement | null)?.blur();
 });
+document.addEventListener('pointerdown', (e) => { if (!(e.target as HTMLElement).closest('#agentbox')) $('#agentbox').classList.remove('open'); });
 
 // ------------------------------------------------------------------ curse banner (from me.hex)
 function renderCurseBar() {
   const el = $('#cursebar');
   const c = curseText(me?.hex);
-  if (!c || (!c.hexed && !c.respite)) { el.hidden = true; return; }
+  if (curseNews && performance.now() > curseNews.until) curseNews = null;
+  if ((!c || (!c.hexed && !c.respite)) && !curseNews) { el.hidden = true; return; }
   if (!el.firstElementChild) {
-    el.innerHTML = `<div class="cb-text"></div><div class="cb-acts"><button data-act="finite">✨ ${L('咒立停', 'Finite Incantatem')}</button> <button class="ghost" data-act="revelio">👁️ ${L('原形立现', 'Revelio')}</button> <button class="ghost" data-act="trunk">🧳 ${L('行囊', 'Trunk')} (T)</button></div>`;
+    el.innerHTML = `<div class="cb-news"></div><div class="cb-text"></div><div class="cb-acts"><button data-act="finite">${L('咒立停', 'Finite Incantatem')}</button> <button class="ghost" data-act="revelio">${L('原形立现', 'Revelio')}</button> <button class="ghost" data-act="trunk">${L('行囊', 'Trunk')} <kbd>T</kbd></button></div>`;
   }
-  el.classList.toggle('quiet', !c.hexed);
-  const text = c.hexed
-    ? `<b>${esc(c.head)}</b>${c.parts.map(esc).join(' · ')}${L('。', '.')}<br/>${esc(c.cure)} ${esc(c.who)}${c.resting ? `<br/><i>${esc(c.resting)}</i>` : ''}`
-    : esc(c.respite ?? '');
+  const hexed = !!c?.hexed;
+  el.classList.toggle('quiet', !hexed && !curseNews);
+  el.classList.toggle('news', !hexed && !!curseNews);
+  const news = el.querySelector('.cb-news') as HTMLElement;
+  const nt = curseNews?.text ?? '';
+  if (news.textContent !== nt) news.textContent = nt;
+  news.hidden = !nt;
+  // fresh news already says how to end it and how to find out who: the banner then lists only what is on you
+  const text = hexed
+    ? `<b>${esc(c!.head)}</b>${c!.parts.map(esc).join(' · ')}${L('。', '.')}${curseNews ? '' : `<br/>${esc(c!.cure)} ${esc(c!.who)}`}${c!.resting ? `<br/>${esc(c!.resting)}` : ''}`
+    : curseNews ? '' : esc(c?.respite ?? '');
   const t = el.querySelector('.cb-text') as HTMLElement;
   if (t.innerHTML !== text) t.innerHTML = text;
-  (el.querySelector('.cb-acts') as HTMLElement).hidden = !c.hexed;
+  t.hidden = !text;
+  (el.querySelector('.cb-acts') as HTMLElement).hidden = !hexed && !curseNews;
   const fin = el.querySelector('[data-act="finite"]') as HTMLButtonElement;
   const why = finiteBlocked();
   fin.disabled = !!why;
@@ -937,7 +1053,7 @@ function renderTrunk(rebuild = false) {
 function toggleTrunk(force?: boolean) {
   const t = $('#trunk');
   t.hidden = !(force ?? t.hidden);
-  if (!t.hidden) { trunkMsg = ''; destroyArmed = null; send({ t: 'book' }); renderTrunk(true); }
+  if (!t.hidden) { solo(t); trunkMsg = ''; destroyArmed = null; send({ t: 'book' }); renderTrunk(true); }
 }
 function onTrunkError(text: string) {
   if (!recent('trunk') || $('#trunk').hidden) return false;
@@ -979,7 +1095,7 @@ let bookSel: string | null = null;
 function toggleBook() {
   const b = $('#book');
   b.hidden = !b.hidden;
-  if (!b.hidden) { send({ t: 'book' }); ctl.notify('book'); }
+  if (!b.hidden) { solo(b); send({ t: 'book' }); ctl.notify('book'); }
 }
 function bookOut(text: string, cls = '') { const o = $('#sp-out'); o.textContent = text; o.className = cls; }
 function renderBook(armory: { spells: ArmorySpell[]; hotbar: { slot: number; spell: string | null }[] }, grimoireText: string) {
@@ -1014,7 +1130,7 @@ $('#sp-cast').onclick = () => { if (bookSel) ctl.castKey(bookSel); };
 // ------------------------------------------------------------------ the Restricted Section (seals)
 let sealTier = 1;
 const sealState = (st: string) => lang !== 'zh' ? st : st === 'broken' ? '已破解' : st === 'open to you' ? '向你敞开' : st.startsWith('needs year') ? `需要 ${st.slice(-1)} 年级` : '先破解上一道封印';
-function toggleSeals() { const s = $('#seals'); s.hidden = !s.hidden; if (!s.hidden) send({ t: 'seals' }); }
+function toggleSeals() { const s = $('#seals'); s.hidden = !s.hidden; if (!s.hidden) { solo(s); send({ t: 'seals' }); } }
 type SealInfo = { tier: number; name: string; zh: string; rewardZh: string; requiresYear: number; inputWords: number; reward: string; state: string; pages: { page: number; where: string; collected: boolean }[] };
 function renderSeals(section: { progress: string; seals: SealInfo[]; codex: string[] }, current: { tier: number; name: string; zh: string; inputWords: number; pagesCollected: string; runes: string; broken: boolean }) {
   sealTier = current.tier;
@@ -1032,7 +1148,7 @@ $('#sp-forget').onclick = () => { const n = $<HTMLInputElement>('#sp-name').valu
 function toggleMenu() {
   const m = $('#menu');
   m.hidden = !m.hidden;
-  $('#board').hidden = true;
+  if (!m.hidden) solo(m);
   keyShown = false; // the key is hidden again every time the Owl Post opens or closes
   rotateArmed = false;
   if (!m.hidden) { ctl.notify('menu'); if (!$('#op-pair')) menuInfo(); renderMenuLive(); }
@@ -1049,8 +1165,44 @@ const ctl = createControls({
   agent: agentNow,
   pair: pairNow,
 });
+// ------------------------------------------------------------------ chat: the line appears on Enter and goes away when it is empty
+const chatBox = $<HTMLInputElement>('#chat');
+function openChat() { chatBox.hidden = false; chatBox.focus(); }
+chatBox.addEventListener('blur', () => { if (!chatBox.value.trim()) { chatBox.value = ''; chatBox.hidden = true; } });
+$('#tb-chat').onclick = () => { if (chatBox.hidden) openChat(); else chatBox.blur(); };
+
+// ------------------------------------------------------------------ close buttons (×) on every sheet, and the collapsed key line
+document.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('[data-close]') as HTMLElement | null;
+  if (!b) return;
+  const id = b.dataset.close!;
+  if (id === 'menu') { if (!$('#menu').hidden) toggleMenu(); }
+  else if (id === 'helppanel') ctl.toggleHelp(false);
+  else $('#' + id).hidden = true;
+});
+$('#help .mini').addEventListener('click', () => ctl.toggleHelp());
+
+// ------------------------------------------------------------------ lore when idle: now and then, one line, then gone
+let lastActivity = performance.now();
+let lastLore = performance.now();
+const LORE_EVERY_MS = 180_000, LORE_IDLE_MS = 40_000, LORE_SHOW_MS = 11_000;
+for (const ev of ['keydown', 'pointerdown', 'touchstart', 'wheel']) addEventListener(ev, () => { lastActivity = performance.now(); if (performance.now() - lastLore > 1500) $('#lore').classList.remove('show'); }, { passive: true });
+setInterval(() => {
+  const t = performance.now();
+  const busy = PANELS.some((id) => !document.getElementById(id)?.hidden) || ctl.tutorialActive() || !$('#toast').hidden || !chatBox.hidden || !$('#cursebar').hidden || !$('#banner').hidden || !me;
+  if (busy || t - lastActivity < LORE_IDLE_MS || t - lastLore < LORE_EVERY_MS) return;
+  const tip = nextTip();
+  if (!tip) return;
+  lastLore = t;
+  const el = $('#lore');
+  el.textContent = tip;
+  el.hidden = false;
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => el.classList.remove('show'), LORE_SHOW_MS);
+}, 5000);
+
 addEventListener('keydown', (e) => {
-  const chat = $<HTMLInputElement>('#chat');
+  const chat = chatBox;
   if (document.activeElement === chat) {
     if (e.key === 'Enter') { sendChat(chat.value); chat.value = ''; chat.blur(); }
     if (e.key === 'Escape') chat.blur();
@@ -1066,7 +1218,7 @@ addEventListener('keydown', (e) => {
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
   if (e.key === 'o' || e.key === 'O') { if (!e.repeat) toggleOwl(); e.preventDefault(); return; }
   if (e.key === 't' || e.key === 'T') { if (!e.repeat) toggleTrunk(); return; }
-  if (e.key === 'Enter') { chat.focus(); e.preventDefault(); return; }
+  if (e.key === 'Enter') { openChat(); e.preventDefault(); return; }
   if (e.key === 'Escape') {
     // close the topmost panel, then drop the target, then open the Owl Post
     if (!$('#atask').hidden) { $('#atask').hidden = true; atPending = null; return; }
@@ -1184,7 +1336,7 @@ function frame() {
   R.setBoltLights(lit);
 
   ctl.update(dt);
-  if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('#banner').hidden = true; }
+  if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   R.render();
 }
 
@@ -1193,8 +1345,11 @@ setInterval(hud, 100);
 // ------------------------------------------------------------------ boot
 (async () => {
   applyStatic();
+  veil(true);
   token = await gate();
   $('#gate').hidden = true;
+  veil(true);
+  setTimeout(() => veil(false), 20000); // never hide the castle for long, snapshot or not
   $('#hud').hidden = false;
   connect();
   frame();
