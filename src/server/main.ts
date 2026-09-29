@@ -295,7 +295,10 @@ type ClientMsg =
   | { t: 'exams' }
   | { t: 'sit'; id: string; source: string }
   // the browser shop: a fixed preset forged into your own trunk (shop.ts)
-  | { t: 'buy'; item: string; lang?: string };
+  | { t: 'buy'; item: string; lang?: string }
+  // 不公平，但好玩: Dumbledore's Army and 偷师 (README; replies { t: 'da', r } and { t: 'study', r })
+  | { t: 'da'; op?: 'status' | 'join' | 'leave' | 'veto' }
+  | { t: 'study'; spell: string; from?: string; copy?: boolean; name?: string; slot?: number };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ? { x: m.x, z: m.z } : null);
@@ -347,6 +350,17 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
       case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;
       case 'buy': reply({ t: 'bought', r: buyPreset(world, wid, String(m.item ?? ''), m.lang === 'en' ? 'en' : 'zh') }); book(); break;
+      case 'da': {
+        const r = m.op === 'join' ? world.joinDA(wid) : m.op === 'leave' ? world.leaveDA(wid) : m.op === 'veto' ? world.vetoDecree(wid) : world.daState(wid);
+        reply({ t: 'da', op: m.op ?? 'status', r });
+        break;
+      }
+      case 'study': {
+        const r = world.studySpell(wid, String(m.spell ?? ''), { from: typeof m.from === 'string' ? m.from : undefined, copy: m.copy === true, name: typeof m.name === 'string' ? m.name : undefined, slot: finite(m.slot) ? m.slot : undefined });
+        reply({ t: 'study', r });
+        if (r.copied) book();
+        break;
+      }
     }
   } catch (e) {
     reply({ t: 'err', error: (e as Error).message });

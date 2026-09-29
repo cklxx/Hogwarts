@@ -18,6 +18,23 @@ export interface Spell {
   effects: string[];
   builtin: boolean;
   createdAt: number;
+  /** 偷师: a copy made with study_spell records whose spell it was (their public name and handle). */
+  origin?: { author: string; handle: string; spell: string; at: number };
+}
+
+/** 偷师: a custom spell of another wizard that hit you (the author's registry id is kept server-side only). */
+export interface StudyHit {
+  /** `${authorHandle}:${spellId}` — also what `studied` remembers. */
+  key: string;
+  spellId: string;
+  name: string;
+  author: string;
+  authorName: string;
+  authorHandle: string;
+  /** The source as it was when it last hit you. */
+  source: string;
+  firstAt: number;
+  lastAt: number;
 }
 
 export interface Item {
@@ -159,6 +176,9 @@ export interface Wizard {
   look: Glamour | null;
   /** Not persisted: someone's Colour-Change jinx (≤ GLAMOUR_PRANK_MAX_S; Finite Incantatem ends it). */
   jinxLook: JinxLook | null;
+  /** 偷师: custom spells of others that hit you recently (≤ STUDY_KEEP, persisted), and the ones you studied (≤ STUDIED_KEEP). */
+  studyHits?: StudyHit[];
+  studied?: string[];
   /** Not persisted: the player paused their agent (MCP actions refused). */
   agentPaused: boolean;
   /** Not persisted: the agent's last MCP call. */
@@ -246,7 +266,7 @@ export interface Pending {
 }
 
 export type EventType = 'system' | 'chat' | 'combat' | 'creature' | 'achievement' | 'decree' | 'term' | 'level' | 'egg' | 'azkaban' | 'elder' | 'forge' | 'cast'
-  | 'owl' | 'ask' | 'curse';
+  | 'owl' | 'ask' | 'curse' | 'dark' | 'da';
 
 export interface WorldEvent {
   id: number;
@@ -283,4 +303,4 @@ export interface Fx {
 
 export interface Term { n: number; startedAt: number; endsAt: number }
 
-export interface DecreeRecord { at: number; term: number; minister: string; changes: string[]; proclamation: string }
+export interface DecreeRecord { at: number; term: number; minister: string; changes: string[]; proclamation: string; vetoed?: boolean }

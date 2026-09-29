@@ -402,6 +402,227 @@ theorem hexes_leave_gaps : VICTIM_HEX_PER_10MIN * longestHex < HEX_WINDOW_S := b
 /-- The player's grace is shorter than a question's life: an agent that asks first is never locked out by it. -/
 theorem grace_short : PLAYER_GRACE_S < ASK_TTL_S := by decide
 
+/-! ## 不公平，但好玩 — unfair, but fun (README; src/kernel/progression.ts)
+
+Constants shared with src/shared/constants.ts (printed into `vectors` and compared). -/
+
+def STEAL_CAP_PCT : Nat := 30
+def STEAL_DARK_LORD_PCT : Nat := 30
+def STEAL_BASE_PCT : Nat := 10
+/-- STEAL_TIERS: (reputation threshold, percent), ascending. -/
+def STEAL_TIERS : List (Nat × Nat) := [(0, 5), (50, 10), (200, 15), (500, 20)]
+def DARK_LORD_MIN_REP : Nat := 150
+def DARK_LORD_SEEN_S : Nat := 180
+def DARK_LORD_HYSTERESIS_PCT : Nat := 10
+def DARK_LORD_POWER_PCT : Nat := 115
+def DARK_LORD_BROADCAST_S : Nat := 60
+def DA_REP_CEILING : Nat := 100
+def DA_MAX_MEMBERS : Nat := 24
+def DA_QUORUM : Nat := 3
+def DA_VETO_WINDOW_S : Nat := 180
+def DA_VETOES_PER_TERM : Nat := 1
+def DA_JOINT_MIN : Nat := 3
+def DA_JOINT_WINDOW_S : Nat := 4
+def DA_JOINT_PCT : Nat := 125
+def STUDY_DELAY_S : Nat := 120
+def STUDY_MEMORY_S : Nat := 600
+def STUDY_KEEP : Nat := 8
+def STUDIED_KEEP : Nat := 64
+def LAWLESS_MULT : Nat := 2
+
+/-! ### 输赢代价不对称: the steal curve -/
+
+/-- progression.ts `stealTier`: the victim's tier in percent (STEAL_TIERS by reputation; the Dark Lord 30). -/
+def stealTier (rep : Nat) (dark : Bool) : Nat :=
+  if dark then STEAL_DARK_LORD_PCT
+  else if 500 ≤ rep then 20 else if 200 ≤ rep then 15 else if 50 ≤ rep then 10 else 5
+
+/-- progression.ts `stealPct`: the tier scaled by the rulebook's duelRepStealPct (`base`, default 10) and by
+    `mult` (LAWLESS_MULT in the lawless zone), capped at STEAL_CAP_PCT. -/
+def stealPct (rep : Nat) (dark : Bool) (base mult : Nat) : Nat :=
+  min STEAL_CAP_PCT (stealTier rep dark * base * mult / STEAL_BASE_PCT)
+
+/-- progression.ts `duelSteal`: what a duel stun takes from the victim, ⌊rep · stealPct / 100⌋ (`steal` above). -/
+def duelSteal (rep : Nat) (dark : Bool) (base mult : Nat) : Nat := steal rep (stealPct rep dark base mult)
+
+theorem steal_tier_le (r : Nat) (d : Bool) : stealTier r d ≤ STEAL_CAP_PCT := by
+  unfold stealTier STEAL_DARK_LORD_PCT STEAL_CAP_PCT; repeat (first | split | omega)
+
+/-- The richer the victim, the bigger the tier. -/
+theorem steal_tier_mono {a b : Nat} (h : a ≤ b) (d : Bool) : stealTier a d ≤ stealTier b d := by
+  unfold stealTier; repeat (first | split | omega)
+
+/-- The Dark Lord's tier is at least anyone's. -/
+theorem steal_tier_dark (r : Nat) : stealTier r false ≤ stealTier r true := by
+  have h : stealTier r true = STEAL_CAP_PCT := by simp [stealTier, STEAL_DARK_LORD_PCT, STEAL_CAP_PCT]
+  rw [h]; exact steal_tier_le r false
+
+theorem steal_pct_le (r : Nat) (d : Bool) (b m : Nat) : stealPct r d b m ≤ STEAL_CAP_PCT := Nat.min_le_left _ _
+
+theorem steal_pct_tier_mono {t t' : Nat} (h : t ≤ t') (b m : Nat) :
+    min STEAL_CAP_PCT (t * b * m / STEAL_BASE_PCT) ≤ min STEAL_CAP_PCT (t' * b * m / STEAL_BASE_PCT) := by
+  have h1 : t * b * m ≤ t' * b * m := Nat.mul_le_mul_right _ (Nat.mul_le_mul_right _ h)
+  have h2 : t * b * m / STEAL_BASE_PCT ≤ t' * b * m / STEAL_BASE_PCT := Nat.div_le_div_right h1
+  omega
+
+theorem steal_pct_mono {a b' : Nat} (h : a ≤ b') (d : Bool) (base mult : Nat) :
+    stealPct a d base mult ≤ stealPct b' d base mult :=
+  steal_pct_tier_mono (steal_tier_mono h d) base mult
+
+/-- duel_steal_cap: a stun never takes more than 30 % of the victim's reputation (whatever the rulebook or the zone). -/
+theorem duel_steal_cap (v : Nat) (d : Bool) (b m : Nat) : duelSteal v d b m * 100 ≤ v * STEAL_CAP_PCT := by
+  unfold duelSteal steal
+  have := Nat.div_mul_le_self (v * stealPct v d b m) 100
+  have := Nat.mul_le_mul_left v (steal_pct_le v d b m)
+  omega
+
+theorem duel_steal_le (v : Nat) (d : Bool) (b m : Nat) : duelSteal v d b m ≤ v :=
+  steal_le v _ (by have := steal_pct_le v d b m; unfold STEAL_CAP_PCT at this; omega)
+
+/-- duel_steal_mono: monotone in the victim's reputation — being richer never makes you cheaper to rob. -/
+theorem duel_steal_mono {v v' : Nat} (h : v ≤ v') (d : Bool) (b m : Nat) : duelSteal v d b m ≤ duelSteal v' d b m := by
+  unfold duelSteal steal
+  exact Nat.div_le_div_right (Nat.mul_le_mul h (steal_pct_mono h d b m))
+
+/-- The Dark Lord always loses at least as much as anyone with the same reputation would. -/
+theorem duel_steal_dark (v b m : Nat) : duelSteal v false b m ≤ duelSteal v true b m := by
+  unfold duelSteal steal
+  exact Nat.div_le_div_right (Nat.mul_le_mul_left v (steal_pct_tier_mono (steal_tier_dark v) b m))
+
+/-- At the default rulebook (duelRepStealPct = 10, outside the lawless zone): newcomers 5 %, normal 10 %, the Dark Lord 30 %. -/
+theorem steal_newcomer (v : Nat) (h : v < 50) : stealPct v false 10 1 = 5 := by
+  unfold stealPct stealTier STEAL_CAP_PCT STEAL_BASE_PCT
+  simp only [Bool.false_eq_true, if_false]
+  repeat (first | split | omega)
+theorem steal_normal (v : Nat) (h1 : 50 ≤ v) (h2 : v < 200) : stealPct v false 10 1 = 10 := by
+  unfold stealPct stealTier STEAL_CAP_PCT STEAL_BASE_PCT
+  simp only [Bool.false_eq_true, if_false]
+  repeat (first | split | omega)
+theorem steal_dark_lord (v : Nat) : stealPct v true 10 1 = 30 := by
+  simp [stealPct, stealTier, STEAL_DARK_LORD_PCT, STEAL_CAP_PCT, STEAL_BASE_PCT]
+
+/-- duel_conserves generalised: moving any share s ≤ v from the victim to the victor creates exactly `base`. -/
+theorem duel_conserves_any (k v base s : Nat) (hs : s ≤ v) : (k + base + s) + (v - s) = k + v + base := by omega
+
+/-- duel_conserves_curve: with the curve (any rank, the Dark Lord, any rulebook, the lawless zone's doubled
+    base), the stolen share is moved, never created; the victim never goes negative. -/
+theorem duel_conserves_curve (k v base : Nat) (d : Bool) (b m : Nat) :
+    (k + base + duelSteal v d b m) + (v - duelSteal v d b m) = k + v + base :=
+  duel_conserves_any k v base _ (duel_steal_le v d b m)
+
+/-- The old flat rule is the curve's special case: duel_conserves is duel_conserves_any at s = steal v p. -/
+theorem duel_conserves_flat (k v base p : Nat) (hp : p ≤ 100) :
+    (k + base + steal v p) + (v - steal v p) = k + v + base := duel_conserves_any k v base _ (steal_le v p hp)
+
+/-! ### 黑魔王: the mark does not flap -/
+
+/-- progression.ts `darkLordTakes`: the challenger needs (100 + DARK_LORD_HYSTERESIS_PCT) % of the holder's reputation. -/
+def darkLordTakes (holder challenger : Nat) : Bool := decide (holder * (100 + DARK_LORD_HYSTERESIS_PCT) ≤ challenger * 100)
+
+/-- dark_lord_no_flap: right after a challenger takes the mark, the old holder cannot take it back without
+    gaining reputation (for any holder with reputation > 0). -/
+theorem dark_lord_no_flap (a b : Nat) (hb : 0 < b) (h : darkLordTakes b a = true) : darkLordTakes a b = false := by
+  unfold darkLordTakes DARK_LORD_HYSTERESIS_PCT at *
+  simp only [decide_eq_true_eq, decide_eq_false_iff_not] at *
+  omega
+
+/-- A tie never moves the mark. -/
+theorem dark_lord_tie_stays (a : Nat) (ha : 0 < a) : darkLordTakes a a = false := by
+  unfold darkLordTakes DARK_LORD_HYSTERESIS_PCT; simp only [decide_eq_false_iff_not]; omega
+
+/-! ### 邓布利多军: a bounded joint spell, a real majority -/
+
+/-- progression.ts `jointPct`. -/
+def jointPct (n : Nat) : Nat := if DA_JOINT_MIN ≤ n then DA_JOINT_PCT else 100
+theorem joint_bounded (n : Nat) : 100 ≤ jointPct n ∧ jointPct n ≤ DA_JOINT_PCT := by
+  unfold jointPct DA_JOINT_PCT; split <;> omega
+theorem joint_mono {a b : Nat} (h : a ≤ b) : jointPct a ≤ jointPct b := by
+  unfold jointPct DA_JOINT_MIN DA_JOINT_PCT; repeat (first | split | omega)
+
+/-- World.vetoDecree: passes with ≥ DA_QUORUM members in play and ⌊n/2⌋ + 1 of their votes. -/
+def vetoPasses (online votes : Nat) : Bool := decide (DA_QUORUM ≤ online ∧ online / 2 + 1 ≤ votes)
+/-- A passing veto is a strict majority of a quorum. -/
+theorem veto_strict_majority (n v : Nat) (h : vetoPasses n v = true) : DA_QUORUM ≤ n ∧ n < 2 * v := by
+  unfold vetoPasses DA_QUORUM at *; simp only [decide_eq_true_eq] at h; omega
+
+/-! ### 专注力: the concentration pool -/
+
+/-- progression.ts `focusAfter` (whole points): regeneration never overfills the pool. -/
+def focusAfter (pts max regen dt : Nat) : Nat := min max (pts + regen * dt)
+theorem focus_bounded (p m r d : Nat) : focusAfter p m r d ≤ m := Nat.min_le_left _ _
+/-- World.spendConcentration: spend only what is there (like `commit`: a refusal spends nothing). -/
+def spendFocus (cur cost : Nat) : Option Nat := if cost ≤ cur then some (cur - cost) else none
+theorem spend_focus_exact {cur cost c' : Nat} (h : spendFocus cur cost = some c') : c' + cost = cur := by
+  unfold spendFocus at h; split at h
+  · cases h; omega
+  · contradiction
+
+/-! ### The timing constants fit together -/
+
+/-- A spell that keeps hitting you becomes studyable long before it is forgotten. -/
+theorem study_before_forgotten : STUDY_DELAY_S < STUDY_MEMORY_S := by decide
+/-- The joint-spell window is shorter than the Dark Mark's broadcast period (a real ambush, not a standing buff). -/
+theorem joint_window_short : DA_JOINT_WINDOW_S < DARK_LORD_BROADCAST_S := by decide
+/-- The Dark Lord's bonus and the joint bonus never meet (the Dark Lord cannot be a member): the most any hit is
+    multiplied by the two is the larger of them. -/
+theorem bonus_max : max DARK_LORD_POWER_PCT DA_JOINT_PCT = 125 := by decide
+
+/-- The 不公平，但好玩 part of the vectors. -/
+def unfairVectors : String :=
+  let q (s : String) : String := "\"" ++ s ++ "\""
+  let arr (xs : List String) : String := "[" ++ ",".intercalate xs ++ "]"
+  let obj (xs : List (String × String)) : String := "{" ++ ",".intercalate (xs.map fun (k, v) => q k ++ ":" ++ v) ++ "}"
+  let b2n (b : Bool) : Nat := if b then 1 else 0
+  let consts := obj [
+    ("STEAL_CAP_PCT", toString STEAL_CAP_PCT), ("STEAL_DARK_LORD_PCT", toString STEAL_DARK_LORD_PCT), ("STEAL_BASE_PCT", toString STEAL_BASE_PCT),
+    ("DARK_LORD_MIN_REP", toString DARK_LORD_MIN_REP), ("DARK_LORD_SEEN_S", toString DARK_LORD_SEEN_S),
+    ("DARK_LORD_HYSTERESIS_PCT", toString DARK_LORD_HYSTERESIS_PCT), ("DARK_LORD_POWER_PCT", toString DARK_LORD_POWER_PCT),
+    ("DARK_LORD_BROADCAST_S", toString DARK_LORD_BROADCAST_S), ("DA_REP_CEILING", toString DA_REP_CEILING),
+    ("DA_MAX_MEMBERS", toString DA_MAX_MEMBERS), ("DA_QUORUM", toString DA_QUORUM), ("DA_VETO_WINDOW_S", toString DA_VETO_WINDOW_S),
+    ("DA_VETOES_PER_TERM", toString DA_VETOES_PER_TERM), ("DA_JOINT_MIN", toString DA_JOINT_MIN),
+    ("DA_JOINT_WINDOW_S", toString DA_JOINT_WINDOW_S), ("DA_JOINT_PCT", toString DA_JOINT_PCT),
+    ("STUDY_DELAY_S", toString STUDY_DELAY_S), ("STUDY_MEMORY_S", toString STUDY_MEMORY_S), ("STUDY_KEEP", toString STUDY_KEEP),
+    ("STUDIED_KEEP", toString STUDIED_KEEP), ("LAWLESS_MULT", toString LAWLESS_MULT)]
+  let tiers := arr (STEAL_TIERS.map fun (a, p) => s!"[{a},{p}]")
+  let reps : List Nat := [0, 1, 49, 50, 99, 100, 149, 150, 199, 200, 333, 499, 500, 999, 12345]
+  let tierV := Id.run do
+    let mut out : List String := []
+    for r in reps do
+      for d in [false, true] do
+        out := out ++ [s!"[{r},{b2n d},{stealTier r d}]"]
+    return out
+  let pctV := Id.run do
+    let mut out : List String := []
+    for r in reps do
+      for d in [false, true] do
+        for b in [0, 5, 10, 20, 50] do
+          for m in [1, 2] do
+            out := out ++ [s!"[{r},{b2n d},{b},{m},{stealPct r d b m},{duelSteal r d b m}]"]
+    return out
+  let takesV := Id.run do
+    let mut out : List String := []
+    for h in [0, 1, 100, 150, 1000] do
+      for c in [0, 100, 109, 110, 111, 150, 165, 1099, 1100] do
+        out := out ++ [s!"[{h},{c},{b2n (darkLordTakes h c)}]"]
+    return out
+  let jointV := [0, 1, 2, 3, 4, 10].map fun n => s!"[{n},{jointPct n}]"
+  let vetoV := Id.run do
+    let mut out : List String := []
+    for n in [0, 1, 2, 3, 4, 5, 6, 7] do
+      for v in [0, 1, 2, 3, 4, 5] do
+        if v ≤ n then out := out ++ [s!"[{n},{v},{b2n (vetoPasses n v)}]"]
+    return out
+  let focusV := Id.run do
+    let mut out : List String := []
+    for p in [0, 3, 59, 60] do
+      for m in [10, 60] do
+        for r in [1, 2] do
+          for d in [0, 1, 5, 100] do
+            out := out ++ [s!"[{p},{m},{r},{d},{focusAfter p m r d}]"]
+    return out
+  obj [("constants", consts), ("stealTiers", tiers), ("stealTier", arr tierV), ("stealPct", arr pctV), ("darkLordTakes", arr takesV),
+    ("jointPct", arr jointV), ("vetoPasses", arr vetoV), ("focusAfter", arr focusV)]
+
 /-! ## Conformance vectors (compared with the TypeScript code in test/formal.test.ts) -/
 
 /-- The agent-link part of the vectors: every shared constant, and samples of each floor/cost function. -/
@@ -497,7 +718,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ "}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 

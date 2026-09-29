@@ -111,6 +111,14 @@ export const RulebookSchema = z.object({
       ministerMinReputation: num(0, 100000, 100, 'Minimum reputation to be appointed Minister for Magic'),
     })
     .prefault({}),
+  agents: z
+    .object({
+      concentration: z.boolean().default(true).describe('专注力: every MCP action tool call spends concentration, which regenerates. Off = agents act as fast as the server allows (fairness becomes a choice). Browser input is never charged.'),
+      maxPerMinute: num(10, 600, 60, 'Concentration pool: how many action tool calls an agent can make in a burst (about this many a minute at regen 1)'),
+      regen: num(0.1, 10, 1, 'Concentration regained per second'),
+    })
+    .prefault({})
+    .describe('AI agents (MCP) acting for wizards'),
   laws: z.array(LawSchema).max(5).default([]).describe('Standing laws: Runes programs the world runs on events'),
   proclamation: z.string().max(280).default('Draco dormiens nunquam titillandus.'),
 });

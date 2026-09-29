@@ -5,7 +5,9 @@
    senders do anything, earn Galleons again and again, and the victim may destroy every cursed item to
    make room — every hex and every silence still ends: EventuallyClean, EventuallyCanCast. Each jinx and
    silence lasts 2 ticks here, so it is the gate that makes these hold, not the clock: drop the window
-   clause of SendHex and TLC finds a sender pair that keeps the victim jinxed forever. *)
+   clause of SendHex and TLC finds a sender pair that keeps the victim jinxed forever.
+   This is the lawful world (Lawless = FALSE). The lawless zone waives exactly that clause (and the pair
+   cooldown), so there EventuallyClean is given up on purpose: HexLawless.tla checks what still holds. *)
 EXTENDS Hex
 
 ASSUME LeavesGaps
