@@ -270,3 +270,6 @@ export const WARD_MAX_S = 3, WARD_CD_S = 8, WARD_MANA = 25;
 export const TERM_DEFAULT_S = 3600;
 /** The term length before TERM_DEFAULT_S: a save still on it (and no decree ever changed it) moves to the new default. */
 export const TERM_OLD_DEFAULT_S = 900;
+
+/** 翻滚闪避: a roll dashes this far (kernel/world.ts DODGE_S, DODGE_CD_S; the Duelling Club keeps it on the stage). */
+export const DODGE_DIST = 4.5;

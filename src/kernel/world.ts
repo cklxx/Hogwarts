@@ -75,7 +75,8 @@ export const PLAYER_STEERING = 'Your human is steering right now; their hands on
  * DODGE_CD_S to breathe; a Protego raised at most PERFECT_PROTEGO_S before a bolt lands sends it back; two
  * wizards' spells within CLASH_R m of each other collide (checked only while there are ≤ CLASH_MAX in flight).
  */
-export const DODGE_DIST = 4.5, DODGE_S = 0.25, DODGE_CD_S = 2.5, PERFECT_PROTEGO_S = 0.35, CLASH_R = 0.9, CLASH_MAX = 400;
+export { DODGE_DIST };
+export const DODGE_S = 0.25, DODGE_CD_S = 2.5, PERFECT_PROTEGO_S = 0.35, CLASH_R = 0.9, CLASH_MAX = 400;
 /** Refusal for an agent's owl when the owlbox is full of its player's owls it has not read yet. */
 export const OWLBOX_UNREAD = 'Your owlbox is full of owls from your human that you have not read. Call listen first.';
 
@@ -84,7 +85,7 @@ const ONLINE_GRACE = 300;
 /** Tarantallegra: the legs pick a new wrong direction every DANCE_STEP_S, up to DANCE_MAX_RAD off course. */
 const DANCE_STEP_S = 0.4;
 const DANCE_MAX_RAD = 0.6;
-import { FRESH_SECONDS } from '../shared/constants.js';
+import { DODGE_DIST, FRESH_SECONDS } from '../shared/constants.js';
 import { UI_CHARM_INFO } from '../shared/reveal.js';
 import { revealView } from './reveal.js';
 export { FRESH_SECONDS };
@@ -150,6 +151,8 @@ const NPC_NEWS_GAP_S = 30;
 const EVENT_EASY_YEAR = 2, EVENT_EASY_MULT = 0.5;
 /** At most this many wild creatures pick a first-year on their own at once (one that is hit keeps after them). */
 const NEWCOMER_PACK = 2;
+/** A wild creature hunts only in its home's scene (src/shared/scenes.ts); a summon goes where its owner goes. */
+const sameScene = (c: Creature, p: Vec2) => !!c.owner || sceneAt(c.home.x, c.home.z) === sceneAt(p.x, p.z);
 /** terms.ministerMinReputation's default before round 5 (restore moves an untouched one to today's default). */
 const MINISTER_OLD_DEFAULT = 100;
 
@@ -1162,7 +1165,9 @@ export class World {
     if (ready > this.now) return { ok: false, error: `Still catching your breath: ${(ready - this.now).toFixed(1)}s. 还在喘气：${(ready - this.now).toFixed(1)} 秒。 retry_after=${Math.max(1, Math.ceil(ready - this.now))}` };
     let l = Math.hypot(dx, dz);
     if (!Number.isFinite(l) || l < 0.01) { dx = Math.sin(w.facing); dz = -Math.cos(w.facing); l = 1; }
-    w.st.dashDx = dx / l; w.st.dashDz = dz / l;
+    dx /= l; dz /= l;
+    for (const f of HOOKS.dodgeDir) { const d = f.dodgeDir(this, w, dx, dz); if (d) [dx, dz] = d; }
+    w.st.dashDx = dx; w.st.dashDz = dz;
     w.st.dodgeUntil = this.now + DODGE_S;
     w.st.dodgeReadyAt = this.now + DODGE_CD_S;
     // the walk goes on after the roll (moveWizard: the dash overrides it while it lasts). It used to be dropped, so a
@@ -2626,8 +2631,8 @@ export class World {
     // (the 2026-09-30 phone playtest: a ring of pixies took a newcomer to 20 hp before they found the target button)
     const hunted = new Map<string, number>();
     for (const c of this.creatures.values()) if (c.target && !c.owner) hunted.set(c.target, (hunted.get(c.target) ?? 0) + 1);
-    const pickable = (c: Creature, e: { id: string }) => {
-      if (!this.canHarm(c.id, e.id)) return false;
+    const pickable = (c: Creature, e: { id: string; pos: Vec2 }) => {
+      if (!this.canHarm(c.id, e.id) || !sameScene(c, e.pos)) return false;
       const w = this.wizards.get(e.id);
       return !w || w.year > 1 || (hunted.get(e.id) ?? 0) < NEWCOMER_PACK;
     };
@@ -2654,7 +2659,7 @@ export class World {
       // hostile: keep a valid target (a wizard or someone's summon), else take the nearest in reach
       let t = c.target ? this.entity(c.target) : undefined;
       const provoked = (c.provokedUntil ?? 0) > this.now;
-      if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, c.home) > (provoked ? PROVOKED_LEASH : 45) || dist(t.pos, c.pos) > (provoked ? PROVOKED_LEASH : def.aggro * 2.5))) { t = undefined; c.target = null; c.provokedUntil = 0; }
+      if (t && (!this.canHarm(c.id, t.id) || !sameScene(c, t.pos) || dist(t.pos, c.home) > (provoked ? PROVOKED_LEASH : 45) || dist(t.pos, c.pos) > (provoked ? PROVOKED_LEASH : def.aggro * 2.5))) { t = undefined; c.target = null; c.provokedUntil = 0; }
       if (!t && !c.driver) { // a possessed creature (possess.ts) goes for whom its driver names, no one else
         t = this.around(c.pos, def.aggro, (e) => pickable(c, e), c.id, 1)[0];
         if (t) { c.target = t.id; hunted.set(t.id, (hunted.get(t.id) ?? 0) + 1); }
@@ -2748,6 +2753,9 @@ export class World {
     c.pos.z += (dz / l) * s;
     c.facing = Math.atan2(dx, -dz);
     if (!CREATURES[c.kind].flying) this.solids.resolve(c.pos, CREATURES[c.kind].radius);
+    // and never out of their home's scene: the veil stops walkers, a flyer is held at its edge (the 2026-09-30 society
+    // playtest: the lake's Dementors flew over into the courtyard after anyone within their 25 m)
+    else if (!c.owner) { const s = sceneAt(c.home.x, c.home.z); if (s) { c.pos.x = clampN(c.pos.x, s.box[0], s.box[2]); c.pos.z = clampN(c.pos.z, s.box[1], s.box[3]); } }
     // wild creatures never wander into safe zones
     if (!c.owner && this.inSafe(c.pos)) { c.pos.x -= (dx / l) * s; c.pos.z -= (dz / l) * s; }
     this.moved(c);
