@@ -34,6 +34,8 @@ export interface PlayerMetrics {
   online: number; sessions: number; lastOn: number;
   /** From the browser: the furthest tutorial step (1-based) and a coarse pointer. */
   tut?: number; touch?: boolean;
+  /** The camera the browser used last (the 俯视 experiment): 'top' or 'follow'. */
+  view?: 'top' | 'follow';
 }
 
 declare module './world.js' {
@@ -109,6 +111,7 @@ export const METRICS_FEATURE: Feature = {
     const step = Number(msg.tut);
     if (Number.isInteger(step) && step > 0 && step <= 20) m.tut = Math.max(m.tut ?? 0, step);
     if (typeof msg.touch === 'boolean') m.touch = msg.touch;
+    if (msg.view === 'top' || msg.view === 'follow') m.view = msg.view;
     return null;
   },
 };

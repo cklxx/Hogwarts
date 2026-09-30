@@ -21,7 +21,7 @@ console.log(`| 玩家 | 设备 | 移动 秒 | 施法 秒 | 打倒魔物 秒 | �
 console.log('|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|');
 for (const m of rows) {
   const sys = SYSTEMS.filter((k) => m.sys[k] !== undefined);
-  console.log(`| ${m.name} | ${m.touch === undefined ? '?' : m.touch ? '手机' : '桌面'} | ${s(m.move)} | ${s(m.cast)} | ${s(m.kill)} | ${m.tut ?? 1}/${TUT_STEPS} | ${m.kosEarly} | ${sys.length}/10 ${sys.map((k) => SYSTEM_ZH[k]).join('、')} | ${m.chats} | ${Math.round(m.online / 60)} | ${m.sessions} |`);
+  console.log(`| ${m.name} | ${m.touch === undefined ? '?' : m.touch ? '手机' : '桌面'}${m.view === 'top' ? '·俯视' : ''} | ${s(m.move)} | ${s(m.cast)} | ${s(m.kill)} | ${m.tut ?? 1}/${TUT_STEPS} | ${m.kosEarly} | ${sys.length}/10 ${sys.map((k) => SYSTEM_ZH[k]).join('、')} | ${m.chats} | ${Math.round(m.online / 60)} | ${m.sessions} |`);
 }
 
 // the round against docs/PLAYTEST_METRICS.md's first targets
@@ -40,4 +40,13 @@ console.log(`| 碰过的系统（平均，共 10 个） | ${(rows.reduce((a, m) 
 console.log(`| 写或改过咒语 | ${share((m) => m.sys.spell !== undefined)} | ≥ 50% |`);
 console.log(`| 聊天 ≥ 3 句 | ${share((m) => m.chats >= 3)} | 全部 |`);
 console.log(`| 回来过（第二次上线） | ${share((m) => m.sessions >= 2)} | ≥ 40% |`);
+// the view experiment: the two groups side by side
+const groups = (['top', 'follow'] as const).map((v) => ({ v, ms: rows.filter((m) => (m.view ?? 'follow') === v) })).filter((g) => g.ms.length);
+if (groups.length > 1) {
+  console.log(`\n| 视角 | 人数 | 打倒第一只魔物（中位数，秒） | 碰过的系统（平均） | 在线（平均，分） |\n|---|---:|---:|---:|---:|`);
+  for (const g of groups) {
+    const k = g.ms.map((m) => m.kill).filter((v): v is number => v !== undefined);
+    console.log(`| ${g.v === 'top' ? '俯视' : '跟随'} | ${g.ms.length} | ${median(k)}（${k.length}/${g.ms.length} 人做到） | ${(g.ms.reduce((a, m) => a + Object.keys(m.sys).length, 0) / g.ms.length).toFixed(1)} | ${(g.ms.reduce((a, m) => a + m.online, 0) / g.ms.length / 60).toFixed(1)} |`);
+  }
+}
 console.log('\n卡在哪、原话、问卷和访谈要观察员记录（docs/PLAYTEST_METRICS.md 第 3–5 节）。');

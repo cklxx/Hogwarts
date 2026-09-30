@@ -133,6 +133,14 @@ export function wheelCam(e: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' |
 /** How to turn the camera, in the help and hints: a Mac trackpad has no right button to drag with. */
 export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+拖动' : '右键拖动';
 export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
+/** 俯视: the camera's pitch and distance in the top-down view, and where the choice is remembered. */
+const TOP_PITCH = 1.15, TOP_DIST = 16, VIEW_KEY = 'hogwarts.view';
+/** The first view: `?view=top|follow` (a playtest group), else what was chosen last, else follow. */
+function firstView(): boolean {
+  const q = new URLSearchParams(location.search).get('view');
+  if (q === 'top' || q === 'follow') return q === 'top';
+  try { return localStorage.getItem(VIEW_KEY) === 'top'; } catch { return false; }
+}
 /** Where a thumb starts the stick: left of this share of the width, below this share of the height. */
 const STICK_ZONE_X = 0.45, STICK_ZONE_Y = 0.55;
 /** What an iPhone needs for a full screen (Safari has no fullscreen for a page): the home-screen app. */
@@ -260,6 +268,7 @@ export function createControls(d: ControlsDeps) {
   let target: string | null = null;
   let selected = 0;
   let dragging = false, lastDrag = -1e9;
+  let topView = false; // 俯视 (setView)
   let dest: { x: number; z: number; t: number; pending: boolean; lastMove: number; px: number; pz: number } | null = null;
   let lastGoto = 0;
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
@@ -584,7 +593,7 @@ export function createControls(d: ControlsDeps) {
     ch.style.top = `${e.clientY}px`;
     if (dragging) {
       d.cam.yaw -= e.movementX * 0.005;
-      d.cam.pitch = Math.max(0.1, Math.min(1.3, d.cam.pitch + e.movementY * 0.004));
+      if (!topView) d.cam.pitch = Math.max(0.1, Math.min(1.3, d.cam.pitch + e.movementY * 0.004));
       if (Math.abs(e.movementX) + Math.abs(e.movementY) > 0) lastDrag = now();
     }
   });
@@ -616,6 +625,19 @@ export function createControls(d: ControlsDeps) {
       return;
     }
     if (walk) walkTo(aim.x, aim.z);
+  }
+
+  /**
+   * 俯视 (the view experiment, docs/PLAYTEST.md): the camera looks down on the wizard from high up — nearly 2D, the
+   * whole neighbourhood in sight, nothing between — its height locked (a drag only turns it). `?view=top|follow`
+   * picks one for a playtest group; the drawer's button toggles it; it is remembered and reported (kernel/metrics.ts).
+   */
+  function setView(top: boolean, report = true) {
+    topView = top;
+    try { localStorage.setItem(VIEW_KEY, top ? 'top' : 'follow'); } catch { /* private mode */ }
+    if (top) { d.cam.pitch = TOP_PITCH; d.cam.dist = TOP_DIST; } else { d.cam.pitch = touch ? 0.5 : 0.34; d.cam.dist = touch ? 13 : 8.5; }
+    document.body.classList.toggle('topview', top);
+    if (report) d.send({ t: 'metrics', view: top ? 'top' : 'follow' });
   }
 
   /** 翻滚闪避: the way you are pushing (keys or stick), else straight ahead. */
@@ -665,7 +687,7 @@ export function createControls(d: ControlsDeps) {
           if (Math.hypot(t.clientX - lx0, t.clientY - ly0) > 12) lookMoved = true;
           if (lookMoved) {
             d.cam.yaw -= dx * 0.006;
-            d.cam.pitch = Math.max(0.1, Math.min(1.3, d.cam.pitch + dy * 0.004));
+            if (!topView) d.cam.pitch = Math.max(0.1, Math.min(1.3, d.cam.pitch + dy * 0.004));
             lastDrag = now();
           }
         }
@@ -686,6 +708,7 @@ export function createControls(d: ControlsDeps) {
     d.canvas.addEventListener('touchcancel', end);
     $('#tb-roll').addEventListener('touchstart', (e) => { e.preventDefault(); roll(); }, { passive: false });
     // the camera's reach on a phone (a pinch works too, but two thumbs are busy)
+    $('#tb-view').onclick = () => { setView(!topView); d.toast(topView ? L('俯视：看得更全', 'Top-down: see more around you') : L('跟随：镜头在身后', 'Follow: the camera behind you')); };
     $('#tb-zin').onclick = () => { d.cam.dist = clampDist(d.cam.dist / 1.3); };
     $('#tb-zout').onclick = () => { d.cam.dist = clampDist(d.cam.dist * 1.3); };
     const more = $('#tb-more'), extra = $('#tb-extra');
@@ -1003,7 +1026,7 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ first-run onboarding
   const tutorial = createTutorial({
-    report: (n) => d.send({ t: 'metrics', tut: n, touch }),
+    report: (n) => d.send({ t: 'metrics', tut: n, touch, view: topView ? 'top' : 'follow' }),
     me: d.me, myPos, touch,
     creatures: () => [...cIdx.values()],
     creaturePos: (i) => d.creatures.get(i)?.root.position ?? null,
@@ -1037,6 +1060,7 @@ export function createControls(d: ControlsDeps) {
   }
 
   setupTouch();
+  if (firstView()) setView(true, false); // reported with the tutorial's first step (metrics)
   $('#prompt').onclick = () => doAction();
 
   return {
