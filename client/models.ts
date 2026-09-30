@@ -36,6 +36,19 @@ export class Label {
     this.last = [name, color, hp, say, extra, tag];
     this.paint(name, color, hpFrac, say, extra, tag);
   }
+  private z = 1; private y0 = NaN;
+  /**
+   * Grow the tag by `k` (2.5D: main.ts keeps a name the same size on screen however far the camera hangs), its foot
+   * where it was, so it rises off the head rather than into it.
+   */
+  zoom(k: number) {
+    if (Math.abs(k - this.z) < 0.02) return;
+    const sp = this.sprite;
+    if (Number.isNaN(this.y0)) this.y0 = sp.position.y;
+    sp.scale.x *= k / this.z; sp.scale.y *= k / this.z;
+    sp.position.y = this.y0 + (sp.scale.y / k) * (k - 1) * 0.5;
+    this.z = k;
+  }
   /** Free the tag's texture and material (the sprite's geometry is three.js's shared quad). */
   dispose() { this.tex.dispose(); this.sprite.material.dispose(); }
   /** Show or hide the tag (painting what it was last told to say, if that changed while hidden). */

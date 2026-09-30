@@ -43,6 +43,8 @@ export interface ControlsDeps {
   agent: () => AgentView | null;
   /** Open the Owl Post and mint a pairing code (tutorial step 5). */
   pair: () => void;
+  /** The view changed (2.5D on or off): the lens goes with it (render.ts setLens). */
+  lens?: (flat: boolean) => void;
   /** More things the action key (F) can do right here — a hidden chest to open (client/panels/fun.ts) — or null. */
   extraAction?: () => { label: string; x: number; z: number; y: number; act: () => void } | null;
 }
@@ -133,23 +135,30 @@ export function wheelCam(e: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' |
 /** How to turn the camera, in the help and hints: a Mac trackpad has no right button to drag with. */
 export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+拖动' : '右键拖动';
 export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
-/** 俯视: the camera's pitch and distance in the top-down view, and where the choice is remembered. */
-const TOP_PITCH = 1.15, TOP_DIST = 16, VIEW_KEY = 'hogwarts.view';
-/** The first view: `?view=top|follow` (a playtest group), else what was chosen last, else top-down on a phone
- *  (the 2026-09-30 Sonnet phone round, docs/PLAYTEST.md round 6: everyone who tried both, or guessed, preferred it;
- *  one follow player switched to it mid-game), follow elsewhere. */
-function firstView(touch: boolean): boolean {
-  const q = new URLSearchParams(location.search).get('view');
-  if (q === 'top' || q === 'follow') return q === 'top';
-  try { const v = localStorage.getItem(VIEW_KEY); if (v) return v === 'top'; } catch { /* private mode */ }
-  return touch;
+/**
+ * 2.5D (the owner, 2026-09-30: 「可以 2.5d？这个视角现在很不舒服」): the camera of Diablo, Hades, Don't Starve — a fixed
+ * angle, FLAT_PITCH down (~53°), from FLAT_DIST away with a long lens (render.ts FLAT_FOV), following you without ever
+ * turning by itself; Q / E (or a drag, let go) turn it in 45° steps; the wheel / a pinch zooms within FLAT_ZOOM. It
+ * replaced the old 俯视 (1.15 rad from 16 m with a 55° lens: the fisheye look) and is the first view everywhere;
+ * the follow camera stays one toggle away (Z, the drawer's ◎). The key is new, so everyone starts in 2.5D once.
+ */
+export const FLAT_PITCH = 0.92, FLAT_DIST = 24, FLAT_ZOOM = [14, 44] as const, VIEW_KEY = 'hogwarts.view2';
+/** 2.5D turns in steps of this (45°). */
+export const YAW_STEP = Math.PI / 4;
+/** The nearest 2.5D heading to a yaw. */
+export const snapYaw = (y: number) => Math.round(y / YAW_STEP) * YAW_STEP;
+/** The first view: `?view=25d|follow` (`top`: 25d; a playtest group), else what was chosen last, else 2.5D. */
+export function firstView(q: string | null, stored: string | null): boolean {
+  if (q === '25d' || q === 'top' || q === 'follow') return q !== 'follow';
+  if (stored === '25d' || stored === 'follow') return stored === '25d';
+  return true;
 }
 /** Where a thumb starts the stick: left of this share of the width, below this share of the height. */
 const STICK_ZONE_X = 0.45, STICK_ZONE_Y = 0.55;
 /** What an iPhone needs for a full screen (Safari has no fullscreen for a page): the home-screen app. */
 const FULL_HINT = () => L('iPhone：点 Safari 的「分享」→「添加到主屏幕」，从主屏幕打开就是全屏。', 'iPhone: Safari’s Share → Add to Home Screen, then open it from there for a full screen.');
 /** Camera distance limits (the wheel, the pinch and the touch pinch share them). */
-export const clampDist = (v: number) => Math.max(3.5, Math.min(40, v));
+export const clampDist = (v: number, flat = false) => (flat ? Math.max(FLAT_ZOOM[0], Math.min(FLAT_ZOOM[1], v)) : Math.max(3.5, Math.min(40, v)));
 
 export interface AgentView { connected: boolean; client: string; ago: number | null; tool: string | null; goal: string | null; paused: boolean }
 /** An agent seen within this many seconds counts as connected when the server does not say how many MCP sessions there are. */
@@ -271,7 +280,10 @@ export function createControls(d: ControlsDeps) {
   let target: string | null = null;
   let selected = 0;
   let dragging = false, lastDrag = -1e9;
-  let topView = false; // 俯视 (setView)
+  let topView = false; // 2.5D (setView)
+  /** 2.5D: the heading the camera eases to (snapYaw), or null while it is dragged. */
+  let yawTo: number | null = null;
+  let qWas = false, eWas = false;
   let dest: { x: number; z: number; t: number; pending: boolean; lastMove: number; px: number; pz: number } | null = null;
   let lastGoto = 0;
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
@@ -430,7 +442,7 @@ export function createControls(d: ControlsDeps) {
     lastTab = t;
     const p = myPos();
     // wild creatures first: a newcomer's Tab should find the pixie, not a rival player
-    const list = topView ? hostilesAhead(30, 180, true) : hostilesAhead(45, 42, true); // 俯视: all round you is on screen
+    const list = topView ? hostilesAhead(30, 180, true) : hostilesAhead(45, 42, true); // 2.5D: all round you is on screen
     if (!list.length || !p) { d.toast(L(`前方没有可以攻击的目标。转动镜头（${LOOK_ZH} / Q E）再试试。`, `No foe ahead. Turn the camera (${LOOK_EN} / Q E) and try again.`)); return; }
     let next = list.find((k) => !tabbed.has(k) && k !== target);
     if (!next) { tabbed = new Set(); next = list.find((k) => k !== target) ?? list[0]; }
@@ -569,6 +581,7 @@ export function createControls(d: ControlsDeps) {
     // 翻滚闪避 (World.dodge): the way you are running, else straight ahead
     if (k === ' ') { e.preventDefault(); if (!e.repeat) roll(); return true; }
     if (k === 'h' || k === 'H' || k === '?') { if (!e.repeat) toggleHelp(); return true; }
+    if (k === 'z' || k === 'Z') { if (!e.repeat) toggleView(); return true; }
     keys.add(k.toLowerCase());
     return false;
   }
@@ -605,14 +618,14 @@ export function createControls(d: ControlsDeps) {
   d.canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const c = wheelCam(e);
-    d.cam.dist = clampDist(d.cam.dist + c.zoom);
+    d.cam.dist = clampDist(d.cam.dist + c.zoom * (topView ? 2.5 : 1), topView);
     if (c.yaw) { d.cam.yaw += c.yaw; lastDrag = now(); }
   }, { passive: false });
   // Safari / WKWebView report a trackpad pinch as gesture events (with a scale), not as ctrl+wheel
   let pinchFrom = 0;
   type Gesture = Event & { scale: number };
   d.canvas.addEventListener('gesturestart', (e) => { e.preventDefault(); pinchFrom = d.cam.dist; });
-  d.canvas.addEventListener('gesturechange', (e) => { e.preventDefault(); const s = (e as Gesture).scale; if (pinchFrom && s > 0) d.cam.dist = clampDist(pinchFrom / s); });
+  d.canvas.addEventListener('gesturechange', (e) => { e.preventDefault(); const s = (e as Gesture).scale; if (pinchFrom && s > 0) d.cam.dist = clampDist(pinchFrom / s, topView); });
   d.canvas.addEventListener('gestureend', (e) => { e.preventDefault(); pinchFrom = 0; });
 
   /** Left click / tap: a foe → target it and cast the attack spell; a friend → target it; the ground → walk there. Shift: cast at the ground. */
@@ -631,17 +644,18 @@ export function createControls(d: ControlsDeps) {
   }
 
   /**
-   * 俯视 (the view experiment, docs/PLAYTEST.md): the camera looks down on the wizard from high up — nearly 2D, the
-   * whole neighbourhood in sight, nothing between — its height locked (a drag only turns it). `?view=top|follow`
-   * picks one for a playtest group; the drawer's button toggles it; it is remembered and reported (kernel/metrics.ts).
+   * 2.5D or the follow camera (FLAT_PITCH above). `?view=25d|follow` picks one for a playtest group; Z and the drawer's
+   * button toggle it; it is remembered and reported (kernel/metrics.ts).
    */
   function setView(top: boolean, report = true) {
     topView = top;
-    try { localStorage.setItem(VIEW_KEY, top ? 'top' : 'follow'); } catch { /* private mode */ }
-    if (top) { d.cam.pitch = TOP_PITCH; d.cam.dist = TOP_DIST; } else { d.cam.pitch = touch ? 0.5 : 0.34; d.cam.dist = touch ? 13 : 8.5; }
+    try { localStorage.setItem(VIEW_KEY, top ? '25d' : 'follow'); } catch { /* private mode */ }
+    if (top) { d.cam.pitch = FLAT_PITCH; d.cam.dist = touch ? FLAT_DIST + 2 : FLAT_DIST; yawTo = snapYaw(d.cam.yaw); } else { d.cam.pitch = touch ? 0.5 : 0.34; d.cam.dist = touch ? 13 : 8.5; yawTo = null; }
+    d.lens?.(top);
     document.body.classList.toggle('topview', top);
-    if (report) d.send({ t: 'metrics', view: top ? 'top' : 'follow' });
+    if (report) d.send({ t: 'metrics', view: top ? '25d' : 'follow' });
   }
+  const toggleView = () => { setView(!topView); d.toast(topView ? L('2.5D 视角：固定角度，Q / E 转 45°', '2.5D view: a fixed angle, Q / E turn 45°') : L('跟随视角：镜头在身后', 'Follow view: the camera behind you')); };
 
   /** 翻滚闪避: the way you are pushing (keys or stick), else straight ahead. */
   function roll() { d.send({ t: 'dodge', dx: moveDx, dz: moveDz }); }
@@ -673,7 +687,7 @@ export function createControls(d: ControlsDeps) {
       e.preventDefault();
       if (e.touches.length === 2 && stickId === null) {
         const p = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        if (pinch) d.cam.dist = clampDist(d.cam.dist - (p - pinch) * 0.05);
+        if (pinch) d.cam.dist = clampDist(d.cam.dist - (p - pinch) * (topView ? 0.12 : 0.05), topView);
         pinch = p; lookMoved = true;
         return;
       }
@@ -711,9 +725,9 @@ export function createControls(d: ControlsDeps) {
     d.canvas.addEventListener('touchcancel', end);
     $('#tb-roll').addEventListener('touchstart', (e) => { e.preventDefault(); roll(); }, { passive: false });
     // the camera's reach on a phone (a pinch works too, but two thumbs are busy)
-    $('#tb-view').onclick = () => { setView(!topView); d.toast(topView ? L('俯视：看得更全', 'Top-down: see more around you') : L('跟随：镜头在身后', 'Follow: the camera behind you')); };
-    $('#tb-zin').onclick = () => { d.cam.dist = clampDist(d.cam.dist / 1.3); };
-    $('#tb-zout').onclick = () => { d.cam.dist = clampDist(d.cam.dist * 1.3); };
+    $('#tb-view').onclick = toggleView;
+    $('#tb-zin').onclick = () => { d.cam.dist = clampDist(d.cam.dist / 1.3, topView); };
+    $('#tb-zout').onclick = () => { d.cam.dist = clampDist(d.cam.dist * 1.3, topView); };
     const more = $('#tb-more'), extra = $('#tb-extra');
     const fold = (open: boolean) => { extra.hidden = !open; more.setAttribute('aria-expanded', String(open)); };
     more.onclick = () => fold(extra.hidden);
@@ -752,9 +766,19 @@ export function createControls(d: ControlsDeps) {
     d.camera.updateMatrixWorld();
     const t = now();
     const me = d.me();
-    // camera turn keys (turning by hand pauses the drift, like a right-drag)
-    if (keys.has('q')) { d.cam.yaw += dt * 1.8; lastDrag = t; }
-    if (keys.has('e')) { d.cam.yaw -= dt * 1.8; lastDrag = t; }
+    // camera turn keys (turning by hand pauses the drift, like a right-drag); 2.5D: a 45° step per press, eased
+    const q = keys.has('q'), e = keys.has('e');
+    if (topView) {
+      if (q && !qWas) yawTo = snapYaw(yawTo ?? d.cam.yaw) + YAW_STEP;
+      if (e && !eWas) yawTo = snapYaw(yawTo ?? d.cam.yaw) - YAW_STEP;
+      // a drag turns it freely; let go and it settles on the nearest step
+      if (dragging || t - lastDrag < 0.25) yawTo = null;
+      else { yawTo ??= snapYaw(d.cam.yaw); d.cam.yaw += (yawTo - d.cam.yaw) * Math.min(1, dt * 9); }
+    } else {
+      if (q) { d.cam.yaw += dt * 1.8; lastDrag = t; }
+      if (e) { d.cam.yaw -= dt * 1.8; lastDrag = t; }
+    }
+    qWas = q; eWas = e;
     // movement: WASD / arrows / joystick, camera-relative
     let kx = 0, kz = 0;
     if (keys.has('w') || keys.has('arrowup')) kz -= 1;
@@ -775,7 +799,7 @@ export function createControls(d: ControlsDeps) {
     if (moving && dest) clearDest();
     // after a moment on the same keys the camera drifts in behind the way you run; never while backing up, never for
     // a quick sidestep, never soon after you turned it yourself, and never for the joystick (the other thumb looks)
-    if (moving && !stick && kz <= 0 && t - moveSince > 0.7 && !dragging && t - lastDrag > 3) {
+    if (!topView && moving && !stick && kz <= 0 && t - moveSince > 0.7 && !dragging && t - lastDrag > 3) {
       const step = wrap(Math.atan2(-dx, -dz) - d.cam.yaw) * Math.min(1, dt * 0.55);
       d.cam.yaw += step;
       driftOff += step;
@@ -981,11 +1005,12 @@ export function createControls(d: ControlsDeps) {
       <p class="help-pillars">${L('<b>学院杯</b>：一学期的长度由服务器设定（顶部有倒计时），顶部是四个学院的比分和倒计时，最后 60 秒「决胜时刻」学院分翻倍；学期末礼堂换上冠军学院的旗帜。<b>校园事件</b>：每 3 分钟出一件事（巨怪、金色飞贼、宵禁、摄魂怪……），右上角的事件条告诉你去哪、做什么。', '<b>The House Cup</b>: the server sets the length of a term (the countdown is at the top); the four houses\' points and the countdown sit at the top, and the last 60 seconds count double; at term end the Great Hall hangs the winner\'s banners. <b>Events</b>: every 3 minutes something happens (a troll, the Golden Snitch, curfew, Dementors…); the slip under the clock says where to go and what to do.')}</p>
       <div class="cols"><div>
       <h3>${L('移动', 'Moving')}</h3><table>
-      ${row('W A S D', L('移动（相对镜头方向）；跑动时镜头会慢慢转到你身后', 'Move (relative to the camera); the camera drifts in behind you'))}
+      ${row('W A S D', L('移动（W 是屏幕上方）', 'Move (W is up the screen)'))}
       ${row(L('左键 地面', 'Click ground'), L('自动寻路走过去（地上会出现金色标记；按 WASD 取消）', 'Walk there by the shortest path (gold marker; WASD cancels)'))}
-      ${row(L(LOOK_ZH, LOOK_EN), L('转动视角（之后几秒镜头不会自动跟随）', 'Turn the camera (auto-follow pauses for a few seconds)'))}
+      ${row(L(LOOK_ZH, LOOK_EN), L('转动视角（2.5D 松手后停在最近的 45°）', 'Turn the camera (2.5D settles on the nearest 45°)'))}
       ${IS_MAC ? row(L('双指捏合 / 上下滑', 'Pinch / two-finger scroll'), L('拉近拉远；双指左右滑也能转视角', 'Zoom; a sideways two-finger swipe turns the camera too')) : ''}
-      ${row('Q / E', L('向左 / 向右转镜头', 'Turn the camera left / right'))}
+      ${row('Q / E', L('向左 / 向右转镜头（2.5D 下每次 45°）', 'Turn the camera left / right (45° steps in 2.5D)'))}
+      ${row('Z', L('切换 2.5D / 跟随视角', 'Switch 2.5D / follow view'))}
       ${row(L('滚轮', 'Wheel'), L('拉近 / 拉远', 'Zoom'))}
       </table>
       ${pillar('①', '打怪与决斗', 'Fight and duel', 'stupefy')}<table>
@@ -1029,7 +1054,7 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ first-run onboarding
   const tutorial = createTutorial({
-    report: (n) => d.send({ t: 'metrics', tut: n, touch, view: topView ? 'top' : 'follow' }),
+    report: (n) => d.send({ t: 'metrics', tut: n, touch, view: topView ? '25d' : 'follow' }),
     me: d.me, myPos, touch,
     creatures: () => [...cIdx.values()],
     creaturePos: (i) => d.creatures.get(i)?.root.position ?? null,
@@ -1063,7 +1088,8 @@ export function createControls(d: ControlsDeps) {
   }
 
   setupTouch();
-  if (firstView(touch)) setView(true, false); // reported with the tutorial's first step (metrics)
+  // (reported with the tutorial's first step: metrics)
+  { let stored: string | null = null; try { stored = localStorage.getItem(VIEW_KEY); } catch { /* private mode */ } setView(firstView(new URLSearchParams(location.search).get('view'), stored), false); }
   $('#prompt').onclick = () => doAction();
 
   return {
@@ -1073,6 +1099,8 @@ export function createControls(d: ControlsDeps) {
     targetKey: () => target ?? hovered,
     /** The locked target only (view.ts fades what hides it and x-rays it). */
     lockedTarget: () => target,
+    /** 2.5D is on (setView): view.ts fixes the camera, main.ts measures detail from near you. */
+    flat: () => topView,
     /** Walk there by the paths (a tap on an event slip). */
     walkTo: (x: number, z: number) => { lastGoto = 0; walkTo(x, z); },
     keydown, update, hud, castSlot, castKey, castOnSelf, clearTarget, toggleHelp,
