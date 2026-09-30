@@ -23,9 +23,6 @@ export const AURA_DEFS: Record<AuraKind, { debuff: boolean; doc: string; zh: str
   bats: { debuff: true, hex: true, doc: 'Bat-Bogey Hex: mag damage per second and a brief silence', zh: '蝙蝠精咒：持续伤害，外加短暂沉默' },
 };
 
-/** The aura kinds only a hostile parcel can put on you. */
-export const HEX_AURAS = AURA_KINDS.filter((k) => AURA_DEFS[k].hex) as AuraKind[];
-
 /** Refresh-and-keep-max stacking. Returns the new list (does not mutate). */
 export function addAura(list: Aura[], a: Aura): Aura[] {
   const cur = list.find((x) => x.k === a.k);

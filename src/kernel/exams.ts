@@ -45,7 +45,6 @@ export interface OwlBook {
   /** wizard id -> ISO week -> exam id -> best sitting (only the current and previous week are kept). */
   bests: Record<string, Record<string, Record<string, OwlBest>>>;
 }
-export const blankOwls = (): OwlBook => ({ boards: {}, bests: {} });
 
 export const BOARD_SIZE = 10;
 export const EXAMS_PER_WEEK = 6;

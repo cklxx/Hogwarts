@@ -573,7 +573,6 @@ export function describeEvent(w: World, e: ActiveEvent | null) {
 
 const rnd = (n: number) => Math.round(n * 10) / 10;
 export const EVENT_NAMES: Record<EventId, Line> = Object.fromEntries(EVENT_IDS.map((id) => [id, EVENTS[id].name])) as Record<EventId, Line>;
-export const isMajor = (id: EventId) => EVENTS[id].major;
 
 /** MCP school_events: the term as a match, the event on now, the last few, when the next comes, the chests. */
 export function schoolEvents(w: World, wid: string) {

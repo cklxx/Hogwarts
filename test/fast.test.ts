@@ -85,7 +85,7 @@ describe('mergeStatic (batch.ts)', () => {
 describe('createLightBudget (lights.ts)', () => {
   it('shows a fixed number of real lights: the lit sources nearest the focus', () => {
     const scene = new THREE.Scene();
-    const src = Array.from({ length: 20 }, (_, i) => { const l = new THREE.PointLight(0xffffff, i === 3 ? 0 : 10, 14); l.position.set(i * 10, 1, 0); scene.add(l); return l; });
+    Array.from({ length: 20 }, (_, i) => { const l = new THREE.PointLight(0xffffff, i === 3 ? 0 : 10, 14); l.position.set(i * 10, 1, 0); scene.add(l); return l; });
     const budget = createLightBudget(scene, 4);
     budget.adopt(scene);
     const visible = () => { const v: THREE.PointLight[] = []; scene.traverseVisible((o) => { if ((o as THREE.PointLight).isPointLight) v.push(o as THREE.PointLight); }); return v; };

@@ -5,6 +5,7 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM"],
     "strict": true,
+    "noUnusedLocals": true,
     "noUncheckedIndexedAccess": false,
     "esModuleInterop": true,
     "skipLibCheck": true,

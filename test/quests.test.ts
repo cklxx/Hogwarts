@@ -1,6 +1,6 @@
 /** 今日课表 (src/kernel/quests.ts): three goals a day, counted from the wizard's own counters, paid once, bounded. */
 import { describe, expect, it } from 'vitest';
-import { QUEST_ALL_XP, QUEST_DAY_MAX_XP, QUEST_DAY_S, QUEST_GALLEONS, QUEST_PER_DAY, QUEST_XP, pickQuests, questStatus } from '../src/kernel/quests.js';
+import { QUEST_DAY_MAX_XP, QUEST_DAY_S, QUEST_GALLEONS, QUEST_PER_DAY, pickQuests, questStatus } from '../src/kernel/quests.js';
 import { World } from '../src/kernel/world.js';
 
 function mk() {

@@ -562,11 +562,6 @@ export function forkSpell(world: World, wid: string, id: string, opts: { v?: num
   };
 }
 
-/** What the market says to a wizard: their listings (for whoami / the browser). */
-export function marketOf(world: World, wid: string) {
-  return Object.values(world.market.listings).filter((l) => l.author === wid).map((l) => ({ id: l.id, name: latest(l).name, v: latest(l).v, hidden: l.hidden, copies: l.copiers.length, forks: l.forks.length, casts: l.casts }));
-}
-
 // ------------------------------------------------------------------ the browser (WebSocket; src/server/main.ts)
 
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : undefined);

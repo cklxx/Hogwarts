@@ -83,4 +83,3 @@ export function createCrowd(scene: THREE.Scene, max = 1024) {
     },
   };
 }
-export type Crowd = ReturnType<typeof createCrowd>;

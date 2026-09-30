@@ -139,10 +139,7 @@ export function inZone(z: Zone, x: number, zz: number): boolean {
   return dx * dx + dz * dz <= r * r;
 }
 
-export function zonesAt(x: number, z: number): ZoneId[] {
-  return ZONES.filter((zn) => inZone(zn, x, z)).map((zn) => zn.id);
-}
-/** Is (x, z) in zone `id`? (zonesAt(x, z).includes(id) without building the list: the client asks every frame.) */
+/** Is (x, z) in zone `id`? (Without building a list of zones: the client asks every frame.) */
 export function inZoneId(id: ZoneId, x: number, z: number): boolean {
   for (let i = 0; i < ZONES.length; i++) if (ZONES[i].id === id && inZone(ZONES[i], x, z)) return true;
   return false;

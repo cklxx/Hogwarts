@@ -102,4 +102,3 @@ export function createLightBudget(scene: THREE.Scene, slots: number) {
     },
   };
 }
-export type LightBudget = ReturnType<typeof createLightBudget>;

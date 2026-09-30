@@ -47,12 +47,6 @@ export type ItemSlot = (typeof ITEM_SLOTS)[number];
 export const ITEM_MODS = ['maxHp', 'maxMana', 'manaRegen', 'speed', 'power', 'ward'] as const;
 export type ItemMod = (typeof ITEM_MODS)[number];
 
-/** Hogwarts years 1..7, then life after school. */
-export const YEAR_TITLES = [
-  '',
-  'First Year', 'Second Year', 'Third Year', 'Fourth Year (O.W.L. prep)',
-  'Fifth Year (O.W.L.s)', 'Sixth Year (N.E.W.T. prep)', 'Seventh Year (N.E.W.T.s)',
-];
 export const MAX_YEAR = 7;
 
 /** HUD corners unlocked by casting a charm (reveal). */

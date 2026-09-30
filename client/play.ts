@@ -303,5 +303,4 @@ export function agentPrompt(o: { draft: string; error: string; slot: number; nam
 
 // ------------------------------------------------------------------ the shop (行囊 → 商店)
 export const shopPrice = (s: ShopItem) => itemPrice(itemPoints(s.mods).points);
-export const shopPoints = (s: ShopItem) => itemPoints(s.mods).points;
 export { SHOP };

@@ -34,7 +34,6 @@ function slot(id: string, make: () => HTMLElement): HTMLElement {
   if (!el) { el = make(); el.id = id; }
   return el;
 }
-const setHtml = (el: HTMLElement, html: string) => { if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; } };
 
 export function createPanels(d: PanelDeps) {
   /** When each panel last asked the server for something: an 'err' right after belongs to it. */

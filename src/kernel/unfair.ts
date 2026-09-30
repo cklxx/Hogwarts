@@ -93,7 +93,6 @@ export const DARK_LORD_FALLS: Line[] = [
 ];
 
 // ------------------------------------------------------------------ 邓布利多军 Dumbledore's Army
-export const DA_NAME = { zh: '邓布利多军', en: "Dumbledore's Army" };
 export const DA_JOINED: Line = { zh: '🦌 你在有求必应屋里签下了名字：{name}，欢迎加入邓布利多军。低调点——乌姆里奇在找这张羊皮纸。', en: "🦌 You sign the parchment in the Room of Requirement: welcome to Dumbledore's Army, {name}. Keep it quiet — Umbridge is looking for that list." };
 export const DA_MEMBER_JOINED: Line = { zh: '🦌 {name} 加入了邓布利多军。', en: "🦌 {name} joined Dumbledore's Army." };
 export const DA_LEFT: Line = { zh: '你离开了邓布利多军。（羊皮纸上没有出现「告密生」三个字——你只是走了。）', en: "You left Dumbledore's Army. (No SNEAK appears on your face — you simply left.)" };

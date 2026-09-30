@@ -7,7 +7,6 @@
  * Quidditch) — a counter that resets (a new term's ledger) never counts backwards. A goal pays QUEST_XP and
  * QUEST_GALLEONS once; all three add QUEST_ALL_XP: at most QUEST_DAY_MAX_XP a day (test/quests.test.ts).
  */
-import { z } from 'zod';
 import type { Feature } from './feature.js';
 import type { Wizard } from './types.js';
 import type { World } from './world.js';

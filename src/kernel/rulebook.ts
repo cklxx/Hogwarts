@@ -28,7 +28,6 @@ const creatureToggles = z
   .describe('Which creatures may spawn');
 
 export const LAW_TRIGGERS = ['kill', 'respawn', 'cast', 'pulse'] as const;
-export type LawTrigger = (typeof LAW_TRIGGERS)[number];
 
 export const LawSchema = z.object({
   name: z.string().min(1).max(60),

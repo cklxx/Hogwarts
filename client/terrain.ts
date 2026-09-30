@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AZKABAN, LANDMARKS } from '../src/shared/map';
+import { AZKABAN } from '../src/shared/map';
 import { STORYBOOK } from './textures';
 
 /**
@@ -204,8 +204,6 @@ export function drape(geo: THREE.BufferGeometry, lift = 0.04) {
   geo.computeVertexNormals();
   return geo;
 }
-
-export const landmarkHeight = (id: string) => { const l = LANDMARKS.find((x) => x.id === id); return l ? heightAt(l.x, l.z) : 0; };
 
 /**
  * Where a ray first meets the inner terrain mesh (±320 m), or false: marched along the height grid the

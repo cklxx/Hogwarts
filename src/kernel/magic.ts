@@ -1,7 +1,6 @@
 import { SUMMON_KINDS, SUMMON_YEAR, UI_CHARMS, type EffectPrimitive, type Element, type SummonKind, type UiCharm } from '../shared/constants.js';
 import { inZone, mulberry32, ZONES } from '../shared/map.js';
 import { UI_CHARM_INFO } from '../shared/reveal.js';
-import { analyze } from '../runes/checker.js';
 import { Env, Interp, type RuneHost, type Value, display, isRef, isVec, ref, vec } from '../runes/interp.js';
 import { type Node, RuneError } from '../runes/parser.js';
 import { type Caps, EFFECT_COST, capsFor } from '../runes/primitives.js';
@@ -372,6 +371,3 @@ const tagsFor = (ctx: CastContext) => [ctx.incantation, ctx.spellName].join(' | 
 const round = (n: number) => Math.round(n * 10) / 10;
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
-export function compileFor(world: World, w: Wizard | null, source: string, year: number) {
-  return analyze(source, { year, maxNodes: 40 + world.rules.magic.nodesPerYear * (year - 1), banned: w ? world.rules.magic.bannedPrimitives : [] });
-}

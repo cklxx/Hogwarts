@@ -220,8 +220,6 @@ function randomUnit(v: THREE.Vector3) {
   return v.set(s * Math.cos(a), u, s * Math.sin(a));
 }
 
-export type Particles = ReturnType<typeof createFx>;
-
 /**
  * The game's particle effects. At 'low' quality every effect emits 40% of its particles (trails are
  * laid down more sparsely, chimney smoke puffs are fewer and bigger).

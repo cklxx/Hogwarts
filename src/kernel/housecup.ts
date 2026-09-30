@@ -1,4 +1,4 @@
-import { CUP_MULT_MAX, CUP_SOURCES, type CupSource } from '../shared/constants.js';
+import { CUP_MULT_MAX, type CupSource } from '../shared/constants.js';
 
 /**
  * 学院杯 — the house-point ledger (README 学院杯). Every house point a wizard earns this term, from any source
@@ -68,5 +68,3 @@ export function termBest(xs: CupEntry[]): CupEntry | null {
   const r = rankEntries(xs.filter((x) => x.pts > 0));
   return r[0] ?? null;
 }
-
-export const isCupSource = (s: string): s is CupSource => (CUP_SOURCES as readonly string[]).includes(s);

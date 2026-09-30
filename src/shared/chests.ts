@@ -22,5 +22,3 @@ export const CHESTS: ChestSpot[] = [
   { id: 'broomsticks', x: -23, z: 165, zh: '三把扫帚酒吧后院', en: 'Behind the Three Broomsticks' },
   { id: 'clock', x: 71, z: -60, zh: '钟楼脚下', en: 'At the foot of the Clock Tower' },
 ];
-
-export const chestById = (id: string) => CHESTS.find((c) => c.id === id);

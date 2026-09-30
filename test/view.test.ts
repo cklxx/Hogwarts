@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { heightAt } from '../client/terrain.js';
-import { CameraRig, HARD_ONLY, INDOOR_DIST, INDOOR_PITCH, LOOK_Y, MARGIN, MIN_ARM, PIVOT_Y, ViewWorld, WITH_SOFT, type RigInput } from '../client/view.js';
+import { CameraRig, HARD_ONLY, INDOOR_DIST, INDOOR_PITCH, LOOK_Y, MARGIN, PIVOT_Y, ViewWorld, WITH_SOFT, type RigInput } from '../client/view.js';
 import { HALL_CANDLES, INTERIORS, STATIC_COLLIDERS, colliderOf, interiorAt, signedDistance, viewSolids } from '../src/shared/layout.js';
 import { OBSTACLES, mulberry32 } from '../src/shared/map.js';
 

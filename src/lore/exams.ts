@@ -71,8 +71,3 @@ export const OUTSTANDING_LINES: readonly Line[] = [
   { zh: '这段咒语短得让邓布利多想起了自己的第一段 Hello World。', en: 'A spell so short Dumbledore was reminded of his first Hello World.' },
 ];
 
-/** The examination in one line, for tool descriptions and panels. */
-export const OWL_BLURB: Line = {
-  zh: '普通巫师等级考试：每周一套实战考题，每道题是一个固定的沙盒场景和若干隐藏测试用例。提交 Runes 源码，考场里真实施法、判分，不影响真实世界。',
-  en: 'Ordinary Wizarding Levels: a weekly set of practical exams, each a fixed sandbox scene with hidden test cases. Submit Runes source; it is cast for real in a private exam hall and graded, and the live world is never touched.',
-};
