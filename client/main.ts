@@ -1722,7 +1722,9 @@ const ctl = createControls({
   extraAction: () => {
     const p = wizards.get(myHandle)?.root.position;
     const c = p && snap?.cup ? funWorld.chestNear(p, snap.cup.ch) : null;
-    return c ? { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) } : null;
+    if (c) return { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) };
+    for (const f of feats) { const a = f.action?.(); if (a) return a; } // a feature's own (飞路网, …: client/features.ts)
+    return null;
   },
 });
 // ------------------------------------------------------------------ the panels: 黑魔王, 邓布利多军, 偷师, O.W.L., 使魔, 专注力, 无规则区 (client/panels)

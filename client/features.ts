@@ -4,6 +4,8 @@
  */
 import type { ClientFeatureFactory } from './feature';
 import { duelFeature } from './panels/duel';
+import { questsFeature } from './panels/quests';
 import { quidditchFeature } from './panels/quidditch';
+import { travelFeature } from './panels/travel';
 
-export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [duelFeature, quidditchFeature];
+export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [duelFeature, quidditchFeature, travelFeature, questsFeature];

@@ -28,6 +28,8 @@ export interface ClientFeature {
   keydown?(e: KeyboardEvent): boolean;
   /** A server message: true when it was this feature's. */
   onMessage?(msg: { t: string; [k: string]: unknown }): boolean;
+  /** What F would do right here (a fireplace, …), or null; the first feature with one wins. */
+  action?(): { label: string; x: number; z: number; y: number; act: () => void } | null;
   /** Every frame: the feature's things in the 3D world. */
   frame?(dt: number): void;
   /** Metres above the ground this wizard's model rides now (Quidditch brooms). */

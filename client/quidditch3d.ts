@@ -16,7 +16,7 @@ export interface QdSnap {
 const RIDE = 3.2;
 const std = (color: number, extra: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, ...extra });
 
-function makeBroom() {
+export function makeBroom() {
   const g = new THREE.Group();
   const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.9, 6), std(0x6b4423));
   stick.rotation.x = Math.PI / 2;
