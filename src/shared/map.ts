@@ -135,11 +135,17 @@ export const LANDMARKS: Landmark[] = [
 
 export function inZone(z: Zone, x: number, zz: number): boolean {
   if (z.box) return x >= z.box[0] && x <= z.box[2] && zz >= z.box[1] && zz <= z.box[3];
-  return Math.hypot(x - z.x, zz - z.z) <= (z.r ?? 0);
+  const dx = x - z.x, dz = zz - z.z, r = z.r ?? 0;
+  return dx * dx + dz * dz <= r * r;
 }
 
 export function zonesAt(x: number, z: number): ZoneId[] {
   return ZONES.filter((zn) => inZone(zn, x, z)).map((zn) => zn.id);
+}
+/** Is (x, z) in zone `id`? (zonesAt(x, z).includes(id) without building the list: the client asks every frame.) */
+export function inZoneId(id: ZoneId, x: number, z: number): boolean {
+  for (let i = 0; i < ZONES.length; i++) if (ZONES[i].id === id && inZone(ZONES[i], x, z)) return true;
+  return false;
 }
 
 export function landmarkById(id: string): Landmark | undefined {

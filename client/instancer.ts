@@ -44,10 +44,11 @@ export function instanceAlike(scene: THREE.Scene, roots: THREE.Object3D[]) {
   const shown = (o: THREE.Object3D) => { for (let x = o.parent; x; x = x.parent) if (!x.visible) return false; return true; };
   return {
     update() {
-      for (const r of roots) r.updateMatrixWorld();
+      // (indexed loops: this runs every frame over every candle)
+      for (let i = 0; i < roots.length; i++) roots[i].updateMatrixWorld();
       for (const { list, inst } of batches) {
         let n = 0;
-        for (const m of list) if (shown(m)) inst.setMatrixAt(n++, m.matrixWorld);
+        for (let i = 0; i < list.length; i++) if (shown(list[i])) inst.setMatrixAt(n++, list[i].matrixWorld);
         inst.count = n;
         inst.instanceMatrix.needsUpdate = true;
         if (!inst.boundingSphere) inst.computeBoundingSphere(); // (they bob by centimetres: the first bounds hold)
@@ -55,7 +56,8 @@ export function instanceAlike(scene: THREE.Scene, roots: THREE.Object3D[]) {
       for (const { list, bb, mat } of glows) {
         bb.begin();
         c.copy(mat.color);
-        for (const s of list) {
+        for (let i = 0; i < list.length; i++) {
+          const s = list[i];
           if (!shown(s)) continue;
           s.getWorldPosition(p);
           bb.put(p, c, mat.opacity, s.scale.x, s.scale.y);

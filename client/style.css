@@ -526,7 +526,11 @@ html:lang(zh) #book .folio { font: 400 calc(15px * var(--t)) var(--cjk); }
 #book-bar .bb-cell b { position: absolute; left: calc(3px * var(--u)); top: -1px; font: 700 calc(14px * var(--t))/1.2 var(--latin); color: var(--ink3); }
 #book-bar .bb-cell span { position: absolute; width: calc(1px * var(--u)); height: calc(1px * var(--u)); overflow: hidden; clip: rect(0 0 0 0); }
 #book-bar .bb-cell.empty svg.ic { opacity: .18; }
-#book-bar.drag .bb-cell { border: calc(2px * var(--u)) dashed var(--indigo); background: rgba(39, 70, 111, .08); }
+body.spell-drag #book-bar .bb-cell { border: calc(2px * var(--u)) dashed var(--indigo); background: rgba(39, 70, 111, .08); }
+/* dragging a spell out of the book: the hotbar on screen takes it too (over the book, where they meet) */
+body.spell-drag #bars { z-index: 7; }
+body.spell-drag #hotbar > div { outline: calc(2px * var(--u)) dashed var(--indigo); outline-offset: calc(-4px * var(--u)); }
+body.spell-drag #hotbar > div.over { outline-color: var(--wax); top: -4px; }
 #book-bar .bb-cell.over, #book-bar .bb-cell:hover { border-color: var(--wax); background: rgba(150, 32, 36, .08); }
 #book-bar .bb-hint { font-size: calc(14px * var(--t)); margin-left: calc(4px * var(--u)); }
 #book-list li.tpl-entry b { color: inherit; }

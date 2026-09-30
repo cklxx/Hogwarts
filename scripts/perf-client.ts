@@ -4,6 +4,8 @@
  *   npx vite build && npx tsx scripts/perf-client.ts [--port=8820] [--q=high,low] [--secs=8] [--warm=4]
  *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,crowd,castle,lake,overview] [--size=1280x720]
  *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium] [--census] [--shots=dir] [--url=&extra=1]
+ *        [--viewer=x,z]   (spots also: close, hall, forest)   [--heap]  (what allocates, per spot: CDP sampling heap profiler)
+ *        [--nodraw]  (every frame's JS runs, nothing is drawn: the page at the display's rate, without SwiftShader)
  *
  * What it does: writes a world save with `--bots` enrolled wizards (`--crowd` of them within 15 m of the courtyard
  * spawn, the rest spread over the map), the wild pre-filled to 3x its population, and one viewer wizard at the spawn;
@@ -35,7 +37,8 @@ import { World } from '../src/kernel/world.js';
 import { mulberry32, SPAWN, WORLD_HALF } from '../src/shared/map.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1'] as [string, string]; }));
+// (split at the first '=' only: --url='&dyn=0&x=1' keeps its own '=' signs)
+const args = new Map(process.argv.slice(2).map((a) => { const s = a.replace(/^--/, ''), i = s.indexOf('='); return (i < 0 ? [s, '1'] : [s.slice(0, i), s.slice(i + 1)]) as [string, string]; }));
 const opt = (k: string, d: string) => args.get(k) ?? d;
 const PORT = Number(opt('port', '8820'));
 const SECS = Number(opt('secs', '8'));
@@ -52,6 +55,8 @@ const OUT = args.get('out');
 const SCRATCH = process.env.PERF_TMP ?? join(ROOT, 'data', 'perf');
 const PW = process.env.PLAYWRIGHT_CORE ?? opt('playwright', '/tmp/claude-0/-home-user-Hogwarts/f6d5f4cd-c14a-5196-b6e5-05eb73ec4d18/scratchpad/node_modules/playwright-core/index.mjs');
 const CHROMIUM = opt('chromium', process.env.CHROMIUM ?? '/opt/pw-browsers/chromium');
+/** Where the viewer stands (`--viewer=x,z`; default a few metres south of the courtyard spawn). `--viewer=0,-58`: in the Great Hall. */
+const VIEWER = args.get('viewer')?.split(',').map(Number);
 const EXTRA = (args.get('url') ?? '').replace(/^&?/, '&').replace(/^&$/, '');
 
 /** Camera shots (client/capture.ts); `follow` is the game's own camera behind the viewer at the spawn. */
@@ -63,6 +68,9 @@ const SHOTS: Record<string, { pos: [number, number, number]; look: [number, numb
   crowd: { pos: [8, 14, 45], look: [0, 1, -22] },
   /** (a look at your own wizard up close: not in the default set) */
   close: { pos: [2.2, 2.0, -12.6], look: [0, 1.1, -16] },
+  /** (not in the default set: the Great Hall from its doorway, and the Forbidden Forest with the Highlands behind) */
+  hall: { pos: [0, 10, -41], look: [0, 4, -66] },
+  forest: { pos: [110, 14, 70], look: [170, 4, 10] },
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -79,7 +87,7 @@ function makeWorld(file: string) {
   for (let i = 0; i < 40; i++) (world as unknown as { spawnCreatures(): void }).spawnCreatures();
   const rnd = mulberry32(777);
   const viewer = world.enroll('Perf Viewer').wizard;
-  viewer.pos = { x: SPAWN.x, z: SPAWN.z + 6 };
+  viewer.pos = VIEWER ? { x: VIEWER[0], z: VIEWER[1] } : { x: SPAWN.x, z: SPAWN.z + 6 };
   viewer.createdAt = -1e9;
   const tokens: string[] = [];
   for (let i = 0; i < BOTS; i++) {
@@ -134,6 +142,24 @@ function printProfile(p: Profile, what: string) {
   }
   console.log(`  cpu profile (${what}): ${total.toFixed(0)} ms sampled`);
   for (const [k, ms] of [...agg].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`    ${ms.toFixed(1).padStart(8)} ms  ${k}`);
+}
+
+interface HeapNode { callFrame: { functionName: string; url: string; lineNumber: number; columnNumber: number }; selfSize: number; children: HeapNode[] }
+/** Top allocation sites (self bytes, collected objects included) from a CDP sampling heap profile. */
+function printHeap(root: HeapNode, what: string, secs: number) {
+  const agg = new Map<string, number>();
+  let total = 0;
+  const name = (f: HeapNode['callFrame']) => `${f.functionName || '(anon)'} ${f.url.split('/').pop()}:${f.lineNumber + 1}:${f.columnNumber + 1}`;
+  const walk = (n: HeapNode, parent: string) => {
+    const f = n.callFrame;
+    // (a builtin, Math.random or an iterator's next, is shown with the function that called it)
+    const k = f.url ? name(f) : `${f.functionName} ← ${parent}`;
+    if (n.selfSize) { agg.set(k, (agg.get(k) ?? 0) + n.selfSize); total += n.selfSize; }
+    for (const c of n.children) walk(c, f.url ? name(f) : parent);
+  };
+  walk(root, '');
+  console.log(`  allocations (${what}): ${(total / 1048576 / secs).toFixed(2)} MB/s sampled`);
+  for (const [k, b] of [...agg].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`    ${(b / 1024 / secs).toFixed(1).padStart(8)} KB/s  ${k}`);
 }
 
 async function main() {
@@ -201,17 +227,19 @@ async function main() {
       if (OUT) appendFileSync(OUT, JSON.stringify({ kind: 'load', label: LABEL, ...load }) + '\n');
 
       for (const spot of SPOTS) {
-        await page.evaluate((s: unknown) => { (window as any).__capture = s; }, SHOTS[spot] ?? null);
+        await page.evaluate((s: unknown) => { (window as any).__capture = s; }, args.has('nodraw') ? { ...SHOTS[spot], skip: true } : SHOTS[spot] ?? null);
         await page.mouse.move(VW * 0.5, VH * 0.42); // the pointer over the view: hover, aim and ground picking run every frame
         await sleep(WARM * 1000);
         const metric = async () => Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]));
         await page.evaluate(() => { (window as any).__perf.reset(); (window as any).__lt.length = 0; Object.assign((window as any).__heap, { grow: 0, drops: 0, dropped: 0 }); });
         if (args.get('profile') === 'spot') { await cdp.send('Profiler.start'); }
+        if (args.has('heap')) { await cdp.send('HeapProfiler.enable'); await cdp.send('HeapProfiler.startSampling', { samplingInterval: 8192, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true }); }
         const m0 = await metric();
         const w0 = Date.now();
         await sleep(SECS * 1000);
         const m1 = await metric();
         if (args.get('profile') === 'spot') printProfile(((await cdp.send('Profiler.stop')) as { profile: Profile }).profile, spot);
+        if (args.has('heap')) printHeap(((await cdp.send('HeapProfiler.stopSampling')) as { profile: { head: HeapNode } }).profile.head, spot, SECS);
         const wall = (Date.now() - w0) / 1000;
         const r = await page.evaluate(() => { const p = (window as any).__perf; return { frames: p.frames, counters: p.counters, info: p.info(), lt: (window as any).__lt, heap: (window as any).__heap, passes: p.passes, census: p.census() }; });
         if (args.has('census')) {

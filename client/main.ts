@@ -401,8 +401,16 @@ const watch = createWatch({ send: rawSend, toast: (s) => toast(s) });
  * creature or spell that vanishes near you (inside the always-sent 120 m) died or struck, and gets its puff
  * or burst. Parked wizards not seen for a while, and pooled models beyond what a pool keeps, are freed.
  */
-type WizardEntry = WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
-type CreatureEntry = ReturnType<typeof makeCreature> & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number };
+/** Where an entity last stood (gx, gz) and the ground's height there: see groundOf. */
+type Grounded = { root: THREE.Object3D; gx?: number; gz?: number; gy?: number };
+type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
+type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number };
+/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame). */
+const groundOf = (e: Grounded) => {
+  const p = e.root.position;
+  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; e.gy = heightAt(p.x, p.z); }
+  return e.gy!;
+};
 const parked = new Map<string, { m: WizardEntry; at: number }>();
 const herdPool = new Map<CreatureKind, CreatureEntry[]>();
 /** Things that vanish nearer than this (m) to you vanished for real (the server always sends everything within 120 m). */
@@ -428,7 +436,7 @@ function apply(s: Snap) {
       const p = parked.get(w.h);
       if (p) { parked.delete(w.h); m = p.m; }
       else {
-        m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() }) as WizardEntry;
+        m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as WizardEntry;
         m.root.add(m.aura);
         m.root.name = 'wizard';
         m.label.sprite.visible = false; // (the frame's level of detail shows it when near)
@@ -469,7 +477,7 @@ function apply(s: Snap) {
     if (!m) {
       m = herdPool.get(c.k)?.pop();
       if (!m) {
-        m = Object.assign(makeCreature(c.k), { k: c.k, tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing() }) as CreatureEntry;
+        m = Object.assign(makeCreature(c.k), { k: c.k, tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as CreatureEntry;
         m.root.add(m.aura);
         m.root.name = 'creature';
         m.label.sprite.visible = false;
@@ -1463,25 +1471,37 @@ $('#book-list').addEventListener('click', (e) => {
   else if (li.dataset.tpl) openTemplates();
   else loadSpell(li.dataset.id || null);
 });
+// drag a spell from the list onto a hotbar slot: a cell of the book's own strip, or a tile of the hotbar on
+// screen (lifted over the book while you drag), the same six slots either way
 $('#book-list').addEventListener('dragstart', (e) => {
   const li = (e.target as HTMLElement).closest('li[data-id]') as HTMLElement | null;
   if (!li?.dataset.id || !e.dataTransfer) return;
   e.dataTransfer.setData('text/plain', li.dataset.id);
   e.dataTransfer.effectAllowed = 'move';
-  $('#book-bar').classList.add('drag');
+  document.body.classList.add('spell-drag');
 });
-$('#book-list').addEventListener('dragend', () => $('#book-bar').classList.remove('drag'));
+const endDrag = () => { document.body.classList.remove('spell-drag'); $('#hotbar').querySelectorAll('.over').forEach((c) => c.classList.remove('over')); };
+$('#book-list').addEventListener('dragend', endDrag);
 const barCell = (e: Event) => (e.target as HTMLElement).closest('.bb-cell') as HTMLElement | null;
-$('#book-bar').addEventListener('dragover', (e) => { const c = barCell(e); if (!c) return; e.preventDefault(); c.classList.add('over'); });
-$('#book-bar').addEventListener('dragleave', (e) => barCell(e)?.classList.remove('over'));
-$('#book-bar').addEventListener('drop', (e) => {
+/** The slot (1–6) a drag is over, and its element: a book strip cell or an on-screen hotbar tile. */
+const dropSlot = (e: Event): [HTMLElement, number] | null => {
   const c = barCell(e);
-  $('#book-bar').classList.remove('drag');
-  if (!c) return;
-  e.preventDefault();
-  const id = e.dataTransfer?.getData('text/plain');
-  if (id && bookSpells.some((s) => s.id === id)) assignSlot(id, Number(c.dataset.cell));
-});
+  if (c) return [c, Number(c.dataset.cell)];
+  const tile = (e.target as HTMLElement).closest('#hotbar > div') as HTMLElement | null;
+  return tile ? [tile, Array.prototype.indexOf.call(tile.parentElement!.children, tile) + 1] : null;
+};
+for (const zone of [$('#book-bar'), $('#hotbar')]) {
+  zone.addEventListener('dragover', (e) => { const s = dropSlot(e); if (!s) return; e.preventDefault(); s[0].classList.add('over'); });
+  zone.addEventListener('dragleave', (e) => dropSlot(e)?.[0].classList.remove('over'));
+  zone.addEventListener('drop', (e) => {
+    const s = dropSlot(e);
+    endDrag();
+    if (!s) return;
+    e.preventDefault();
+    const id = e.dataTransfer?.getData('text/plain');
+    if (id && bookSpells.some((x) => x.id === id)) assignSlot(id, s[1]);
+  });
+}
 $('#book-bar').addEventListener('click', (e) => { const c = barCell(e); if (c && bookSel) assignSlot(bookSel, Number(c.dataset.cell)); });
 
 function loadSpell(id: string | null) {
@@ -1843,6 +1863,69 @@ let prev = performance.now();
 let frameNo = 0;
 const ORIGIN = new THREE.Vector3();
 const litPool: { x: number; y: number; z: number; color: number; d: number }[] = [], lit: typeof litPool = [];
+/**
+ * What this frame's entity visitors share (set by frame()). The visitors are made once and read it from here:
+ * closures made every frame, Map entries, Math.hypot and doubles passed around all allocate, and these run for
+ * every wizard, creature and bolt every frame (docs/PERF.md, "GC").
+ */
+const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null };
+function animWizard(w: WizardEntry, h: string) {
+  const px = w.root.position.x, pz = w.root.position.z;
+  w.root.position.x += (w.tx - w.root.position.x) * FR.k;
+  w.root.position.z += (w.tz - w.root.position.z) * FR.k;
+  let lift = 0;
+  for (const f of lifters) lift += f.lift!(h); // 魁地奇: riders fly
+  w.root.position.y = groundOf(w) + lift;
+  const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
+  w.body.rotation.y += turn * Math.min(1, FR.dt * 14);
+  const mx = w.root.position.x - px, mz = w.root.position.z - pz;
+  const speed = FR.dt > 0 ? Math.sqrt(mx * mx + mz * mz) / FR.dt : 0;
+  const d = w.root.position.distanceTo(camera.position);
+  const mine = h === myHandle, focused = h === FR.focus;
+  // (a stunned wizard lies down: only the full model does that)
+  w.far = !mine && !focused && d > FR.lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
+  w.body.visible = !w.far;
+  w.label.show(focused || (!w.far && d < FR.lod.label));
+  if (w.patronus.visible) {
+    w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
+    particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
+  }
+  if (w.far) {
+    // the crowd's walk: a bob twice per stride while moving
+    w.bob = ((w.bob ?? 0) + FR.dt * Math.min(speed, 9) * 1.3) % Math.PI;
+    const col = farColors(w);
+    crowd.put(w.root.position.x, w.root.position.y + w.body.position.y, w.root.position.z, w.body.rotation.y, speed > 0.3 ? Math.abs(Math.cos(w.bob)) * 0.06 : 0, col.robeC, col.trimC);
+    w.castPending = false;
+    return;
+  }
+  w.setMid(!mine && !focused && d > FR.lod.mid);
+  const fire = w.update(FR.dt, speed, w.castPending);
+  w.castPending = false;
+  w.root.updateMatrixWorld();
+  parts.add(w.root);
+  if (fire) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
+}
+function animCreature(c: CreatureEntry, i: string) {
+  c.root.position.x += (c.tx - c.root.position.x) * FR.k;
+  c.root.position.z += (c.tz - c.root.position.z) * FR.k;
+  c.root.position.y = groundOf(c);
+  c.root.rotation.y = -c.tf;
+  const d = c.root.position.distanceTo(camera.position);
+  const focused = i === FR.focus;
+  // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
+  c.root.visible = focused || d < FR.lod.anim;
+  c.label.show(focused || d < FR.lod.label);
+  if (c.root.visible) c.anim(clock);
+  else if (d < FR.lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
+}
+function animBolt(b: THREE.Object3D & { tx?: number; tz?: number }) {
+  b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, FR.k * 2);
+  b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, FR.k * 2);
+  b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
+  particles.trail(b, b.position, b.userData.color ?? 0xffffff);
+  const spin = b.children[0];
+  if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
+}
 function frame() {
   requestAnimationFrame(frame);
   probe.frameBegin();
@@ -1859,71 +1942,20 @@ function frame() {
       if (perf.time / perf.frames > 0.045 && quality === 'high') { applyQuality('low'); toast('Graphics quality lowered for smoother play (add ?q=high to force).'); }
     }
   }
-  const k = 1 - Math.exp(-dt * 12);
+  FR.k = 1 - Math.exp(-dt * 12);
+  FR.dt = dt;
   // level of detail from last frame's camera (it moves a fraction of a metre per frame)
-  const lod = LOD[quality], cam = camera.position, focusKey = ctl.targetKey();
+  FR.lod = LOD[quality];
+  FR.focus = ctl.targetKey();
   crowd.begin();
   parts.begin();
-  for (const [h, w] of wizards) {
-    const px = w.root.position.x, pz = w.root.position.z;
-    w.root.position.x += (w.tx - w.root.position.x) * k;
-    w.root.position.z += (w.tz - w.root.position.z) * k;
-    let lift = 0;
-    for (const f of lifters) lift += f.lift!(h); // 魁地奇: riders fly
-    w.root.position.y = heightAt(w.root.position.x, w.root.position.z) + lift;
-    const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
-    w.body.rotation.y += turn * Math.min(1, dt * 14);
-    const speed = dt > 0 ? Math.hypot(w.root.position.x - px, w.root.position.z - pz) / dt : 0;
-    const d = Math.hypot(w.root.position.x - cam.x, w.root.position.y - cam.y, w.root.position.z - cam.z);
-    const mine = h === myHandle, focused = h === focusKey;
-    // (a stunned wizard lies down: only the full model does that)
-    w.far = !mine && !focused && d > lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
-    w.body.visible = !w.far;
-    w.label.show(focused || (!w.far && d < lod.label));
-    if (w.patronus.visible) {
-      w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
-      particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
-    }
-    if (w.far) {
-      // the crowd's walk: a bob twice per stride while moving
-      w.bob = ((w.bob ?? 0) + dt * Math.min(speed, 9) * 1.3) % Math.PI;
-      const col = farColors(w);
-      crowd.put(w.root.position.x, w.root.position.y + w.body.position.y, w.root.position.z, w.body.rotation.y, speed > 0.3 ? Math.abs(Math.cos(w.bob)) * 0.06 : 0, col.robe, col.trim);
-      w.castPending = false;
-      continue;
-    }
-    w.setMid(!mine && !focused && d > lod.mid);
-    const fire = w.update(dt, speed, w.castPending);
-    w.castPending = false;
-    w.root.updateMatrixWorld();
-    parts.add(w.root);
-    if (fire) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
-  }
+  wizards.forEach(animWizard);
   crowd.end(quality === 'high');
   parts.end();
   herd.begin();
-  for (const [i, c] of creatures) {
-    c.root.position.x += (c.tx - c.root.position.x) * k;
-    c.root.position.z += (c.tz - c.root.position.z) * k;
-    c.root.position.y = heightAt(c.root.position.x, c.root.position.z);
-    c.root.rotation.y = -c.tf;
-    const d = Math.hypot(c.root.position.x - cam.x, c.root.position.y - cam.y, c.root.position.z - cam.z);
-    const focused = i === focusKey;
-    // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
-    c.root.visible = focused || d < lod.anim;
-    c.label.show(focused || d < lod.label);
-    if (c.root.visible) c.anim(clock);
-    else if (d < lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
-  }
+  creatures.forEach(animCreature);
   herd.end();
-  for (const b of bolts.values()) {
-    b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, k * 2);
-    b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, k * 2);
-    b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
-    particles.trail(b, b.position, b.userData.color ?? 0xffffff);
-    const spin = b.children[0];
-    if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
-  }
+  bolts.forEach(animBolt);
   boltBatch.update(bolts.values());
   fxm.update(dt);
   elderGlint.rotation.y += dt * 2;
@@ -1960,7 +1992,7 @@ function frame() {
       (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
     }
     let nearWillow = false;
-    if (!snap.willowCalm) for (const w of wizards.values()) if (Math.hypot(w.root.position.x - 45, w.root.position.z) < 9) { nearWillow = true; break; }
+    if (!snap.willowCalm) for (const w of wizards.values()) { const x = w.root.position.x - 45, z = w.root.position.z; if (x * x + z * z < 81) { nearWillow = true; break; } }
     world.tick(clock, dt, nearWillow, R.sunDir,
       { hour: snap.hour, banner: look.banner, focus: my?.root.position });
   }
@@ -1970,14 +2002,16 @@ function frame() {
   particles.update(dt, camera, R.renderer, R.day);
   // spells light up their surroundings: the pool goes to the bolts nearest the camera
   // (the light budget, lights.ts, then picks among these and every other light)
-  let nl = 0;
-  for (const b of bolts.values()) {
-    const l = (litPool[nl++] ??= { x: 0, y: 0, z: 0, color: 0, d: 0 });
-    l.x = b.position.x; l.y = b.position.y + 0.2; l.z = b.position.z; l.color = (b.userData.color as number) ?? 0xffffff; l.d = b.position.distanceToSquared(camera.position);
-  }
   lit.length = 0;
-  for (let i = 0; i < nl; i++) lit.push(litPool[i]);
-  lit.sort((a, b) => a.d - b.d);
+  bolts.forEach((b) => {
+    const l = (litPool[lit.length] ??= { x: 0.5, y: 0.5, z: 0.5, color: 0, d: 0.5 });
+    l.x = b.position.x; l.y = b.position.y + 0.2; l.z = b.position.z; l.color = (b.userData.color as number) ?? 0xffffff; l.d = b.position.distanceToSquared(camera.position);
+    // nearest first: an insertion sort in place (a sort() comparator's results are boxed, every frame)
+    let i = lit.length;
+    lit.push(l);
+    while (i > 0 && lit[i - 1].d > l.d) { lit[i] = lit[i - 1]; i--; }
+    lit[i] = l;
+  });
   R.setBoltLights(lit);
   probe.end('fx', tp); tp = probe.begin();
 
@@ -2027,7 +2061,7 @@ const warmed = (async () => {
     herd.put(k, g.position, 0);
   }
   herd.end();
-  crowd.begin(); crowd.put(0, -200, 0, 0, 0, 0x222222, 0xffffff); crowd.end(true);
+  crowd.begin(); crowd.put(0, -200, 0, 0, 0, new THREE.Color(0x222222), new THREE.Color(0xffffff)); crowd.end(true);
   const far = 3000;
   ring(far, far, 0xffffff, 1, 2, 0.1); puff(far, far, 0xffffff); column(far, far, 0xffffff, 0.1); floatText(far, far, '1', '#fff'); lightning([far, far, far + 1, far], 0xffffff);
   scene.add(g);

@@ -37,6 +37,9 @@ export const TORCH_POST = { r: 0.12, h: 3 };
 /** The four house tables in the Great Hall (w along x, d along z). Low: bolts fly over them. */
 export const HALL_TABLES: { x: number; z: number; w: number; d: number; h: number }[] = [-7.5, -2.5, 2.5, 7.5].map((x) => ({ x, z: -55, w: 1.4, d: 22, h: 0.9 }));
 
+/** The Great Hall's floating candles (scene.ts; they bob a few centimetres): 8 across, 6 deep, 7.4-8.6 m up. */
+export const HALL_CANDLES: { x: number; y: number; z: number }[] = Array.from({ length: 48 }, (_, i) => ({ x: -10 + (i % 8) * 2.9, y: 8 + Math.sin(i) * 0.6, z: -69 + Math.floor(i / 8) * 5 }));
+
 /** Buttresses along both long walls of the Great Hall (w along x, d along z). */
 export const HALL_BUTTRESS = { w: 0.7, d: 0.9, h: 13.2 };
 export const HALL_BUTTRESSES: { x: number; z: number }[] = Array.from({ length: 7 }, (_, i) => -70.3 + i * 4.6).flatMap((z) => [-1, 1].map((sx) => ({ x: sx * 13.35, z })));
@@ -205,7 +208,7 @@ export function viewSolids(ground: (x: number, z: number) => number = () => 0): 
       case 'tree': {
         const g = ground(o.x, o.z);
         put(c, g, g + o.h * 0.4); // the trunk
-        // two crowns (scene.ts forest): a cone 3.4 r wide from 0.275 h to 0.825 h, one 2.3 r wide from 0.6 h to h
+        // the crown (scene.ts crownGeometry): three tiers, 3.4 r wide at 0.275 h, 2.6 r at 0.5 h, 1.7 r at 0.68 h, to h
         const crown = (r: number) => disc(o.x, o.z, r, 0, 'tree');
         put(crown(o.r * 3.4), g + o.h * 0.275, g + o.h * 0.6, { soft: true });
         put(crown(o.r * 2.3), g + o.h * 0.6, g + o.h * 0.8, { soft: true });
@@ -242,6 +245,8 @@ export function viewSolids(ground: (x: number, z: number) => number = () => 0): 
   put(boxAt(L.x, L.z, L.w / 2, L.d / 2, 'stone', 'Lintel'), L.y - L.h / 2, L.y + L.h / 2);
   const R = HALL_ROOF, rcx = (R.x0 + R.x1) / 2, rcz = (R.z0 + R.z1) / 2;
   taper((k) => boxAt(rcx, rcz, ((R.x1 - R.x0) / 2) * k, (R.z1 - R.z0) / 2, 'stone', 'Great Hall roof'), R.y, R.y + R.rise, 3, { roof: 0 });
+  // a candle and its glow: soft (the arm passes by; one in the way turns the fade on)
+  for (const c of HALL_CANDLES) put(disc(c.x, c.z, 0.4, 0, 'wood', 'Candle'), c.y - 0.4, c.y + 0.9, { soft: true });
   for (const t of TURRETS) {
     put(disc(t.x, t.z, t.r, 0, 'tower', 'Turret'), t.H - 6.2, t.H + 3.5);
     taper((k) => disc(t.x, t.z, t.r * 1.32 * k, 0, 'tower', 'Turret'), t.H + 3.5, t.H + 3.5 + t.r * 3.4, 2);
