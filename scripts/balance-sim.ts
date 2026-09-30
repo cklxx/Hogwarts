@@ -16,7 +16,7 @@ import type { Wizard } from '../src/kernel/types.js';
 
 const arg = (k: string, d: number) => Number(process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d);
 const MINUTES = arg('minutes', 10), YEAR = arg('year', 1), SEED = arg('seed', 5);
-const SPOTS: Record<string, { x: number; z: number }> = { pixies: { x: 22, z: 28 }, snare: { x: 41, z: -24 }, forest: { x: 150, z: 20 }, troll: { x: -50, z: -36 } };
+const SPOTS: Record<string, { x: number; z: number }> = { pixies: { x: 12, z: 10 }, snare: { x: 41, z: -24 }, forest: { x: 150, z: 20 }, troll: { x: -50, z: -36 } };
 const STYLES = ['turret', 'kiter', 'brawler'] as const;
 /** The playtest's Herbicide idea: pick the element the target is weak to (ice for pixies, fire for the rest). */
 const BOLT = '(bolt target 12 (if (= (kind target) "pixie") :ice :fire))';
