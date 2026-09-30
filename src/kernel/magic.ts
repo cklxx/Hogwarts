@@ -5,6 +5,7 @@ import { analyze } from '../runes/checker.js';
 import { Env, Interp, type RuneHost, type Value, display, isRef, isVec, ref, vec } from '../runes/interp.js';
 import { type Node, RuneError } from '../runes/parser.js';
 import { type Caps, EFFECT_COST, capsFor } from '../runes/primitives.js';
+import { FEATURE_SPELLS } from './features.js';
 import { derived, gasLimit } from './progression.js';
 import { describeGlamour, glamourCostArgs, jinxLayer, materialRefusal, nextLook, prankRefusal, prankSecs, PRANK_MIN_S, readGlamour } from './glamour.js';
 import { dist } from './physics.js';
@@ -27,7 +28,7 @@ export interface CastContext {
   mana?: number;
 }
 
-export interface Planned { prim: EffectPrimitive; cost: number; desc: string; apply: () => void }
+export interface Planned { prim: string; cost: number; desc: string; apply: () => void }
 
 export interface CastReport {
   ok: boolean;
@@ -127,7 +128,7 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
       if (plan.length >= caps.effectsPerCast) throw new RuneError(`too many effects in one cast (max ${caps.effectsPerCast} at your year)`, at.line, at.col);
       const mult = rb.magic.costMultipliers[name] ?? 1;
       const push = (costArgs: Record<string, number>, desc: string, apply: () => void) => {
-        plan.push({ prim: name, cost: EFFECT_COST[name](costArgs) * mult * (ctx.discount ?? 1), desc, apply });
+        plan.push({ prim: name, cost: EFFECT_COST[name as EffectPrimitive](costArgs) * mult * (ctx.discount ?? 1), desc, apply });
       };
       switch (name) {
         case 'bolt': {
@@ -281,8 +282,12 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
           return push(glamourCostArgs(req, true, secs), `glamour ${t.name} for ${fmt(secs)}s: ${describeGlamour(req)}`, () => world.jinxLook(w, t, jinxLayer(req), secs));
         }
         default: {
-          const never: never = name;
-          throw new RuneError(`unimplemented effect ${never}`, at.line, at.col);
+          // a feature's own primitive (kernel/feature.ts spells: 黑魔法, …)
+          const sp = FEATURE_SPELLS.get(name);
+          if (!sp) throw new RuneError(`unimplemented effect ${name as string}`, at.line, at.col);
+          const r = sp.plan({ world, caster: w, caps, tags: tagsFor(ctx), clamp: clampNote, posOf, harmable }, args, at);
+          plan.push({ prim: name, cost: sp.cost(r.cost) * mult * (ctx.discount ?? 1), desc: r.desc, apply: r.apply });
+          return;
         }
       }
     },

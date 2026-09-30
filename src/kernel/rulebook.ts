@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   CARD_DROP_PCT_DEFAULT, CARD_DROP_PCT_MAX, CUP_CAP_DEFAULT, CUP_CAP_MAX, CUP_CAP_MIN, CUP_MULT_DEFAULT, CUP_MULT_MAX, EVENT_IDS, EVENT_INTERVAL_DEFAULT, EVENT_INTERVAL_MAX, EVENT_INTERVAL_MIN,
 } from '../shared/constants.js';
-import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, TERM_DEFAULT_S, type EffectPrimitive, type Element, type WildKind } from '../shared/constants.js';
+import { CREATURE_KINDS, ELEMENTS, SPELL_PRIMITIVES, type SpellPrimitive, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, TERM_DEFAULT_S, type Element, type WildKind } from '../shared/constants.js';
 
 /**
  * The Rulebook is ALL the policy of the world. The kernel is pure mechanism and reads every tunable
@@ -13,7 +13,7 @@ import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, MARKET_BAN_MAX, MARKET_CAP
 const num = (min: number, max: number, def: number, describe: string) => z.number().min(min).max(max).default(def).describe(describe);
 
 const costMultipliers = z
-  .object(Object.fromEntries(EFFECT_PRIMITIVES.map((p) => [p, z.number().min(0.25).max(4).default(1)])) as Record<EffectPrimitive, z.ZodDefault<z.ZodNumber>>)
+  .object(Object.fromEntries(SPELL_PRIMITIVES.map((p) => [p, z.number().min(0.25).max(4).default(1)])) as Record<SpellPrimitive, z.ZodDefault<z.ZodNumber>>)
   .prefault({})
   .describe('Mana cost multiplier per spell primitive');
 
@@ -63,7 +63,7 @@ export const RulebookSchema = z.object({
       manaRegen: num(1, 40, 7, 'Mana regenerated per second'),
       castOverhead: num(0, 20, 2, 'Flat mana cost of any cast'),
       costMultipliers,
-      bannedPrimitives: z.array(z.enum(EFFECT_PRIMITIVES)).max(8).default([]).describe('Primitives outlawed by the Ministry'),
+      bannedPrimitives: z.array(z.enum(SPELL_PRIMITIVES)).max(8).default([]).describe('Primitives outlawed by the Ministry (the Dark Arts included: sectumsempra, fiendfyre, imperio, morsmordre)'),
       apparitionOnGrounds: z.boolean().default(false).describe('"You cannot Apparate inside Hogwarts grounds" (Hogwarts: A History)'),
       unforgivablesBanned: z.boolean().default(true).describe('Casting an Unforgivable Curse earns a stay in Azkaban'),
       nodesPerYear: num(10, 80, 25, 'Extra spell complexity (AST nodes) per year; base 40'),

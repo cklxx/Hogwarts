@@ -25,6 +25,8 @@
 | 属性再怎么被削也有下限（生命、法力、速度、伤害） | `src/kernel/progression.ts` | Lean `hp_floor`、`mana_floor`、`speed_floor`、`power_pos` |
 | 决斗俱乐部里只有两名选手能互相伤害，外人不能打、不能治 | `World.canHarm` 的决斗分支 | TLA+ `Hostility`（`DuelMutual`、`DuelIsolated`） |
 | 人永远优先：你一操作，Agent 立刻让路；暂停 Agent 后它只能看、能说话 | `World.setInput`、Agent 控制 | TLA+ `Control` |
+| 黑魔法也要过伤害判定：夺魂咒永远不能用在巫师身上（谁的意志都不能被夺走），厉火只烧 `canHarm` 允许烧的 | `src/kernel/dark.ts` | `test/dark.test.ts` |
+| 插件带来的 Runes 原语和内核自带的一样：受年级和封印门槛、法力上限、法令禁用的约束 | `registerPrims`、`FEATURE_SPELLS`（`src/kernel/magic.ts`） | `test/dark.test.ts`，TLA+ `CastTxn` |
 
 ## 3. 奖励有上限：刷不爆
 

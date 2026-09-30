@@ -33,6 +33,13 @@ export const EFFECT_PRIMITIVES = [
   'regen', 'mend', 'revive', 'cleanse', 'summon', 'glamour',
 ] as const;
 export type EffectPrimitive = (typeof EFFECT_PRIMITIVES)[number];
+/**
+ * Primitives a feature plugin brings (kernel/feature.ts `spells`): named here so the Rulebook can price and ban them
+ * like the kernel's own (the schema is built before the plugins load). 黑魔法: kernel/dark.ts.
+ */
+export const PLUGIN_PRIMITIVES = ['sectumsempra', 'fiendfyre', 'imperio', 'morsmordre'] as const;
+export const SPELL_PRIMITIVES = [...EFFECT_PRIMITIVES, ...PLUGIN_PRIMITIVES] as const;
+export type SpellPrimitive = (typeof SPELL_PRIMITIVES)[number];
 
 export const ITEM_SLOTS = ['wand', 'robe', 'amulet', 'trinket', 'broom'] as const;
 export type ItemSlot = (typeof ITEM_SLOTS)[number];

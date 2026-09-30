@@ -14,7 +14,7 @@ const INK: Record<string, { fill?: string; stroke?: string; width?: number }> = 
   p: { fill: '#07140b' },
 };
 
-function paint(c: CanvasRenderingContext2D) {
+export function paint(c: CanvasRenderingContext2D) {
   const sym = document.getElementById('i-darkmark');
   c.clearRect(0, 0, 256, 256);
   if (!sym) return;

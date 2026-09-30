@@ -2555,6 +2555,10 @@ export class World {
   }
 
   private hit(p: Projectile, id: string) {
+    this.hitInner(p, id);
+    for (const f of HOOKS.hit) f.hit(this, p, id); // e.g. 神锋无影's wound (dark.ts)
+  }
+  private hitInner(p: Projectile, id: string) {
     if (p.kind === 'bolt') { this.damage(p.owner, id, p.power, p.element, p.tags); return; }
     const w = this.wizards.get(id);
     const c = this.creatures.get(id);
