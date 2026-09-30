@@ -3,7 +3,7 @@
  *
  *   npx tsx scripts/bench.ts kernel [--n=100,500,1000,2000] [--secs=30] [--warm=10]
  *   npx tsx scripts/bench.ts net    [--k=50,200,500] [--secs=15] [--warm=5] [--layout=spread|crowd] [--port=7900] [--realms=1]
- *                                   [--input-hz=20] [--aoi=1|0] [--env=K=V,...]
+ *                                   [--input-hz=20] [--aoi=1|0] [--v=1|2] [--env=K=V,...]
  *   npx tsx scripts/bench.ts trace  [--n=150] [--secs=30]          # determinism fingerprint (same number = same behaviour)
  *   npx tsx scripts/bench.ts churn  [--n=300] [--secs=120] [--observers=5] [--aoi=0,140/0,140/10]   # AOI enter/leave per client
  *   npx tsx scripts/bench.ts all
@@ -236,7 +236,7 @@ async function waitHttp(url: string, ms: number) {
 
 function probeCmd(dir: string, gen: number, cmd: string) { writeFileSync(join(dir, 'ctl.json'), JSON.stringify({ gen, cmd })); }
 
-interface NetOpts { k: number; secs: number; warm: number; port: number; realms: number; layout: 'spread' | 'crowd'; workers: number; env: Record<string, string>; inputHz: number; aoi: boolean }
+interface NetOpts { k: number; secs: number; warm: number; port: number; realms: number; layout: 'spread' | 'crowd'; workers: number; env: Record<string, string>; inputHz: number; aoi: boolean; v: number }
 
 async function netBench(o: NetOpts) {
   const dir = mkdtempSync(join(process.env.BENCH_TMP ?? tmpdir(), 'hogbench-'));
@@ -287,7 +287,7 @@ async function netBench(o: NetOpts) {
     for (let i = 0; i < W; i++) {
       const slice = tokens.slice(i * per, (i + 1) * per);
       if (!slice.length) continue;
-      workers.push(new Worker(new URL('./bench-clients.ts', import.meta.url), { workerData: { url: `ws://127.0.0.1:${o.port}`, tokens: slice, offset: i * per, seed: 31 * i + 7, inputHz: o.inputHz, aoi: o.aoi } }));
+      workers.push(new Worker(new URL('./bench-clients.ts', import.meta.url), { workerData: { url: `ws://127.0.0.1:${o.port}`, tokens: slice, offset: i * per, seed: 31 * i + 7, inputHz: o.inputHz, aoi: o.aoi, v: o.v } }));
     }
     const conn = await Promise.all(workers.map((w) => ask(w, 'connect', 'connected')));
     const open = conn.reduce((s, c) => s + c.open, 0);
@@ -316,7 +316,7 @@ async function netBench(o: NetOpts) {
     const primary = probes.find((p) => p.role === 'primary');
     const worst = (f: (p: any) => number) => Math.max(0, ...servers.map(f));
     const row = {
-      k: o.k, realms: R, layout: o.layout, secs: o.secs, inputHz: o.inputHz, aoi: o.aoi, connected: open, stillOpen, inputsPerClientPerSec: (agg.inputs ?? 0) / wall / o.k,
+      k: o.k, realms: R, layout: o.layout, secs: o.secs, inputHz: o.inputHz, aoi: o.aoi, v: o.v, connected: open, stillOpen, inputsPerClientPerSec: (agg.inputs ?? 0) / wall / o.k,
       bytesPerClientPerSec: agg.bytes / wall / o.k, snapBytesAvg: agg.snaps ? agg.snapBytes / agg.snaps : 0,
       snapsPerClientPerSec: agg.snaps / wall / o.k, mePerClientPerSec: agg.mes / wall / o.k, eventsPerClientPerSec: agg.events / wall / o.k,
       castRttP50: pct(agg.rtt, 50), castRttP95: pct(agg.rtt, 95), castRttP99: pct(agg.rtt, 99), castReplies: agg.castReplies, castsSent: agg.casts,
@@ -380,13 +380,13 @@ async function main() {
     const layouts = opt('layout', 'spread').split(',') as ('spread' | 'crowd')[];
     const realms = Number(opt('realms', '1'));
     const extraEnv = Object.fromEntries(opt('env', '').split(',').filter(Boolean).map((kv) => kv.split('=') as [string, string]));
-    const inputHz = Number(opt('input-hz', '20')), aoi = opt('aoi', '1') !== '0';
-    console.log(`## net: ${secs}s measured after ${warm}s warm-up; clients send input at ${inputHz} Hz and cast every second; ${aoi ? 'clients ask for AOI snapshots' : 'clients get full snapshots (as the shipped browser client)'}${realms > 1 ? `; REALMS=${realms}` : ''}\n`);
+    const inputHz = Number(opt('input-hz', '20')), aoi = opt('aoi', '1') !== '0', v = Number(opt('v', '1'));
+    console.log(`## net: ${secs}s measured after ${warm}s warm-up; clients send input at ${inputHz} Hz and cast every second; ${aoi ? 'clients ask for AOI snapshots' : 'clients get full snapshots'}${v === 2 ? ', binary delta frames (v=2, as the shipped browser client)' : ', JSON (v=1)'}${realms > 1 ? `; REALMS=${realms}` : ''}\n`);
     console.log('| clients | layout | realms | loop p50 ms | loop p99 ms | loop max ms | world.tick p50 / p95 ms | 50 ms timer p95 | bcast p50 ms | bcast p95 ms | snapshot ms | server CPU % | KB/s per client | snap KB | me/s | ev/s | cast RTT p50 | cast RTT p99 | cast replies % | input/s per client | open |');
     console.log('|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
     let port = Number(opt('port', '7900'));
     for (const layout of layouts) for (const k of nums(opt('k', '50,200,500'))) {
-      const r = await netBench({ k, secs, warm, port: port++, realms, layout, workers: Number(opt('workers', '2')), env: extraEnv, inputHz, aoi });
+      const r = await netBench({ k, secs, warm, port: port++, realms, layout, workers: Number(opt('workers', '2')), env: extraEnv, inputHz, aoi, v });
       console.log(`| ${k} | ${layout} | ${realms} | ${f1(r.eventLoopP50)} | ${f1(r.eventLoopP99)} | ${f1(r.eventLoopMax)} | ${f1(r.worldTickP50)} / ${f1(r.worldTickP95)} | ${f1(r.tickP95)} | ${f1(r.broadcastP50)} | ${f1(r.broadcastP95)} | ${f1(r.snapshotMean)} | ${f1(r.serverCpuPct)}${r.primaryCpuPct ? ` (+${f1(r.primaryCpuPct)} primary)` : ''} | ${f1(r.bytesPerClientPerSec / 1024)} | ${f1(r.snapBytesAvg / 1024)} | ${f1(r.mePerClientPerSec)} | ${f1(r.eventsPerClientPerSec)} | ${f1(r.castRttP50)} | ${f1(r.castRttP99)} | ${f1(r.castsSent ? (100 * r.castReplies) / r.castsSent : 0)} | ${f1(r.inputsPerClientPerSec)} | ${r.stillOpen}/${r.connected} |`);
       if (port > 7949) port = Number(opt('port', '7900'));
     }
