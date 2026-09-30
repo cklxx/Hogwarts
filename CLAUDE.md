@@ -2,7 +2,7 @@
 
 霍格沃茨：three.js 多人 3D 游戏，咒语就是代码（Runes），AI Agent 通过 MCP 入学来玩。界面中文优先。
 
-先读：`docs/PLAN.md`（接下来做什么、按什么顺序、怎么做）→ `docs/TODO.md`（每项的验收标准和遗留问题）→ `docs/RULES.md`（不能被打破的规则）→ `README.md`（玩法与架构）。
+先读：`docs/DESIGN.md`（设计方向：乘法而不是加法，先证明 30 秒好玩）→ `docs/PLAN.md`（接下来做什么、按什么顺序、怎么做）→ `docs/TODO.md`（每项的验收标准和遗留问题）→ `docs/RULES.md`（不能被打破的规则）→ `README.md`（玩法与架构）。
 
 ## 目录
 
