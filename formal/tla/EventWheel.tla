@@ -2,7 +2,9 @@
 (* 校园事件轮盘 the event wheel (src/kernel/wheel.ts: stepWheel, choose, startEvent, settle, finish; World.slay /
    stepProjectiles / placeEggs calling the wheel's hooks, which settle an event early when it is won).
    The world clock ticks; when nothing runs, the wheel is on (a decree may switch it off) and the clock has passed
-   nextAt, an event from the pool is rolled with its deadline (its own length, clamped to MaxDur = EVENT_MAX_S).
+   nextAt, an event from the pool is rolled with its deadline (its own length, clamped to MaxDur = EVENT_MAX_S, and
+   cut shorter by the end of the term: startEvent ends it with the term, never less than TERM_TAIL_S away, and none
+   is rolled in the term's last TERM_TAIL_S — so here any deadline from 1 up to that length).
    While it runs it can be won (the troll falls, the snitch is caught, Peeves is hit…) — possibly by two hooks in
    the same tick, which is why Settle may be attempted again — and at its deadline it is lost. settle pays once (the
    `paid` flag); finish removes it and schedules the next roll no sooner than Gap later. The history variable `pays`
@@ -43,7 +45,8 @@ Tick == /\ now < MaxT
 Roll(e) == /\ running = {} /\ enabled /\ now >= nextAt /\ n < MaxN /\ now + Min(Dur[e], MaxDur) <= MaxT
            /\ LET i == n + 1 IN
                 /\ n' = i /\ running' = {i} /\ status' = [status EXCEPT ![i] = "on"]
-                /\ deadline' = [deadline EXCEPT ![i] = now + Min(Dur[e], MaxDur)] /\ startAt' = [startAt EXCEPT ![i] = now]
+                /\ \E d \in 1..Min(Dur[e], MaxDur) : deadline' = [deadline EXCEPT ![i] = now + d] \* the bell may cut it short
+                /\ startAt' = [startAt EXCEPT ![i] = now]
            /\ UNCHANGED <<now, paidFlag, pays, nextAt, enabled, toggled>>
 
 \* settle(e, outcome): decides once and pays once (the paid flag); a second call changes nothing

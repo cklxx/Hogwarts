@@ -76,7 +76,7 @@ describe('MCP over streamable HTTP', () => {
 
     const walk = await call(c, 'move_to', { landmark: 'great_hall' });
     expect(walk.isError).toBe(false);
-    const waited = await call(c, 'wait', { seconds: 15, until: 'arrived' });
+    const waited = await call(c, 'wait', { until: 'arrived' }); // seconds may be left out with until (playtest round 5)
     expect(waited.data.reason).toBe('arrived');
     expect(waited.data.at.place).toBe('The Great Hall');
 
@@ -136,17 +136,18 @@ describe('MCP over streamable HTTP', () => {
     browser.close();
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const got = new Set<string>();
-    let bought: unknown = null, build: unknown = null;
+    let bought: unknown = null, build: unknown = null, invite: unknown = null;
     await new Promise<void>((ok) => {
       onMsg(ws, (msg) => {
         got.add(msg.t);
-        if (msg.t === 'welcome') build = msg.build;
+        if (msg.t === 'welcome') { build = msg.build; invite = msg.invite; }
         if (msg.t === 'welcome') { ws.send(JSON.stringify({ t: 'cast', key: '1' })); ws.send(JSON.stringify({ t: 'buy', item: 'amulet' })); }
         if (msg.t === 'bought') bought = msg.r;
         if (got.has('welcome') && got.has('snap') && got.has('me') && got.has('cast') && got.has('bought')) ok();
       });
     });
     expect([...got]).toEqual(expect.arrayContaining(['welcome', 'snap', 'me', 'cast', 'bought']));
+    expect(invite).toBe(BASE); // the link a friend opens (PUBLIC_URL when set)
     // the browser shop: a preset forged into your own trunk and worn (src/server/shop.ts)
     expect(bought).toMatchObject({ item: '生命护符', slot: 'amulet', equipped: true });
     // what the server is (GET /api/version): the build in the welcome is the one it reports, so a tab can tell it is stale

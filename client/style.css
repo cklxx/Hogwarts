@@ -650,6 +650,7 @@ html:lang(zh) #book .fld input#sp-inc:placeholder-shown { font-family: var(--cjk
 #menu .op-cmd { display: flex; gap: calc(10px * var(--u)); align-items: flex-start; }
 #menu .op-cmd pre { flex: 1; margin: 0; font-size: calc(13.5px * var(--t)); }
 #menu .op-cmd button { flex: none; }
+#menu #op-qr svg { display: block; width: calc(150px * var(--u)); height: auto; margin-top: calc(8px * var(--u)); background: #fff; border-radius: 4px; }
 #menu .op-registry code { background: rgba(120, 80, 30, .1); padding: calc(1px * var(--u)) calc(6px * var(--u)); border-radius: calc(3px * var(--u)); color: var(--ink); }
 #menu .op-foot { display: flex; flex-wrap: wrap; gap: calc(10px * var(--u)); align-items: center; justify-content: space-between; margin-top: calc(16px * var(--u)); padding-top: calc(12px * var(--u)); border-top: calc(1px * var(--u)) dashed var(--hair); }
 #menu .op-foot > span { display: inline-flex; flex-wrap: wrap; align-items: center; gap: calc(8px * var(--u)); }

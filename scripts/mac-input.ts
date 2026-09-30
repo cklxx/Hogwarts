@@ -109,9 +109,15 @@ try {
   c1 = await cam();
   check(Math.abs(c1.dist - Math.max(3.5, c0.dist / 2)) < 1e-6 && gestureStopped, `a WebKit pinch gesture (scale 2) halves the distance (${c0.dist.toFixed(2)} → ${c1.dist.toFixed(2)})`);
 
-  // 4. Ctrl+drag turns the camera and does not walk
-  await sleep(2500);
-  const p0 = await me();
+  // 4. Ctrl+drag turns the camera and does not walk. The focus click in 2 walks to where it landed, which under load
+  // was once 22 m off and still under way here (1 run in 14 failed "moved 17.91 m"): wait until standing still.
+  let p0 = await me();
+  for (let i = 0; i < 40; i++) {
+    await sleep(500);
+    const p = await me();
+    if (Math.hypot(p.x - p0.x, p.z - p0.z) < 0.01) break;
+    p0 = p;
+  }
   c0 = await cam();
   await page.keyboard.down('Control');
   await page.mouse.move(500, 420);

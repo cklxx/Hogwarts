@@ -877,8 +877,8 @@ function viewBoard(world: World, examId: string, wid?: string) {
 }
 
 const GRADING_TEXT = L(
-  `每题若干隐藏测试用例，全部通过才算及格。分数 = 100 × (节点/标准 + gas/标准 + 法力/标准) / 3，100 为标准线，越低越好。O ≤ 100，E ≤ 130，其余及格为 A；不及格：过半用例通过为 P，至少一个为 D，一个都没过（或编译失败）为 T（巨怪）。每周每题第一次及格发奖励，之后成绩提高补发差额。每题每周只有前 ${RANKED_SITS} 次交卷计入排行榜。`,
-  `Each exam has hidden test cases; all must pass. Score = 100 × mean(nodes/par, gas/par, mana/par): 100 is par, lower is better. O ≤ 100, E ≤ 130, any other pass A. Failing: P if at least half the cases pass, D if one does, T (Troll) if none do or it does not compile. The first pass of an exam each week pays a reward; a better grade later pays the difference. Only your first ${RANKED_SITS} sittings of each exam each week count for its leaderboard.`,
+  `每题若干隐藏测试用例，全部通过才算及格。分数 = 100 × (节点/标准 + gas/标准 + 法力/标准) / 3，100 为标准线，越低越好。O ≤ 100，E ≤ 130，其余及格为 A；不及格：过半用例通过为 P，至少一个为 D，一个都没过（或编译失败）为 T（巨怪）。每周每题第一次及格发奖励，之后成绩提高补发差额。每题每周只有前 ${RANKED_SITS} 次交卷计入排行榜。考场按这门考试的年级上限算你的咒语（节点、gas、魔弹威力），不按你自己的年级；每个伤害、治疗、护盾效果至少 ${EFFECT_MIN} 点才算数。`,
+  `Each exam has hidden test cases; all must pass. Score = 100 × mean(nodes/par, gas/par, mana/par): 100 is par, lower is better. O ≤ 100, E ≤ 130, any other pass A. Failing: P if at least half the cases pass, D if one does, T (Troll) if none do or it does not compile. The first pass of an exam each week pays a reward; a better grade later pays the difference. Only your first ${RANKED_SITS} sittings of each exam each week count for its leaderboard. Your spell runs with the limits of the exam's year (nodes, gas, bolt power), not your own; each damage, heal or shield effect must be at least ${EFFECT_MIN} to count.`,
 );
 
 /** This week's exams as a candidate sees them. */

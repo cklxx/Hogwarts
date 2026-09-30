@@ -162,7 +162,7 @@ export const PRIMS: Prim[] = [
   { name: 'str', kind: 'pure', year: 1, args: [], variadic: 'any', doc: 'Concatenate into a string.' },
   { name: 'rand', kind: 'pure', year: 1, args: [], doc: 'Uniform random number in [0,1).' },
   // ---- queries (read the world, cost 3 gas) ----
-  { name: 'enemies', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Things you may harm within radius of you (creatures + duel-able wizards), nearest first, max 8.' },
+  { name: 'enemies', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Things you may harm within radius of you (creatures + duel-able wizards), nearest first, max 8. Classmates you may duel are in it; (creatures r) lists creatures only (benign ones too).' },
   { name: 'allies', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Wizards of your house within radius (excluding you), nearest first, max 8.' },
   { name: 'creatures', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Creatures within radius, nearest first, max 8.' },
   { name: 'wizards', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Other wizards within radius, nearest first, max 8.' },

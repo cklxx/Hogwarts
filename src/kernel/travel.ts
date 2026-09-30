@@ -14,7 +14,7 @@ import { inMatch } from './duelclub.js';
 import type { Feature } from './feature.js';
 import { qdOnTeam } from './quidditch.js';
 import type { Wizard } from './types.js';
-import { inCastle } from './wheel.js';
+import { CASTLE, inCastle } from './wheel.js';
 import type { World } from './world.js';
 
 declare module './world.js' {
@@ -76,7 +76,8 @@ export function broom(world: World, wid: string, on?: boolean) {
   const want = on ?? !riding;
   if (!want) { dismount(world, w); return { riding: false }; }
   if (riding) return { riding: true };
-  if (inCastle(w.pos)) throw new Error('No brooms indoors: step outside the castle first. 室内不能骑扫帚：先走出城堡。');
+  // the precinct, not only the roofed halls: the courtyard counts (playtest round 4 read "indoors" while onGrounds was true)
+  if (inCastle(w.pos)) throw new Error(`No brooms inside the castle precinct — the courtyard, the Great Hall, the greenhouses: walk out past its edge first (z > ${CASTLE.z1}, or |x| > ${CASTLE.x1}). 城堡范围内（庭院、礼堂、温室都算）不能骑扫帚：先走出去（z > ${CASTLE.z1}，或 |x| > ${CASTLE.x1}）。`);
   const why = busy(world, w, BROOM_HURT_S);
   if (why) throw new Error(why);
   const left = (world.travel.mountAt.get(wid) ?? -1e9) + BROOM_MOUNT_CD_S - world.now;
@@ -118,7 +119,7 @@ export const TRAVEL_FEATURE: Feature = {
     },
     {
       name: 'broom', title: 'Broom', cost: 1,
-      description: `Mount (on: true) or dismount (on: false) a broom (M in the browser); no "on" toggles. Outside the castle you move ×${BROOM_MULT}. Casting, being hurt, going indoors, a duel or a Quidditch match puts you back on your feet.`,
+      description: `Mount (on: true) or dismount (on: false) a broom (M in the browser); no "on" toggles. Outside the castle precinct (the courtyard counts as inside) you move ×${BROOM_MULT}. Casting, being hurt, entering the precinct, a duel or a Quidditch match puts you back on your feet.`,
       input: { on: z.boolean().optional() },
       run: (world, wid, a) => broom(world, wid, typeof a.on === 'boolean' ? a.on : undefined),
     },

@@ -218,7 +218,8 @@ export function payRoyalty(world: World, caster: Wizard, spell: Spell) {
   const l = listingOf(world, spell.market.id);
   if (!l) return;
   const npc = caster.npc || world.now - caster.createdAt < FRESH_SECONDS;
-  if (!npc && caster.id !== l.author) l.casts++;
+  // every player's cast counts (playtest round 4: a first-term market showed 0 casts); only the royalty skips the fresh
+  if (!caster.npc && caster.id !== l.author) l.casts++;
   const rules = world.rules.market;
   if (!rules.royalties) return;
   rollDay(world);
@@ -635,7 +636,7 @@ export const MARKET_FEATURE: Feature = {
     },
     {
       name: 'publish_spell', title: 'Publish a spell to the market', cost: 2,
-      description: 'Put one of your own custom spells in the spell market (咒语集市), or publish its current state as the next version if it is already there (versions are immutable). Others can copy or fork it; each distinct wizard who casts it successfully earns you +1 reputation a day (+0.3 when they cast a fork of it), up to the daily cap (rulebook market.dailyCap). Copies of other wizards\' spells cannot be published — fork them.',
+      description: `Put one of your own custom spells in the spell market (咒语集市), or publish its current state as the next version if it is already there (versions are immutable). Others can copy or fork it; each distinct wizard who casts it successfully earns you +1 reputation a day (+0.3 when they cast a fork of it), up to the daily cap (rulebook market.dailyCap). NPCs and wizards in their first ${FRESH_SECONDS / 60} minutes pay no royalty (their casts still count): a fresh alt cannot farm you. Copies of other wizards' spells cannot be published — fork them.`,
       input: {
         spell: z.string().min(1).max(60).describe('your spell\'s name or id'),
         desc_zh: z.string().max(140).optional().describe('a one-line description in Chinese'),

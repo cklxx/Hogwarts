@@ -67,7 +67,7 @@ export const TROLL_LINES: readonly Line[] = [
 export const OUTSTANDING_LINES: readonly Line[] = [
   { zh: '「{exam}」：O。麦格教授的嘴角似乎上扬了一毫米。', en: '"{exam}": O. Professor McGonagall\'s mouth twitched by nearly a millimetre.' },
   { zh: '优秀！考官悄悄在你的名字旁边画了一颗星。', en: 'Outstanding! The examiner has quietly drawn a star beside your name.' },
-  { zh: '给你的学院加十分！——哦不，考试给的学院分另算。那就再给你加一个 O。', en: 'Ten points to your house! — no, exams pay house points their own way. Have an O as well.' },
+  { zh: '给你的学院加十分！——其实不用喊：这场考试挣的声望本来就记进学院分。', en: 'Ten points to your house! — no need to shout it: the reputation this exam pays counts towards your house points anyway.' },
   { zh: '这段咒语短得让邓布利多想起了自己的第一段 Hello World。', en: 'A spell so short Dumbledore was reminded of his first Hello World.' },
 ];
 

@@ -99,7 +99,7 @@ describe('what the panels read is what the kernel sends', () => {
     const mine = w.privateState(me.id) as unknown as UnfairMe;
     expect(mine.darkLord).toBe(false);
     expect(Object.keys(mine.da).sort()).toEqual(expect.arrayContaining(['member', 'eligible', 'size', 'online', 'quorum', 'veto', 'jointBadge']));
-    expect(Object.keys(mine.da.veto).sort()).toEqual(['decree', 'needed', 'perTerm', 'usedThisTerm', 'voted', 'votes', 'windowSeconds']);
+    expect(Object.keys(mine.da.veto).filter((k) => !k.startsWith('blocked')).sort()).toEqual(['decree', 'needed', 'perTerm', 'usedThisTerm', 'voted', 'votes', 'windowSeconds']);
     expect(mine.focus).toMatchObject({ on: true, max: expect.any(Number), cur: expect.any(Number) });
     expect(mine.lawless).toBe(false);
     expect(Array.isArray(mine.studyable)).toBe(true);

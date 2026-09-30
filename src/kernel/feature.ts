@@ -114,6 +114,8 @@ export interface Feature {
   reveal?(world: World, w: Wizard, charm: UiCharm): void;
   /** A hostile bolt or disarm reaching wizard `w` without a perfect Protego: true to meet it with one now (it is sent back). */
   parry?(world: World, w: Wizard, p: Projectile): boolean;
+  /** Wizard `w` just sent bolt or disarm `p` back with a perfect Protego (it is now theirs, homing on `from`, its caster). */
+  reflect?(world: World, w: Wizard, p: Projectile, from: string): void;
   /** An NPC thinking (twice a second): true when this feature drove it (the NPC's own brain then rests). */
   npc?(world: World, w: Wizard): boolean;
   /** A wizard (not an NPC) said something aloud (world.say: the open chat, say, a spell's words). */
@@ -134,7 +136,7 @@ export function hookLists(fs: readonly Feature[]) {
   const view = <K extends keyof NonNullable<Feature['view']>>(k: K) => fs.filter((f) => f.view?.[k] !== undefined) as (Feature & { view: Required<Pick<NonNullable<Feature['view']>, K | 'key'>> })[];
   return {
     step: has('step'), stepLate: has('stepLate'), sweep: has('sweep'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'),
-    castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
+    castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), reflect: has('reflect'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
     npc: has('npc'), actAs: has('actAs'), said: has('said'), toolBlock: has('toolBlock'), me: view('me'), whoami: fs.filter((f) => f.view?.me || f.view?.whoami) as (Feature & { view: NonNullable<Feature['view']> })[],
     look: view('look'), board: view('board'),
   };

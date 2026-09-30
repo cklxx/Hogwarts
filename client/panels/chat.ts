@@ -1,7 +1,7 @@
 /**
- * 聊天 in the browser (src/kernel/chat.ts): a folded log in the lower left with four tabs — all, house, near and
- * whispers — fed by the 'chat' events the server lets you see. Typing goes through the chat box as before (Enter):
- * `/h …` house, `/n …` near, `/w name …` a whisper (client/controls.ts routeChat). A name in the log is a button that
+ * 聊天 in the browser (src/kernel/chat.ts): a folded log in the lower left with tabs — all, house, near, whispers
+ * and Dumbledore's Army — fed by the 'chat' events the server lets you see. Typing goes through the chat box as before (Enter):
+ * `/h …` house, `/n …` near, `/w name …` a whisper, `/da …` the DA (client/controls.ts routeChat). A name in the log is a button that
  * starts a whisper to them. The log keeps CHAT_KEEP lines; unread lines on a hidden tab show as a count.
  */
 import type { ClientFeature, ClientFeatureFactory } from '../feature';
@@ -9,11 +9,11 @@ import { L, lang } from '../i18n';
 import { esc } from './logic';
 import './chat.css';
 
-export type ChatTab = 'all' | 'house' | 'near' | 'dm';
+export type ChatTab = 'all' | 'house' | 'near' | 'dm' | 'da';
 export interface ChatEv { id: number; type: string; text: string; zh?: string; ch?: ChatTab }
 export const CHAT_KEEP = 80;
-const TABS: readonly [ChatTab, string, string][] = [['all', '全部', 'All'], ['house', '学院', 'House'], ['near', '附近', 'Near'], ['dm', '悄悄话', 'Whispers']];
-const PREFIX: Record<ChatTab, string> = { all: '', house: '/h ', near: '/n ', dm: '/w ' };
+const TABS: readonly [ChatTab, string, string][] = [['all', '全部', 'All'], ['house', '学院', 'House'], ['near', '附近', 'Near'], ['dm', '悄悄话', 'Whispers'], ['da', 'D.A.', 'D.A.']];
+const PREFIX: Record<ChatTab, string> = { all: '', house: '/h ', near: '/n ', dm: '/w ', da: '/da ' };
 
 /** The rows a tab shows (the "all" tab shows every channel); pure, for tests. */
 export function chatRows(lines: readonly ChatEv[], tab: ChatTab, zh: boolean) {
@@ -27,7 +27,7 @@ export function chatRows(lines: readonly ChatEv[], tab: ChatTab, zh: boolean) {
 
 export const chatFeature: ClientFeatureFactory = (): ClientFeature => {
   const lines: ChatEv[] = [];
-  const unread: Record<ChatTab, number> = { all: 0, house: 0, near: 0, dm: 0 };
+  const unread: Record<ChatTab, number> = { all: 0, house: 0, near: 0, dm: 0, da: 0 };
   let tab: ChatTab = 'all', open = false, dirty = true;
   const el = document.createElement('div');
   el.id = 'chatlog';
@@ -55,7 +55,7 @@ export const chatFeature: ClientFeatureFactory = (): ClientFeature => {
     if (!open) return;
     body.innerHTML = chatRows(lines, tab, lang === 'zh').slice(-40).map((r) =>
       `<p class="ch-${r.ch}">${r.label ? `<span class="cl-l">${esc(r.label)}</span> ` : ''}${r.name ? `<button class="cl-n" data-who="${esc(r.name)}">${esc(r.name)}</button>：` : ''}${esc(r.words)}</p>`).join('')
-      || `<p class="cl-empty">${L('还没有人说话。按 Enter 说一句；/h 学院、/n 附近、/w 名字 悄悄话。', 'Nobody has spoken yet. Enter to speak; /h house, /n near, /w name to whisper.')}</p>`;
+      || `<p class="cl-empty">${L('还没有人说话。按 Enter 说一句；/h 学院、/n 附近、/w 名字 悄悄话、/da 邓布利多军。', 'Nobody has spoken yet. Enter to speak; /h house, /n near, /w name to whisper, /da the DA.')}</p>`;
     body.scrollTop = body.scrollHeight;
   }
   return {

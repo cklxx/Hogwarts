@@ -424,6 +424,7 @@ export class World {
    */
   resolveTarget(key: string | null | undefined, asker?: string): string | null {
     if (!key) return null;
+    if ((key === 'self' || key === 'me') && asker) return asker; // as reflexes and Runes say it
     if (this.creatures.has(key)) return key;
     if (this.wizards.has(key)) return key === asker || (asker !== undefined && this.wizards.get(asker)?.npc) ? key : null;
     const k = key.toLowerCase();
@@ -932,8 +933,14 @@ export class World {
     // an attack aimed at someone you may not harm: say so, spend nothing (it used to fly, fizzle on arrival, and cost mana)
     if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.canHarm(wid, target)) {
       const t = this.entity(target)!;
-      const why = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? 'they are in a Duelling Club match' : inMatch(this.duel, wid) ? 'in a duel only your opponents can be hit' : this.inSafe(t.pos) || this.inSafe(w.pos) ? 'a safe zone' : 'the rules (house, PvP, or they are down)';
-      const whyZh = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? '对方正在决斗' : inMatch(this.duel, wid) ? '决斗中只能打你的对手' : this.inSafe(t.pos) || this.inSafe(w.pos) ? '安全区' : '规则（学院、PvP，或对方已倒下）';
+      // the reason canHarm said no, in canHarm's own order: down, a safe zone (theirs, then yours), the duel, the rules
+      const tw = this.wizards.get(target);
+      const [why, whyZh] = t.hp <= 0 || (tw && !this.isActive(tw)) ? ['they are down (stunned, or out of play)', '对方已经倒下（被击晕或不在场）']
+        : this.inSafe(t.pos) ? ['they are standing in a safe zone', '对方站在安全区里']
+        : this.inSafe(w.pos) ? ['you are standing in a safe zone', '你站在安全区里']
+        : inMatch(this.duel, target) && !inMatch(this.duel, wid) ? ['they are in a Duelling Club match', '对方正在决斗']
+        : inMatch(this.duel, wid) ? ['in a duel only your opponents can be hit', '决斗中只能打你的对手']
+        : ['the rules (house, PvP)', '规则（学院、PvP）'];
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
     }
     // …or behind a wall, a tree, a rock: the bolt would only hit that (playtest round 3: four casts, 72 mana, nothing)
@@ -989,9 +996,23 @@ export class World {
   private fizzleQuip(w: Wizard, error: string | undefined, say: boolean): Line | null {
     const kind = fizzleKind(error);
     if (!kind) return null;
+    if (kind === 'mana' && !this.ranDry(w, error)) return null;
     const q = this.quip(FIZZLE_QUIPS[kind], w.handle, w.stats.casts, kind);
     if (say && !w.npc && this.banter([`fizzle:${w.id}`, MEME.FIZZLE_GAP_S])) this.tell(w, q);
     return q;
+  }
+
+  /**
+   * 魔杖没电了: the battery joke only when it is true — the wand really is nearly empty (under a quarter of your mana)
+   * and the spell is one you could afford once it refills — and once per dry spell: not again until your mana has
+   * been back above half (a duelist's reflexes retrying on an empty wand told it every 30 s).
+   */
+  private dry = new Set<string>();
+  private ranDry(w: Wizard, error: string | undefined): boolean {
+    const max = derived(w, this.rules).maxMana, need = Number(/needs ([\d.]+)/.exec(error ?? '')?.[1] ?? 0);
+    if (this.dry.has(w.id) || w.mana >= max * 0.25 || need > max) return false;
+    this.dry.add(w.id);
+    return true;
   }
 
   /**
@@ -1160,6 +1181,7 @@ export class World {
     const o = this.wizards.get(was);
     if (this.banter([`reflect:${w.id}`, 4])) this.bubble(w, { zh: '完美格挡！', en: 'Perfect Protego!' }, 2);
     if (o) this.emit('combat', `${w.name} sent ${o.name}'s spell straight back!`, { who: [w.id, o.id], zh: `${w.name} 把 ${o.name} 的咒语原样弹了回去！` });
+    for (const f of HOOKS.reflect) f.reflect(this, w, p, was); // e.g. 决斗俱乐部: it scores for whoever sent it back
     return true;
   }
   /**
@@ -1391,7 +1413,8 @@ export class World {
     if (dm && inFight(this.duel, w.id)) {
       // 决斗俱乐部: count the hit for the summary; a knock-out ends the match instead of stunning (duelclub.ts)
       const st = by ? dm.stats[by] : undefined;
-      if (st) { st.dealt += Math.min(a, Math.max(0, w.hp)); if (!opts.dot) st.hits++; }
+      // (a bolt sent back by a perfect Protego was already counted for its sender when it was sent back: the reflect hook)
+      if (st) { if (!tags.includes('reflected')) st.dealt += Math.min(a, Math.max(0, w.hp)); if (!opts.dot) st.hits++; }
       if (w.hp - a <= 0) {
         w.hp = 1;
         dm.out[w.id] = 'ko'; // out of the fight (a 1v1 ends at once; a 2v2 when the whole side is out)
@@ -1529,7 +1552,7 @@ export class World {
     const f = n < GRIND_FREE_KILLS ? 1 : Math.max(GRIND_FLOOR, GRIND_FREE_KILLS / (n + 1));
     if (n === GRIND_FREE_KILLS) {
       const zh = zhCreature(kind), en = CREATURES[kind].name;
-      this.emit('system', `You have learned what ${en}s can teach for now: each one is worth less for a while. Try another creature, an O.W.L. exam, or the next school event.`, { to: w.id, zh: `${zh}能教你的，你这阵子都学会了：接下来一段时间，打它们得到的越来越少。换个对手、去考一门 O.W.L.，或者等下一件校园事件。` });
+      this.emit('system', `You have learned what ${en}s can teach for now: each one is worth less for a while (full again ${GRIND_FATIGUE_S / 60} minutes after these kills). Try another creature, an O.W.L. exam, or the next school event.`, { to: w.id, zh: `${zh}能教你的，你这阵子都学会了：接下来一段时间，打它们得到的越来越少（这几次击杀 ${GRIND_FATIGUE_S / 60} 分钟后恢复）。换个对手、去考一门 O.W.L.，或者等下一件校园事件。` });
     }
     return f;
   }
@@ -1615,8 +1638,14 @@ export class World {
     if (card || u < pct) out.card = rollCard(this, w, 'plain', why).card.id;
     else if (u < pct + (1 - pct) * 0.55) out.galleons = 12 + Math.floor(this.funRand() * 24);
     else {
-      out.fragment = RUNES_FRAGMENTS[Math.floor(this.funRand() * RUNES_FRAGMENTS.length)];
-      out.galleons = 8;
+      // a page you have not found, of a spell you do not already know (playtest round 4: the same page twice);
+      // none left: Galleons instead
+      const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
+      const known = new Set(w.spells.map((s) => flat(s.source)));
+      const fresh = RUNES_FRAGMENTS.map((_, i) => i).filter((i) => !w.eggs.pages?.includes(i) && !known.has(flat(RUNES_FRAGMENTS[i].source)));
+      const i = fresh[Math.floor(this.funRand() * fresh.length)];
+      if (i === undefined) out.galleons = 20;
+      else { out.fragment = RUNES_FRAGMENTS[i]; out.galleons = 8; w.eggs.pages = [...(w.eggs.pages ?? []), i]; }
     }
     if (!out.card && this.funRand() < 0.25) out.galleons += 10;
     if (out.galleons) w.galleons += out.galleons;
@@ -2262,6 +2291,7 @@ export class World {
       }
       const d = derived(w, rb);
       w.mana = Math.min(d.maxMana, w.mana + d.manaRegen * dt);
+      if (this.dry.size && w.mana >= d.maxMana / 2) this.dry.delete(w.id); // (ranDry: the dry spell is over)
       if (this.now - w.hurtAt > 6) w.hp = Math.min(d.maxHp, w.hp + 2 * dt);
       this.moveWizard(w, dt, true);
       this.placeEggs(w);
@@ -3177,6 +3207,9 @@ export class World {
       blocked: (this.canHarm(w.id, c.id) && !this.inBlast(w.pos, c.pos)) || undefined,
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
+      // what it shrugs off (the troll: arcane ×0.6), and whether a school event brought it (playtest round 4)
+      ...((r) => (r.length ? { resists: r } : {}))(Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) < 1).map(([k, v]) => `${k} ×${v}`)),
+      ...(c.ev !== undefined ? { schoolEvent: true, ...(c.dmgMult && c.dmgMult !== 1 ? { hitsHarder: `×${round(c.dmgMult)}` } : {}) } : {}),
     })).sort((a, b) => a.dist - b.dist).slice(0, 20);
     const landmarks = LANDMARKS.map((l) => ({ id: l.id, name: l.name, dist: round(dist(l, w.pos)), x: l.x, z: l.z })).sort((a, b) => a.dist - b.dist).slice(0, 5);
     return {
