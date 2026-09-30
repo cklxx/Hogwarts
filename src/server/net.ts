@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws';
+import type { BinState } from './binfanout.js';
 
 /**
  * Per-socket network hygiene for the 3D-client WebSocket:
@@ -97,6 +98,8 @@ export interface NetState {
   aoi: boolean;
   /** The AOI cell this socket's payload is anchored to (fanout.ts hysteresis). */
   anchor: { cell: number };
+  /** Binary delta snapshots (binfanout.ts) for sockets that connected with v=2, else null. */
+  bin: BinState | null;
   pending: PendingInput | null;
   skipped: number;
   dropped: number;
@@ -110,7 +113,7 @@ let seq = 0;
 export function netState(ws: WebSocket): NetState {
   let s = states.get(ws);
   if (!s) {
-    s = { buckets: new Map(), lastMe: '', outbox: [], phase: seq++ & 1, aoi: false, anchor: { cell: -1 }, pending: null, skipped: 0, dropped: 0, deferred: 0, warnedAt: -1e9 };
+    s = { buckets: new Map(), lastMe: '', outbox: [], phase: seq++ & 1, aoi: false, anchor: { cell: -1 }, bin: null, pending: null, skipped: 0, dropped: 0, deferred: 0, warnedAt: -1e9 };
     states.set(ws, s);
   }
   return s;
@@ -212,7 +215,9 @@ export function readyForSnapshot(ws: WebSocket): boolean {
   if (ws.readyState !== 1) return false;
   const q = ws.bufferedAmount;
   if (q <= SLOW_BYTES) return true;
-  netState(ws).skipped++;
+  const s = netState(ws);
+  s.skipped++;
+  if (s.bin) s.bin.resync = true; // it misses this frame, so the next one carries everything
   if (q > DEAD_BYTES) ws.terminate();
   return false;
 }
@@ -221,13 +226,15 @@ export function readyForSnapshot(ws: WebSocket): boolean {
  * World events are queued per socket (for exactly the sockets connected when the event happened, in
  * order) and written together with the next snapshot, so a burst of events costs one socket write per
  * client per broadcast instead of one per event per client — and the world tick never waits on sockets.
- * Delivery is at most one broadcast (100 ms) later than before.
+ * Delivery is at most one broadcast (100 ms) later than before. `msg` is the `{t:'event', e}` message;
+ * `bare` is the event alone, which v=2 sockets get batched as one `{t:'evs', es:[…]}` message.
  */
-export function enqueue(ws: WebSocket, msg: Buffer) {
+export function enqueue(ws: WebSocket, msg: Buffer, bare: Buffer = msg) {
   const s = netState(ws);
   if (s.outbox.length >= MAX_OUTBOX) s.outbox.shift();
-  s.outbox.push(msg);
+  s.outbox.push(s.bin ? bare : msg);
 }
+const EVS_OPEN = Buffer.from('{"t":"evs","es":['), EVS_CLOSE = Buffer.from(']}'), COMMA = Buffer.from(',');
 const MAX_OUTBOX = 256;
 function flushOutbox(ws: WebSocket) {
   const s = netState(ws);
@@ -235,6 +242,13 @@ function flushOutbox(ws: WebSocket) {
   const box = s.outbox;
   s.outbox = [];
   if (ws.readyState !== 1) return;
+  if (s.bin) {
+    const parts: Buffer[] = [EVS_OPEN];
+    box.forEach((m, i) => { if (i) parts.push(COMMA); parts.push(m); });
+    parts.push(EVS_CLOSE);
+    ws.send(Buffer.concat(parts), { binary: false });
+    return;
+  }
   for (const m of box) ws.send(m, { binary: false });
 }
 
@@ -242,13 +256,13 @@ function flushOutbox(ws: WebSocket) {
  * Everything a socket gets in one broadcast (queued events, snapshot, private state) goes out as one
  * write: the underlying socket is corked around the sends (ws frames each message itself).
  */
-export function corked(ws: WebSocket, fn: () => void) {
+export function corked<A>(ws: WebSocket, fn: (ws: WebSocket, arg: A) => void, arg: A) {
   const sock = (ws as unknown as { _socket?: { cork?: () => void; uncork?: () => void } })._socket;
   const cork = typeof sock?.cork === 'function' && typeof sock.uncork === 'function';
   if (cork) sock!.cork!();
   try {
     flushOutbox(ws);
-    fn();
+    fn(ws, arg);
   } finally {
     if (cork) sock!.uncork!();
   }

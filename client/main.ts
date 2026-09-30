@@ -24,6 +24,7 @@ import { captureFocus } from './capture';
 import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
 import { PAIR_TTL_S, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
+import { SnapDecoder } from '../src/shared/snapwire';
 import { TIPS } from '../src/lore/memes';
 import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
 import * as probe from './perf';
@@ -318,9 +319,13 @@ let clock = 0;
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   // area-of-interest snapshots (what is near you, see apply); ?aoi=0 asks for the whole world instead
-  const aoi = new URLSearchParams(location.search).get('aoi') === '0' ? '' : '?aoi=1';
+  const q = new URLSearchParams(location.search);
+  // binary delta snapshots (src/shared/snapwire.ts); ?v=1 asks for the JSON ones
+  const params = [q.get('aoi') === '0' ? '' : 'aoi=1', q.get('v') === '1' ? '' : 'v=2'].filter(Boolean).join('&');
   // the key rides in the subprotocol list, never in the address (src/server/key.ts)
-  ws = new WebSocket(`${proto}://${location.host}/ws${aoi}`, [WS_PROTOCOL, WS_KEY_PREFIX + token]);
+  ws = new WebSocket(`${proto}://${location.host}/ws${params ? `?${params}` : ''}`, [WS_PROTOCOL, WS_KEY_PREFIX + token]);
+  ws.binaryType = 'arraybuffer';
+  const snaps = new SnapDecoder();
   ws.onmessage = (m) => {
     const tm = probe.begin();
     onMessage(m);
@@ -328,9 +333,16 @@ function connect() {
   };
   const onMessage = (m: MessageEvent) => {
     const tp = probe.begin();
-    const msg = JSON.parse(m.data);
+    let msg;
+    if (typeof m.data === 'string') msg = JSON.parse(m.data);
+    else {
+      const s = snaps.decode(new Uint8Array(m.data as ArrayBuffer));
+      // a record we have no names for: start over from a full frame
+      if (!s) { snaps.clear(); rawSend({ t: 'resync' }); return; }
+      msg = { t: 'snap', s };
+    }
     probe.end('parse', tp);
-    probe.wsMessage(m.data.length, msg.t === 'snap');
+    probe.wsMessage(typeof m.data === 'string' ? m.data.length : (m.data as ArrayBuffer).byteLength, msg.t === 'snap');
     if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
     if (watch.onMessage(msg)) return; // 看 Agent 玩 (client/watch.ts)
     if (msg.t === 'welcome') {
@@ -346,6 +358,7 @@ function connect() {
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') me = msg.s;
     else if (msg.t === 'event') { pn.onEvent(msg.e); fun.onEvent(msg.e); feed(msg.e, true); }
+    else if (msg.t === 'evs') for (const e of msg.es) { pn.onEvent(e); fun.onEvent(e); feed(e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));

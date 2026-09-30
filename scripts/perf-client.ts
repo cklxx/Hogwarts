@@ -35,7 +35,8 @@ import { World } from '../src/kernel/world.js';
 import { mulberry32, SPAWN, WORLD_HALF } from '../src/shared/map.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1'] as [string, string]; }));
+// split at the first '=' only: --url=&v=1 carries one
+const args = new Map(process.argv.slice(2).map((a) => { const [k, ...v] = a.replace(/^--/, '').split('='); return [k, v.length ? v.join('=') : '1'] as [string, string]; }));
 const opt = (k: string, d: string) => args.get(k) ?? d;
 const PORT = Number(opt('port', '8820'));
 const SECS = Number(opt('secs', '8'));
