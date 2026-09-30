@@ -110,7 +110,7 @@ export const RulebookSchema = z.object({
     .object({
       lengthSeconds: num(120, 86400, TERM_DEFAULT_S, 'Length of a school term; at its end the House Cup is awarded and a Minister chosen'),
       reputationDecay: num(0, 1, 0.5, 'Fraction of reputation that survives the end of term, for those who played in it (reputation of the absent is kept as it was)'),
-      ministerMinReputation: num(0, 100000, 100, 'Minimum reputation to be appointed Minister for Magic'),
+      ministerMinReputation: num(0, 100000, 30, 'Minimum reputation to be appointed Minister for Magic (for a 15-minute term; shorter terms scale it down)'),
       finalMinuteMultiplier: num(1, CUP_MULT_MAX, CUP_MULT_DEFAULT, '决胜时刻: house points gained in the last minute of a term are multiplied by this'),
       wizardPointsCap: z.number().int().min(CUP_CAP_MIN).max(CUP_CAP_MAX).default(CUP_CAP_DEFAULT).describe('Anti-farm: the most house points one wizard can add in a term, from every source together'),
     })

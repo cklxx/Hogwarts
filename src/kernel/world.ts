@@ -145,6 +145,10 @@ export const GRIND_FREE_KILLS = 6, GRIND_FATIGUE_S = 600, GRIND_FLOOR = 0.05;
 /** What counts as NPC news for World.emit's gate, and how often the school hears any. */
 const NPC_NEWS = new Set<EventType>(['level', 'combat', 'creature', 'achievement']);
 const NPC_NEWS_GAP_S = 30;
+/** A school event's creature hits wizards of year ≤ EVENT_EASY_YEAR at EVENT_EASY_MULT of its plain strength. */
+const EVENT_EASY_YEAR = 2, EVENT_EASY_MULT = 0.5;
+/** terms.ministerMinReputation's default before round 5 (restore moves an untouched one to today's default). */
+const MINISTER_OLD_DEFAULT = 100;
 
 export class World {
   rules: Rulebook;
@@ -1158,7 +1162,9 @@ export class World {
     w.st.dashDx = dx / l; w.st.dashDz = dz / l;
     w.st.dodgeUntil = this.now + DODGE_S;
     w.st.dodgeReadyAt = this.now + DODGE_CD_S;
-    w.goal = null; w.route = []; w.goalBy = null;
+    // the walk goes on after the roll (moveWizard: the dash overrides it while it lasts). It used to be dropped, so a
+    // reflex's dodge on the way ended every agent's move_to and wait until:"arrived" said "not walking" (round 5, 4 of 4)
+    this.stuck.delete(w.id);
     w.stats.dodges = (w.stats.dodges ?? 0) + 1;
     this.fx({ k: 'dodge', x: w.pos.x, z: w.pos.z, h: w.handle });
     return { ok: true };
@@ -1332,6 +1338,10 @@ export class World {
    */
   damage(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean; hex?: boolean } = {}): number {
     const before = this.entity(dstId), wasUp = !!before && before.hp > 0 && !(this.wizards.get(dstId)?.st.stunnedUntil);
+    // a school event's creature goes easy on first- and second-years (round 5: its rocks knocked them out again and
+    // again, so the youngest could not take part in the big events): half, and none of the event's own boost
+    const ev = srcId ? this.creatures.get(srcId) : undefined, young = this.wizards.get(dstId);
+    if (ev?.ev !== undefined && !ev.owner && young && !young.npc && young.year <= EVENT_EASY_YEAR) amount *= EVENT_EASY_MULT / (ev.dmgMult ?? 1);
     const dealt = this.damageInner(srcId, dstId, amount, element, tags, opts);
     if (srcId && dealt > 0 && !opts.dot && !opts.hex) {
       const after = this.entity(dstId), aw = this.wizards.get(dstId);
@@ -3230,6 +3240,7 @@ export class World {
       you: { x: round(w.pos.x), z: round(w.pos.z), facing: round(w.facing), place: this.placeName(w.pos), safeZone: this.inSafe(w.pos), onGrounds: this.onGrounds(w.pos), lawless: this.inLawless(w.pos) },
       time: { hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather },
       wizards, creatures, landmarks,
+      ...([...wizards, ...creatures].some((x) => x.blocked) ? { blockedMeans: 'blocked: a wall, a tree or a rock stands between you — a cast at it is refused (free); move for a clear line. 被挡住：中间有墙、树或石头，对它施法会被拒绝（不扣法力），换个位置。' } : {}),
       // hostile spells flying at you now (reflexes can meet them for you: the reflexes tool)
       ...(() => { const inc = this.incoming(w.id); return inc.length ? { incoming: inc } : {}; })(),
       // what an agent could not see before (playtest round 2): your own recent hits, the school event's target, a chest in sight
@@ -3285,7 +3296,9 @@ export class World {
       summons: [...this.creatures.values()].filter((c) => c.owner === w.id).map((c) => ({ id: c.id, kind: c.kind, hp: Math.round(c.hp), secondsLeft: round(c.until - this.now) })),
       state: w.st.jailedUntil ? 'in Azkaban' : w.st.stunnedUntil ? 'stunned (Hospital Wing)' : this.online(w) ? 'in the world' : 'offline',
       where: this.placeName(w.pos), x: round(w.pos.x), z: round(w.pos.z),
-      decreeCharges: w.decreeCharges, achievements: w.achievements.map((a) => ACHIEVEMENTS[a]?.name ?? a), titles: w.titles, stats: w.stats,
+      decreeCharges: w.decreeCharges, achievements: w.achievements.map((a) => ACHIEVEMENTS[a]?.name ?? a), titles: w.titles,
+      // forged = items forged (gifts, hexed parcels); spellsWritten = spells of your own in your book (round 5 read forged as that)
+      stats: { ...w.stats, spellsWritten: w.spells.filter((s) => !s.builtin && !s.market && !s.origin).length },
       silencedFor: w.st.silencedUntil > this.now ? round(w.st.silencedUntil - this.now) : 0,
       cursedItemsStuck: this.boundItems(w).map((i) => ({ item: i.name, id: i.id, slot: i.slot, secondsLeft: Math.ceil((i.boundUntil ?? 0) - this.now) })),
       hexRespiteFor: w.respiteUntil > this.now ? round(w.respiteUntil - this.now) : 0,
@@ -3510,6 +3523,9 @@ export class World {
     w.seq = data.seq ?? 0;
     // v1 saves ran 15-minute terms by default: move them to the new default unless a decree chose the length
     if ((data.version ?? 1) < 2 && w.rules.terms.lengthSeconds === TERM_OLD_DEFAULT_S && !w.decrees.some((d) => d.changes.some((c) => c.startsWith('terms.lengthSeconds:')))) w.setTermLength(TERM_DEFAULT_S);
+    // the Minister's bar was 100 until round 5 showed nobody reaching it in a short term: an untouched 100 becomes the new default
+    const untouched = (k: string) => !w.decrees.some((d) => d.changes.some((c) => c.startsWith(`${k}:`)));
+    if (w.rules.terms.ministerMinReputation === MINISTER_OLD_DEFAULT && untouched('terms.ministerMinReputation')) w.rules.terms.ministerMinReputation = defaultRulebook().terms.ministerMinReputation;
     const saved = (data as { features?: Record<string, unknown> }).features ?? {};
     for (const f of HOOKS.load) f.load(w, saved[f.id], data as unknown as Record<string, unknown>); // older saves kept these at the top
     for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {

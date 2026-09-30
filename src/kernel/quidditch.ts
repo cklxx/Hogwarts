@@ -128,9 +128,16 @@ export function qdJoin(world: World, wid: string, role?: QdRole) {
   const w = world.wizards.get(wid);
   if (!w) throw new Error('Unknown wizard.');
   const m = world.qd.match;
-  if (!m || m.phase === 'done') {
-    const s = schedule(world), next = qdPairing(world.term.n);
+  // this term's match is over (status still shows its final score): say so, and name next term's pairing (round 5
+  // read "match in progress" in status and "no match being called" from join)
+  if (m?.phase === 'done') {
+    const nx = qdPairing(world.term.n + 1);
+    throw new Error(`This term's match is over: ${m.sides[0]} ${m.score[0]} – ${m.score[1]} ${m.sides[1]}. Next term: ${nx[0]} v ${nx[1]}. 本学期的魁地奇已经结束：${houseZh[m.sides[0]]} ${m.score[0]} : ${m.score[1]} ${houseZh[m.sides[1]]}。下学期：${houseZh[nx[0]]} 对 ${houseZh[nx[1]]}。`);
+  }
+  if (!m) {
+    const s = schedule(world);
     const when = world.qd.doneTerm === world.term.n || world.now > s.whistle ? 'next term' : `in ${Math.max(0, Math.ceil(s.whistle - QD_CALL_S - world.now))}s`;
+    const next = qdPairing(world.term.n + (when === 'next term' ? 1 : 0));
     throw new Error(`No Quidditch match is being called. The next one, ${when}: ${next[0]} v ${next[1]}. 现在没有魁地奇比赛在集合：下一场${when === 'next term' ? '在下学期' : `${Math.max(0, Math.ceil(s.whistle - QD_CALL_S - world.now))} 秒后集合`}，${houseZh[next[0]]} 对 ${houseZh[next[1]]}。`);
   }
   const side = m.sides.indexOf(w.house);

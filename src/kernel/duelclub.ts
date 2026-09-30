@@ -19,8 +19,8 @@
  *   nobody else touch them or be touched by them (formal/tla/Hostility.tla DuelMutual / DuelIsolated); nobody
  *   else may heal or shield them. A knock-out ends the match (no stun, no Hospital Wing, no reputation stolen).
  * - NPC sparring partners fight: they close in for a clear shot and cast what they know, but never heal. The draft
- *   never sends an NPC more than BULLY_YEAR_GAP years above the youngest player it would face (以大欺小, npc.ts
- *   npcMayFight), and an NPC never attacks such a player. The duel is the player's own choice, so the rest of
+ *   sends the NPC nearest the youngest player's year, and an older one fights at that player's level (sparScale:
+ *   以大欺小 cannot happen on the stage). The duel is the player's own choice, so the rest of
  *   npcMayFight (newcomers, the badly hurt, the spawn) does not hold them back on the stage.
  * - Rewards (duelGrant), only for a win fought for (the fight had begun and the winner landed a blow): the winner +DUEL_WIN_REP reputation (and house points) and XP, the loser some XP; only
  *   against a player (an NPC sparring match pays XP only), only once per pair per DUEL_PAIR_GAP_S, and at most
@@ -29,7 +29,7 @@
  *   safe zone.
  */
 import { z } from 'zod';
-import { BULLY_YEAR_GAP } from '../shared/constants.js';
+import { capsFor } from '../runes/primitives.js';
 import type { Feature } from './feature.js';
 import { qdOnTeam, qdPlaying } from './quidditch.js';
 import { stunPaysRep } from './progression.js';
@@ -276,6 +276,10 @@ function startMatch(world: World, sides: [Wizard[], Wizard[]], npc: boolean) {
   c.match = { id: ++c.seq, a: ids[0][0], b: ids[1][0], sides: ids, out: {}, phase: 'bow', at: world.now, npc, stats };
   const kind = npc ? { en: 'sparring with NPCs: XP only', zh: '和 NPC 陪练：只给经验' } : { en: 'rated: a win you fight for pays reputation', zh: '计分赛：打出来的胜利给声望' };
   world.emit('duel', `Duelling Club${ids[0].length > 1 ? ' (2v2)' : ''}: ${names(world, ids[0])} against ${names(world, ids[1])} — ${kind.en}. Wands up — bow.`, { zh: `决斗俱乐部${ids[0].length > 1 ? '（2v2）' : ''}：${zhNames(world, ids[0])} 对 ${zhNames(world, ids[1])}（${kind.zh}）！举杖——鞠躬。` });
+  // each player hears it privately too (inbox, wait until:"event"): an agent a round trip behind the bow still knows
+  // a fight is on, and that its reflexes are what fights in the first seconds (round 5: "no event when matched")
+  const go = DUEL_BOW_S + DUEL_COUNT_S;
+  for (const w of all) if (!w.npc) world.tell(w, { en: `⚔ Your Duelling Club match is on: bow, then the fight starts in ${go} s (leaving before then only calls it off). Your reflexes fight while you think (reflexes preset "duelist").`, zh: `⚔ 你的决斗开始了：鞠躬，${go} 秒后开打（在那之前离开只算取消）。你思考时由反射替你打（reflexes 预设 "duelist"）。` }, 'duel');
 }
 
 /**
@@ -346,15 +350,28 @@ function endMatch(world: World, winSide: 0 | 1 | null, how: 'knockout' | 'forfei
   world.emit('duel', `Duelling Club: ${names(world, m.sides[winSide])} beat ${names(world, m.sides[1 - winSide])} ${howEn} in ${secs}s — ${lines.map((l) => l.en).join('; ')}.`, { who: [...winners, ...losers].map((w) => w.id), zh: `决斗俱乐部：${zhNames(world, m.sides[winSide])} ${howZh}战胜 ${zhNames(world, m.sides[1 - winSide])}，用时 ${secs} 秒——${lines.map((l) => l.zh).join('；')}。` });
 }
 
-/** 以大欺小 (npc.ts npcMayFight): an NPC may face this player only if it is at most BULLY_YEAR_GAP years above them. */
-const fairFor = (npc: Wizard, foe: Wizard) => foe.npc || npc.year - foe.year <= BULLY_YEAR_GAP;
+/**
+ * 以大欺小, on the stage: an NPC sparring partner older than the player it faces fights at that player's level — its
+ * blows scaled by the two years' bolt caps, the player's blows on it by the two health pools (DUEL_FEATURE.hit). The
+ * club used to send only NPCs at most BULLY_YEAR_GAP years above, and NPCs outgrow first-years within minutes, so
+ * in round 5 nobody was ever sent (two players queued four minutes each). The factor for one blow, else 1.
+ */
+function sparScale(world: World, by: string, dstId: string): number {
+  const m = world.duel.match;
+  if (!m || m.phase !== 'fight' || !m.npc) return 1;
+  const a = world.wizards.get(by), b = world.wizards.get(dstId);
+  if (!a || !b || sideOf(m, a.id) < 0 || sideOf(m, b.id) < 0 || sideOf(m, a.id) === sideOf(m, b.id) || a.npc === b.npc) return 1;
+  const [npc, pl] = a.npc ? [a, b] : [b, a];
+  if (npc.year <= pl.year) return 1;
+  return a.npc ? capsFor(pl.year).boltPower / capsFor(npc.year).boltPower : world.derivedOf(npc).maxHp / world.derivedOf(pl).maxHp;
+}
 
 /**
  * NPCs free to fill `n` places against players whose youngest is in year `year`: in play, not in this match, not on
- * a Quidditch team, not queued, not possessed, and fair (fairFor) — the nearest year first.
+ * a Quidditch team, not queued, not possessed — the nearest year first (an older one fights at the player's level: sparScale).
  */
 function freeNpcs(world: World, taken: Set<string>, year: number, n: number) {
-  const ok = [...world.wizards.values()].filter((w) => w.npc && !w.heldBy && world.isActive(w) && !qdOnTeam(world, w.id) && !taken.has(w.id) && !queued(world.duel, w.id) && w.year - year <= BULLY_YEAR_GAP);
+  const ok = [...world.wizards.values()].filter((w) => w.npc && !w.heldBy && world.isActive(w) && !qdOnTeam(world, w.id) && !taken.has(w.id) && !queued(world.duel, w.id));
   return ok.map((w, i) => ({ w, i })).sort((p, q) => Math.abs(p.w.year - year) - Math.abs(q.w.year - year) || p.i - q.i).slice(0, n).map((x) => x.w);
 }
 
@@ -492,13 +509,13 @@ export function stepDuelClub(world: World) {
 const dist = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z);
 
 /**
- * A club NPC in the fight (twice a second): the nearest foe it may fairly fight (fairFor); close in when it is out of
+ * A club NPC in the fight (twice a second): the nearest foe (at the foe's level: sparScale); close in when it is out of
  * reach or out of sight — never off the stage, never into a safe zone — then one action: a Protego now and then when
  * hurt, else an attack it knows (Expelliarmus from the second year, Incendio, mostly Stupefy). It never heals, so the
  * player can win.
  */
 function spar(world: World, w: Wizard, m: DuelMatch) {
-  const foes = m.sides[1 - sideOf(m, w.id)].filter((id) => !m.out[id]).map((id) => world.wizards.get(id)).filter((x): x is Wizard => !!x && fairFor(w, x));
+  const foes = m.sides[1 - sideOf(m, w.id)].filter((id) => !m.out[id]).map((id) => world.wizards.get(id)).filter((x): x is Wizard => !!x);
   const opp = foes.sort((p, q) => dist(p.pos, w.pos) - dist(q.pos, w.pos))[0];
   if (!opp) { if (w.goal) world.setGoal(w.id, null); return; }
   const d = dist(opp.pos, w.pos), clear = world.inBlast(w.pos, opp.pos);
@@ -559,6 +576,7 @@ export const DUEL_FEATURE: Feature = {
   castBlock: (world, w) => (bowing(world, w.id) ? 'Wait for the countdown to finish. 等倒计时结束再施法。' : null),
   helpBlock: (world, src, dst) => src.id !== dst.id && inMatch(world.duel, dst.id) && !duelPartners(world.duel, src.id, dst.id), // no help from the crowd (a 2v2 partner may)
   reflect: creditReflect,
+  hit: (world, by, _src, dstId, _tags, dmg) => (dmg && by ? sparScale(world, by, dstId) : 1),
   npc(world, w) {
     // a sparring partner: still until the countdown ends (and once out), then it fights (spar)
     const m = world.duel.match;

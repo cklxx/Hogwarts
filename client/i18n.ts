@@ -71,7 +71,7 @@ const ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^\((let|set!|if|repeat|each|min-by|max-by|after|when|unless|do) ([^)]*)\)$/, (m) => `写法不对，应该是 (${m[1]} ${m[2]})`],
   [/^set! cannot change '([^']+)': it is built in/, (m) => `set! 不能改「${m[1]}」：它是内置的。用 (let 新名字 ...) 起一个你自己的名字`],
   [/^set! needs an existing binding: '([^']+)' is unbound/, (m) => `set! 只能改已有的名字：「${m[1]}」还没定义，先写 (let ${m[1]} ...)`],
-  [/^\(([^ )]+) ([^)]*)\) takes (at least )?([\d-]+) argument\(s\), got (\d+)/, (m) => `「${primZh(m[1])}」要 ${m[3] ? '至少 ' : ''}${m[4]} 个参数，你给了 ${m[5]} 个。写法：(${m[1]} ${m[2]})`],
+  [/^\(([^ )]+) ([^)]*)\) takes (at least )?([\d-]+) argument\(s\), got (\d+)(?: — missing (\S+)| — (this one is extra))?/, (m) => `「${primZh(m[1])}」要 ${m[3] ? '至少 ' : ''}${m[4]} 个参数，你给了 ${m[5]} 个${m[6] ? `，缺 ${m[6]}` : m[7] ? '，这一个是多出来的' : ''}。写法：(${m[1]} ${m[2]})`],
   [/^this spell needs year (\d+) magic \(([^)]*)\); you are year (\d+)/, (m) => `这个咒语用到了 ${m[1]} 年级的魔法（${m[2]}），你现在是 ${m[3]} 年级。换掉这些词，或者先升级。`],
   [/needs year (\d) magic/, (m) => `这是 ${m[1]} 年级的魔法`],
   [/^:(\w+) lies behind seal (\d) of the Restricted Section; you have broken (\d)/, (m) => `布料「:${m[1]}」需要禁书区第 ${m[2]} 道封印（你已破解 ${m[3]} 道）`],

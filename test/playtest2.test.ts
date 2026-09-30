@@ -112,9 +112,9 @@ describe('playtest round 2', () => {
 
   it('a 5-minute term needs a third of the reputation to make a Minister', () => {
     const w = mk();
-    expect(w.ministerBar()).toBe(100);
+    expect(w.ministerBar()).toBe(30);
     w.rules.terms.lengthSeconds = 300;
-    expect(w.ministerBar()).toBe(33);
+    expect(w.ministerBar()).toBe(10);
   });
 });
 

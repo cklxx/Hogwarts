@@ -66,6 +66,8 @@ export interface MarketListing {
   copiers: string[]; forks: string[];
   /** Successful casts by other (eligible) wizards, and distinct (caster, day) pairs among them. */
   casts: number; casters: number;
+  /** Galleons a copy or a fork costs (the author's price, 0..MARKET_PRICE_MAX); each wizard pays once per listing. */
+  price?: number;
 }
 /** The day's royalty ledger: `${listing}|${caster}` -> tenths paid to the listing's author; author -> tenths earned. */
 export interface RoyaltyLedger { paid: Record<string, number>; earned: Record<string, number> }
@@ -296,7 +298,7 @@ function card(world: World, l: MarketListing, wid: string | null) {
     npc: world.wizards.get(l.author)?.npc || undefined,
     tags: v.tags, effects: v.effects, minYear: v.minYear, nodes: v.nodes, desc: v.desc,
     publishedAt: round1(l.publishedAt), updatedAt: round1(l.updatedAt), versions: l.versions.length,
-    copies: l.copiers.length, forks: l.forks.length, casts: l.casts, casters: l.casters, popularity: popularity(l),
+    copies: l.copiers.length, forks: l.forks.length, casts: l.casts, casters: l.casters, popularity: popularity(l), price: l.price ?? 0,
     ...(l.parent ? { parent: { id: l.parent.id, v: l.parent.v, name: l.parent.name, author: l.parent.author } } : {}),
     banned: m.banned.includes(l.id), promoted: m.promoted.includes(l.id), yours: l.author === wid, ...(l.hidden ? { unpublished: true } : {}),
   };
@@ -426,7 +428,27 @@ export function npcStock(world: World) {
   }
 }
 
-export function publishSpell(world: World, wid: string, key: string, opts: { desc?: { zh?: string; en?: string } | null } = {}) {
+/** The most Galleons an author may ask for a copy (a first-year starts with 20). */
+export const MARKET_PRICE_MAX = 10;
+const priceOf = (p: unknown) => (typeof p === 'number' && Number.isFinite(p) ? Math.max(0, Math.min(MARKET_PRICE_MAX, Math.round(p))) : undefined);
+
+/**
+ * The price of taking a paid listing (copy or fork; round 5: "copies are free, a trader earns no Galleons"): once per
+ * wizard per listing, from the taker to the author — Galleons move, none are made. A wizard in their first
+ * FRESH_SECONDS takes it free and the author gets nothing (as with royalties: a fresh alt cannot farm you).
+ */
+function payPrice(world: World, w: Wizard, l: MarketListing, dry = false) {
+  const price = l.price ?? 0;
+  if (!price || l.copiers.includes(w.id) || world.now - w.createdAt < FRESH_SECONDS) return 0;
+  if (w.galleons < price) throw new Error(`${latest(l).name} costs ${price} Galleons; you have ${w.galleons}. 「${latest(l).name}」要 ${price} 加隆，你只有 ${w.galleons}。`);
+  if (dry) return price;
+  w.galleons -= price;
+  const author = world.wizards.get(l.author);
+  if (author) author.galleons += price;
+  return price;
+}
+
+export function publishSpell(world: World, wid: string, key: string, opts: { desc?: { zh?: string; en?: string } | null; price?: number } = {}) {
   const w = world.need(wid);
   if (w.npc) throw new Error('NPCs keep to the curriculum.');
   const s = world.findSpell(w, String(key ?? ''));
@@ -451,6 +473,8 @@ export function publishSpell(world: World, wid: string, key: string, opts: { des
     }
     linked.hidden = false;
     linked.updatedAt = world.now;
+    const p = priceOf(opts.price);
+    if (p !== undefined) linked.price = p;
     Object.assign(linked, { authorName: w.name, authorHandle: w.handle });
     s.market = { id: linked.id, v };
     const f = fill(MARKET_REPUBLISHED, { v: w.name, item: s.name, n: v });
@@ -459,6 +483,8 @@ export function publishSpell(world: World, wid: string, key: string, opts: { des
   }
   newListingRoom(world, w.id);
   const l = makeListing(world, w, s, desc, null);
+  const p = priceOf(opts.price);
+  if (p) l.price = p;
   const announced = announce(world, w, fill(world.quip(MARKET_PUBLISHED, w.handle, l.id), { v: w.name, item: s.name }));
   return { published: l.id, v: 1, name: s.name, tags: latest(l).tags, minYear: s.minYear, announced, note: 'Published. Others can copy or fork it; when they cast it you earn a little reputation. 已上架：别人施放它时你会得到少量声望。' + quiet(announced) };
 }
@@ -522,16 +548,18 @@ export function copySpell(world: World, wid: string, id: string, opts: { v?: num
   const { l, ver } = takeable(world, w, id, opts.v, 'copy');
   const name = clean(opts.name ?? ver.name, 40);
   freeName(w, name);
+  payPrice(world, w, l, true); // too poor: refused before anything is forged
   const r = world.forgeSpell(w.id, {
     name, incantation: ver.incantation, source: ver.source, slot: opts.slot, quiet: true,
     origin: { author: l.authorName, handle: l.authorHandle, spell: ver.name, at: world.now }, market: { id: l.id, v: ver.v },
   });
+  const paid = payPrice(world, w, l); // after the forge: a failed copy costs nothing
   if (!l.copiers.includes(w.id)) {
     if (l.copiers.length < 1000) l.copiers.push(w.id);
     const author = world.wizards.get(l.author);
     if (author) { const f = fill(world.quip(MARKET_COPIED_YOU, w.handle, l.id), { v: w.name, item: ver.name }); world.emit('market', f.en, { to: author.id, zh: f.zh }); }
   }
-  return { copied: { name: r.spell.name, id: r.spell.id, slot: w.hotbar.indexOf(r.spell.id) + 1 || null }, from: { id: l.id, v: ver.v, name: ver.name, author: l.authorName }, notes: r.notes };
+  return { copied: { name: r.spell.name, id: r.spell.id, slot: w.hotbar.indexOf(r.spell.id) + 1 || null }, from: { id: l.id, v: ver.v, name: ver.name, author: l.authorName }, ...(paid ? { paid, galleons: w.galleons } : {}), notes: r.notes };
 }
 
 /**
@@ -546,12 +574,15 @@ export function forkSpell(world: World, wid: string, id: string, opts: { v?: num
   if (norm(source) === norm(ver.source)) throw new Error('A fork must change the spell (edit its source); to use it as it is, copy_spell it. fork 要改点什么；原样使用请用 copy。');
   refuseBannedWords(world, source);
   newListingRoom(world, w.id);
+  payPrice(world, w, l, true); // too poor: refused before anything is forged
   const name = clean(opts.name ?? `${ver.name} II`, 40);
   freeName(w, name);
   const r = world.forgeSpell(w.id, {
     name, incantation: opts.incantation, source, slot: opts.slot, quiet: true,
     origin: { author: l.authorName, handle: l.authorHandle, spell: ver.name, at: world.now },
   });
+  payPrice(world, w, l);
+  if (!l.copiers.includes(w.id) && l.copiers.length < 1000) l.copiers.push(w.id); // paid once: a later copy of the parent is free
   const fork = makeListing(world, w, r.spell, descOf(opts.desc), { id: l.id, v: ver.v, authorId: l.author, author: l.authorName, handle: l.authorHandle, name: ver.name });
   if (l.forks.length < 200) l.forks.push(fork.id);
   const parent = world.wizards.get(l.author);
@@ -636,13 +667,14 @@ export const MARKET_FEATURE: Feature = {
     },
     {
       name: 'publish_spell', title: 'Publish a spell to the market', cost: 2,
-      description: `Put one of your own custom spells in the spell market (咒语集市), or publish its current state as the next version if it is already there (versions are immutable). Others can copy or fork it; each distinct wizard who casts it successfully earns you +1 reputation a day (+0.3 when they cast a fork of it), up to the daily cap (rulebook market.dailyCap). NPCs and wizards in their first ${FRESH_SECONDS / 60} minutes pay no royalty (their casts still count): a fresh alt cannot farm you. Copies of other wizards' spells cannot be published — fork them.`,
+      description: `Put one of your own custom spells in the spell market (咒语集市), or publish its current state as the next version if it is already there (versions are immutable). Others can copy or fork it; each distinct wizard who casts it successfully earns you +1 reputation a day (+0.3 when they cast a fork of it), up to the daily cap (rulebook market.dailyCap). NPCs and wizards in their first ${FRESH_SECONDS / 60} minutes pay no royalty (their casts still count): a fresh alt cannot farm you. price (0–${MARKET_PRICE_MAX} Galleons) is what a copy or a fork costs, paid to you once per wizard (fresh wizards take it free, and you get nothing from them). Copies of other wizards' spells cannot be published — fork them.`,
       input: {
         spell: z.string().min(1).max(60).describe('your spell\'s name or id'),
         desc_zh: z.string().max(140).optional().describe('a one-line description in Chinese'),
         desc_en: z.string().max(140).optional().describe('a one-line description in English'),
+        price: z.number().int().min(0).max(MARKET_PRICE_MAX).optional().describe('Galleons a copy or fork costs (default 0; republishing keeps it unless given)'),
       },
-      run: (world, wid, a) => publishSpell(world, wid, String(a.spell), { desc: desc(a.desc_zh, a.desc_en) }),
+      run: (world, wid, a) => publishSpell(world, wid, String(a.spell), { desc: desc(a.desc_zh, a.desc_en), price: optInt(a.price) }),
     },
     {
       name: 'unpublish_spell', title: 'Unpublish a market spell', cost: 1,
@@ -652,7 +684,7 @@ export const MARKET_FEATURE: Feature = {
     },
     {
       name: 'copy_spell', title: 'Copy a market spell into your book', cost: 3,
-      description: 'Forge a market spell into your spellbook, credited to its author. Your own year caps, seals, banned primitives and spellbook size apply (a failed copy spends nothing). Banned spells can be read but not copied.',
+      description: 'Forge a market spell into your spellbook, credited to its author. Your own year caps, seals, banned primitives and spellbook size apply (a failed copy spends nothing). Banned spells can be read but not copied. A listing with a price costs that many Galleons, paid to its author once (you are told if you cannot afford it).',
       input: {
         id: z.string().min(3).max(16).describe('market id (from market_browse)'),
         v: z.number().int().min(1).optional().describe('version (default: the latest)'),
