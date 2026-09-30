@@ -96,7 +96,7 @@ describe('误伤: a homing spell passes through the caster\'s allies', () => {
     const w = mk();
     const a = join(w, 'Harry', 'Gryffindor', 100, 100), b = join(w, 'Ron', 'Gryffindor', 100, 106);
     expect(allied(w, a.id, b.id)).toBe(true);
-    w.duel.match = { id: 1, a: a.id, b: b.id, phase: 'fight', at: 0, npc: false, stats: {} };
+    w.duel.match = { id: 1, a: a.id, b: b.id, sides: [[a.id], [b.id]], out: {}, phase: 'fight', at: 0, npc: false, stats: {} };
     expect(allied(w, a.id, b.id)).toBe(false);
   });
 });

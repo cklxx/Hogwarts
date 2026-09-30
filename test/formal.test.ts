@@ -318,12 +318,16 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       const ids = [a.id, b.id, 'sa', 'sb', 'pixie', 'unicorn', 'phoenix'];
       const owner: Record<string, string> = { sa: a.id, sb: b.id };
       const safe = (id: string) => w.inSafe(w.entity(id)!.pos);
-      // 决斗俱乐部: sometimes a and b are fighting a match (only ever while PvP is on: duelClosed)
+      // 决斗俱乐部: sometimes a and b are fighting a match (only ever while PvP is on: duelClosed) — as opponents, or
+      // as 2v2 partners (Hostility.tla `side`: the same side; their opponents are off this map)
       const duel = w.rules.combat.pvp && rd() < 0.35;
-      if (duel) w.duel.match = { id: 1, a: a.id, b: b.id, phase: 'fight', at: 0, npc: false, stats: {} };
+      const mates = duel && rd() < 0.3;
+      if (duel) w.duel.match = { id: 1, a: a.id, b: mates ? 'wz_far' : b.id, sides: mates ? [[a.id, b.id], ['wz_far']] : [[a.id], [b.id]], out: {}, phase: 'fight', at: 0, npc: false, stats: {} };
+      const foes = duel && !mates;
       if (duel) {
         const inPlay = (x: Wizard) => x.hp > 0 && !x.st.stunnedUntil && !safe(x.id);
-        if (inPlay(a) && inPlay(b)) { expect(w.canHarm(a.id, b.id)).toBe(true); expect(w.canHarm(b.id, a.id)).toBe(true); } // DuelMutual
+        if (foes && inPlay(a) && inPlay(b)) { expect(w.canHarm(a.id, b.id)).toBe(true); expect(w.canHarm(b.id, a.id)).toBe(true); } // DuelMutual
+        if (mates) for (const x of [a.id, 'sa']) for (const y of [b.id, 'sb']) { expect(w.canHarm(x, y)).toBe(false); expect(w.canHarm(y, x)).toBe(false); } // DuelTeammates
         for (const c of ['pixie', 'unicorn', 'phoenix']) for (const e of [a.id, b.id, 'sa', 'sb']) { expect(w.canHarm(c, e)).toBe(false); expect(w.canHarm(e, c)).toBe(false); } // DuelIsolated
         seen.duels++;
       }
@@ -347,7 +351,7 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
         const bx = behindOf(x), by = behindOf(y);
         if (!bx || !by) return false;
         const hx = w.wizards.get(bx)!.house, hy = w.wizards.get(by)!.house;
-        return hx === hy && !(duel && bx !== by);
+        return hx === hy && !(foes && bx !== by);
       };
       const npcB = rs() < 0.3;
       b.npc = npcB;
@@ -378,8 +382,8 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       // max(1, 25% max health), and it never counts as being hurt.
       for (const x of [a, b]) {
         // (in a Duelling-Club match only the opponent's jinxes and silences act on a duelist, whatever the houses)
-        const opp = duel ? (x === a ? b.id : a.id) : undefined;
-        const pvpOk = (src: string | null) => { const s = src ? w.wizards.get(src) : undefined; if (opp !== undefined) return !s || s.id === opp; return !s || (s !== x && w.rules.combat.pvp && (s.house !== x.house || w.rules.combat.friendlyFire)); };
+        const opp = foes ? (x === a ? b.id : a.id) : undefined;
+        const pvpOk = (src: string | null) => { const s = src ? w.wizards.get(src) : undefined; if (duel) return !s || s.id === opp; return !s || (s !== x && w.rules.combat.pvp && (s.house !== x.house || w.rules.combat.friendlyFire)); };
         for (const au of x.auras) {
           const bites = w.jinxBites(au.src, x.id);
           expect(bites).toBe(w.canHarm(null, x.id) && pvpOk(au.src));

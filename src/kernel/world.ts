@@ -50,7 +50,7 @@ import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook
 import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
-import { inMatch } from './duelclub.js';
+import { duelFoes, inFight, inMatch, sideOf } from './duelclub.js';
 import { spared, strikes } from './allies.js';
 import { FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
@@ -535,15 +535,15 @@ export class World {
     if (dc && CREATURES[dc.kind].invulnerable) return false;
     if (this.inSafe(dst.pos)) return false;
     const sc = srcId ? this.creatures.get(srcId) : undefined;
-    // 决斗俱乐部 (duelclub.ts, formal/tla/Hostility.tla DuelMutual / DuelIsolated): while two wizards fight on the
-    // stage, only they (and their summons) touch each other — whatever their houses — and nobody else touches them
+    // 决斗俱乐部 (duelclub.ts, formal/tla/Hostility.tla DuelMutual / DuelTeammates / DuelIsolated): while a match
+    // fights on the stage, only opponents (and their summons) touch each other — whatever their houses — partners
+    // never do, a duelist who is out touches nothing, and nobody from outside touches them
     const m = this.duel.match;
     if (srcId && m && m.phase === 'fight') { // (canHarm(null, x) keeps meaning "x is in play": see jinxBites)
-      const inD = (id: string | null | undefined) => id === m.a || id === m.b;
       const so = sc?.owner ?? srcId, dso = dc?.owner ?? dstId;
-      if (inD(so) || inD(dso)) {
+      if (sideOf(m, so) >= 0 || sideOf(m, dso) >= 0) {
         const sw0 = so ? this.wizards.get(so) : undefined;
-        return inD(so) && inD(dso) && so !== dso && !(sw0 && this.inSafe(sw0.pos));
+        return duelFoes(this.duel, so, dso) && !(sw0 && this.inSafe(sw0.pos));
       }
     }
     if (!srcId) return true;
@@ -585,16 +585,11 @@ export class World {
     if (!this.canHarm(null, dstId)) return false;
     const dw = this.wizards.get(dstId);
     if (!dw) return true;
-    const duelSide = this.duelOpponent(dw.id);
-    if (duelSide !== undefined) return !src || src === duelSide; // 决斗俱乐部: only the opponent's (or the world's)
+    if (inFight(this.duel, dw.id)) return !src || duelFoes(this.duel, this.credit(src) ?? src, dw.id); // 决斗俱乐部: only an opponent's (or the world's)
     return this.rulesLetHarm(src, dw);
   }
-  /** The opponent of a wizard fighting a Duelling-Club match right now, else undefined. */
-  duelOpponent(wid: string): string | undefined {
-    const m = this.duel.match;
-    if (!m || m.phase !== 'fight') return undefined;
-    return m.a === wid ? m.b : m.b === wid ? m.a : undefined;
-  }
+  /** Two wizards fighting each other in a Duelling-Club match right now (opponents, not partners). */
+  duelFoes(x: string, y: string): boolean { return duelFoes(this.duel, x, y); }
 
   /** Stunned wizards within r (they are not "in play", so `around` never returns them). */
   fallen(p: Vec2, r: number, exclude?: string) {
@@ -898,8 +893,8 @@ export class World {
     // an attack aimed at someone you may not harm: say so, spend nothing (it used to fly, fizzle on arrival, and cost mana)
     if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.canHarm(wid, target)) {
       const t = this.entity(target)!;
-      const why = this.duelOpponent(target) !== undefined ? 'they are in a Duelling Club match' : this.duelOpponent(wid) !== undefined ? 'only your duel opponent can be hit now' : this.inSafe(t.pos) || this.inSafe(w.pos) ? 'a safe zone' : 'the rules (house, PvP, or they are down)';
-      const whyZh = this.duelOpponent(target) !== undefined ? '对方正在决斗' : this.duelOpponent(wid) !== undefined ? '决斗中只能打你的对手' : this.inSafe(t.pos) || this.inSafe(w.pos) ? '安全区' : '规则（学院、PvP，或对方已倒下）';
+      const why = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? 'they are in a Duelling Club match' : inMatch(this.duel, wid) ? 'in a duel only your opponents can be hit' : this.inSafe(t.pos) || this.inSafe(w.pos) ? 'a safe zone' : 'the rules (house, PvP, or they are down)';
+      const whyZh = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? '对方正在决斗' : inMatch(this.duel, wid) ? '决斗中只能打你的对手' : this.inSafe(t.pos) || this.inSafe(w.pos) ? '安全区' : '规则（学院、PvP，或对方已倒下）';
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
     }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
@@ -1416,13 +1411,13 @@ export class World {
       return before - w.hp;
     }
     const dm = this.duel.match;
-    if (dm && dm.phase === 'fight' && (dm.a === w.id || dm.b === w.id)) {
+    if (dm && inFight(this.duel, w.id)) {
       // 决斗俱乐部: count the hit for the summary; a knock-out ends the match instead of stunning (duelclub.ts)
       const st = by ? dm.stats[by] : undefined;
       if (st) { st.dealt += Math.min(a, Math.max(0, w.hp)); if (!opts.dot) st.hits++; }
       if (w.hp - a <= 0) {
         w.hp = 1;
-        dm.loser = w.id;
+        dm.out[w.id] = 'ko'; // out of the fight (a 1v1 ends at once; a 2v2 when the whole side is out)
         this.fx({ k: 'stun', x: w.pos.x, z: w.pos.z, h: w.handle });
         return a;
       }
@@ -1811,8 +1806,8 @@ export class World {
    */
   silenced(w: Wizard) {
     if (!(w.st.silencedUntil > this.now && !this.inSafe(w.pos))) return false;
-    const src = w.st.silenceSrc ?? null, opp = this.duelOpponent(w.id);
-    return opp !== undefined ? !src || src === opp : this.rulesLetHarm(src, w); // 决斗俱乐部: only the opponent's silence holds
+    const src = w.st.silenceSrc ?? null;
+    return inFight(this.duel, w.id) ? !src || duelFoes(this.duel, src, w.id) : this.rulesLetHarm(src, w); // 决斗俱乐部: only an opponent's silence holds
   }
 
   /**
