@@ -959,3 +959,9 @@ body.touch #tb-extra:not([hidden]) { position: absolute; right: calc(100% + calc
   body.touch :is(#evslip, #duelslip, #qdslip) > svg.ic { width: calc(24px * var(--u)); height: calc(24px * var(--u)); }
   #banner { font-size: calc(14px * var(--t)); }
 }
+@media (max-width: 520px) {
+  /* a phone: no "next event" countdown under the house strip (it sat on the target frame), and the feed keeps only
+     what is addressed to you — public news already takes the centre banner, and Lee Jordan's commentary filled it */
+  body.touch #cupstrip .cs-next { display: none; }
+  body.touch #feed > div:not(.private) { display: none; }
+}
