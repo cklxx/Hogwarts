@@ -199,12 +199,17 @@ describe('the world, said plainly', () => {
 });
 
 describe('反射: wizards by handle, "self", and mana kept back', () => {
-  it('a reflex strikes a wizard foe (it used to pass a registry id cast refused), and keep holds mana back', () => {
+  it('a reflex answers a wizard who struck first (by handle: it used to pass a registry id cast refused), and keep holds mana back', () => {
     const w = mk();
     const a = join(w, 'Blaise Reflex', 'Slytherin', 100, 100), b = join(w, 'Percy Target', 'Gryffindor', 100, 110);
     setReflexes(w, a.id, [{ when: 'enemy_near', do: 'cast', range: 20, spell: 'Stupefy', target: 'nearest_enemy' }]);
-    const hp = b.hp;
     run(w, 1.5);
+    expect(b.hp).toBe(w.privateState(b.id).maxHp); // a passer-by: a reflex never starts a fight
+    expect(w.cast(b.id, 'Stupefy', { target: a.handle }).ok).toBe(true); // b strikes first
+    run(w, 1);
+    a.st.stunnedUntil = 0; a.hp = w.privateState(a.id).maxHp; a.mana = w.privateState(a.id).maxMana;
+    const hp = b.hp;
+    run(w, 2);
     expect(b.hp).toBeLessThan(hp);
     b.hp = w.privateState(b.id).maxHp;
     setReflexes(w, a.id, [{ when: 'enemy_near', do: 'cast', range: 20, spell: 'Stupefy', target: 'nearest_enemy', keep: 0.9 }]);
