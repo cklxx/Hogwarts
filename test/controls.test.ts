@@ -25,7 +25,8 @@ describe('spell kinds (smart casting in the browser)', () => {
     const bar = w.privateState(wizard.id).hotbar;
     expect(bar[0]).toMatchObject({ name: 'Stupefy', kind: 'harm' });
     expect(bar.find((s) => s?.name === 'Episkey')).toMatchObject({ kind: 'help' });
-    expect(bar.find((s) => s?.name === 'Tempus')).toMatchObject({ kind: 'self' });
+    // (Aguamenti, the first-years' water, took a slot: Tempus is cast from its HUD corner; Lumos stays)
+    expect(bar.find((s) => s?.name === 'Lumos')).toMatchObject({ kind: 'self' });
   });
 });
 

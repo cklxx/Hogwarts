@@ -316,7 +316,9 @@ export type WireEvent = Omit<WorldEvent, 'who' | 'aud'>;
 export const visibleTo = (e: WorldEvent, wid: string) => (e.to ? e.to === wid : e.aud ? e.aud.includes(wid) : true);
 
 export interface Fx {
-  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal' | 'dodge' | 'reflect' | 'clash';
+  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal' | 'dodge' | 'reflect' | 'clash'
+    /** a magic reaction (kernel/chem.ts): h = its id */
+    | 'react';
   x: number;
   z: number;
   r?: number;

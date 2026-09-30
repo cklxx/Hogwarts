@@ -57,6 +57,8 @@ export interface SpellApi {
  */
 export interface FeatureSpell {
   prim: Prim;
+  /** What a spell using it is for (the browser's smart casting: a foe, a friend): harm or help; unset, neither. */
+  aims?: 'harm' | 'help';
   cost(x: Record<string, number>): number;
   plan(api: SpellApi, args: Value[], at: Node): { cost: Record<string, number>; desc: string; apply(): void };
 }
@@ -110,7 +112,7 @@ export interface Feature {
    * A spell landing on `dstId` — its damage (`dmg`; not damage over time), or a root or disarm — from `by` (the
    * attacker, or a summon's owner; `src` when a wizard cast it themselves): a multiplier on the damage (1 for none).
    */
-  hit?(world: World, by: string | null, src: Wizard | undefined, dstId: string, tags: readonly string[], dmg: boolean): number;
+  hit?(world: World, by: string | null, src: Wizard | undefined, dstId: string, tags: readonly string[], dmg: boolean, element?: Element): number;
   /**
    * A price on this wizard's head: a stun by another wizard takes the larger share of their reputation
    * (progression.ts stealPct, the Dark Lord's) and is announced ('dark') with a line from the pool ({name}, {k}, {n}).

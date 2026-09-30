@@ -54,6 +54,7 @@ function stain(world: World, w: Wizard, what: string) {
 
 const SPELLS: FeatureSpell[] = [
   {
+    aims: 'harm',
     prim: prim('sectumsempra', [a('at', 'ent')], `An unseen blade: a bolt that opens a wound bleeding ${DARK_BLEED} a second for ${DARK_BLEED_S} s (cleanse closes it). Cost 26.`, '(sectumsempra target)'),
     cost: () => 26,
     plan(api, args, at) {
@@ -65,6 +66,7 @@ const SPELLS: FeatureSpell[] = [
     },
   },
   {
+    aims: 'harm',
     prim: prim('fiendfyre', [a('at', 'place'), a('power', 'num')], `Cursed fire at a point within 20 m: ${DARK_FIRE_PULSES} pulses a second apart on everything harmable within ${DARK_FIRE_R} m. Cost: 1.6*power*pulses; power ≤ 6+3*year.`, '(fiendfyre aim 12)'),
     cost: ({ power }) => 1.6 * power * DARK_FIRE_PULSES,
     plan(api, args, at) {

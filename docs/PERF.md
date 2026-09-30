@@ -1435,3 +1435,13 @@ state, not chrome: that sample caught the event slip of a running curfew (2.9 %)
 lines for 7 s, 11.9 % of the screen in one sample. It is now one headline (first sentence, ≤ 26 characters) for 3.5 s,
 higher up (17 % from the top instead of 30 %); the full text goes to the feed. The phone shell (15 % bottom controls)
 is unchanged: it was cut down last round.
+
+## 2026-09-30 — magic chemistry and hit-stop (`wf/chem`)
+
+- Kernel: `chem`'s `hit` hook runs once per direct hit: map lookups, plus an `around` of 6 m for an arc or an
+  overload. Its sweep runs once a second over every active entity (the wet zones and the rain). The snapshot head
+  carries `chem` only while someone is wet (outside the rain) or frozen.
+- Client: two instanced meshes (the drops, the ice) plus the fountain's 36-drop spray are 3 draw calls in all.
+- Hit-stop scales the world's motion (interpolation, animation, particles) by 0.08 for 30–110 ms. It never scales
+  the camera, the input or the HUD, and it is off under reduced motion.
+- No frame-rate claim (SwiftShader).

@@ -112,7 +112,8 @@ export function createEffects(scene: THREE.Scene) {
       m.scale.set(1, 1, 1);
       add(m, life, (k, o) => { (m.material as THREE.MeshBasicMaterial).opacity = 0.28 * (1 - k) * Math.min(1, k * 8); o.scale.x = o.scale.z = 1 + k * 0.6; }, () => columns.give(m));
     },
-    floatText(x: number, z: number, text: string, color: string) {
+    /** (`lift`: metres higher, and a size larger — a reaction's name over the damage number beside it) */
+    floatText(x: number, z: number, text: string, color: string, lift = 0) {
       const sp = texts.take();
       const tex = textTexture(text, color);
       inUse.set(tex, (inUse.get(tex) ?? 0) + 1);
@@ -120,8 +121,10 @@ export function createEffects(scene: THREE.Scene) {
       sp.material.opacity = 1;
       const jx = (Math.random() - 0.5) * 0.8;
       const gy = heightAt(x, z);
-      sp.position.set(x + jx, 2.4 + gy, z);
-      add(sp, 1.1, (k, o) => { o.position.y = gy + 2.4 + k * 1.8; sp.material.opacity = 1 - k * k; }, () => { inUse.set(tex, (inUse.get(tex) ?? 1) - 1); texts.give(sp); });
+      const y0 = 2.4 + lift, s = lift ? 1.5 : 1;
+      sp.scale.set(1.6 * s, 0.8 * s, 1);
+      sp.position.set(x + jx, y0 + gy, z);
+      add(sp, lift ? 1.4 : 1.1, (k, o) => { o.position.y = gy + y0 + k * 1.8; sp.material.opacity = 1 - k * k; }, () => { inUse.set(tex, (inUse.get(tex) ?? 1) - 1); texts.give(sp); });
     },
     /** A jagged bolt through the given x,z points (at chest height, or from the sky when `sky` > 0). */
     lightning(pts: number[], color: number, sky = 0) {
