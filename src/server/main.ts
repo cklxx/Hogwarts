@@ -56,6 +56,11 @@ function baseFor(req: IncomingMessage): string {
   const proto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https' ? 'https' : 'http';
   return `${proto}://${host}`;
 }
+/** The link to give a friend: baseFor, except that a player on this machine (localhost) gets the LAN address. */
+function inviteFor(req: IncomingMessage): string {
+  const b = baseFor(req);
+  return LAN && !process.env.PUBLIC_URL && /^https?:\/\/(localhost|127\.|\[::1\])/.test(b) ? `http://${LAN}:${PORT}` : b;
+}
 
 // ------------------------------------------------------------------ world + persistence
 function load(): World {
@@ -435,7 +440,7 @@ http.on('upgrade', (req, socket, head) => {
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => visibleTo(e, w.id)).slice(-30).map((e) => world.wireEvent(e));
-    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
+    ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, invite: inviteFor(req), build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     const handle = (x: unknown) => handleClient(ws, w.id, x as ClientMsg); // one per socket, not one per message
     ws.on('message', (raw) => {
       let m: ClientMsg;
