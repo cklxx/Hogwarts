@@ -11,6 +11,7 @@
 //    Highlands start to climb (client/terrain.ts: ss(270, 420, hypot(x, z + 20))); inside it the ground stays
 //    within ~3 m of the grounds' level, so nobody walks up a mountain side.
 import { OBSTACLES, type Obstacle, type Style } from './map.js';
+import { VEIL_H, veilWalls } from './scenes.js';
 
 /** A footprint on the XZ plane, `h` metres tall. Boxes are axis-aligned; `obox` is a box turned by `yaw` about +Y. */
 export type Collider = { h: number; style: Style; label?: string } & (
@@ -93,6 +94,8 @@ function props(): Collider[] {
     out.push(box(Math.min(inner, outer), D.z, Math.max(inner, outer), D.z + D.depth, D.h, 'stone', 'Door jamb'));
   }
   out.push(box(MIRROR.x - MIRROR.w / 2, MIRROR.z - MIRROR.d / 2, MIRROR.x + MIRROR.w / 2, MIRROR.z + MIRROR.d / 2, MIRROR.h, 'stone', 'Mirror of Erised'));
+  // the veil round each scene (src/shared/scenes.ts): nobody walks the land between, no bolt crosses it
+  for (const v of veilWalls()) out.push(box(v.x0, v.z0, v.x1, v.z1, VEIL_H, 'veil', 'Veil'));
   return out;
 }
 
@@ -240,7 +243,7 @@ export function viewSolids(ground: (x: number, z: number) => number = () => 0): 
         put(boxAt(o.x, o.z, o.r * 1.3, o.r * 1.3, o.style), o.h, o.h + 0.5);
     }
   }
-  for (const c of props()) put(c, 0, c.label === 'Buttress' ? c.h + 3.4 : c.h); // buttresses carry pinnacles
+  for (const c of props()) if (c.style !== 'veil') put(c, 0, c.label === 'Buttress' ? c.h + 3.4 : c.h); // buttresses carry pinnacles; the camera sees through the veil (mist)
   const L = HALL_LINTEL;
   put(boxAt(L.x, L.z, L.w / 2, L.d / 2, 'stone', 'Lintel'), L.y - L.h / 2, L.y + L.h / 2);
   const R = HALL_ROOF, rcx = (R.x0 + R.x1) / 2, rcz = (R.z0 + R.z1) / 2;

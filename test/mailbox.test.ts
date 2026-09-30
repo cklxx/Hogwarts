@@ -15,7 +15,7 @@ function mk() {
 function join(w: World, name: string): Wizard {
   const x = w.enroll(name).wizard;
   x.connections = 1;
-  x.pos = { x: 60, z: 60 };
+  x.pos = { x: 20, z: 20 }; // the castle's lawn (src/shared/scenes.ts)
   return x;
 }
 const run = (w: World, s: number) => { for (let t = 0; t < s; t += 0.05) w.tick(0.05); };
@@ -243,7 +243,7 @@ describe('presence and the pause switch', () => {
   it('pausing refuses action tools (not reading, not talking), cancels the walk the agent set, and tells the agent why', () => {
     const w = mk();
     const a = join(w, 'Alice');
-    w.setGoal(a.id, { x: 80, z: 60 }, 'agent');
+    w.setGoal(a.id, { x: 40, z: 22 }, 'agent');
     expect(a.goal).not.toBeNull();
     const since = w.events.at(-1)!.id;
     w.setAgentPaused(a.id, true);
@@ -251,7 +251,7 @@ describe('presence and the pause switch', () => {
     expect(w.privateState(a.id).agent.paused).toBe(true);
     for (const tool of ['look', 'whoami', 'events', 'armory', 'grimoire', 'leaderboard', 'listen', 'tell_player', 'set_goal_note']) expect(w.agentMayAct(a.id, tool), tool).toBe(true);
     for (const tool of ['cast', 'move_to', 'say', 'forge_item', 'forge_spell', 'use_item', 'equip_item', 'destroy_item', 'decree', 'stop', 'break_seal']) expect(w.agentMayAct(a.id, tool), tool).toBe(false);
-    expect(() => w.setGoal(a.id, { x: 80, z: 60 }, 'agent')).toThrow(AGENT_PAUSED);
+    expect(() => w.setGoal(a.id, { x: 40, z: 22 }, 'agent')).toThrow(AGENT_PAUSED);
     expect(w.inboxFor(a.id, since).map((e) => e.text)).toEqual([expect.stringMatching(/paused your agent/)]); // wakes a waiting agent
     w.setAgentPaused(a.id, false);
     expect(w.agentMayAct(a.id, 'cast')).toBe(true);
@@ -261,51 +261,51 @@ describe('presence and the pause switch', () => {
   it("pausing keeps the player's own walk; the player's WASD cancels any walk; an agent cannot take the wheel while the player steers", () => {
     const w = mk();
     const a = join(w, 'Alice');
-    w.setGoal(a.id, { x: 80, z: 60 }); // the player's click-to-move
+    w.setGoal(a.id, { x: 40, z: 22 }); // the player's click-to-move
     w.setAgentPaused(a.id, true);
     expect(a.goal).not.toBeNull();
     w.setAgentPaused(a.id, false);
     w.setGoal(a.id, null); // the player stops
     w.now += PLAYER_GRACE_S;
-    w.setGoal(a.id, { x: 80, z: 60 }, 'agent');
+    w.setGoal(a.id, { x: 40, z: 22 }, 'agent');
     w.setInput(a.id, 0, 1);
     expect(a.goal).toBeNull();
-    expect(() => w.setGoal(a.id, { x: 80, z: 60 }, 'agent')).toThrow(PLAYER_STEERING);
+    expect(() => w.setGoal(a.id, { x: 40, z: 22 }, 'agent')).toThrow(PLAYER_STEERING);
     w.setInput(a.id, 0, 0);
-    expect(() => w.setGoal(a.id, { x: 80, z: 60 }, 'agent')).toThrow(PLAYER_STEERING); // just let go: the grace
+    expect(() => w.setGoal(a.id, { x: 40, z: 22 }, 'agent')).toThrow(PLAYER_STEERING); // just let go: the grace
     w.now += PLAYER_GRACE_S;
-    expect(w.setGoal(a.id, { x: 80, z: 60 }, 'agent')).not.toBeNull();
+    expect(w.setGoal(a.id, { x: 40, z: 22 }, 'agent')).not.toBeNull();
     run(w, 1);
-    expect(a.pos.x).toBeGreaterThan(60);
+    expect(a.pos.x).toBeGreaterThan(24);
   });
 
   it("an agent never overrides or cancels the player's click-to-move: the human comes first", () => {
     const w = mk();
     const a = join(w, 'Alice');
-    w.setGoal(a.id, { x: 70, z: 60 }); // the player clicks the ground
+    w.setGoal(a.id, { x: 26, z: 24 }); // the player clicks the ground (a few metres: the walk ends inside the 10 s below)
     const mine = { ...a.goal! };
     w.now += 10; // long after the click: the walk itself still has priority
-    expect(() => w.setGoal(a.id, { x: 90, z: 60 }, 'agent')).toThrow(PLAYER_STEERING);
+    expect(() => w.setGoal(a.id, { x: 30, z: 26 }, 'agent')).toThrow(PLAYER_STEERING);
     expect(w.setGoal(a.id, null, 'agent')).toBeNull(); // the agent's stop ends only a walk the agent set
     expect([a.goal, a.goalBy]).toEqual([mine, 'player']);
     expect(w.playerSteering(a)).toBe(true);
     // the player's walk ends; the grace runs from the arrival, then the agent may walk again
     for (let t = 0; t < 10 && a.goal; t += 0.05) w.tick(0.05);
     expect(a.goal).toBeNull();
-    expect(() => w.setGoal(a.id, { x: 90, z: 60 }, 'agent')).toThrow(PLAYER_STEERING);
+    expect(() => w.setGoal(a.id, { x: 30, z: 26 }, 'agent')).toThrow(PLAYER_STEERING);
     run(w, PLAYER_GRACE_S + 0.1);
     expect(w.playerSteering(a)).toBe(false);
-    w.setGoal(a.id, { x: 90, z: 60 }, 'agent');
+    w.setGoal(a.id, { x: 30, z: 26 }, 'agent');
     expect(a.goalBy).toBe('agent');
     // a click replaces the agent's walk at once; the agent's stop leaves it alone
-    w.setGoal(a.id, { x: 50, z: 60 });
+    w.setGoal(a.id, { x: 36, z: 30 });
     expect(a.goalBy).toBe('player');
     w.setGoal(a.id, null, 'agent');
     expect(a.goal).not.toBeNull();
     // and the agent's own stop does end the agent's own walk
     w.setGoal(a.id, null);
     w.now += PLAYER_GRACE_S;
-    w.setGoal(a.id, { x: 90, z: 60 }, 'agent');
+    w.setGoal(a.id, { x: 30, z: 26 }, 'agent');
     w.setGoal(a.id, null, 'agent');
     expect([a.goal, a.goalBy]).toEqual([null, null]);
   });

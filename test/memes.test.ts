@@ -176,7 +176,7 @@ describe('chat triggers with a mechanic', () => {
     w.say(a, 'Has anyone seen a toad?');
     expect(mine(w, a).at(-1)!.zh).toMatch(/有人看见一只蟾蜍吗/);
     expect(a.achievements).not.toContain('trevor');
-    a.pos = { x: -110, z: 40 };
+    a.pos = { x: -118, z: 40 };
     w.say(a, '特雷弗！');
     expect(a.achievements).toContain('trevor');
     expect(a.reputation).toBe(5);
@@ -420,7 +420,7 @@ describe('the world between the jokes', () => {
   it('NPCs chatter in both languages, all together at most every NPC_GAP_S', () => {
     const w = mk(5);
     ensureNpcs(w, 4);
-    for (const x of w.wizards.values()) x.pos = { x: 60, z: 60 };
+    for (const x of w.wizards.values()) x.pos = { x: 20, z: 20 }; // the castle lawn (not the mist between scenes, where every route fails)
     run(w, 600);
     const lines = w.events.filter((e) => e.type === 'chat');
     expect(lines.length).toBeGreaterThan(3);

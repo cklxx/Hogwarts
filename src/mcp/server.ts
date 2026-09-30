@@ -460,7 +460,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('move_to', {
     title: 'Walk somewhere',
-    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. Walking takes real time (~7 m/s): follow with wait(until:"arrived"). Refused while your human is steering.`,
+    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. The grounds are scenes walled in by mist (the castle; the lake, the forest with Hagrid's hut, the Quidditch pitch, Hogsmeade): a place in another scene is reached through its gate in the courtyard, and move_to walks you to the gate, through it and on (whoami.scene lists the gates where you are). Walking takes real time (~7 m/s): follow with wait(until:"arrived"). Refused while your human is steering.`,
     inputSchema: { landmark: z.string().optional(), x: z.number().optional(), z: z.number().optional() },
   }, me((wid, a: { landmark?: string; x?: number; z?: number }) => {
     const l = a.landmark ? landmarkById(a.landmark) : undefined;

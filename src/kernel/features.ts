@@ -16,6 +16,7 @@ import { QD_FEATURE } from './quidditch.js';
 import { POSSESS_FEATURE } from './possess.js';
 import { QUESTS_FEATURE } from './quests.js';
 import { REFLEX_FEATURE } from './reflexes.js';
+import { SCENES_FEATURE } from './scenes.js';
 import { SEALS_FEATURE } from './seals.js';
 import { TRAVEL_FEATURE } from './travel.js';
 import { DA_FEATURE, DARK_LORD_FEATURE, LAWLESS_FEATURE, STUDY_FEATURE } from './unfair.js';
@@ -26,7 +27,7 @@ import { WHEEL_FEATURE } from './wheel.js';
 // theirs); the Duelling Club before Quidditch: an NPC in a duel is the duel's, even if it is also on a team
 export const FEATURES: readonly Feature[] = [
   DARK_LORD_FEATURE, LAWLESS_FEATURE, DA_FEATURE, STUDY_FEATURE, SEALS_FEATURE,
-  CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE, DARK_FEATURE, REFLEX_FEATURE, POSSESS_FEATURE, METRICS_FEATURE,
+  CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE, DARK_FEATURE, REFLEX_FEATURE, POSSESS_FEATURE, METRICS_FEATURE, SCENES_FEATURE,
 ];
 export const FEATURE_BY_ID: ReadonlyMap<string, Feature> = new Map(FEATURES.map((f) => [f.id, f]));
 export const HOOKS = hookLists(FEATURES);

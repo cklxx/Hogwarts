@@ -116,7 +116,7 @@ const houseL = (h: House) => houseLine(h);
 export const DUNGEON_STAIR = { x: -50, z: -36 };
 export const PITCH = { x: 40, z: -150, r: 26 };
 export const SEVENTH = { x: -32, z: -58 };
-export const LAKE_EDGE = { x: -64, z: 32 };
+export const LAKE_EDGE = { x: -80, z: 34 }; // the lake's scene, by its gate
 const GROUNDS_HEART = { x: -12, z: -8 };
 /** The castle for curfew: the courtyard, the Great Hall, the wing fronts, the dungeon stair and the greenhouses. */
 export const CASTLE = { x0: -64, z0: -73, x1: 64, z1: -4 };
