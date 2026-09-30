@@ -63,7 +63,7 @@ describe('Lean conformance vectors: 魔法部长 (elect_never_npc, elect_top_pla
   it('electMinister picks what Lean picks, and never an NPC', () => {
     expect(V.minister.length).toBeGreaterThan(30);
     for (const [cs, bar, out] of V.minister) {
-      const got = electMinister(cs.map(([r, n]) => ({ reputation: r, npc: n === 1 })), bar);
+      const got = electMinister(cs.map(([r, n]) => ({ reputation: r, barred: n === 1 })), bar);
       expect([cs, bar, got]).toEqual([cs, bar, out]);
       if (got >= 0) expect(cs[got][1]).toBe(0); // the theorem, on the vector
     }

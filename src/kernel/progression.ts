@@ -49,12 +49,13 @@ export const stunPaysRep = (killerYear: number, victimYear: number) => killerYea
 
 /**
  * Who takes office at the end of a term (World.endTerm; formal/tla/TermDecree.tla EndTerm, Lean `electMinister`):
- * the highest-reputation *player* with at least `bar`. An NPC never holds office, however far it leads the board
- * (it would have no one to answer to and nobody to vote it out); ties go to the earlier entry. The index, or -1.
+ * the highest-reputation candidate not `barred` with at least `bar`. Barred: an NPC, however far it leads the board
+ * (it would have no one to answer to and nobody to vote it out), and a player not seen this term (playtest round 4:
+ * someone who stopped coming stayed Minister term after term). Ties go to the earlier entry. The index, or -1.
  */
-export function electMinister(cands: readonly { reputation: number; npc: boolean }[], bar: number): number {
+export function electMinister(cands: readonly { reputation: number; barred: boolean }[], bar: number): number {
   let best = -1;
-  for (let i = 0; i < cands.length; i++) if (!cands[i].npc && (best < 0 || cands[i].reputation > cands[best].reputation)) best = i;
+  for (let i = 0; i < cands.length; i++) if (!cands[i].barred && (best < 0 || cands[i].reputation > cands[best].reputation)) best = i;
   return best >= 0 && cands[best].reputation >= bar ? best : -1;
 }
 

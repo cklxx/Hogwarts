@@ -227,3 +227,28 @@ describe('反射: wizards by handle, "self", and mana kept back', () => {
     expect(w.resolveTarget('me', a.id)).toBe(a.id);
   });
 });
+
+describe('the owner\'s two calls (round 4): an absentee never takes office; the joint strike has 8 s', () => {
+  it('the top reputation away all term does not become Minister: the top player who came does', () => {
+    const w = mk();
+    w.term.startedAt = w.now; w.term.endsAt = w.now + 600;
+    const away = join(w, 'Away Grandee', 'Slytherin', 100, 100), here = join(w, 'Here Percy', 'Gryffindor', 110, 100);
+    away.reputation = 500; here.reputation = 200;
+    away.connections = 0; away.lastMcpAt = -1e9; away.lastSeenAt = w.term.startedAt - 1;
+    here.lastSeenAt = w.now;
+    expect(w.leaderboard().ministerInLine).toBe(here.name);
+    w.forceEndTerm();
+    expect(w.flags.ministerId).toBe(here.id);
+    expect(away.reputation).toBe(500); // the absent keep theirs, as before
+  });
+
+  it('three members hitting one target 3 s apart still strike together (the window is DA_JOINT_WINDOW_S = 8)', () => {
+    const w = mk();
+    const ms = ['Ginny Rally', 'Colin Creevey', 'Fred Weasley'].map((n, i) => join(w, n, ['Ravenclaw', 'Gryffindor', 'Hufflepuff'][i], 100 + i * 2, 100, 1));
+    for (const x of ms) joinDA(w, x.id);
+    beast(w, 'troll_j', 102, 88, 2000);
+    for (const [i, x] of ms.entries()) { expect(w.cast(x.id, 'Stupefy', { target: 'troll_j' }).ok).toBe(true); run(w, i < 2 ? 3 : 1); } // hits ~6 s apart end to end
+    expect(daState(w, ms[2].id).joint.now![0]).toMatchObject({ members: 3 });
+    expect(w.events.some((e) => e.type === 'da' && /together|Patronum/.test(e.text))).toBe(true);
+  });
+});

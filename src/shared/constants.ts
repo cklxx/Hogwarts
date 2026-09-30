@@ -169,7 +169,7 @@ export const DA_VETO_WINDOW_S = 180;
 export const DA_VETOES_PER_TERM = 1;
 /** Joint spell: ≥ DA_JOINT_MIN members hitting the same target within DA_JOINT_WINDOW_S deal ×DA_JOINT_PCT%. */
 export const DA_JOINT_MIN = 3;
-export const DA_JOINT_WINDOW_S = 4;
+export const DA_JOINT_WINDOW_S = 8;
 export const DA_JOINT_PCT = 125;
 
 /** 偷师: a custom spell that hit you can be studied STUDY_DELAY_S after it first did, while it hit you in the last STUDY_MEMORY_S. */
