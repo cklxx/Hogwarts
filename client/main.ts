@@ -1691,7 +1691,7 @@ function toggleMenu() {
 probe.mark("preControls");
 const ctl = createControls({
   canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,
-  snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast,
+  snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast, lens: (f: boolean) => R.setLens(f),
   cam: {
     get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; },
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
@@ -1753,7 +1753,7 @@ function onChest(r: { whereZh?: string; where?: string; housePoints?: number; ga
   if (r.fragment) loadDraft(L('宝箱里的残页', 'Page from a chest'), r.fragment.source, L(r.fragment.zh, r.fragment.en));
 }
 // the camera keeps out of walls, fades what hides you, x-rays you and your allies (view.ts)
-const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), overhead: phone, cam: {
+const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), overhead: phone, fixed: () => ctl.flat(), cam: {
   get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; }, get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; }, get dist() { return camDist; }, set dist(v: number) { camDist = v; } } });
 // ------------------------------------------------------------------ chat: the line appears on Enter and goes away when it is empty
 const chatBox = $<HTMLInputElement>('#chat');
@@ -1850,7 +1850,9 @@ const litPool: { x: number; y: number; z: number; color: number; d: number }[] =
  * closures made every frame, Map entries, Math.hypot and doubles passed around all allocate, and these run for
  * every wizard, creature and bolt every frame (docs/PERF.md, "GC").
  */
-const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null };
+/** (eye: where level of detail is measured from — view.ts eye: the camera, or in 2.5D a point on its arm near you) */
+// (tag: how much the name tags grow — 2.5D keeps them one size on screen, however far the camera hangs)
+const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null, eye: new THREE.Vector3(), tag: 1 };
 function animWizard(w: WizardEntry, h: string) {
   const px = w.root.position.x, pz = w.root.position.z;
   w.root.position.x += (w.tx - w.root.position.x) * FR.k;
@@ -1862,12 +1864,13 @@ function animWizard(w: WizardEntry, h: string) {
   w.body.rotation.y += turn * Math.min(1, FR.dt * 14);
   const mx = w.root.position.x - px, mz = w.root.position.z - pz;
   const speed = FR.dt > 0 ? Math.sqrt(mx * mx + mz * mz) / FR.dt : 0;
-  const d = w.root.position.distanceTo(camera.position);
+  const d = w.root.position.distanceTo(FR.eye);
   const mine = h === myHandle, focused = h === FR.focus;
   // (a stunned wizard lies down: only the full model does that)
   w.far = !mine && !focused && d > FR.lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
   w.body.visible = !w.far;
   w.label.show(focused || (!w.far && d < FR.lod.label));
+  w.label.zoom(FR.tag);
   if (w.patronus.visible) {
     w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
     particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
@@ -1925,11 +1928,12 @@ function animCreature(c: CreatureEntry, i: string) {
   c.root.position.z += (c.tz - c.root.position.z) * FR.k;
   c.root.position.y = groundOf(c);
   c.root.rotation.y = -c.tf;
-  const d = c.root.position.distanceTo(camera.position);
+  const d = c.root.position.distanceTo(FR.eye);
   const focused = i === FR.focus;
   // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
   c.root.visible = focused || d < FR.lod.anim;
   c.label.show(focused || d < FR.lod.label);
+  c.label.zoom(FR.tag);
   if (c.root.visible) c.anim(clock);
   else if (d < FR.lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
 }
@@ -1955,6 +1959,8 @@ function frame() {
   FR.dt = dt;
   // level of detail from last frame's camera (it moves a fraction of a metre per frame)
   FR.lod = LOD[quality];
+  // (2.5D: the tag's 1.5 m shown TAG_PX tall on screen, whatever the zoom and the lens: size / (2 d tan(fov / 2)) of the height)
+  FR.tag = ctl.flat() ? Math.max(1, Math.min(3.2, ((phone ? 84 : 92) / innerHeight) * 2 * camDist * Math.tan((camera.fov * Math.PI) / 360) / 1.5)) : 1;
   FR.focus = ctl.targetKey();
   crowd.begin();
   parts.begin();
@@ -1977,6 +1983,7 @@ function frame() {
   if (my) {
     const t = my.root.position;
     view.place(t, dt); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
+    view.eye(FR.eye);
     weatherPts.position.set(t.x, 0, t.z);
   }
   if (shakeAmp > 0.005) {

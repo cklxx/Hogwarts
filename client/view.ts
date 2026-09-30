@@ -264,7 +264,13 @@ export interface RigInput {
   /** A phone: pressed short, rise over the player (up to looking straight down) rather than go over the shoulder,
    *  whose close-up is a hat filling a portrait screen (the 2026-09-30 phone playtest). */
   overhead?: boolean;
+  /** 2.5D (controls.ts setView): the camera hangs at a fixed angle high over you and never meets a wall (what stands
+   *  between is cut away and x-rayed instead), so it never snaps in, swings or climbs. */
+  fixed?: boolean;
 }
+
+/** 2.5D: the camera looks at a point this high over your feet (your middle: you sit in the centre of the picture). */
+export const FIXED_LOOK_Y = 1.0;
 
 const ease = (dt: number, rate: number) => 1 - Math.exp(-dt * rate);
 /** The arm is checked against the ground at this many points, and keeps this far above it. */
@@ -315,6 +321,16 @@ export class CameraRig {
     // indoors: higher and closer
     this.room = interiorAt(x, z);
     this.indoor += ((this.room >= 0 ? 1 : 0) - this.indoor) * ease(dt, INDOOR_RATE);
+    if (i.fixed) {
+      // 2.5D: straight out along the arm, only kept above the hillside; the roof of the room you are in dissolves as
+      // before (scene.ts), and whatever else is between is cut away around you (the fade below)
+      const cp = Math.cos(i.pitch), p = this.pos;
+      p.x = x + Math.sin(yaw) * cp * i.dist; p.z = z + Math.cos(yaw) * cp * i.dist;
+      p.y = Math.max(y + FIXED_LOOK_Y + Math.sin(i.pitch) * i.dist, i.ground(p.x, p.z) + 1.5);
+      this.look.x = x; this.look.y = y + FIXED_LOOK_Y; this.look.z = z;
+      this.arm = i.dist; this.lift = this.shoulder = this.rise = 0;
+      return;
+    }
     const pIn = INDOOR_PITCH[0] + ((Math.min(1.3, Math.max(0.1, i.pitch)) - 0.1) / 1.2) * (INDOOR_PITCH[1] - INDOOR_PITCH[0]);
     const pitch = i.pitch + (pIn - i.pitch) * this.indoor;
     const want = i.dist + (Math.min(i.dist, INDOOR_DIST) - i.dist) * this.indoor;
@@ -576,6 +592,8 @@ export interface ViewDeps {
   cam: { yaw: number; pitch: number; dist: number };
   /** A phone (CameraRig `overhead`). */
   overhead?: boolean;
+  /** 2.5D (CameraRig `fixed`; controls.ts). */
+  fixed?: () => boolean;
 }
 
 const ALLY_RANGE = 12, MAX_ALLIES = 4;
@@ -695,7 +713,7 @@ export function createView(d: ViewDeps) {
     tick++;
     const s = d.snap();
     world.setStatues(s?.look?.statues.length ?? 0);
-    rin.overhead = d.overhead; rin.x = feet.x; rin.y = feet.y; rin.z = feet.z; rin.yaw = d.cam.yaw; rin.pitch = d.cam.pitch; rin.dist = d.cam.dist; rin.dt = dt;
+    rin.overhead = d.overhead; rin.fixed = d.fixed?.() ?? false; rin.x = feet.x; rin.y = feet.y; rin.z = feet.z; rin.yaw = d.cam.yaw; rin.pitch = d.cam.pitch; rin.dist = d.cam.dist; rin.dt = dt;
     rig.update(rin);
     c.position.set(rig.pos.x, rig.pos.y, rig.pos.z);
     // your own name plate would fill the screen from close up: it fades out under 5 m
@@ -752,6 +770,15 @@ export function createView(d: ViewDeps) {
     const ms = performance.now() - t0;
     stats.ms += ms;
     stats.max = Math.max(stats.max, ms);
+  }
+
+  /**
+   * Where level of detail is measured from (main.ts): the camera, but never further out than `near` along the arm —
+   * a 2.5D camera hangs ~30 m up, and the wizards round you should not turn into the far crowd for it.
+   */
+  function eye(out: THREE.Vector3, near = 11) {
+    const L = rig.look, p = rig.pos, dx = p.x - L.x, dy = p.y - L.y, dz = p.z - L.z, l = Math.hypot(dx, dy, dz) || 1, k = Math.min(1, near / l);
+    return out.set(L.x + dx * k, L.y + dy * k, L.z + dz * k);
   }
 
   if (typeof location !== 'undefined' && /[?&](debug=view|capture=1)\b/.test(location.search)) {
@@ -855,5 +882,5 @@ export function createView(d: ViewDeps) {
     return { ...out, pct: +((100 * out.visible) / out.n).toFixed(1), pctNoFade: +((100 * out.visibleNoFade) / out.n).toFixed(1), meshes: targets.length, ms: Math.round(performance.now() - t0) };
   }
 
-  return { place, rig, world, stats };
+  return { place, eye, rig, world, stats };
 }

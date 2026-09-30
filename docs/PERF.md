@@ -1375,3 +1375,18 @@ The veil (边缘出口) costs this per wizard per tick:
 - one Array.includes over the 8 gates while a routed walk is headed to an edge.
 
 The client adds a pool of four sprites placed each frame, shown only within 14 m of an edge.
+
+## 2026-09-30 — the 2.5D camera (`wf/25d`)
+
+In 2.5D the camera does less work than the follow camera. `CameraRig` with `fixed` places the camera once, straight
+out along the arm. It skips the follow camera's sweeps: one arm sweep plus up to five climb sweeps, a shoulder
+sweep, and eight ground samples per sweep. What stands between the camera and you is cut away by the same fade and
+x-ray as before.
+
+Level of detail is measured from a point 11 m out along the arm (`view.ts eye`), not from the camera 24 m up.
+Otherwise the wizards round you would drop to the far crowd. Full models and name tags therefore reach as far from
+you as they did behind a follow camera, and the draw calls stay where they were. Name tags are scaled once a frame
+by one multiply, to 92 px tall on a desktop and 84 px on a phone (`Label.zoom`, which does nothing when the size did
+not change). The narrower lens (30° against 55°) shows less ground at the same distance.
+
+No frame-rate claim: this box has only SwiftShader. The telemetry added in `wf/smooth` will show the real number.
