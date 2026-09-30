@@ -477,10 +477,11 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     title: 'Let time pass',
     description: 'Wait up to 45 seconds of game time, returning early when the condition is met ("owl": your human wrote to you). Returns what changed: health, mana, position, arrival, and new events (each with `from` for owls). Use it instead of polling look/whoami in a loop.',
     inputSchema: {
-      seconds: z.number().min(0.5).max(LISTEN_MAX_S),
+      seconds: z.number().min(0.5).max(LISTEN_MAX_S).optional().describe(`default: ${LISTEN_MAX_S} with until (it returns early), else 5`),
       until: z.enum(['time', 'arrived', 'hurt', 'event', 'mana_full', 'owl', 'incoming', 'chat']).optional().describe('return early on this condition (default: time); incoming = a hostile spell is flying at you (the reply says from whom and in how many seconds: time to dodge, or have a ward up); chat = someone speaks to you (a whisper, your house, those near you, or your name said aloud) — then read everything with inbox'),
     },
-  }, async ({ seconds, until }: { seconds: number; until?: 'time' | 'arrived' | 'hurt' | 'event' | 'mana_full' | 'owl' | 'incoming' | 'chat' }, extra: Extra) => {
+  }, async ({ seconds: asked, until }: { seconds?: number; until?: 'time' | 'arrived' | 'hurt' | 'event' | 'mana_full' | 'owl' | 'incoming' | 'chat' }, extra: Extra) => {
+    const seconds = asked ?? (until && until !== 'time' ? LISTEN_MAX_S : 5); // playtest round 5: wait {until} alone was -32602
     const wid = acting();
     const w = wid ? world.wizards.get(wid) : undefined;
     if (!w) return fail(UNBOUND_HELP);

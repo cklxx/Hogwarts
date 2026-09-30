@@ -131,8 +131,30 @@ describe('反射: strategies you can see', () => {
     expect(ex.now.map((x) => x.state)).toEqual(['waits: no incoming now', 'waits: no incoming now', 'waits: no low hp now', 'waits: no enemy near now']);
     const foe = join(w, 'Draco Foe', 'Slytherin', 108, 100);
     const ex2 = tool('reflexes', 'reflexes').run(w, a.id, { explain: true }) as { now: { state: string }[] };
-    expect(ex2.now[3].state).toBe('would act now');
-    void foe;
+    expect(ex2.now[3].state).toBe('waits: no enemy near now'); // a passer-by: a reflex never starts a fight
+    w.spawnProjectile(foe, 'bolt', a.pos, a.id, 20, 'arcane', 0, []);
+    run(w, 1);
+    const ex3 = tool('reflexes', 'reflexes').run(w, a.id, { explain: true }) as { now: { state: string }[] };
+    expect(ex3.now[3].state).not.toMatch(/^waits/); // (it may already have fired: cooling down)
+  });
+
+  it('enemy_near answers a fight, never starts one, and stops when the match is over (playtest round 5)', () => {
+    const w = mk();
+    const a = join(w, 'Duel Kid', 'Gryffindor', 100, 100), b = join(w, 'Draco Foe', 'Slytherin', 100, 108);
+    setReflexes(w, a.id, [{ when: 'enemy_near', do: 'cast', spell: 'Stupefy', target: 'nearest_enemy', range: 12, cooldown: 1 }]);
+    const fired = () => (tool('reflexes', 'reflexes').run(w, a.id, {}) as { reflexes: { fired: number }[] }).reflexes[0].fired;
+    run(w, 3);
+    expect(fired()).toBe(0); // Draco only walks by
+    w.spawnProjectile(b, 'bolt', a.pos, a.id, 20, 'arcane', 0, []);
+    run(w, 1.5);
+    expect(fired()).toBeGreaterThan(0); // he struck first: now it is a fight
+    // the bell: a match between them ends; what they did to each other before it no longer counts
+    w.duel.last.push({ a: a.id, b: b.id, winner: a.id, secs: 60, at: w.now });
+    b.hp = w.privateState(b.id).maxHp; b.st.stunnedUntil = 0;
+    run(w, 2);
+    const n = fired();
+    run(w, 5);
+    expect(fired()).toBe(n);
   });
 
   it('ward first, else dodge: what acted is counted and told (a private reflex event), what could not says why', () => {
