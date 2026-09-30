@@ -75,7 +75,7 @@
 
 | 内容 | 提交 |
 |---|---|
-| 站长定的两条规则（试玩第 4 轮）：部长只从本学期来过的玩家里选（`World.ministerElect`，TLA+ `TermDecree` 加 `MinisterWasPresent`，去掉守卫 TLC 会报错）；联合一击窗口 4 → 8 秒（`DA_JOINT_WINDOW_S`，Lean 常量与向量同步）。试玩组织说明 `docs/PLAYTEST_HOWTO.md` | ROUND7 |
+| 站长定的两条规则（试玩第 4 轮）：部长只从本学期来过的玩家里选（`World.ministerElect`，TLA+ `TermDecree` 加 `MinisterWasPresent`，去掉守卫 TLC 会报错）；联合一击窗口 4 → 8 秒（`DA_JOINT_WINDOW_S`，Lean 常量与向量同步）。试玩组织说明 `docs/PLAYTEST_HOWTO.md` | `11196d7` |
 | PR #6–#8（cklxx）：反射只回应已开打的战斗、`wait` 的 `seconds` 可省；猫头鹰邮递「邀请朋友」（链接、复制、二维码，本机玩家拿到局域网地址，解决跨网段）；Mac 输入测试先等人站定再测 Ctrl+拖动（偶发失败的根因是前一步的点击还在走） | `e90cede` |
 | 试玩第 4 轮（Agent 扮真人的小社会，`docs/PLAYTEST.md`）：inbox 已读按巫师记；batch 示例与连续施法自动等待；`wait arrived` 不空等；forge 试运行提示；规则书写出实际部长门槛；DA 否决门槛 / `blocked`、联合一击进度 `joint.now`、`da` 聊天频道；考试评分说明与 O 级文案；宝箱冷热 5/15/30/80 m、残页不重复；look 标事件怪与抗性；摄魂怪结算文案；学期末 45 秒不开新事件（TLA+ `EventWheel` 同步）；扫帚提示；魁地奇 `team`/`house` 与找球手顶替 NPC；集市计数含新生；反射 `keep` / 按代号 / `self` | `48eacb0` |
 | 决斗俱乐部第 3 轮（`wf/duel3`）：走进安全区算下台；开打前离开只算取消；离开队列有私信；陪练 NPC 会打（不以大欺小）；定向约战 `with`、2v2 指定搭档 `partner`；弹反当场给反弹者计分（新钩子 `reflect`）；2v2 的 `last` 列全队；「魔杖没电」只在真没电时说一次 | `b992850` |
