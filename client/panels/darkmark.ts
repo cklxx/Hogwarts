@@ -82,7 +82,7 @@ export function createDarkMark() {
 }
 
 /** The Dark Lord as a client feature (client/features.ts). */
-export const darkLordFeature: ClientFeatureFactory = (d) => {
+export const darkLordFeature: ClientFeatureFactory = (d, ctx) => {
   const mark3d = createDarkMark();
   const dl = () => d.wire<DarkLordPin | null>('dl') ?? null;
   const you = () => !!d.me()?.darkLord;
@@ -92,7 +92,7 @@ export const darkLordFeature: ClientFeatureFactory = (d) => {
     const clock = document.getElementById('clock');
     if (!clock) return;
     let el = document.getElementById('dl-compass');
-    if (!el) { el = document.createElement('div'); el.id = 'dl-compass'; el.hidden = true; clock.after(el); }
+    if (!el) { el = ctx.own(document.createElement('div')); el.id = 'dl-compass'; el.hidden = true; clock.after(el); }
     const pin = dl(), p = d.myPos();
     if (!pin || !d.me() || !p || pin.h === d.myHandle()) { el.hidden = true; return; }
     const { dist, rot } = bearing(p, pin, d.camYaw());

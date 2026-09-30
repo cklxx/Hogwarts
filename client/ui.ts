@@ -11,6 +11,7 @@
 import { ic } from './ink';
 import { L } from './i18n';
 import type { ClientDeps, ClientFeature, ClientWidget } from './feature';
+import type { FeatureContext } from './context';
 import './ui.css';
 
 export const UI_KEY = 'hw-ui';
@@ -69,7 +70,7 @@ function load(): Layout {
   try { return parseLayout(JSON.parse(localStorage.getItem(UI_KEY) ?? '{}')); } catch { return parseLayout({}); }
 }
 
-export function uiFeature(d: ClientDeps): ClientFeature {
+export function uiFeature(d: ClientDeps, ctx: FeatureContext): ClientFeature {
   let lay = load(), editing = false, rev = 1;
   const save = () => { rev++; try { localStorage.setItem(UI_KEY, JSON.stringify(lay)); } catch { /* private mode: this tab only */ } };
   let all: ClientWidget[] | null = null;
@@ -80,7 +81,7 @@ export function uiFeature(d: ClientDeps): ClientFeature {
   function applyGlobal() {
     const root = document.documentElement;
     if (lay.theme === 'parchment') delete root.dataset.theme; else root.dataset.theme = lay.theme;
-    if (lay.css && !userStyle) { userStyle = document.createElement('style'); userStyle.id = 'ui-user'; document.head.append(userStyle); }
+    if (lay.css && !userStyle) { userStyle = ctx.own(document.createElement('style')); userStyle.id = 'ui-user'; document.head.append(userStyle); }
     if (userStyle) userStyle.textContent = safeCss(lay.css);
     document.body.classList.toggle('ui-edit', editing);
   }
@@ -106,32 +107,32 @@ export function uiFeature(d: ClientDeps): ClientFeature {
     for (let el = t as HTMLElement | null; el; el = el.parentElement) if (ids.has(el.id)) return el;
     return null;
   };
-  addEventListener('pointerdown', (e) => {
+  ctx.on(window, 'pointerdown', (e) => {
     if (!editing) return;
     const el = widgetAt(e.target);
     if (!el) return;
     e.preventDefault(); e.stopPropagation();
     drag = { id: el.id, el, x0: e.clientX, y0: e.clientY, at0: lay.at[el.id] ?? [0, 0] };
     el.setPointerCapture?.(e.pointerId);
-  }, true);
-  addEventListener('pointermove', (e) => {
+  }, { capture: true });
+  ctx.on(window, 'pointermove', (e) => {
     if (!drag) return;
     const x = drag.at0[0] + e.clientX - drag.x0, y = drag.at0[1] + e.clientY - drag.y0;
     drag.el.style.translate = `${x}px ${y}px`;
-  }, true);
-  addEventListener('pointerup', (e) => {
+  }, { capture: true });
+  ctx.on(window, 'pointerup', (e) => {
     if (!drag) return;
     const x = drag.at0[0] + e.clientX - drag.x0, y = drag.at0[1] + e.clientY - drag.y0;
     if (Math.abs(x) + Math.abs(y) < 2) delete lay.at[drag.id]; else lay.at[drag.id] = [clampPx(x), clampPx(y)];
     drag = null;
     save(); applyWidgets();
-  }, true);
-  addEventListener('click', (e) => { if (editing && widgetAt(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true); // nothing acts while you arrange
-  addEventListener('dblclick', (e) => {
+  }, { capture: true });
+  ctx.on(window, 'click', (e) => { if (editing && widgetAt(e.target)) { e.preventDefault(); e.stopPropagation(); } }, { capture: true }); // nothing acts while you arrange
+  ctx.on(window, 'dblclick', (e) => {
     const el = editing ? widgetAt(e.target) : null;
     if (!el) return;
     toggleOff(el.id);
-  }, true);
+  }, { capture: true });
   const toggleOff = (id: string) => { lay.off = lay.off.includes(id) ? lay.off.filter((x) => x !== id) : [...lay.off, id]; save(); applyWidgets(); renderSheet(); };
 
   function setEditing(on: boolean) {
@@ -147,7 +148,7 @@ export function uiFeature(d: ClientDeps): ClientFeature {
     if (el) return el;
     el = document.createElement('div');
     el.id = 'uipanel'; el.className = 'sheet'; el.hidden = true;
-    document.getElementById('hud')!.append(el);
+    document.getElementById('hud')!.append(ctx.own(el));
     el.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button, input') as HTMLElement | null;
       if (!b) return;
@@ -182,7 +183,7 @@ export function uiFeature(d: ClientDeps): ClientFeature {
     const show = force ?? s.hidden;
     if (show) { d.solo(s); s.hidden = false; renderSheet(); } else s.hidden = true;
   };
-  document.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('[data-pn="ui"]')) toggleSheet(true); });
+  ctx.on(document, 'click', (e) => { if ((e.target as HTMLElement).closest('[data-pn="ui"]')) toggleSheet(true); });
 
   applyGlobal();
   return {

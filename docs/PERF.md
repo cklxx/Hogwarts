@@ -1280,3 +1280,19 @@ run-to-run spread. (The bench scatters its wizards over the whole 480 m square, 
 spread still covers it.) Trace fingerprint `d164de1250926d69`, identical twice; changed on purpose (the lake shrank,
 two spawn rings and three fireplaces moved). A failing route costs a search of its connected region: the mist is the
 largest such region, so nothing may stand in it — loading a save moves anyone there to the courtyard.
+
+## 2026-09-30 — the client split for hot updates (`wf/hot`)
+
+Each client feature is its own chunk, the libraries `vendor`, the rest `shared` (vite.config.ts `codeSplitting` groups,
+`strictExecutionOrder`, internal export names kept), so a feature-only change is one new file (client/hot.ts).
+`vite build`, same afternoon, main vs the branch:
+
+| | JS files | raw bytes | gzip -9 bytes |
+|---|---:|---:|---:|
+| main | 3 | 1,175,431 | 372,688 |
+| branch | 19 | 1,200,453 (+2.1%) | 392,643 (+5.4%) |
+
+The growth is the per-module lazy-init wrappers and the kept export names. The 19 files load in parallel from the
+page's modulepreload links (served from memory, cached a year as content-hashed assets); first-load time was not
+measured separately (software rendering dominates here). The server's new-build check is one `stat` of
+dist/index.html every 3 s.

@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { FeatureContext } from './context';
 
 /**
  * A feature in the browser (the client half of src/kernel/feature.ts): the Duelling Club's slip and G key, Quidditch's
@@ -85,4 +86,5 @@ export interface ClientFeature {
   widgets?: readonly ClientWidget[];
 }
 
-export type ClientFeatureFactory = (d: ClientDeps) => ClientFeature;
+/** A feature's factory: its lasting side effects go through `ctx` (client/context.ts), so a hot update can undo them. */
+export type ClientFeatureFactory = (d: ClientDeps, ctx: FeatureContext) => ClientFeature;
