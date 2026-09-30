@@ -4,8 +4,9 @@ import {
 import { CURFEW_CAUGHT, WHEEL_LINES, fill, houseLine, type Line } from '../lore/memes.js';
 import { zhHouse } from '../shared/zh.js';
 import { FILCH, NORRIS, SIGHT_H, sees, type Patroller } from '../shared/curfew.js';
+import { capsFor } from '../runes/primitives.js';
 import { CREATURES } from './creatures.js';
-import { CHESTS, rollCard } from './cards.js';
+import { CHESTS, chestClues, rollCard } from './cards.js';
 import { dist } from './physics.js';
 import { findPath } from './pathfind.js';
 import type { Creature, Projectile, Vec2, Wizard } from './types.js';
@@ -401,15 +402,19 @@ export function wheelSlain(w: World, c: Creature) {
   if (e.id !== 'troll') return;
   const killer = c.lastHitBy ? w.wizards.get(c.lastHitBy) : undefined;
   e.d.hero = killer?.name;
-  // 240 house points shared by damage (a share under 5% gets nothing); the top hitter a rare card, everyone ≥ 15% a card
-  const total = Object.values(c.damageBy).reduce((a, b) => a + b, 0) || 1;
-  const ranked = Object.entries(c.damageBy).sort((a, b) => b[1] - a[1]);
+  // 240 house points shared by effort, not raw damage: each hit counts against the hitter's own year's bolt cap, so a
+  // first-year's full-strength bolts weigh what a seventh-year's do (playtest round 3: years 1-2 could not take part).
+  // A share under 5% gets nothing; the top hitter a rare card, everyone ≥ 15% a card.
+  const effort = (id: string, dmg: number) => { const x = w.wizards.get(id); return x ? (dmg * capsFor(1).boltPower) / capsFor(x.year).boltPower : dmg; };
+  const efforts = Object.entries(c.damageBy).map(([id, dmg]) => [id, effort(id, dmg)] as const);
+  const total = efforts.reduce((a, [, v]) => a + v, 0) || 1;
+  const ranked = [...efforts].sort((a, b) => b[1] - a[1]);
   ranked.forEach(([id, dmg], i) => {
     const x = w.wizards.get(id);
     const share = dmg / total;
     if (!x || share < 0.05) return;
     const g = w.cupGain(x, Math.round(240 * share), 'events');
-    w.emit('wheel', `🧌 Your share of the troll: ${Math.round(share * 100)}% of the damage, +${g} house points for ${x.house}.`, { to: x.id, zh: `🧌 巨怪战的伤害占比 ${Math.round(share * 100)}%：${zhHouse(x.house)} +${g} 学院分。` });
+    w.emit('wheel', `🧌 Your share of the troll: ${Math.round(share * 100)}% of the effort (damage against your year's bolt cap), +${g} house points for ${x.house}.`, { to: x.id, zh: `🧌 巨怪战的出力占比 ${Math.round(share * 100)}%（伤害按你年级的魔弹上限折算）：${zhHouse(x.house)} +${g} 学院分。` });
     if (!x.npc && (i === 0 || share >= 0.15)) rollCard(w, x, i === 0 ? 'rare' : 'plain', { zh: '打倒巨怪', en: 'The troll' });
   });
   settle(w, e, 'won');
@@ -587,7 +592,7 @@ export function schoolEvents(w: World, wid: string) {
     event: describeEvent(w, e),
     next: e ? null : w.rules.events.enabled ? { inSeconds: Math.max(0, Math.ceil(w.wheel.nextAt - w.now)), pool: w.rules.events.pool } : 'the event wheel is off by decree',
     recent: w.wheel.history.slice(-5).map((h) => ({ ...h, name: EVENT_NAMES[h.id].en, nameZh: EVENT_NAMES[h.id].zh })),
-    chests: { closed: cup.ch.length, total: CHESTS.length, howTo: 'Hidden chests refill every term; stand next to one and call open_chest (in the browser: F). 隐藏宝箱每学期刷新；走到旁边调用 open_chest（浏览器里按 F）。' },
+    chests: { closed: cup.ch.length, total: CHESTS.length, clues: chestClues(w, me), howTo: 'Hidden chests refill every term: go to one of the places in clues (look shows a chest once within 12 m; Point Me marks the nearest on the radar), stand next to it and call open_chest (in the browser: F). 隐藏宝箱每学期刷新：去线索里的地方找（12 米内 look 会显示；点亮「指路」咒的雷达会标出最近的一个），走到旁边调用 open_chest（浏览器里按 F）。' },
     lastCup: w.houseCups.at(-1) ?? null,
     ceremony: w.ceremony && w.now < w.ceremony.until ? w.ceremony : null,
     rules: w.rules.events,

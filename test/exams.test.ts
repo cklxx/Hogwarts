@@ -41,7 +41,9 @@ const ALSO_WRONG: Record<string, string[]> = {
   'counting-door': ['(say (count (creatures 40)))'],
   'freeze-spare-unicorn': ['(nova 6 12 :ice)'],
   'three-pixies': ['(bolt target 16)'],
-  triage: ['(each a (allies 20) (heal a 16))'],
+  // playtest round 3: a zero heal once counted as healing, a hair of shield as shielding (效果校验, EFFECT_MIN)
+  triage: ['(each a (allies 20) (heal a 16))', '(each a (allies 20) (when (< (hp a) (* 0.3 (max-hp a))) (heal a 0)))'],
+  'shorthand-protego': ['(shield self 0.5 4) (each a (allies 10) (shield a 0.5 4))'],
   'now-you-see-it': ['(summon :serpent 20) (after 2 (say (count (summons))))'],
   // the playtest's loophole: two power-1 tickles once beat par
   'double-tap': ['(bolt target 1) (after 2 (bolt target 1))'],
@@ -395,5 +397,10 @@ describe('O.W.L. exams: MCP tools and WebSocket limits', () => {
     expect(LIMITS.exams).toBeTruthy();
     expect(LIMITS.sit).toBeTruthy();
     expect(LIMITS.sit[0]).toBeLessThan(1);
+  });
+  it('效果校验: a failed case says which of your effects were too weak to count', () => {
+    const g = gradeExam(EXAM_BY_ID.get('triage')!, '(each a (allies 20) (when (< (hp a) (* 0.3 (max-hp a))) (heal a 0)))');
+    expect(g.ok).toBe(false);
+    expect(g.cases.some((c) => /too weak to count: heal 0/.test(c.detail?.en ?? '') && /太弱没算/.test(c.detail?.zh ?? ''))).toBe(true);
   });
 });

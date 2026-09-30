@@ -41,6 +41,8 @@
 | 偷声望有比例上限，决斗中声望守恒 | `src/kernel/unfair.ts` | Lean `steal_*`、`duel_conserves*` |
 | 野生魔物一击最多打掉你最大生命的 40 %（事件加强过的也一样）：满血至少要挨三下才会倒 | `CREATURE_HIT_CAP`、`World.damageInner` | Lean `creature_hit_capped`、`creature_two_blows_survive` + 向量，`test/round4.test.ts` |
 | 施法打不到就不扣法力：目标不在了、中间有墙、对方打不得，都当场拒绝，法力分文不动 | `World.cast` | `test/round4.test.ts`（TLA+ `CastTxn` 的「失败不扣」） |
+| O.W.L. 只认真正的效果：伤害、治疗、护盾每个至少 5 点才算数（挠痒痒式的「做了」不算），判卷反馈说出哪些太弱 | `EFFECT_MIN`、`src/kernel/exams.ts` 的 `mine()` | `test/exams.test.ts`（已知漏洞写法必须挂） |
+| 指定了目标的咒语只打目标：路过的人和魔物不会被误伤，也不会收到来袭预警 | `World.stepProjectiles`、`World.threats` | `test/combat-round2.test.ts` |
 
 ## 4. 政治
 
