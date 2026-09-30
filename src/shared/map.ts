@@ -99,10 +99,10 @@ export const ZONES: Zone[] = [
   { id: 'dungeons', name: 'Dungeon Stair', x: -50, z: -36, r: 12 },
   { id: 'tomb', name: "Dumbledore's Tomb", x: -52, z: 28, r: 5 },
   { id: 'willow', name: 'Whomping Willow', x: 45, z: 0, r: 8 },
-  { id: 'lake_shore', name: 'Black Lake Shore', x: -118, z: 40, r: 50 },
-  // 无规则区: the far end of the Forbidden Forest, ~210 m from spawn (world.ts inLawless; README "不公平，但好玩")
-  { id: 'deep_forest', name: 'The Deep Forest', x: 205, z: 35, r: 26 },
-  { id: 'forest', name: 'The Forbidden Forest', x: 165, z: 15, r: 88 },
+  { id: 'lake_shore', name: 'Black Lake Shore', x: -95, z: 30, r: 28 },
+  // 无规则区: the far corner of the Forbidden Forest from its gate (world.ts inLawless; README "不公平，但好玩")
+  { id: 'deep_forest', name: 'The Deep Forest', x: 143, z: 38, r: 10 },
+  { id: 'forest', name: 'The Forbidden Forest', x: 118, z: 20, r: 48 },
   { id: 'pitch', name: 'Quidditch Pitch', x: 40, z: -150, r: 35 },
   { id: 'hogsmeade', name: 'Hogsmeade', x: 0, z: 172, r: 45 },
   { id: 'grounds', name: 'Hogwarts Grounds', x: 0, z: -30, r: 150 },
@@ -126,7 +126,7 @@ export const LANDMARKS: Landmark[] = [
   { id: 'tomb', name: "Dumbledore's Tomb", x: -52, z: 28, blurb: 'A white marble tomb by the lake. Something powerful may rest here.' },
   { id: 'willow', name: 'Whomping Willow', x: 45, z: 0, blurb: 'Planted the year Remus Lupin arrived. It hits back.' },
   { id: 'hagrid', name: "Hagrid's Hut", x: 95, z: 30, blurb: 'Rock cakes available. Teeth not guaranteed.' },
-  { id: 'forest', name: 'The Forbidden Forest', x: 165, z: 15, blurb: 'Forbidden to all students. Acromantulas.' },
+  { id: 'forest', name: 'The Forbidden Forest', x: 132, z: 22, blurb: 'Forbidden to all students. Acromantulas.' },
   { id: 'lake', name: 'The Black Lake', x: -86, z: 30, blurb: 'Home to a giant squid, grindylows and merpeople. Dementors drift here at night.' },
   { id: 'pitch', name: 'Quidditch Pitch', x: 40, z: -150, blurb: 'Six hoops, fifty feet high.' },
   { id: 'hogsmeade', name: 'Hogsmeade', x: 0, z: 172, blurb: 'The only all-wizarding village in Britain. Outside the anti-Apparition wards.' },

@@ -41,6 +41,7 @@
 | 集市标价（0–10 加隆）：复制或改编时从拿的人转给作者，每人每个咒语只付一次；加隆只转移不凭空产生；入学不满 10 分钟的人免费拿，作者也不入账（小号刷不了钱）；买不起就拒绝，什么都不扣 | `payPrice`（`src/kernel/market.ts`） | `test/round8.test.ts` |
 | 校园事件刷出的魔物打一、二年级只用一半的原始力量（不吃事件加成） | `World.damage`（`EVENT_EASY_YEAR`） | `test/round8.test.ts` |
 | 校园事件同时最多一件，奖励只发一次 | `src/kernel/wheel.ts` | TLA+ `EventWheel` |
+| 场景道具：打碎东西每人每学期最多 50 次给经验（每次 2）；一组三个同时点亮，每个出了力的人每组每学期只拿一次奖励（25 经验 + 2 加隆）；烟火桶只伤野生魔物、不伤巫师；带目标的魔弹不会被路边的箱子吃掉 | `src/kernel/props.ts`（`PROP_BREAKS_PER_TERM`、`paid`） | `test/props.test.ts` |
 | 施法是原子的：法力不够就整段不生效，也不扣法力；法力永远不为负 | `src/kernel/magic.ts` | TLA+ `CastTxn`，Lean `commit_spends_exactly`、`fizzle_is_free` |
 | 偷声望有比例上限，决斗中声望守恒 | `src/kernel/unfair.ts` | Lean `steal_*`、`duel_conserves*` |
 | 野生魔物一击最多打掉你最大生命的 40 %（事件加强过的也一样）：满血至少要挨三下才会倒 | `CREATURE_HIT_CAP`、`World.damageInner` | Lean `creature_hit_capped`、`creature_two_blows_survive` + 向量，`test/round4.test.ts` |

@@ -47,6 +47,8 @@ export interface ControlsDeps {
   lens?: (flat: boolean) => void;
   /** More things the action key (F) can do right here — a hidden chest to open (client/panels/fun.ts) — or null. */
   extraAction?: () => { label: string; x: number; z: number; y: number; act: () => void } | null;
+  /** A thing on the ground at (x, z) a click casts at (client/feature.ts `claim`: the props), or null. */
+  claim?: (x: number, z: number, hover: boolean) => { x: number; z: number } | null;
 }
 
 // ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
@@ -277,6 +279,8 @@ export function createControls(d: ControlsDeps) {
   const joy = { x: 0, y: 0 };
   let mx = -1e4, my = -1e4, mouseIn = false, overCanvas = false;
   let hovered: string | null = null;
+  /** A prop under the pointer (d.claim), when no one is. */
+  let claimed: { x: number; z: number } | null = null;
   let target: string | null = null;
   let selected = 0;
   let dragging = false, lastDrag = -1e9;
@@ -640,6 +644,9 @@ export function createControls(d: ControlsDeps) {
       if (harmable(k)) castSlot(selected);
       return;
     }
+    // a prop under the pointer (a crate, a brazier): the chosen spell at it
+    const c = d.claim?.(aim.x, aim.z, false);
+    if (c) { castSlot(selected, { at: c }); return; }
     if (walk) walkTo(aim.x, aim.z);
   }
 
@@ -809,7 +816,8 @@ export function createControls(d: ControlsDeps) {
     if (mouseIn && overCanvas) {
       groundAt(mx, my, aim);
       hovered = pickAt(mx, my);
-    } else hovered = null;
+      claimed = hovered ? null : d.claim?.(aim.x, aim.z, true) ?? null;
+    } else { hovered = null; claimed = null; }
     if (target && (!model(target) || distTo(target) > 80)) target = null;
     if (hovered && !model(hovered)) hovered = null;
 
@@ -860,6 +868,12 @@ export function createControls(d: ControlsDeps) {
       mesh.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mm?.color) mm.color.setHex(col); });
     };
     ring(d.hoverRing, hovered && hovered !== target ? hovered : null, 1);
+    if (!d.hoverRing.visible && claimed) {
+      d.hoverRing.visible = true;
+      d.hoverRing.position.set(claimed.x, heightAt(claimed.x, claimed.z) + 0.1, claimed.z);
+      d.hoverRing.scale.setScalar(Math.max(1, d.camera.position.distanceTo(d.hoverRing.position) / 28));
+      d.hoverRing.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mm?.color) mm.color.setHex(0xf2c94c); });
+    }
     ring(targetRing, target, 1);
     if (target && targetRing.visible) {
       targetRing.rotation.y = t * 1.2;

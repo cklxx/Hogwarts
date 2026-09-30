@@ -21,7 +21,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   spider: {
     kind: 'spider', name: 'Acromantula', faction: 'hostile', hp: 80, speed: 5, damage: 8, range: 2, cooldown: 1.3, aggro: 16, radius: 0.9,
-    xp: 40, rep: 4, galleons: 4, weak: { fire: 1.8 }, spawn: { x: 185, z: 18, r: 48, max: 10 }, bite: { aura: 'poison', secs: 4, mag: 3 },
+    xp: 40, rep: 4, galleons: 4, weak: { fire: 1.8 }, spawn: { x: 135, z: 30, r: 14, max: 8 }, bite: { aura: 'poison', secs: 4, mag: 3 },
     ranged: { range: 16, power: 0, cooldown: 6, element: 'arcane', kind: 'root', secs: 1.2 },
     lore: "Aragog's descendants. Their bite is venomous. Hagrid would like you to know they are misunderstood.",
   },
@@ -33,17 +33,17 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   dementor: {
     kind: 'dementor', name: 'Dementor', faction: 'hostile', hp: 150, speed: 4, damage: 6, range: 6, cooldown: 1, aggro: 25, radius: 0.8,
-    xp: 90, rep: 10, galleons: 0, weak: {}, allDamage: 0.25, nightOnly: true, flying: true, spawn: { x: -118, z: 40, r: 45, max: 5 }, // inside the lake's scene (src/shared/scenes.ts)
+    xp: 90, rep: 10, galleons: 0, weak: {}, allDamage: 0.25, nightOnly: true, flying: true, spawn: { x: -100, z: 30, r: 10, max: 5 }, // inside the lake's scene (src/shared/scenes.ts), over the water
     lore: 'They drain the happiness out of the air. Expecto Patronum.',
   },
   inferius: {
     kind: 'inferius', name: 'Inferius', faction: 'hostile', hp: 90, speed: 2.8, damage: 9, range: 1.8, cooldown: 1.4, aggro: 12, radius: 0.6,
-    xp: 55, rep: 6, galleons: 3, weak: { fire: 3, light: 1.5 }, nightOnly: true, spawn: { x: -118, z: 40, r: 40, max: 4 }, bite: { aura: 'chill', secs: 2, mag: 0.4 },
+    xp: 55, rep: 6, galleons: 3, weak: { fire: 3, light: 1.5 }, nightOnly: true, spawn: { x: -88, z: 42, r: 8, max: 4 }, bite: { aura: 'chill', secs: 2, mag: 0.4 },
     lore: 'A corpse bewitched to do a Dark wizard\'s bidding. Their hands are cold as the lake. They fear fire and light.',
   },
   unicorn: {
     kind: 'unicorn', name: 'Unicorn', faction: 'benign', hp: 120, speed: 6, damage: 0, range: 0, cooldown: 99, aggro: 5, radius: 0.9,
-    xp: 0, rep: -50, galleons: 0, weak: {}, spawn: { x: 175, z: 5, r: 50, max: 2 }, grace: { radius: 8, mag: 2 },
+    xp: 0, rep: -50, galleons: 0, weak: {}, spawn: { x: 120, z: -2, r: 9, max: 2 }, grace: { radius: 8, mag: 2 },
     lore: 'Pure and swift. To stand near one is to heal; to harm one is to live a cursed life from that moment.',
   },
   phoenix: {

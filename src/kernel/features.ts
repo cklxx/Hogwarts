@@ -12,6 +12,7 @@ import { registerPrims } from '../runes/primitives.js';
 import { hookLists } from './feature.js';
 import { MARKET_FEATURE } from './market.js';
 import { MEMETAGS_FEATURE } from './memetags.js';
+import { PROPS_FEATURE } from './props.js';
 import { METRICS_FEATURE } from './metrics.js';
 import { QD_FEATURE } from './quidditch.js';
 import { POSSESS_FEATURE } from './possess.js';
@@ -28,7 +29,7 @@ import { WHEEL_FEATURE } from './wheel.js';
 // theirs); the Duelling Club before Quidditch: an NPC in a duel is the duel's, even if it is also on a team
 export const FEATURES: readonly Feature[] = [
   DARK_LORD_FEATURE, LAWLESS_FEATURE, DA_FEATURE, STUDY_FEATURE, SEALS_FEATURE,
-  CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE, DARK_FEATURE, REFLEX_FEATURE, POSSESS_FEATURE, METRICS_FEATURE, SCENES_FEATURE, MEMETAGS_FEATURE,
+  CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE, DARK_FEATURE, REFLEX_FEATURE, POSSESS_FEATURE, METRICS_FEATURE, SCENES_FEATURE, MEMETAGS_FEATURE, PROPS_FEATURE,
 ];
 export const FEATURE_BY_ID: ReadonlyMap<string, Feature> = new Map(FEATURES.map((f) => [f.id, f]));
 export const HOOKS = hookLists(FEATURES);

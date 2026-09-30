@@ -21,9 +21,10 @@ export interface Scene {
 export const HUB: SceneId = 'castle';
 export const SCENES: readonly Scene[] = [
   { id: 'castle', zh: '城堡', en: 'the castle', box: [-66, -73, 74, 38] }, // the Great Hall's far end and the Clock Tower's foot inside
-  { id: 'lake', zh: '黑湖', en: 'the Black Lake', box: [-175, -25, -70, 105],
+  // (2026-09-30, 「地图太大，东西太少」: the lake and the forest cut down to what is in them — 35 → 7 and 52 → 12 screens)
+  { id: 'lake', zh: '黑湖', en: 'the Black Lake', box: [-112, -2, -70, 62],
     gate: { x: -76, z: 12 }, entry: { x: -80, z: 20 }, hubGate: { x: -23, z: -22 }, hubExit: { x: -18.5, z: -22 } },
-  { id: 'forest', zh: '禁林', en: 'the Forbidden Forest', box: [80, -50, 236, 80],
+  { id: 'forest', zh: '禁林', en: 'the Forbidden Forest', box: [80, -12, 156, 52],
     gate: { x: 86, z: 8 }, entry: { x: 90, z: 16 }, hubGate: { x: 23, z: -22 }, hubExit: { x: 18.5, z: -22 } },
   { id: 'pitch', zh: '魁地奇球场', en: 'the Quidditch pitch', box: [-5, -195, 85, -116],
     gate: { x: 30, z: -124 }, entry: { x: 40, z: -128 }, hubGate: { x: 23, z: -34 }, hubExit: { x: 19.5, z: -35 } },

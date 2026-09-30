@@ -268,7 +268,7 @@ function faceGeo() {
  * Merge static parts that move together into one geometry (one draw call instead of one per part),
  * each part painted a flat colour through a vertex-colour attribute.
  */
-function painted(parts: [THREE.BufferGeometry, THREE.ColorRepresentation][]) {
+export function painted(parts: [THREE.BufferGeometry, THREE.ColorRepresentation][]) {
   const c = new THREE.Color();
   return mergeGeometries(parts.map(([g, col]) => {
     const x = g.clone();

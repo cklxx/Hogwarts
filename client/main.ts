@@ -1701,6 +1701,7 @@ const ctl = createControls({
   agent: agentNow,
   pair: pairNow,
   // the features' (a page of a seal at its landmark, a fireplace, …: client/features.ts), then 隐藏宝箱: F at a closed chest opens it
+  claim: (x, z, hover) => { for (const f of feats) { const c = f.claim?.(x, z, hover); if (c) return c; } return null; },
   extraAction: () => {
     for (const f of feats) { const a = f.action?.(); if (a) return a; }
     const p = wizards.get(myHandle)?.root.position;

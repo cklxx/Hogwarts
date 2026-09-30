@@ -103,7 +103,7 @@ describe('the layout is solid', () => {
     const p = { x: -118, z: 40 - 20 };
     STATIC_SOLIDS.resolve(p, 0.5);
     expect(signedDistance(lake, p.x, p.z)).toBeCloseTo(0.5, 5);
-    expect(STATIC_SOLIDS.hitSegment(-172, 40, -72, 40)).toBeNull(); // (the lake's scene, veil to veil)
+    expect(STATIC_SOLIDS.hitSegment(-110, 40, -72, 40)).toBeNull(); // (the lake's scene, veil to veil)
     expect(STATIC_SOLIDS.hitSegment(-7.5, -70, -7.5, -44, -1)?.label).toBe('House table');
     expect(STATIC_SOLIDS.hitSegment(-7.5, -70, -7.5, -44)).toBeNull();
   });
