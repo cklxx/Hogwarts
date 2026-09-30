@@ -5,7 +5,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { FeatureContext, FeatureHost } from '../client/context.js';
+import { FeatureContext, FeatureHost, KEPT_KEY } from '../client/context.js';
 import { plan, type HotManifest } from '../client/hot.js';
 import type { ClientDeps } from '../client/feature.js';
 
@@ -92,5 +92,54 @@ describe('the registry and the dev HMR list agree', () => {
     const accepted = [...src.slice(src.indexOf('import.meta.hot.accept(')).matchAll(/'\.\/([\w/]+)'/g)].map((x) => x[1]);
     expect(keys.length).toBeGreaterThan(10);
     expect(accepted).toEqual(keys);
+  });
+});
+
+describe('state survives a swap and a page reload (FeatureContext.keep)', () => {
+  const noScene = { add() {}, remove() {} } as never;
+  const counter = (version = 1) => (_d: ClientDeps, ctx: FeatureContext) => {
+    let n = 0, open = false;
+    ctx.keep('view', () => ({ n, open }), (s) => { n = s.n; open = s.open; }, version);
+    return { id: 'c', hud() { n++; }, badge: () => `${n}${open ? '+' : ''}`, open(what: string) { open = what === 'on'; return true; } };
+  };
+  it('a swap hands the old build state to the new one; a new version of the shape starts afresh', () => {
+    const host = new FeatureHost({} as ClientDeps, noScene, null);
+    host.add('panels/c', counter());
+    const f = () => host.list[0];
+    f().hud!(); f().hud!(); f().open!('on');
+    expect(f().badge!('x')).toBe('2+');
+    host.reload('panels/c', counter());
+    expect(f().badge!('x')).toBe('2+');
+    f().hud!();
+    host.reload('panels/c', counter(2)); // the shape changed: nothing carried over
+    expect(f().badge!('x')).toBe('0');
+  });
+
+  it('persist() before a page reload; the next page (a new host) reads it once, then it is gone', () => {
+    const store = new Map<string, string>();
+    const session = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); }, removeItem: (k: string) => { store.delete(k); } };
+    const a = new FeatureHost({} as ClientDeps, noScene, session);
+    a.add('panels/c', counter());
+    a.list[0].hud!(); a.list[0].hud!(); a.list[0].hud!();
+    a.persist();
+    expect(store.has(KEPT_KEY)).toBe(true);
+    const b = new FeatureHost({} as ClientDeps, noScene, session);
+    b.add('panels/c', counter());
+    expect(b.list[0].badge!('x')).toBe('3');
+    expect(store.has(KEPT_KEY)).toBe(false);
+    const c = new FeatureHost({} as ClientDeps, noScene, session);
+    c.add('panels/c', counter());
+    expect(c.list[0].badge!('x')).toBe('0');
+  });
+
+  it('a save that throws loses only that state; a load that throws starts it afresh', () => {
+    const host = new FeatureHost({} as ClientDeps, noScene, null);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let got = 'none';
+    host.add('panels/d', (_d, ctx) => { ctx.keep('bad', () => { throw new Error('no'); }, () => {}); ctx.keep('good', () => 'kept', () => {}); return { id: 'd' }; });
+    host.reload('panels/d', (_d, ctx) => { ctx.keep('good', () => '', (s) => { got = s; }); ctx.keep('bad', () => 1, () => { throw new Error('boom'); }); return { id: 'd2' }; });
+    warn.mockRestore();
+    expect(got).toBe('kept');
+    expect(host.list[0].id).toBe('d2');
   });
 });

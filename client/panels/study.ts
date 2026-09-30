@@ -13,6 +13,8 @@ import type { StudyEntry } from './types';
 export interface StudyDeps {
   /** The feature's context (client/context.ts) takes the elements this makes: gone when the feature is reloaded. */
   own?: <T extends Element>(el: T) => T;
+  /** …and keeps its state across a hot update (FeatureContext.keep). */
+  keep?: <T>(name: string, save: () => T, load: (s: T) => void) => boolean;
   /** …and its listener on the document and its timers (tests leave them out). */
   on?: (t: EventTarget, type: string, fn: (e: Event) => void) => void;
   timeout?: (fn: () => void, ms: number) => unknown;
@@ -36,6 +38,11 @@ export function createStudy(d: StudyDeps) {
   let lastBlock = '', lastSlip = '';
   /** 看源码 spends the spell's only study (kernel rule): the first click arms it, a second within 4 s reads. */
   let armed: { spell: string; from: string; until: number } | null = null;
+  d.keep?.('study', () => ({ told: [...told], primed, slip, slipLeft: slipUntil - performance.now(), armed: armed && { ...armed, until: armed.until - performance.now() } }), (s) => {
+    for (const t of s.told) told.add(t);
+    primed = s.primed; slip = s.slip; slipUntil = performance.now() + s.slipLeft;
+    armed = s.armed && { ...s.armed, until: performance.now() + s.armed.until };
+  });
 
   function act(spell: string, handle: string, copy: boolean) {
     const taken = d.spells().some((s) => s.name.toLowerCase() === spell.toLowerCase());
@@ -132,7 +139,7 @@ export function createStudy(d: StudyDeps) {
 /** 偷师 as a client feature (client/features.ts; src/kernel/unfair.ts STUDY_FEATURE). */
 export const studyFeature: ClientFeatureFactory = (d, ctx) => {
   let asked = -1e9;
-  const study = createStudy({ own: (el) => ctx.own(el), on: (t, k, f) => { ctx.on(t, k, f); }, timeout: (f, ms) => ctx.timeout(f, ms),
+  const study = createStudy({ own: (el) => ctx.own(el), keep: (n, s, l) => ctx.keep(n, s, l), on: (t, k, f) => { ctx.on(t, k, f); }, timeout: (f, ms) => ctx.timeout(f, ms),
     send: d.send, list: () => (d.me()?.studyable as StudyEntry[] | undefined) ?? [], now: d.now, spells: d.spells,
     openBook: d.openBook, loadDraft: d.loadDraft, toast: d.toast, mark: () => { asked = performance.now(); },
   });

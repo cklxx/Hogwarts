@@ -72,6 +72,7 @@ function load(): Layout {
 
 export function uiFeature(d: ClientDeps, ctx: FeatureContext): ClientFeature {
   let lay = load(), editing = false, rev = 1;
+  ctx.keep('editing', () => editing, (s) => { editing = s; });
   const save = () => { rev++; try { localStorage.setItem(UI_KEY, JSON.stringify(lay)); } catch { /* private mode: this tab only */ } };
   let all: ClientWidget[] | null = null;
   const widgets = () => (all ??= [...BASE_WIDGETS, ...d.features().flatMap((f) => f.widgets ?? [])]);

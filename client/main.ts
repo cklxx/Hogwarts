@@ -678,13 +678,15 @@ function reloadNote() {
   n.id = 'update-note';
   n.setAttribute('role', 'status');
   n.innerHTML = `<span>${L('游戏已更新（空闲 1 分钟后自动刷新）', 'The game was updated (reloads after a minute idle)')}</span> <button type="button">${L('刷新', 'Reload')}</button>`;
-  n.querySelector('button')!.onclick = () => location.reload();
+  // the features' kept state rides over the reload (FeatureHost.persist: sessionStorage, read once by the next page)
+  const reload = () => { host.persist(); location.reload(); };
+  n.querySelector('button')!.onclick = reload;
   document.body.appendChild(n);
   // reload by itself only when it costs nothing: the tab is in the background, or a minute without input with no
   // panel open (a spell half-written in the book, an owl being typed) — never in the middle of a fight
   setInterval(() => {
     const open = PANELS.some((id) => !document.getElementById(id)?.hidden) || !chatBox.hidden;
-    if (document.hidden || (!open && performance.now() - lastActivity > 60_000)) location.reload();
+    if (document.hidden || (!open && performance.now() - lastActivity > 60_000)) reload();
   }, 5000);
 }
 function toast(text: string) {
