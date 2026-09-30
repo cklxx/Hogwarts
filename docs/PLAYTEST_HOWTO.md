@@ -64,3 +64,17 @@ npx tsx scripts/playtest/mcp.ts --url http://<服务器IP>:7777/mcp --me ./ginny
 5. 如果是真人，会不会继续玩：1–10 分，为什么。
 
 报告交回来后，把汇总和打分写进 `docs/PLAYTEST.md` 新的一轮，要修的问题记进 `docs/TODO.md`。
+
+## 附：让 Agent 用「手机」试玩（看画面、用手指）
+
+MCP 试玩只看文字，看不出界面和手感。`scripts/playtest/phone.mjs` 给 Agent 一台无头触屏手机（390×844，Chromium），用本地 HTTP 操作：截图（Agent 用 Read 看图片）、推摇杆、点屏幕、点按钮、说话。
+
+```bash
+# 一台手机（俯视组用 ?view=top，跟随组用 ?view=follow）
+node scripts/playtest/phone.mjs --port=7911 --url='http://127.0.0.1:7777/?view=top' --out=/tmp/p1 \
+     --playwright=<playwright-core/index.mjs 路径>
+# 一个 Sonnet 玩家（在 tmux 里跑，提示词里写清命令表和报告要求）
+claude -p "$(cat prompt.md)" --model sonnet --allowedTools 'Bash(curl:*)' Read Write
+```
+
+命令：`/enroll?name=`、`/shot`、`/stick?dx=&dy=&ms=`、`/tap?x=&y=`、`/btn?id=`（右侧按钮的 id）、`/slot?n=`、`/say?text=`、`/wait?ms=`；每个都返回新截图的路径和屏幕文字。几台手机同时开时错开 15 秒启动（软件渲染很吃 CPU）。结果仍然只用来找「看不清、点不准、卡住」这类问题，不计入趣味性（见 `docs/PLAYTEST_METRICS.md`）。
