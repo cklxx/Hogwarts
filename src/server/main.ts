@@ -361,6 +361,13 @@ const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ?
 function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
   const w = world.wizards.get(wid);
   if (!w || !m || typeof m !== 'object') return;
+  // Movement input is most of the traffic (up to the display's frame rate): straight to the kernel, without the
+  // closures and the feature lookup below (no feature has the id 'input').
+  if (m.t === 'input') {
+    try { world.setInput(actingAs(world, wid), finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); }
+    catch (e) { ws.send(JSON.stringify({ t: 'err', error: (e as Error).message })); }
+    return;
+  }
   const reply = (o: unknown) => ws.send(JSON.stringify(o));
   const book = () => reply({ t: 'book', armory: world.armory(wid), grimoire: grimoire(w.year, world.rules, w.seals) });
   const items = () => reply({ t: 'items', items: world.armory(wid).items });
@@ -370,7 +377,6 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
     if (feat?.ws) { reply({ t: feat.id, r: feat.ws(world, wid, m as unknown as Record<string, unknown>) }); return; }
     const body = actingAs(world, wid); // whom the keys move (a feature may lend you another body)
     switch (m.t) {
-      case 'input': world.setInput(body, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
       case 'cast': reply({ t: 'cast', r: world.cast(body, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
       case 'unequip': world.unequip(wid, String(m.slot)); items(); break;
@@ -430,10 +436,11 @@ http.on('upgrade', (req, socket, head) => {
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
     netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
+    const handle = (x: unknown) => handleClient(ws, w.id, x as ClientMsg);
     ws.on('message', (raw) => {
       let m: ClientMsg;
       try { m = JSON.parse(String(raw)); } catch { return; }
-      admit(ws, m, (x) => handleClient(ws, w.id, x as ClientMsg)); // per-socket rate limits (net.ts)
+      admit(ws, m, handle); // per-socket rate limits (net.ts)
     });
     ws.on('error', () => ws.terminate());
     ws.on('close', () => { forget(ws); clients.delete(ws); w.connections = Math.max(0, w.connections - 1); world.setInput(w.id, 0, 0); });

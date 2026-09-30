@@ -1022,3 +1022,156 @@ npx tsx scripts/perf-client.ts --port=9310 --q=high --spots=follow,hall --viewer
 npx tsx scripts/gpu-shots.ts --gpu=webgl --size=640x360 --viewer=-1.3,-61.5 --shots=hall-candles,forest,mountains,castle-dusk --wait=8
 ```
 For "before", build `31956f1` and run the same commands with this branch's scripts.
+
+## Server: the tick and the broadcast, profiled (wf/perf-server)
+
+A profile-driven pass over the 20 Hz tick and the 10 Hz broadcast. Behaviour is unchanged: every fast path
+returns what the code it replaced returned, in the same order.
+
+### Method and load
+
+* `main` = `ee87261` (its kernel and server are the same as `31e3f40`). The branch is the same tree plus this
+  pass, and `scripts/bench.ts` is identical on both. main and the branch ran **alternately, 5 rounds per
+  size** (main, branch, main, …). Tables give the **median of the 5 runs, with
+  [min–max] in brackets**.
+* **Load**: the 4-core box was shared with other agents (vitest, TLC, dev servers). The kernel was measured
+  twice. The first 5 rounds ran at load average 7.4–11.7 (medians 500 / 1000 / 2000 wizards: main
+  5.74 / 5.06 / 8.51 ms, branch 3.10 / 3.69 / 6.21). The second 5 rounds, in the table, ran at load 0.7–1.4.
+  The net rounds ran at load 0.9–6.3.
+* **Profiles**: `node --cpu-prof --import tsx scripts/bench.ts kernel --n=1000 --secs=15 --warm=5`, and for the
+  network `BENCH_NODE_FLAGS="--cpu-prof …" bench.ts net --k=500`. A small script sums self time by function
+  from the `.cpuprofile` (samples × time deltas), optionally only below a given function (`tick`). For line
+  numbers, `esbuild --bundle scripts/bench.ts` was profiled too: tsx reports every function at line 1–4.
+  Production runs on tsx (`npm start`), so the tables are tsx runs.
+* The broadcast was also isolated without sockets: the kernel scenario with 500 wizards, and per broadcast
+  `snapshot()` + `fanout.load` + one AOI payload per wizard + `privateState`/`JSON` for half of them (main.ts
+  minus the sockets).
+
+### Where the time went (profile, before → after)
+
+Kernel, 1 000 wizards, self time below `World#tick` (main 2 178 ms → branch 1 559 ms of samples over the
+same 400 ticks):
+
+| function | main ms | branch ms | what it was |
+|---|---:|---:|---|
+| `SpatialHash#near` | 366 | 195 | 6 grid queries per spell per tick: an ordinal sort, a new array, and a `for…of` over the (always empty) loose list for each |
+| `step` (inlined callees) | 260 | 234 | |
+| `stepProjectiles` | 221 | 137 | |
+| `around` | 177 | 4 | called 3× per spell per tick with `() => true`: a view (with `derived()`) per candidate, a sort, a slice |
+| `moveWizard` | 126 | 120 | |
+| `tick` | 114 | 83 | |
+| `hitSegment` | 95 | 74 | |
+| `clashSpells` | 93 | 0 | O(n²) pair loop with a `Map#has` + `Math.hypot` per pair, while ≤ 400 spells fly |
+| `derived` | 65 | 47 | |
+| `Separator#solve` | 55 | 54 | |
+| `boltTargets` (new) | — | 99 | replaces `around` in the bolt loop |
+
+Network, 500 AOI clients (whole server process, 20 s). The top functions besides idle: `writev` (the
+syscall: 12.5 %; after the pass 13.5 %), GC 4.3 %, the broadcast closure in main.ts (JSON of `me`) 4.2 %,
+`clashSpells` 2.5 % → 0.1 %, `payloadFor` 2.3 %, `encode` 1.4 %, ws `Sender#send`, `createUnsafeBuffer`
+(one 29 KB payload per anchor cell), UTF-8 decoding of input messages, the kernel. Below the per-socket
+`corked` send, **half of the broadcast time is the `writev` syscall** (on loopback the kernel's TCP work for
+the receiver is charged to the sender too). User space can't make that smaller without sending fewer bytes.
+One profiled run per side is noisy, and the medians below are what count. (That profile showed more GC
+time on the branch, but the socket-less broadcast bench with `--trace-gc` has the branch doing 340 GCs and
+0.84–0.90 s of pauses against main's 420 and 1.06–1.18 s.)
+
+### What changed
+
+Kernel (`src/kernel`):
+
+* **Bolt collision without views** (`World#boltTargets`): exactly `around(p, 2.2, () => true, owner, 4)` —
+  active wizards, then live creatures, from the same grid queries in the same Map order — but it keeps the
+  nearest four by insertion into a reused array (after equal distances, as the stable sort did). There is no
+  `EntityView`, no `derived()`, no closure, no sort and no slice. It rejects a candidate on one axis before
+  `Math.hypot` (hypot ≥ each |axis|). If anything has a non-finite distance (a NaN position, which `around`
+  keeps and sorts its own way), it returns `around`'s own answer. Under `HOGWARTS_VERIFY_SPATIAL=1` every
+  call is checked against `around`.
+* **`SpatialHash#near`**: a small insertion sort by ordinal instead of `Array#sort` for ≤ 16 candidates, an
+  indexed loop over the loose list, a packed (not holey) cell array, `× 1/size` instead of `/ size` (the same
+  number for the power-of-two cell used), and an optional caller-owned output array. With that array, the
+  bolt loop's three sub-steps usually ask for the same cells while nothing has been re-filed; a version
+  counter (bumped on every file/unfile) then returns the previous answer as it stands.
+* **Spell clashes** (`closePairs` in spatial.ts): a sort-and-sweep along x lists, for each spell, the later
+  spells within `CLASH_R` on both axes. Those are exactly the pairs the old loop did not reject by distance,
+  in the same order, so the same pairs get the same `has` / owner / `hypot` / `canHarm` tests and clash in
+  the same order. With a non-finite position anywhere, every pair is tested, as before. At 500 wizards the
+  spells in flight hover around `CLASH_MAX` = 400, so main paid the O(n²) loop on many ticks: its
+  500-wizard tick was about as slow as its 1 000-wizard one.
+* `around`: no sort for 0–1 results, no copy when nothing is cut. `moveWizard`: no `{ ...pos }` copy per
+  walker per tick.
+
+Server (`src/server`):
+
+* **`fanout.ts` encode/payload**: each category is encoded into one buffer, reused from broadcast to broadcast
+  (payloads are copies). Entries are sorted row-major once, and each entry's JSON is written straight in
+  with `buf.write`: there is no Map of Maps, no `Buffer` per cell and no buffer per row. Rows sit in a dense
+  array, and payload building uses typed scratch arrays. Output is **byte-identical**: a scratch check
+  compared the old and new `SnapshotFanout` on 72 000 payloads (4 radius / cell / margin settings, 60
+  broadcasts, 300 viewers with hysteresis, CJK / emoji / quote names, NaN and far-off positions, empty
+  snapshots, the full payload).
+* **Input fast path** (`handleClient`): `{t: 'input'}` (frame-rate traffic) goes straight to `setInput` on
+  `actingAs(…)`, without creating the three reply closures (tsx's `keepNames` wraps each in a
+  `defineProperty`) or looking up a feature. The admit handler is created once per socket, not once per
+  message.
+
+Tests (`test/perf.test.ts`): `near(…, out)` equals `near()` through moves and removals, the memo is
+invalidated by update/remove/insert, `closePairs` against brute force (ties and edge distances), and the
+verified busy world runs 20 more ticks with a NaN-positioned wizard (the `around` fallback).
+
+### Kernel: before / after (ms per 20 Hz tick, 1 core; load 0.7–1.4)
+
+`npx tsx scripts/bench.ts kernel --n=500,1000,2000 --secs=15 --warm=5`, 5 alternating rounds, median [min–max]:
+
+| wizards | main mean | branch mean | main p50 | branch p50 | main p95 | branch p95 | Δ mean |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 500 | 4.07 [3.99–4.23] | **2.02** [1.97–2.11] | 3.79 | **1.82** | 8.03 | **3.59** | −50 % |
+| 1 000 | 4.27 [4.14–4.40] | **3.00** [2.88–3.01] | 4.05 | **2.81** | 6.77 | **4.46** | −30 % |
+| 2 000 | 8.19 [7.93–8.40] | **6.01** [5.74–6.13] | 7.93 | **5.82** | 10.9 | **8.07** | −27 % |
+
+The scenario statistics are identical in all 60 runs (creatures / projectiles / casts/s / cast ok %:
+25.7 / 473 / 500 / 64.0, 15.1 / 852 / 1000 / 63.7, 8.60 / 1208 / 2000 / 62.1). Syscall time (casts, outside the
+tick) is unchanged: 0.49 / 0.72 / 1.14 ms against 0.51 / 0.73 / 1.14.
+
+### Network: before / after (single process; load 0.9–6.3)
+
+`npx tsx scripts/bench.ts net --k=200,500 --secs=15 --warm=5` (spread, AOI clients, 20 Hz input, a cast a
+second), 5 alternating rounds, median [min–max]:
+
+| | 200 main | 200 branch | 500 main | 500 branch |
+|---|---:|---:|---:|---:|
+| world.tick p50 / p95 ms | 2.70 / 5.65 | **1.36 / 2.30** | 4.61 / 9.22 | **2.46 / 4.38** |
+| broadcast p50 ms | 8.89 [8.55–9.13] | **8.18** [7.67–8.44] | 22.8 [22.5–28.5] | **21.6** [21.2–22.9] |
+| broadcast p95 ms | 12.8 | **10.8** | 44.5 [30.6–47.5] | **29.2** [28.4–32.6] |
+| server CPU % (100 = a core) | 48.5 [46.8–52.6] | **42.5** [39.6–43.3] | 77.2 [68.1–91.7] | **74.7** [69.2–76.4] |
+| … per client | 0.24 % | **0.21 %** | 0.15 % | 0.15 % |
+| event-loop delay p99 ms | 11.2 | **10.5** | 35.5 [25.6–48.3] | **25.4** [24.2–28.2] |
+| cast round trip p50 / p99 ms | 1.10 / 9.73 | **0.90** / 10.3 | 4.71 / 48.3 | **1.97 / 24.4** |
+| KB/s per client (snap KB) | 124 (11.7) | 125 (11.7) | 283 (27.8) | 285 (27.8) |
+
+The wire is unchanged (the same bytes per client, and every client got its 10 snapshots and 5 `me` a
+second). The broadcast bench without sockets (500 wizards, bundled, load 0.8, 3 rounds each) puts encoding +
+payloads at 7.6–7.9 ms per broadcast on main and 7.0–7.2 on the branch, and the whole broadcast at 11.5–12.0
+against 10.7–11.2. So the broadcast gains less than the tick. What is left of it is mostly `writev`, then the
+payload copies (one 28 KB buffer per anchor cell), `privateState` and its JSON (~3 ms per broadcast for 250
+wizards), and GC.
+
+### Behaviour
+
+`bench.ts trace` fingerprints are identical on main (run twice) and on the branch: n=150 30 s
+`8980a426ebada6b7`, n=400 30 s `7bd7fa59c361599c` (more than `CLASH_MAX` spells in flight at times), n=50 120 s
+`74bd6987d70ce47b`. The 150-wizard trace sees 75 spell clashes and ~1 000 `hit` effects in its 30 s, so both
+rewritten paths are covered.
+
+### Left
+
+* `writev` and the loopback TCP stack are now the largest single cost of a broadcast. They go down only with
+  fewer bytes (a binary or delta protocol, or permessage-deflate paid for in CPU) or with more processes
+  (`REALMS`).
+* A payload is a fresh 28 KB `Buffer` per anchor cell (~3 µs to allocate). Carving them out of a slab would
+  save ~1 % of a core at 500 clients. But a slow socket that holds one payload would then pin the whole
+  slab, so that was left out.
+* `privateState` costs ~12 µs per socket at 5 Hz, spread thin over many small views (DA state, hotbar,
+  title…). It would need per-view change tracking to skip.
+* Kernel: `near()` is still ~12 % of the tick (cell loads for 2 grids × 3 sub-steps × spells in flight). One
+  swept query per spell per tick would need the candidates re-checked per sub-step to stay exact.
