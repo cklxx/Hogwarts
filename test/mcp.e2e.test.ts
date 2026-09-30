@@ -76,7 +76,7 @@ describe('MCP over streamable HTTP', () => {
 
     const walk = await call(c, 'move_to', { landmark: 'great_hall' });
     expect(walk.isError).toBe(false);
-    const waited = await call(c, 'wait', { seconds: 15, until: 'arrived' });
+    const waited = await call(c, 'wait', { until: 'arrived' }); // seconds may be left out with until (playtest round 5)
     expect(waited.data.reason).toBe('arrived');
     expect(waited.data.at.place).toBe('The Great Hall');
 
