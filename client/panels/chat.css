@@ -18,3 +18,6 @@
 #chatlog .ch-house .cl-l { color: var(--verdigris); } #chatlog .ch-dm .cl-l { color: var(--wax); } #chatlog .ch-near .cl-l { color: var(--ochre); }
 #chatlog .cl-empty { color: var(--ink2); font-style: italic; }
 @media (max-width: 640px) { #chatlog { bottom: calc(150px * var(--u)); width: calc(100vw - 32px); } #chatlog .cl-body { max-height: 30vh; } }
+
+/* not on the entry gate: nothing to chat about before you are in */
+body:has(#gate:not([hidden])) #chatlog { display: none; }

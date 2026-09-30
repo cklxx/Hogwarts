@@ -200,6 +200,14 @@ describe('the browser shop ({t:"buy"})', () => {
     expect(a.items.length).toBe(0);
     expect(tr(UNKNOWN_SHOP_ITEM)).toMatch(CJK);
   });
+  it('a taken name reads as one Chinese sentence (it used to swallow the English half)', () => {
+    const w = mk();
+    join(w, 'Neville Test');
+    let msg = '';
+    try { join(w, 'Neville Test'); } catch (e) { msg = (e as Error).message; }
+    expect(tr(msg)).toMatch(/叫 Neville Test 了，换个名字吧$/);
+    expect(tr(msg)).not.toMatch(/that name is taken/);
+  });
   it('every preset fits a first-year budget; the buy message has its own rate limit', () => {
     const w = mk();
     for (const s of SHOP) {

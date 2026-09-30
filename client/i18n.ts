@@ -140,7 +140,7 @@ const ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^glamour :secs needs a number/, () => 'glamour :secs 后面要跟一个数字'],
   // ---- enrolment and the spellbook
   [/^A name must be 2-24 letters/, () => '名字要 2–24 个字符：字母、汉字、数字、空格或 _ \' . -'],
-  [/^There is already a (\w+) called (.+)\./, (m) => `已经有一位${houseName(m[1])}的同学叫 ${m[2]} 了，换个名字吧`],
+  [/^There is already a (\w+) called (.+?): that name is taken/, (m) => `已经有一位${houseName(m[1])}的同学叫 ${m[2]} 了，换个名字吧`],
   [/^The owl got lost/, () => '猫头鹰迷路了，再试一次。'],
   [/^Spell names must be 1-40 characters/, () => '咒语名要 1–40 个字符'],
   [/^"(.+)" is part of the standard curriculum; pick another name/, (m) => `「${spellName(m[1])}」是标准课程里的咒语，换个名字吧（比如「${m[1]} II」）。祖传代码，不要动。`],
