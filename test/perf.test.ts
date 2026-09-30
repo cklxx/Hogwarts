@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { derived, derivedUncached } from '../src/kernel/progression.js';
 import { resolve } from '../src/kernel/physics.js';
-import { EntityMap, SpatialHash } from '../src/kernel/spatial.js';
+import { closePairs, EntityMap, SpatialHash } from '../src/kernel/spatial.js';
 import { World } from '../src/kernel/world.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from '../src/kernel/zones.js';
 import { SnapshotFanout } from '../src/server/fanout.js';
@@ -22,7 +22,7 @@ describe('SpatialHash', () => {
   it('returns every entity within the radius, in insertion order, through moves and removals', () => {
     const rnd = mulberry32(1);
     const h = new SpatialHash<P>(8);
-    const all: P[] = [];
+    const all: P[] = [], out: P[] = [];
     for (let i = 0; i < 400; i++) {
       const e = { id: `e${i}`, pos: { x: (rnd() - 0.5) * 1400, z: (rnd() - 0.5) * 1400 } }; // some beyond the dense window
       all.push(e);
@@ -40,8 +40,40 @@ describe('SpatialHash', () => {
         expect(gotIds).toEqual(want); // superset after the exact test = the same list, same order
         const ords = got.map((e) => Number(e.id.slice(1)));
         expect(ords).toEqual([...ords].sort((a, b) => a - b));
+        expect(h.near(p.x, p.z, r, out)).toBe(out); // into a reused buffer: the same answer
+        expect(out).toEqual(got);
       }
     }
+  });
+
+  it('closePairs finds exactly the pairs within r along both axes, each list ascending', () => {
+    const rnd = mulberry32(3);
+    for (const n of [0, 1, 2, 50, 400]) {
+      const X = new Float64Array(n), Z = new Float64Array(n);
+      for (let i = 0; i < n; i++) { X[i] = Math.round((rnd() - 0.5) * 60 * 4) / 4; Z[i] = (rnd() - 0.5) * 60; } // ties in x, points on the edge
+      const got = closePairs(X, Z, 0.9);
+      for (let i = 0; i < n; i++) {
+        const want: number[] = [];
+        for (let j = i + 1; j < n; j++) if (Math.abs(X[j] - X[i]) <= 0.9 && Math.abs(Z[j] - Z[i]) <= 0.9) want.push(j);
+        expect(got[i] ?? []).toEqual(want);
+      }
+    }
+  });
+
+  it('near(…, out) reuses its last answer only while nothing was re-filed', () => {
+    const h = new SpatialHash<P>(8), out: P[] = [];
+    const a = { id: 'a', pos: { x: 1, z: 1 } }, b = { id: 'b', pos: { x: 30, z: 30 } };
+    h.insert(a, 1); h.insert(b, 2);
+    const ids = (x: number, z: number) => h.near(x, z, 3, out)!.map((e) => e.id);
+    expect(ids(0, 0)).toEqual(['a']);
+    expect(ids(0.5, 0.5)).toEqual(['a']); // the same cells, nothing re-filed
+    b.pos = { x: 2, z: 2 }; h.update(b);
+    expect(ids(0.5, 0.5)).toEqual(['a', 'b']);
+    h.remove(a);
+    expect(ids(0.5, 0.5)).toEqual(['b']);
+    h.insert({ id: 'c', pos: { x: NaN, z: 0 } }, 3);
+    expect(ids(0.5, 0.5)).toEqual(['b', 'c']);
+    expect(ids(100, 100)).toEqual(['c']);
   });
 
   it('keeps entities with non-finite positions visible to every query, and refuses non-finite queries', () => {
@@ -125,6 +157,13 @@ describe('World spatial queries equal full scans', () => {
       }
       expect(w.wizards.grid.check()).toBeNull();
       expect(w.creatures.grid.check()).toBeNull();
+      // a wizard somewhere non-finite (every query's loose candidate): bolts still meet exactly what around() finds
+      w.wizards.get(ids[1])!.pos = { x: NaN, z: 0 };
+      for (let t = 0; t < 20; t++) {
+        for (let i = 0; i < ids.length; i++) if ((t + i) % 10 === 0) w.cast(ids[i], 'Stupefy', { aim: { x: 0, z: 0 } });
+        w.tick();
+      }
+      expect(w.wizards.grid.check()).toBeNull();
     } finally {
       World.verifySpatial = was;
     }
