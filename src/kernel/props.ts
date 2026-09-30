@@ -107,7 +107,7 @@ export const PROPS_FEATURE: Feature = {
   // a straight bolt passing close touches the nearest prop and is spent on it (one with a target flies past: a fight
   // among the crates is not eaten by them)
   bolt(world, p) {
-    if (p.kind !== 'bolt' || p.homing || p.power <= 0 || p.ttl <= 0) return;
+    if (p.kind !== 'bolt' || p.homing || p.power <= 0 || p.ttl <= 0 || p.tags.includes('water')) return; // (Aguamenti soaks, it breaks nothing)
     for (const q of near(p.pos, PROP_R, scratch)) {
       if (world.props.broken.has(q.id)) continue;
       if (touch(world, q, p.element, p.owner)) { p.ttl = 0; return; }

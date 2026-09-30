@@ -46,7 +46,7 @@ import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, typ
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
 import { duelFoes, inFight, inMatch, sideOf } from './duelclub.js';
 import { spared, strikes } from './allies.js';
-import { AGENT_TOOL_COST, FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
+import { AGENT_TOOL_COST, FEATURE_SPELLS, FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
 import { bannedCastText, bannedListing, marketDecreeErrors, payRoyalty } from './market.js';
@@ -1381,7 +1381,7 @@ export class World {
     if (!opts.dot) {
       // the features' say on a direct hit (the Dark Lord's ×1.15, the DA's joint Patronus, 偷师 remembering the spell)
       let m = 1;
-      for (const f of HOOKS.hit) m *= f.hit(this, by, sw, dstId, tags, true);
+      for (const f of HOOKS.hit) m *= f.hit(this, by, sw, dstId, tags, true, element);
       a *= (sw ? derived(sw, rb).power : 1) * m;
     }
     // elemental side effects (not from damage-over-time itself, so they never chain)
@@ -2617,7 +2617,7 @@ export class World {
     const w = this.wizards.get(id);
     const c = this.creatures.get(id);
     const caster = this.wizards.get(p.owner);
-    for (const f of HOOKS.hit) f.hit(this, p.owner, caster, id, p.tags, false); // (偷师: a root or a disarm is a hit too)
+    for (const f of HOOKS.hit) f.hit(this, p.owner, caster, id, p.tags, false, p.element); // (偷师: a root or a disarm is a hit too)
     if (p.kind === 'root') {
       if (w) w.st.rootedUntil = this.now + p.secs;
       if (c) c.rootedUntil = this.now + p.secs * (c.kind === 'troll' ? 0.5 : 1);
@@ -3644,7 +3644,12 @@ const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, 
 const HITS_KEPT = 8, HITS_SHOWN_S = 30;
 /** How near a hidden chest has to be before look shows it (about what a browser player would spot). */
 const CHEST_SIGHT = 12;
-const HARM_EFFECTS = new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova']);
-const HELP_EFFECTS = new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend']);
+// (and the features' primitives, by what they say they aim at: Aguamenti a foe, sectumsempra a foe, …; read on first
+// use — the feature registry and this module import each other)
+let AIMS: { harm: Set<string>; help: Set<string> } | null = null;
+const aims = () => (AIMS ??= {
+  harm: new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova', ...[...FEATURE_SPELLS.values()].filter((s) => s.aims === 'harm').map((s) => s.prim.name)]),
+  help: new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend', ...[...FEATURE_SPELLS.values()].filter((s) => s.aims === 'help').map((s) => s.prim.name)]),
+});
 export const spellKind = (effects: readonly string[]): 'harm' | 'help' | 'self' =>
-  effects.some((e) => HARM_EFFECTS.has(e)) ? 'harm' : effects.some((e) => HELP_EFFECTS.has(e)) ? 'help' : 'self';
+  effects.some((e) => aims().harm.has(e)) ? 'harm' : effects.some((e) => aims().help.has(e)) ? 'help' : 'self';

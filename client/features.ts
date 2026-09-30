@@ -17,6 +17,7 @@ import { studyFeature } from './panels/study';
 import { travelFeature } from './panels/travel';
 import { trunkFeature } from './panels/trunk';
 import { wardFeature } from './panels/ward';
+import { chemFeature } from './chem3d';
 import { propsFeature } from './props3d';
 import { scenesFeature } from './scenes3d';
 import { uiFeature } from './ui';
@@ -29,7 +30,7 @@ export const CLIENT_FEATURES: readonly (readonly [string, ClientFeatureFactory])
   ['panels/darkmark', darkLordFeature], ['panels/lawless', lawlessFeature], ['panels/da', daFeature], ['panels/study', studyFeature],
   ['panels/seals', sealsFeature], ['panels/chat', chatFeature], ['panels/duel', duelFeature], ['panels/quidditch', quidditchFeature],
   ['panels/ward', wardFeature], ['panels/travel', travelFeature], ['panels/quests', questsFeature], ['panels/dark', darkFeature],
-  ['panels/trunk', trunkFeature], ['scenes3d', scenesFeature], ['props3d', propsFeature], ['ui', uiFeature],
+  ['panels/trunk', trunkFeature], ['scenes3d', scenesFeature], ['props3d', propsFeature], ['chem3d', chemFeature], ['ui', uiFeature],
 ];
 
 /** npm run dev: an edited feature module arrives here (Vite HMR); main.ts swaps it in (FeatureHost.reload). */
@@ -39,7 +40,7 @@ if (import.meta.hot) {
   // (the literal list Vite needs, in CLIENT_FEATURES' order)
   import.meta.hot.accept([
     './panels/darkmark', './panels/lawless', './panels/da', './panels/study', './panels/seals', './panels/chat', './panels/duel', './panels/quidditch',
-    './panels/ward', './panels/travel', './panels/quests', './panels/dark', './panels/trunk', './scenes3d', './props3d', './ui',
+    './panels/ward', './panels/travel', './panels/quests', './panels/dark', './panels/trunk', './scenes3d', './props3d', './chem3d', './ui',
   ], (mods) => {
     mods.forEach((m, i) => {
       if (!m) return;

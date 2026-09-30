@@ -471,6 +471,12 @@ const closeToMe = (x: number, z: number, r: number) => { const p = wizards.get(m
 const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 let shakeAmp = 0;
 const shake = (a: number) => { if (!reduceMotion) shakeAmp = Math.max(shakeAmp, a); };
+/**
+ * 命中停顿 (hit-stop; "Juice it or lose it", "The Art of Screenshake"): for a few frames after a hit near you the world's
+ * motion — interpolation, animation, particles — nearly stops, the camera does not; 40–90 ms sells the weight of a hit.
+ */
+let stopT = 0;
+const hitStop = (s: number) => { if (!reduceMotion) stopT = Math.max(stopT, s); };
 
 function apply(s: Snap) {
   snap = s;
@@ -587,7 +593,13 @@ function spawnFx(f: Fx) {
   const gy = heightAt(f.x, f.z);
   const P = particles;
   switch (f.k) {
-    case 'hit': P.sparks(f.x, gy + 1.2, f.z, col, 16 + Math.min(40, (f.n ?? 4) * 2)); if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0')); if (f.h === myHandle) shake(Math.min(0.35, 0.05 + (f.n ?? 4) * 0.015)); break;
+    case 'hit':
+      P.sparks(f.x, gy + 1.2, f.z, col, 16 + Math.min(40, (f.n ?? 4) * 2));
+      if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0'));
+      // the weight of a hit: on you a shake by its size; near you a small one; a hit-stop either way
+      if (f.h === myHandle) { shake(Math.min(0.35, 0.05 + (f.n ?? 4) * 0.015)); hitStop(0.07); }
+      else if (closeToMe(f.x, f.z, 14)) { shake(Math.min(0.12, 0.02 + (f.n ?? 4) * 0.006)); hitStop(0.045); }
+      break;
     // 决斗手感 (World.dodge / tryReflect / clashSpells)
     case 'dodge': P.puff(f.x, gy + 0.3, f.z, { count: 10, color: 0x8a7a64, speed: 2.2, size: 0.6, life: 0.6, drag: 3, grow: 2, radius: 0.4 }); break;
     case 'reflect':
@@ -635,6 +647,8 @@ function spawnFx(f: Fx) {
     case 'reveal': ring(f.x, f.z, 0xffe9a0, 0.3, 3, 0.8, 1.2); P.motes(f.x, gy, f.z, 0xffe9a0, 30); break;
     case 'seal': column(f.x, f.z, 0xd4af37, 2); ring(f.x, f.z, 0xd4af37, 0.5, 5, 1.5); P.fountain(f.x, gy, f.z, 0xd4af37, 120); break;
   }
+  // the features' own (a reaction's name: client/chem3d.ts)
+  for (const ft of feats) ft.fx?.(f);
   // the caster's wand arm rises and strikes; the tip flashes at the strike (see frame)
   if (f.k === 'cast' && f.h) {
     const w = wizards.get(f.h);
@@ -1737,8 +1751,9 @@ const host = new FeatureHost({
   me: () => me as Record<string, any> | null, now: () => snap?.t ?? 0,
   myHandle: () => myHandle, observing: () => watch.observing(), myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
   nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?',
-  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? null,
+  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? creatures.get(h)?.root ?? null,
   solo, spells: () => bookSpells, wantSpells, openBook: () => { if ($('#book').hidden) toggleBook(true); }, loadDraft, features: () => feats, castOnSelf: (spell) => ctl.castOnSelf(spell),
+  floatText: (x, z, text, color, lift) => floatText(x, z, text, color, lift), shake, hitStop, sparks: (x, z, color, count) => particles.sparks(x, heightAt(x, z) + 1.2, z, color, count),
 }, scene);
 for (const [key, mk] of CLIENT_FEATURES) host.add(key, mk);
 /** The running features: one array, a hot update swaps entries in place (client/context.ts, client/hot.ts). */
@@ -1959,7 +1974,10 @@ function frame() {
   if (now - prev < FRAME_MIN_MS) return;
   probe.frameBegin();
   let tp = probe.begin();
-  const dt = Math.min(0.1, (now - prev) / 1000);
+  const dtReal = Math.min(0.1, (now - prev) / 1000);
+  // (a hit-stop slows the world's motion to a crawl for its few frames; the camera and the HUD keep real time)
+  const dt = stopT > 0 ? dtReal * 0.08 : dtReal;
+  stopT -= dtReal;
   if (snap) { dyn?.frame(now - prev); if (frameMs.length < 4000) frameMs.push(now - prev); }
   prev = now;
   clock += dt;
@@ -1990,7 +2008,7 @@ function frame() {
   const my = wizards.get(myHandle);
   if (my) {
     const t = my.root.position;
-    view.place(t, dt); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
+    view.place(t, dtReal); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
     view.eye(FR.eye);
     weatherPts.position.set(t.x, 0, t.z);
   }
@@ -1998,7 +2016,7 @@ function frame() {
     // after the camera is placed, so the spring arm never learns the jolt
     camera.position.x += (Math.random() - 0.5) * shakeAmp;
     camera.position.y += (Math.random() - 0.5) * shakeAmp * 0.6;
-    shakeAmp *= Math.exp(-dt * 14);
+    shakeAmp *= Math.exp(-dtReal * 14);
   } else shakeAmp = 0;
 
   // lighting, sky and decorations from the hour, the weather and whatever the last Minister decreed
@@ -2040,7 +2058,7 @@ function frame() {
   R.setBoltLights(lit);
   probe.end('fx', tp); tp = probe.begin();
 
-  ctl.update(dt);
+  ctl.update(dtReal);
   funWorld.frame(dt, snap);
   for (const f of feats) f.frame?.(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }

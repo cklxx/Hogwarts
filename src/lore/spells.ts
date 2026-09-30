@@ -4,6 +4,7 @@ export interface Curriculum { year: number; name: string; incantation: string; s
 export const CURRICULUM: Curriculum[] = [
   { year: 1, name: 'Stupefy', incantation: 'Stupefy!', note: 'Stunning Spell', source: '(bolt (or target aim) 14)' },
   { year: 1, name: 'Incendio', incantation: 'Incendio!', note: 'Fire. Spiders and Devil\'s Snare hate it.', source: '(bolt (or target aim) 12 :fire)' },
+  { year: 1, name: 'Aguamenti', incantation: 'Aguamenti!', note: 'Water. It hurts nothing but soaks: then fire vaporizes, ice freezes, lightning conducts, a stunner makes it slip. Puts out fire.', source: '(aguamenti (or target aim))' },
   { year: 1, name: 'Protego', incantation: 'Protego!', note: 'Shield Charm', source: '(shield self 25 4)' },
   { year: 1, name: 'Episkey', incantation: 'Episkey!', note: 'Heals minor injuries', source: '(heal self 16)' },
   { year: 1, name: 'Lumos', incantation: 'Lumos!', note: 'Wand-lighting Charm', source: '(light 30)' },

@@ -59,6 +59,7 @@ function buildObstacles(): Obstacle[] {
     // --- The grounds ---
     disc(-118, 40, 30, 0, 'water', 'The Black Lake'), // the lake's own scene (src/shared/scenes.ts): water, and a shore to walk round it
     disc(-52, 28, 1.6, 2, 'tomb', "Dumbledore's Tomb"),
+    disc(12, 10, 2.8, 0.6, 'stone', 'Fountain'), // the south lawn's (src/shared/chem.ts WET_ZONES: its dew keeps the first pixies wet)
     disc(45, 0, 3, 14, 'willow', 'Whomping Willow'),
     disc(95, 30, 5, 7, 'wood', "Hagrid's Hut"),
     // Quidditch hoops
