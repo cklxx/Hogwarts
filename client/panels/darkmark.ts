@@ -103,6 +103,7 @@ export const darkLordFeature: ClientFeatureFactory = (d) => {
   }
   return {
     id: 'darkLord',
+    widgets: [{ id: 'dl-compass', zh: '黑魔王罗盘', en: 'Dark Lord compass' }],
     hud: compass,
     top: () => (you() ? `<div class="dl-ribbon">${ic('darkmark')}<span><b>${L('你是黑魔王', 'You are the Dark Lord')}</b> · ${L('位置已向全服公开', 'your whereabouts are public')} · ${L('伤害 <b class="num">+15%</b>', 'damage <b class="num">+15%</b>')} · <small>${L('被击晕会被夺走 30% 声望', 'a stun steals 30% of your reputation')}</small></span></div>` : ''),
     /** Every frame: the Dark Mark follows its wizard. */

@@ -132,6 +132,7 @@ export const studyFeature: ClientFeatureFactory = (d) => {
   });
   return {
     id: 'study',
+    widgets: [{ id: 'studyslip', zh: '偷师', en: 'Study' }],
     hud() { if (d.me()) study.update(); },
     onMessage(msg) {
       if (msg.t !== 'study') return false;

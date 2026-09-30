@@ -21,16 +21,17 @@ import { createDynRes } from './dynres';
 import { instanceAlike } from './instancer';
 import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
-import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
-import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
+import { PANELS, agentView, agoText, createControls, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
+import { TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
 import { PAIR_TTL_S, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
 import { TIPS } from '../src/lore/memes';
-import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
+import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, spellIcon } from './ink';
 import * as probe from './perf';
 import { createMarket } from './market';
 import { createPanels, type FamiliarState, type FocusView } from './panels';
 import { createFun } from './panels/fun';
 import { CLIENT_FEATURES, renderTop } from './features';
+import type { ClientFeature } from './feature';
 import { createFunWorld } from './funworld';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
@@ -60,10 +61,6 @@ interface Me {
 /** Owl Post events carry `from` and `owl` (docs/AGENT_LINK.md §C.2). */
 interface Ev { id: number; type: string; text: string; zh?: string; to?: string; t?: number; from?: 'player' | 'agent'; owl?: { id: number; options?: string[]; expiresAt?: number; re?: number }; card?: string }
 /** An item as World.armory lists it. */
-interface TrunkItem {
-  id: string; name: string; slot: string; mods: Record<string, number>; lore?: string; charm?: unknown; unique?: string; equipped: boolean;
-  cursed?: boolean; anon?: boolean; bound?: boolean; boundSecondsLeft?: number; jinx?: { kind: string; mag: number; seconds: number } | null; forgedByName?: string;
-}
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const LS = 'hogwarts.token';
@@ -332,6 +329,7 @@ function connect() {
     const msg = JSON.parse(m.data);
     probe.end('parse', tp);
     probe.wsMessage(m.data.length, msg.t === 'snap');
+    for (const f of observers) f.observe!(msg); // features that follow what others asked for (the trunk reads every armory)
     if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
     if (watch.onMessage(msg)) return; // 看 Agent 玩 (client/watch.ts)
     if (msg.t === 'welcome') {
@@ -354,9 +352,8 @@ function connect() {
       ctl.onCast(msg.r);
       if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
       else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
-      if (!$('#trunk').hidden) send({ t: 'book' }); // Finite Incantatem / Revelio change what the trunk shows
     }
-    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); market.onBook(); }
+    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); market.onBook(); }
     else if (feats.some((f) => f.onMessage?.(msg))) { /* a feature's own reply (client/features.ts) */ }
     else if (msg.t === 'market') market.onMessage(msg); // 咒语集市 (client/market.ts)
     else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
@@ -365,13 +362,12 @@ function connect() {
     else if (msg.t === 'goto') ctl.onGoto(msg.goal);
     else if (msg.t === 'sim') showSim(msg.r);
     else if (msg.t === 'forged') { bookOut(`✓ ${L('已铸造', 'Forged')} ${msg.name}${L('。', '.')}${msg.notes.length ? '\n' + msg.notes.map(tr).join('\n') : ''}`, 'good'); }
-    else if (msg.t === 'bought') onBought(msg.r);
     else if (msg.t === 'err') {
       ctl.onError();
       const text = `✗ ${tr(String(msg.error ?? ''))}`;
       if (market.onError(text)) { /* shown on the market page */ }
       else if (!$('#book').hidden) bookOut(text, 'bad');
-      else if (pn.onError(text) || feats.some((f) => f.onError?.(text)) || onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
+      else if (pn.onError(text) || feats.some((f) => f.onError?.(text)) || onOwlError(text) || onMenuError(text)) { /* shown in the open panel */ }
       else toast(text);
     }
   };
@@ -608,10 +604,7 @@ function feed(e: Ev, fresh: boolean) {
   if (e.type === 'owl' || e.type === 'ask') { onOwlEvent(e, fresh); return; }
   const text = lang === 'zh' && e.zh ? e.zh : e.text;
   // a curse addressed to you belongs to the curse banner (and the trunk), not to the feed
-  if (e.type === 'curse' && e.to) {
-    if (fresh) { curseNews = { text, until: performance.now() + 12000 }; if (!$('#trunk').hidden) send({ t: 'book' }); }
-    return;
-  }
+  if (e.type === 'curse' && e.to) return; // (client/panels/trunk.ts shows it)
   if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'wheel' && !e.to) || (e.type === 'egg' && e.to) || (e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000')))) { banner(text, e.type); return; }
   // history from before you arrived: only the last couple of public lines, and they fade like the rest
   feedLine(text, `${e.type}${e.to ? ' private' : ''}`);
@@ -671,8 +664,6 @@ function toast(text: string) {
   lastLore = performance.now(); // a toast and an idle tip never share the space
   $('#lore').classList.remove('show');
 }
-/** Private news of a curse (arrival, Finite, Revelio, wearing off), shown in the curse banner for a few seconds. */
-let curseNews: { text: string; until: number } | null = null;
 
 /** A dark corner of the HUD: a faint rune whose tooltip says which spell lights it. */
 const rune = (icon: string, tip: string, cls = '', cast = '') => `<button type="button" class="rune ${cls}" data-tip="${esc(tip)}" aria-label="${esc(tip)}"${cast ? ` data-cast="${esc(cast)}"` : ''}><svg class="ic"><use href="#i-${icon}"/></svg></button>`;
@@ -1228,167 +1219,11 @@ $('#agentbox').addEventListener('click', (e) => {
 });
 document.addEventListener('pointerdown', (e) => { if (!(e.target as HTMLElement).closest('#agentbox')) $('#agentbox').classList.remove('open'); });
 
-// ------------------------------------------------------------------ curse banner (from me.hex)
-function renderCurseBar() {
-  const el = $('#cursebar');
-  const c = curseText(me?.hex);
-  if (curseNews && performance.now() > curseNews.until) curseNews = null;
-  if ((!c || (!c.hexed && !c.respite)) && !curseNews) { el.hidden = true; return; }
-  if (!el.firstElementChild) {
-    el.innerHTML = `<div class="cb-news"></div><div class="cb-text"></div><div class="cb-acts"><button data-act="finite">${L('咒立停', 'Finite Incantatem')}</button> <button class="ghost" data-act="revelio">${L('原形立现', 'Revelio')}</button> <button class="ghost" data-act="trunk">${L('行囊', 'Trunk')} <kbd>T</kbd></button></div>`;
-  }
-  const hexed = !!c?.hexed;
-  el.classList.toggle('quiet', !hexed && !curseNews);
-  el.classList.toggle('news', !hexed && !!curseNews);
-  const news = el.querySelector('.cb-news') as HTMLElement;
-  const nt = curseNews?.text ?? '';
-  if (news.textContent !== nt) news.textContent = nt;
-  news.hidden = !nt;
-  // fresh news already says how to end it and how to find out who: the banner then lists only what is on you
-  const text = hexed
-    ? `<b>${esc(c!.head)}</b>${c!.parts.map(esc).join(' · ')}${L('。', '.')}${curseNews ? '' : `<br/>${esc(c!.cure)} ${esc(c!.who)}`}${c!.resting ? `<br/>${esc(c!.resting)}` : ''}`
-    : curseNews ? '' : esc(c?.respite ?? '');
-  const t = el.querySelector('.cb-text') as HTMLElement;
-  if (t.innerHTML !== text) t.innerHTML = text;
-  t.hidden = !text;
-  (el.querySelector('.cb-acts') as HTMLElement).hidden = !hexed && !curseNews;
-  const fin = el.querySelector('[data-act="finite"]') as HTMLButtonElement;
-  const why = finiteBlocked();
-  fin.disabled = !!why;
-  fin.title = why ?? '';
-  el.hidden = false;
-}
-$('#cursebar').addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-  if (!b || b.disabled) return;
-  if (b.dataset.act === 'finite') ctl.castOnSelf('Finite Incantatem');
-  if (b.dataset.act === 'revelio') ctl.castOnSelf('Revelio');
-  if (b.dataset.act === 'trunk') toggleTrunk(true);
-});
-
-// ------------------------------------------------------------------ the trunk (T): equip, unequip, destroy; break a cursed binding (§C.6)
-let trunkItems: TrunkItem[] = [];
-let trunkAt = 0;
-let knownSpells: Set<string> | null = null;
-let trunkMsg = '';
-let destroyArmed: string | null = null;
-let trunkRefetch = 0;
-/** The armory has arrived at least once (so an empty trunk really is empty). */
-let trunkKnown = false;
-let trunkOk = false;
-const SLOT_ZH: Record<string, string> = { wand: '魔杖', robe: '长袍', amulet: '护身符', trinket: '小饰物', broom: '扫帚' };
-const MOD_ZH: Record<string, string> = { maxHp: '生命上限', maxMana: '法力上限', manaRegen: '回蓝', speed: '移速', power: '威力', ward: '护甲' };
-function onArmory(armory: { items?: TrunkItem[]; spells?: { name: string }[] }) {
-  if (Array.isArray(armory.items)) { trunkItems = armory.items; trunkAt = performance.now(); trunkKnown = true; }
-  if (Array.isArray(armory.spells)) knownSpells = new Set(armory.spells.map((s) => s.name));
-  renderTrunk(true);
-}
-const knows = (name: string, year: number) => knownSpells ? knownSpells.has(name) : (me?.year ?? 1) >= year;
-/** Why Finite Incantatem cannot be cast from the trunk or the banner, or null. */
-function finiteBlocked(): string | null {
-  return knows('Finite Incantatem', 2) ? null : L('你还不会「咒立停」：需 2 年级', 'You do not know Finite Incantatem yet: needs year 2');
-}
-function boundLeft(it: TrunkItem): number {
-  const live = me?.hex?.bound?.find((b) => b.id === it.id);
-  if (live) return live.left;
-  if (!it.bound) return 0;
-  return Math.max(0, Math.ceil((it.boundSecondsLeft ?? 0) - (performance.now() - trunkAt) / 1000));
-}
-function modsText(m: Record<string, number>) {
-  return Object.entries(m ?? {}).filter(([, v]) => v).map(([k, v]) => `<span class="${v < 0 ? 'neg' : 'pos'}">${esc(L(MOD_ZH[k] ?? k, k))} ${v > 0 ? '+' : ''}${v}</span>`).join(' ');
-}
-function renderTrunk(rebuild = false) {
-  const el = $('#trunk');
-  if (el.hidden) return;
-  if (rebuild) {
-    const fin = finiteBlocked(), rev = knows('Revelio', 1) ? null : L('你还不会「原形立现」', 'You do not know Revelio yet');
-    $('#trunk-cure').innerHTML = `<button data-act="finite"${fin ? ` disabled title="${esc(fin)}"` : ''}>${ic('finite')}${L('念咒立停解咒', 'Cast Finite Incantatem to break curses')}</button>${fin ? ` <span class="hint">${esc(fin)}</span>` : ''}
-      <button class="ghost" data-act="revelio"${rev ? ` disabled title="${esc(rev)}"` : ''}>${ic('eye')}${L('念原形立现，看看是谁', 'Cast Revelio: who sent it?')}</button>`;
-    $('#trunk-list').innerHTML = trunkItems.length ? trunkItems.map((it) => {
-      const bound = boundLeft(it) > 0;
-      const badges = [
-        it.equipped ? `<span class="tb eq">${L('已穿戴', 'equipped')}</span>` : '',
-        it.cursed ? (bound ? `<span class="tb curse">🔒 ${L('被诅咒（粘身，剩', 'cursed (stuck,')} <b data-bound="${esc(it.id)}">${boundLeft(it)}</b> ${L('秒）', 's left)')}</span>` : `<span class="tb curse">☠️ ${L('被诅咒', 'cursed')}</span>`) : '',
-        it.jinx ? `<span class="tb curse">🕸️ ${L('带恶咒', 'jinxed')}</span>` : '',
-        it.anon ? `<span class="tb anon">✉️ ${L('匿名寄来', 'anonymous')}</span>` : it.forgedByName && it.forgedByName !== me?.name && it.forgedByName !== 'Legend' ? `<span class="tb">${L('寄件人', 'from')} ${esc(it.forgedByName)}</span>` : '',
-      ].join(' ');
-      const stuck = bound ? ` disabled title="${esc(L('粘身中：先念咒立停，或等它消退', 'Stuck: cast Finite Incantatem first, or wait'))}"` : '';
-      const wear = it.equipped ? `<button class="ghost" data-act="unequip" data-slot="${esc(it.slot)}"${stuck}>${L('卸下', 'Unequip')}</button>` : `<button class="ghost" data-act="equip" data-id="${esc(it.id)}">${L('穿上', 'Equip')}</button>`;
-      const del = it.unique === 'elder_wand' ? '' : destroyArmed === it.id
-        ? `<button data-act="destroy-yes" data-id="${esc(it.id)}">${L('确定销毁', 'Destroy it')}</button> <button class="ghost" data-act="destroy-no">${L('取消', 'Cancel')}</button>`
-        : `<button class="ghost" data-act="destroy" data-id="${esc(it.id)}"${stuck}>${L('销毁', 'Destroy')}</button>`;
-      return `<li class="${it.cursed ? 'cursed' : ''}"><span class="it-ic">${ic(itemIcon(it.slot))}</span><div class="ti-name"><b>${esc(it.name)}</b> <span class="hint">${esc(L(SLOT_ZH[it.slot] ?? it.slot, it.slot))}</span> ${badges}</div>
-        <div class="ti-mods">${modsText(it.mods)}${it.lore ? ` <i class="hint">“${esc(it.lore)}”</i>` : ''}</div><div class="ti-acts">${wear} ${del}</div></li>`;
-    }).join('') : `<li class="hint">${L('箱子是空的。在下面的商店买一件，或者让你的 Agent 用 forge_item 给你锻造。', 'Your trunk is empty. Buy something in the shop below, or ask your agent to forge you something (forge_item).')}</li>`;
-    $('#trunk-msg').textContent = trunkMsg;
-    $('#trunk-msg').className = trunkOk ? 'ok' : 'err';
-    renderShop();
-  } else if (shopSig !== `${me?.galleons}`) renderShop();
-  // live countdowns; once a binding wears off, ask for a fresh list
-  document.querySelectorAll<HTMLElement>('#trunk-list [data-bound]').forEach((b) => {
-    const it = trunkItems.find((x) => x.id === b.dataset.bound);
-    const left = it ? boundLeft(it) : 0;
-    b.textContent = String(left);
-    if (left <= 0 && performance.now() - trunkRefetch > 2000) { trunkRefetch = performance.now(); send({ t: 'book' }); }
-  });
-}
-function toggleTrunk(force?: boolean) {
-  const t = $('#trunk');
-  t.hidden = !(force ?? t.hidden);
-  if (!t.hidden) { solo(t); trunkMsg = ''; destroyArmed = null; send({ t: 'book' }); renderTrunk(true); }
-}
-function onTrunkError(text: string) {
-  if (!recent('trunk') || $('#trunk').hidden) return false;
-  trunkMsg = text;
-  send({ t: 'book' });
-  return true;
-}
-$('#trunk').addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-  if (!b || b.disabled) return;
-  const act = b.dataset.act;
-  trunkMsg = '';
-  mark('trunk');
-  if (act === 'close') { toggleTrunk(false); return; }
-  trunkOk = false;
-  if (act === 'finite') { ctl.castOnSelf('Finite Incantatem'); return; }
-  if (act === 'revelio') { ctl.castOnSelf('Revelio'); return; }
-  if (act === 'buy') { send({ t: 'buy', item: b.dataset.item, lang }); b.disabled = true; return; }
-  if (act === 'equip') send({ t: 'equip', item: b.dataset.id });
-  else if (act === 'unequip') send({ t: 'unequip', slot: b.dataset.slot });
-  else if (act === 'destroy') { destroyArmed = b.dataset.id ?? null; renderTrunk(true); return; }
-  else if (act === 'destroy-no') { destroyArmed = null; renderTrunk(true); return; }
-  else if (act === 'destroy-yes') { destroyArmed = null; send({ t: 'destroy', item: b.dataset.id }); }
-  else return;
-  send({ t: 'book' }); // the server does not answer equip / unequip / destroy: read the trunk again
-});
-
-// ------------------------------------------------------------------ the shop (in the trunk): fixed presets, forged for yourself (src/shared/shop.ts)
-let shopSig = '';
-function renderShop() {
-  const g = me?.galleons ?? 0;
-  shopSig = `${me?.galleons}`;
-  $('#shop').innerHTML = `<h3>${ic('coin')}${L('商店', 'Shop')} <small>${L(`你有 <span class="num">${g}</span> 加隆 · 买下自动穿上 · 打败魔物赚加隆`, `you have <span class="num">${g}</span> Galleons · worn at once · creatures drop Galleons`)}</small></h3><ul class="shop-list">` +
-    SHOP.map((s) => {
-      const price = shopPrice(s), can = g >= price;
-      return `<li><span class="it-ic">${ic(itemIcon(s.slot))}</span><div class="ti-name"><b>${esc(L(s.zh, s.en))}</b> <span class="hint">${esc(L(SLOT_ZH[s.slot] ?? s.slot, s.slot))}</span></div>
-        <div class="ti-mods">${modsText(s.mods)} <i class="hint">“${esc(L(s.lore.zh, s.lore.en))}”</i></div>
-        <div class="ti-acts"><button data-act="buy" data-item="${esc(s.key)}"${can ? '' : ' disabled'}>${L(`<span class="num">${price}</span> 加隆 · 购买`, `Buy · <span class="num">${price}</span> Galleons`)}</button>${can ? '' : ` <span class="hint">${L(`还差 ${price - g} 加隆`, `${price - g} more Galleons`)}</span>`}</div></li>`;
-    }).join('') + '</ul>';
-}
-function onBought(r: { item: string; equipped: boolean; notes: string[] }) {
-  trunkOk = true;
-  trunkMsg = `✓ ${L(`买下了「${r.item}」`, `Bought "${r.item}"`)}${r.equipped ? L('，已经穿上。', ', now wearing it.') : L('：在上面点「穿上」。', ': press Equip above.')} ${tr(r.notes[0] ?? '')}`;
-  renderTrunk(true);
-}
-
 /** The Owl Post parts of the 10 Hz HUD. */
 function linkHud() {
   renderAgentBox();
-  renderCurseBar();
   renderMenuLive();
   renderOwl();
-  renderTrunk();
 }
 
 // ------------------------------------------------------------------ spellbook (in-browser Runes editor)
@@ -1660,7 +1495,6 @@ function renderGoal() {
   goal = nextGoal({
     year: me.year, xp: me.xp, xpNext: me.xpNext, ui: me.ui, seals: me.seals, galleons: me.galleons, reputation: me.reputation, decree: me.decree, house: me.house,
     customSpells: bookSpells.length ? bookSpells.filter((x) => !x.builtin).length : null,
-    items: trunkKnown ? trunkItems.length : null,
     ...pn.goalState(),
     ...Object.assign({}, ...feats.map((f) => f.goal?.() ?? {})), // the Dark Lord, the DA
   });
@@ -1687,7 +1521,6 @@ $('#goal').addEventListener('click', (e) => {
     if ('cast' in a) ctl.castOnSelf(a.cast);
     else if (a.open === 'book') toggleBook(true);
     else if (a.open === 'tpl') { toggleBook(true); openTemplates(); }
-    else if (a.open === 'trunk') toggleTrunk(true);
     else if (a.open === 'board') { if ($('#board').hidden) void showBoard(); }
     else if (a.open === 'owl') toggleOwl(true);
     else if (a.open === 'exams') pn.openExams();
@@ -1721,7 +1554,7 @@ const ctl = createControls({
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
     get dist() { return camDist; }, set dist(v: number) { camDist = v; },
   },
-  panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => toggleTrunk() },
+  panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => { const t = $('#trunk'); if (!t.hidden) t.hidden = true; else feats.some((f) => f.open?.('trunk')); } },
   agent: agentNow,
   pair: pairNow,
   // the features' (a page of a seal at its landmark, a fireplace, …: client/features.ts), then 隐藏宝箱: F at a closed chest opens it
@@ -1747,16 +1580,17 @@ const pn = createPanels({ send, me: () => me, agentConnected: () => !!agentNow()
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
 // the features (client/features.ts: the Dark Lord, the DA, 偷师, the Restricted Section, the Duelling Club, Quidditch, …),
 // all built from the same deps
-const feats = CLIENT_FEATURES.map((mk) => mk({
+const feats: ClientFeature[] = CLIENT_FEATURES.map((mk) => mk({
   send, toast,
   wire: <T,>(key: string) => (snap as Record<string, unknown> | null)?.[key] as T | undefined,
   me: () => me as Record<string, any> | null, now: () => snap?.t ?? 0,
   myHandle: () => myHandle, observing: () => watch.observing(), myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
   nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?',
   posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? null,
-  solo, spells: () => bookSpells, wantSpells, openBook: () => { if ($('#book').hidden) toggleBook(true); }, loadDraft,
+  solo, spells: () => bookSpells, wantSpells, openBook: () => { if ($('#book').hidden) toggleBook(true); }, loadDraft, features: () => feats, castOnSelf: (spell) => ctl.castOnSelf(spell),
 }));
 renderTop(feats);
+const observers = feats.filter((f) => f.observe);
 const badgers = feats.filter((f) => f.badge);
 /** The features' marks beside a wizard's name (☠ the Dark Lord): text for the name tag, markup for the parchment. */
 const badges = (h: string, html?: boolean) => { let s = ''; for (const f of badgers) s += f.badge!(h, html); return s; };
@@ -1837,7 +1671,6 @@ addEventListener('keydown', (e) => {
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
   if (e.key === 'v' || e.key === 'V') { watch.toggleObserving(); return; }
   if (e.key === 'o' || e.key === 'O') { if (!e.repeat) toggleOwl(); e.preventDefault(); return; }
-  if (e.key === 't' || e.key === 'T') { if (!e.repeat) toggleTrunk(); return; }
   if (e.key === 'Enter') { openChat(); e.preventDefault(); return; }
   if (e.key === 'Escape') {
     // close the topmost panel, then drop the target, then open the Owl Post
@@ -1847,7 +1680,6 @@ addEventListener('keydown', (e) => {
     if (feats.some((f) => f.close?.())) return; // the DA, the Restricted Section, …
     if (fun.closeTop()) return;
     if (!$('#owl').hidden) { toggleOwl(false); return; }
-    if (!$('#trunk').hidden) { toggleTrunk(false); return; }
     if (ctl.helpOpen()) { ctl.toggleHelp(false); return; }
     if (!$('#board').hidden) { $('#board').hidden = true; return; }
     if (!$('#menu').hidden) { $('#menu').hidden = true; return; }

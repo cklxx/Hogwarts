@@ -912,6 +912,7 @@ export function createControls(d: ControlsDeps) {
       <h3>${L('其他', 'Everything else')}</h3><table>
       ${row('Esc', L('猫头鹰邮递：生成配对码把你的 AI Agent 连进来、召唤使魔、管理密钥、切换语言', 'Owl Post: a pairing code for your AI agent, a familiar, your key, the language'))}
       ${row('R', L('禁书区（选修）：四道封印谜题，破解后提高咒语上限', 'Restricted Section (elective): four seal puzzles that raise your spell caps'))}
+      ${row('U', L('界面布局：拖动面板换位置、双击隐藏；Esc 菜单里的「界面」还能换主题、写自己的 CSS（只存在这台浏览器）', 'Layout: drag panels around, double-click to hide; "Interface" in the Esc menu also switches the theme and takes your own CSS (this browser only)'))}
       ${row('H / ?', L('打开 / 关闭本帮助', 'This help'))}
       </table>
       <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。考试在咒语书里「咒语集市」旁边的「考试」标签，邓布利多军在猫头鹰邮递（信封）里。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom. The exams are a tab in the spellbook, beside the spell market; the DA is in the Owl Post (the letter).')}</p>

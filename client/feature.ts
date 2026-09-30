@@ -33,7 +33,14 @@ export interface ClientDeps {
   wantSpells: () => void;
   openBook: () => void;
   loadDraft: (name: string, source: string, note: string) => void;
+  /** Cast one of your spells on yourself (Finite Incantatem, Revelio, …) as the hotbar would. */
+  castOnSelf: (spell: string) => void;
+  /** Every client feature (built once; for the ones that look across the others, like the 界面 layout). */
+  features: () => readonly ClientFeature[];
 }
+
+/** A piece of the HUD the player may hide or move (client/ui.ts): an element id and its name. */
+export interface ClientWidget { id: string; zh: string; en: string }
 
 /** Something to do with F where you stand (controls.ts: the prompt over it). */
 export interface ClientAction { label: string; x: number; z: number; y: number; act: () => void }
@@ -48,6 +55,8 @@ export interface ClientFeature {
   keydown?(e: KeyboardEvent): boolean;
   /** Every world event you receive (fresh = just happened; false = the backlog in the welcome). */
   onEvent?(e: { id: number; type: string; text: string; zh?: string; to?: string }, fresh: boolean): void;
+  /** Every server message, before anyone handles it (never takes it: to follow replies others asked for). */
+  observe?(msg: { t: string; [k: string]: unknown }): void;
   /** A server message: true when it was this feature's. */
   onMessage?(msg: { t: string; [k: string]: unknown }): boolean;
   /** An error the server sent (translated): true when this feature showed it (it asked a moment ago). */
@@ -72,6 +81,8 @@ export interface ClientFeature {
   lift?(handle: string): number;
   /** Added to the scene once. */
   group?: THREE.Object3D;
+  /** The HUD elements this feature adds, for the 界面 layout (hide, move). */
+  widgets?: readonly ClientWidget[];
 }
 
 export type ClientFeatureFactory = (d: ClientDeps) => ClientFeature;
