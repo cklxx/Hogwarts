@@ -75,6 +75,7 @@
 
 | 内容 | 提交 |
 |---|---|
+| PR #9（cklxx）：「让 Agent 帮我写」一键复制全部：未连接时打开就要配对码，提示词里带配对码和加工具的那一条命令（桌面客户端给自己的 `--mcp-stdio` 桥，否则 `claude mcp add --transport http`，不带密钥）；局域网 http（非安全上下文，没有 `navigator.clipboard`）下复制改走 `execCommand('copy')`，都失败时提示手动选中。合入时补：配对码没回来时按钮仍可点、再要一次（原先禁用后卡死），后备复制把焦点还给按钮、补 `setSelectionRange`（iOS） | `97518d4` |
 | 站长定的两条规则（试玩第 4 轮）：部长只从本学期来过的玩家里选（`World.ministerElect`，TLA+ `TermDecree` 加 `MinisterWasPresent`，去掉守卫 TLC 会报错）；联合一击窗口 4 → 8 秒（`DA_JOINT_WINDOW_S`，Lean 常量与向量同步）。试玩组织说明 `docs/PLAYTEST_HOWTO.md` | `11196d7` |
 | PR #6–#8（cklxx）：反射只回应已开打的战斗、`wait` 的 `seconds` 可省；猫头鹰邮递「邀请朋友」（链接、复制、二维码，本机玩家拿到局域网地址，解决跨网段）；Mac 输入测试先等人站定再测 Ctrl+拖动（偶发失败的根因是前一步的点击还在走） | `e90cede` |
 | 试玩第 4 轮（Agent 扮真人的小社会，`docs/PLAYTEST.md`）：inbox 已读按巫师记；batch 示例与连续施法自动等待；`wait arrived` 不空等；forge 试运行提示；规则书写出实际部长门槛；DA 否决门槛 / `blocked`、联合一击进度 `joint.now`、`da` 聊天频道；考试评分说明与 O 级文案；宝箱冷热 5/15/30/80 m、残页不重复；look 标事件怪与抗性；摄魂怪结算文案；学期末 45 秒不开新事件（TLA+ `EventWheel` 同步）；扫帚提示；魁地奇 `team`/`house` 与找球手顶替 NPC；集市计数含新生；反射 `keep` / 按代号 / `self` | `48eacb0` |
