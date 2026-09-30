@@ -20,6 +20,7 @@ export function createBillboards(scene: THREE.Scene, map: THREE.Texture, o: { ma
   geo.setAttribute('iCol', iCol);
   geo.setAttribute('iSize', iSize);
   geo.instanceCount = 0;
+  const ATTRS = [iPos, iCol, iSize];
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: map } }]),
     transparent: true, depthWrite: false, blending: o.blending ?? THREE.AdditiveBlending, fog: true,
@@ -59,7 +60,7 @@ export function createBillboards(scene: THREE.Scene, map: THREE.Texture, o: { ma
       geo.instanceCount = n;
       mesh.visible = n > 0;
       if (!n) return;
-      for (const [a, k] of [[iPos, 3], [iCol, 4], [iSize, 2]] as const) { a.clearUpdateRanges(); a.addUpdateRange(0, n * k); a.needsUpdate = true; }
+      for (let i = 0; i < ATTRS.length; i++) { const a = ATTRS[i]; a.clearUpdateRanges(); a.addUpdateRange(0, n * a.itemSize); a.needsUpdate = true; }
     },
   };
 }

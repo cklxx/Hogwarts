@@ -10,7 +10,7 @@ export class Label {
   private canvas = document.createElement('canvas');
   private ctx = this.canvas.getContext('2d')!;
   private tex: THREE.CanvasTexture;
-  private last = '';
+  private last: [string, string, number, string | undefined, string] | null = null;
   constructor(scale = 1) {
     this.canvas.width = 512;
     this.canvas.height = 160;
@@ -26,10 +26,11 @@ export class Label {
    * happens only when something changed, and for a hidden tag (far away, see main.ts) only once it is shown.
    */
   draw(name: string, color: string, hpFrac: number, say?: string, extra = '') {
-    const key = `${name}|${color}|${hpFrac.toFixed(2)}|${say}|${extra}`;
-    if (key === this.last) { this.pending = null; return; }
+    // (compared field by field, not as one key string: every entity's tag is told what to say every snapshot)
+    const was = this.last, hp = Math.round(hpFrac * 100);
+    if (was && was[0] === name && was[1] === color && was[2] === hp && was[3] === say && was[4] === extra) { this.pending = null; return; }
     if (!this.sprite.visible) { this.pending = [name, color, hpFrac, say, extra]; return; }
-    this.last = key;
+    this.last = [name, color, hp, say, extra];
     this.paint(name, color, hpFrac, say, extra);
   }
   /** Free the tag's texture and material (the sprite's geometry is three.js's shared quad). */
@@ -726,17 +727,25 @@ export function farWizardGeometry() {
     return geo;
   });
 }
-const farCache = new Map<string, { robe: number; trim: number }>();
+/** A far wizard's robe and trim: hex, and as colours in the working space (what the crowd's instances take). */
+export type FarColors = { robe: number; trim: number; robeC: THREE.Color; trimC: THREE.Color };
+const farCache = new Map<string, FarColors>();
+/** Each far wizard's colours, looked up again only when their dress changes (farColors runs per far wizard per frame). */
+const farOf = new WeakMap<WizardModel, { house: House; key: string; v: FarColors }>();
 /** The colours a far wizard is drawn in: robe and trim, from the house and the glamour worn (if any). */
-export function farColors(m: WizardModel): { robe: number; trim: number } {
-  const d = m.dress, k = `${d.house}|${d.key}`;
+export function farColors(m: WizardModel): FarColors {
+  const d = m.dress, mine = farOf.get(m);
+  if (mine && mine.house === d.house && mine.key === d.key) return mine.v;
+  const k = `${d.house}|${d.key}`;
   let v = farCache.get(k);
   if (!v) {
     const g = parseGlamourKey(d.key);
     const scarf = new THREE.Color(SCARF[d.house][0]).getHex();
-    v = { robe: g?.robe ?? (g ? PRESET_CLOTH[g.mat] : undefined) ?? CLOTH, trim: g?.trim ?? scarf };
+    const robe = g?.robe ?? (g ? PRESET_CLOTH[g.mat] : undefined) ?? CLOTH, trim = g?.trim ?? scarf;
+    v = { robe, trim, robeC: new THREE.Color(robe), trimC: new THREE.Color(trim) };
     farCache.set(k, v);
   }
+  farOf.set(m, { house: d.house, key: d.key, v });
   return v;
 }
 
@@ -1003,7 +1012,13 @@ export function releaseWizardLook(m: WizardModel) {
 }
 
 /** House colour lifted toward white so it reads on dark backgrounds. */
-export function wizardColor(h: House) { return '#' + new THREE.Color(HOUSE_COLORS[h]).lerp(new THREE.Color(0xffffff), 0.45).getHexString(); }
+const nameColors = new Map<House, string>();
+/** A house's name-tag colour (made once per house: apply() asks for every wizard in every snapshot). */
+export function wizardColor(h: House) {
+  let c = nameColors.get(h);
+  if (!c) nameColors.set(h, (c = '#' + new THREE.Color(HOUSE_COLORS[h]).lerp(new THREE.Color(0xffffff), 0.45).getHexString()));
+  return c;
+}
 
 export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: Label; anim: (t: number) => void } {
   const root = new THREE.Group();
@@ -1032,7 +1047,7 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
         v.rotation.set(Math.sin(i) * 0.5, 0, Math.cos(i) * 0.5);
         root.add(v);
       }
-      anim = (t) => { root.children.forEach((c, i) => { if (c !== label.sprite) c.rotation.z = Math.cos(i) * 0.5 + Math.sin(t * 2 + i) * 0.2; }); };
+      anim = (t) => { const ch = root.children; for (let i = 0; i < ch.length; i++) if (ch[i] !== label.sprite) ch[i].rotation.z = Math.cos(i) * 0.5 + Math.sin(t * 2 + i) * 0.2; };
       label.sprite.position.y = 2.8;
       break;
     }
@@ -1230,7 +1245,8 @@ export function makeAuraRing() {
 /** Aura letters (World auraFlags). Jinxes come first so a hexed wizard is easy to spot: j Jelly-Legs (lilac), z Tarantallegra (magenta), b Furnunculus (yellow-green), t Bat-Bogey (grey). */
 const AURA_COLORS: [string, number][] = [['j', 0xc9a8ff], ['z', 0xff3cc8], ['b', 0xb5e03a], ['t', 0x9a9aa6], ['c', 0x9b3cff], ['f', 0xff7a1a], ['v', 0x6cff3c], ['i', 0x8fe3ff], ['g', 0x7dffb0]];
 export function setAuraRing(ring: THREE.Mesh, flags: string, t: number) {
-  const hit = AURA_COLORS.find(([f]) => flags.includes(f));
+  let hit: [string, number] | undefined;
+  for (let i = 0; i < AURA_COLORS.length && !hit; i++) if (flags.includes(AURA_COLORS[i][0])) hit = AURA_COLORS[i];
   ring.visible = !!hit;
   if (hit) {
     (ring.material as THREE.MeshBasicMaterial).color.setHex(hit[1]).multiplyScalar(2);

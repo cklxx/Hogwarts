@@ -653,14 +653,21 @@ export function createView(d: ViewDeps) {
     }
     if (x.color !== color) { x.color = color; (x.mat.uniforms.color.value as THREE.Color).setHex(color); }
     x.mat.uniforms.feet.value = m.root.position.y + 0.25;
-    for (const [src, ghost] of x.pairs) {
+    for (let i = 0; i < x.pairs.length; i++) {
+      const src = x.pairs[i][0], ghost = x.pairs[i][1];
       ghost.visible = true;
       if (ghost.geometry !== src.geometry) ghost.geometry = src.geometry; // a glamour swapped it
       bodyStencil(src.material as THREE.Material);
     }
     x.used = tick;
   }
-  function hideXray(x: Xray) { for (const [, g] of x.pairs) g.visible = false; }
+  // (Map.forEach with visitors made once: this runs every frame)
+  const showXray = (color: number, key: string) => { const m = model(key); if (m) xray(key, m, color); };
+  const ageXray = (x: Xray, key: string) => {
+    if (x.used === tick) { stats.xray++; return; }
+    if (!model(key) || tick - x.used > 600) drop(key, x); else hideXray(x);
+  };
+  function hideXray(x: Xray) { for (let i = 0; i < x.pairs.length; i++) x.pairs[i][1].visible = false; }
   function drop(key: string, x: Xray) {
     for (const [src, g] of x.pairs) src.remove(g);
     x.mat.dispose();
@@ -729,12 +736,9 @@ export function createView(d: ViewDeps) {
         if (rig.hides(q.x, q.y + 1.1, q.z) || rig.hides(q.x, q.y + 1.9, q.z)) { want.set(w.h, houseHex(w.ho)); n++; }
       }
     }
-    for (const [key, color] of want) { const m = model(key); if (m) xray(key, m, color); }
+    want.forEach(showXray);
     stats.xray = 0;
-    for (const [key, x] of xrays) {
-      if (x.used === tick) { stats.xray++; continue; }
-      if (!model(key) || tick - x.used > 600) drop(key, x); else hideXray(x);
-    }
+    xrays.forEach(ageXray);
 
     const ms = performance.now() - t0;
     stats.ms += ms;

@@ -22,11 +22,17 @@ function noise(x: number, z: number) {
   const u = smooth(xf), v = smooth(zf);
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
-export function fbm(x: number, z: number, oct = 5) {
+/**
+ * Where fbmTo and freedomTo leave their result. (Not returned: V8 boxes a double returned from a call it does not
+ * inline, and heightAt, which calls them, runs hundreds of times a frame: every entity, the camera, the rings.)
+ */
+const OUT = new Float64Array(1);
+function fbmTo(x: number, z: number, oct: number) {
   let s = 0, amp = 0.5, f = 1;
   for (let i = 0; i < oct; i++) { s += amp * noise(x * f, z * f); f *= 2.03; amp *= 0.5; }
-  return s;
+  OUT[0] = s;
 }
+export function fbm(x: number, z: number, oct = 5) { fbmTo(x, z, oct); return OUT[0]; }
 const ss = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // ---- where the ground must be flat (built places); 0 = flat, 1 = free to roll
@@ -37,21 +43,26 @@ const FLAT_BOXES: [number, number, number, number][] = [
 const FLAT_DISCS: [number, number, number][] = [
   [40, -150, 45], [0, 172, 55], [64, 202, 14], [95, 30, 14], [-52, 28, 10], [45, 0, 12], [41, -30, 18],
 ];
-function freedom(x: number, z: number) {
+/** Paths from the courtyard to Hagrid, the tomb and the pitch: [ax, az, bx, bz]. */
+const FLAT_PATHS: [number, number, number, number][] = [[0, -10, 90, 36], [-10, -5, -52, 26], [20, -60, 40, -122]];
+/** sqrt(x² + z²): Math.hypot allocates in V8, and heightAt runs hundreds of times a frame (every entity, the camera, the grass). */
+const len = (x: number, z: number) => Math.sqrt(x * x + z * z);
+// (indexed loops, no destructuring: nothing here allocates)
+function freedomTo(x: number, z: number) {
   let f = 1;
-  for (const [x0, z0, x1, z1] of FLAT_BOXES) {
-    const dx = Math.max(x0 - x, 0, x - x1), dz = Math.max(z0 - z, 0, z - z1);
-    f = Math.min(f, ss(0, 18, Math.hypot(dx, dz)));
+  for (let i = 0; i < FLAT_BOXES.length; i++) {
+    const b = FLAT_BOXES[i];
+    f = Math.min(f, ss(0, 18, len(Math.max(b[0] - x, 0, x - b[2]), Math.max(b[1] - z, 0, z - b[3]))));
   }
-  for (const [cx, cz, r] of FLAT_DISCS) f = Math.min(f, ss(r, r + 16, Math.hypot(x - cx, z - cz)));
-  // paths from the courtyard to Hagrid, the tomb and the pitch
-  for (const [ax, az, bx, bz] of [[0, -10, 90, 36], [-10, -5, -52, 26], [20, -60, 40, -122]]) {
-    const vx = bx - ax, vz = bz - az, l2 = vx * vx + vz * vz;
+  for (let i = 0; i < FLAT_DISCS.length; i++) { const c = FLAT_DISCS[i]; f = Math.min(f, ss(c[2], c[2] + 16, len(x - c[0], z - c[1]))); }
+  for (let i = 0; i < FLAT_PATHS.length; i++) {
+    const q = FLAT_PATHS[i], ax = q[0], az = q[1], vx = q[2] - ax, vz = q[3] - az, l2 = vx * vx + vz * vz;
     const t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / l2));
-    f = Math.min(f, ss(3, 12, Math.hypot(x - (ax + vx * t), z - (az + vz * t))));
+    f = Math.min(f, ss(3, 12, len(x - (ax + vx * t), z - (az + vz * t))));
   }
-  return f;
+  OUT[0] = f;
 }
+const freedom = (x: number, z: number) => { freedomTo(x, z); return OUT[0]; };
 
 /**
  * The flatness mask: 0 where the ground is held flat because something is built on it (castle,
@@ -68,22 +79,30 @@ export const SEA_LEVEL = -9;
 
 /** Ground height at (x, z). */
 export function heightAt(x: number, z: number): number {
-  const r = Math.hypot(x, z + 20);
+  const r = len(x, z + 20);
   // rolling grounds (±3 m), stronger in the forest
-  const forest = 1 - ss(70, 110, Math.hypot(x - 165, z - 15));
-  let h = (fbm(x * 0.012, z * 0.012) - 0.5) * (6 + 6 * forest) * freedom(x, z);
+  const forest = 1 - ss(70, 110, len(x - 165, z - 15));
+  fbmTo(x * 0.012, z * 0.012, 5);
+  const roll = OUT[0] - 0.5;
+  freedomTo(x, z);
+  let h = roll * (6 + 6 * forest) * OUT[0];
   // the Black Lake basin
-  const dl = Math.hypot(x - LAKE.x, z - LAKE.z);
+  const dl = len(x - LAKE.x, z - LAKE.z);
   h = h * ss(LAKE.r - 2, LAKE.r + 14, dl) - 5 * (1 - ss(LAKE.r * 0.2, LAKE.r + 2, dl));
   // the Highlands: mountains beyond ~280 m, open to the sea in the south
   const south = Math.atan2(x, z);             // 0 = due south (+z)
   const sea = 1 - ss(0.35, 0.75, Math.abs(south));
   const ring = ss(270, 420, r) * (1 - sea);
-  h += ring * (25 + 140 * Math.pow(fbm(x * 0.004 + 7, z * 0.004 - 3, 6), 1.6) * ss(300, 700, r) + 40 * fbm(x * 0.01, z * 0.01));
+  if (ring > 0) {
+    fbmTo(x * 0.004 + 7, z * 0.004 - 3, 6);
+    const peaks = Math.pow(OUT[0], 1.6);
+    fbmTo(x * 0.01, z * 0.01, 5);
+    h += ring * (25 + 140 * peaks * ss(300, 700, r) + 40 * OUT[0]);
+  }
   // the land dips under the sea toward Azkaban
   h -= sea * ss(260, 330, r) * 26;
   // Azkaban: a rock plateau rising sheer out of the sea
-  const isl = 1 - ss(16, 36, Math.hypot(x - AZKABAN.x, z - AZKABAN.z));
+  const isl = 1 - ss(16, 36, len(x - AZKABAN.x, z - AZKABAN.z));
   h = h * (1 - isl) + 0.3 * isl;
   return h;
 }

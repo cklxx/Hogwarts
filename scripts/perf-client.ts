@@ -4,7 +4,8 @@
  *   npx vite build && npx tsx scripts/perf-client.ts [--port=8820] [--q=high,low] [--secs=8] [--warm=4]
  *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,crowd,castle,lake,overview] [--size=1280x720]
  *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium] [--census] [--shots=dir] [--url=&extra=1]
- *        [--viewer=x,z]   (spots also: close, hall, forest)
+ *        [--viewer=x,z]   (spots also: close, hall, forest)   [--heap]  (what allocates, per spot: CDP sampling heap profiler)
+ *        [--nodraw]  (every frame's JS runs, nothing is drawn: the page at the display's rate, without SwiftShader)
  *
  * What it does: writes a world save with `--bots` enrolled wizards (`--crowd` of them within 15 m of the courtyard
  * spawn, the rest spread over the map), the wild pre-filled to 3x its population, and one viewer wizard at the spawn;
@@ -143,6 +144,24 @@ function printProfile(p: Profile, what: string) {
   for (const [k, ms] of [...agg].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`    ${ms.toFixed(1).padStart(8)} ms  ${k}`);
 }
 
+interface HeapNode { callFrame: { functionName: string; url: string; lineNumber: number; columnNumber: number }; selfSize: number; children: HeapNode[] }
+/** Top allocation sites (self bytes, collected objects included) from a CDP sampling heap profile. */
+function printHeap(root: HeapNode, what: string, secs: number) {
+  const agg = new Map<string, number>();
+  let total = 0;
+  const name = (f: HeapNode['callFrame']) => `${f.functionName || '(anon)'} ${f.url.split('/').pop()}:${f.lineNumber + 1}:${f.columnNumber + 1}`;
+  const walk = (n: HeapNode, parent: string) => {
+    const f = n.callFrame;
+    // (a builtin, Math.random or an iterator's next, is shown with the function that called it)
+    const k = f.url ? name(f) : `${f.functionName} ← ${parent}`;
+    if (n.selfSize) { agg.set(k, (agg.get(k) ?? 0) + n.selfSize); total += n.selfSize; }
+    for (const c of n.children) walk(c, f.url ? name(f) : parent);
+  };
+  walk(root, '');
+  console.log(`  allocations (${what}): ${(total / 1048576 / secs).toFixed(2)} MB/s sampled`);
+  for (const [k, b] of [...agg].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`    ${(b / 1024 / secs).toFixed(1).padStart(8)} KB/s  ${k}`);
+}
+
 async function main() {
   const { chromium } = await import(pathToFileURL(PW).href);
   const data = join(SCRATCH, `perf-world-${PORT}.json`);
@@ -208,17 +227,19 @@ async function main() {
       if (OUT) appendFileSync(OUT, JSON.stringify({ kind: 'load', label: LABEL, ...load }) + '\n');
 
       for (const spot of SPOTS) {
-        await page.evaluate((s: unknown) => { (window as any).__capture = s; }, SHOTS[spot] ?? null);
+        await page.evaluate((s: unknown) => { (window as any).__capture = s; }, args.has('nodraw') ? { ...SHOTS[spot], skip: true } : SHOTS[spot] ?? null);
         await page.mouse.move(VW * 0.5, VH * 0.42); // the pointer over the view: hover, aim and ground picking run every frame
         await sleep(WARM * 1000);
         const metric = async () => Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]));
         await page.evaluate(() => { (window as any).__perf.reset(); (window as any).__lt.length = 0; Object.assign((window as any).__heap, { grow: 0, drops: 0, dropped: 0 }); });
         if (args.get('profile') === 'spot') { await cdp.send('Profiler.start'); }
+        if (args.has('heap')) { await cdp.send('HeapProfiler.enable'); await cdp.send('HeapProfiler.startSampling', { samplingInterval: 8192, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true }); }
         const m0 = await metric();
         const w0 = Date.now();
         await sleep(SECS * 1000);
         const m1 = await metric();
         if (args.get('profile') === 'spot') printProfile(((await cdp.send('Profiler.stop')) as { profile: Profile }).profile, spot);
+        if (args.has('heap')) printHeap(((await cdp.send('HeapProfiler.stopSampling')) as { profile: { head: HeapNode } }).profile.head, spot, SECS);
         const wall = (Date.now() - w0) / 1000;
         const r = await page.evaluate(() => { const p = (window as any).__perf; return { frames: p.frames, counters: p.counters, info: p.info(), lt: (window as any).__lt, heap: (window as any).__heap, passes: p.passes, census: p.census() }; });
         if (args.has('census')) {

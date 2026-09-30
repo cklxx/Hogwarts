@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CreatureKind, House } from '../src/shared/constants';
-import { LANDMARKS, zonesAt } from '../src/shared/map';
+import { LANDMARKS, inZoneId } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
 import { heightAt, rayGround } from './terrain';
 
@@ -262,7 +262,7 @@ export function createControls(d: ControlsDeps) {
     const e = wIdx.get(k) ?? cIdx.get(k), m = model(k);
     if (!e || !m || e.hp <= 0) return false;
     if (wIdx.has(k) && (e.s.includes('X') || e.s.includes('J'))) return false;
-    return !zonesAt(m.root.position.x, m.root.position.z).includes('great_hall');
+    return !inZoneId('great_hall', m.root.position.x, m.root.position.z);
   }
   /** A foe: what clicks, Tab and smart casting go for without being told. */
   const harmable = (k: string) => relation(k) === 'hostile' && attackable(k);
@@ -271,33 +271,45 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ screen-space picking
   const v3 = new THREE.Vector3();
-  function screenOf(x: number, y: number, z: number): { x: number; y: number } | null {
-    v3.set(x, y, z).project(d.camera);
+  type XY = { x: number; y: number };
+  const sa: XY = { x: 0, y: 0 }, sb: XY = { x: 0, y: 0 };
+  /**
+   * Where `p` (raised `dy` m) is on screen, into `out`, or null behind the camera. (A point and an offset, not three
+   * numbers, into a reused `out`: picking runs every frame over every entity, and V8 boxes each double argument.)
+   */
+  function screenOf(p: { x: number; y: number; z: number }, dy: number, out: XY = { x: 0, y: 0 }): XY | null {
+    v3.set(p.x, p.y + dy, p.z).project(d.camera);
     if (v3.z > 1 || v3.z < -1) return null;
-    return { x: ((v3.x + 1) / 2) * d.canvas.clientWidth, y: ((1 - v3.y) / 2) * d.canvas.clientHeight };
+    out.x = ((v3.x + 1) / 2) * d.canvas.clientWidth; out.y = ((1 - v3.y) / 2) * d.canvas.clientHeight;
+    return out;
   }
   function segDist(px: number, py: number, a: { x: number; y: number }, b: { x: number; y: number }) {
     const vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy;
     const t = l2 ? Math.max(0, Math.min(1, ((px - a.x) * vx + (py - a.y) * vy) / l2)) : 0;
-    return Math.hypot(px - (a.x + t * vx), py - (a.y + t * vy));
+    const ex = px - (a.x + t * vx), ey = py - (a.y + t * vy);
+    return Math.sqrt(ex * ex + ey * ey);
   }
   /** The entity whose body passes closest to the pointer on screen, within `radius` px (optionally only those passing `only`). */
   function pickNear(px: number, py: number, radius: number, only?: (k: string) => boolean): string | null {
-    let best: string | null = null, bd = Infinity, bCam = Infinity;
-    const cp = d.camera.position;
-    for (const k of allKeys()) {
-      if (only && !only(k)) continue;
-      const p = model(k)!.root.position;
-      const cam = p.distanceTo(cp);
-      if (cam > 110) continue;
-      const a = screenOf(p.x, p.y + 0.15, p.z), b = screenOf(p.x, p.y + heightOf(k), p.z);
-      if (!a || !b) continue;
-      const dd = segDist(px, py, a, b);
-      if (dd > radius) continue;
-      // the one nearest the pointer; on a near tie, the one nearer the camera (it is drawn in front)
-      if (dd < bd - 6 || (Math.abs(dd - bd) <= 6 && cam < bCam)) { best = k; bd = dd; bCam = cam; }
-    }
-    return best;
+    Object.assign(pick, { px, py, radius, only, me: d.myHandle(), best: null, bd: Infinity, bCam: Infinity });
+    d.wizards.forEach(considerPick);
+    d.creatures.forEach(considerPick);
+    return pick.best;
+  }
+  // (every frame the pointer is over the view, over every entity: the running best lives in an object made once,
+  // and the visitor is made once, so nothing is allocated per entity)
+  const pick = { px: 0.5, py: 0.5, radius: 0.5, only: undefined as ((k: string) => boolean) | undefined, me: '', best: null as string | null, bd: 0.5, bCam: 0.5 };
+  function considerPick(m: { root: THREE.Object3D }, k: string) {
+    if (k === pick.me || (pick.only && !pick.only(k))) return;
+    const p = m.root.position;
+    const cam = p.distanceTo(d.camera.position);
+    if (cam > 110) return;
+    const a = screenOf(p, 0.15, sa), b = screenOf(p, heightOf(k), sb);
+    if (!a || !b) return;
+    const dd = segDist(pick.px, pick.py, a, b);
+    if (dd > pick.radius) return;
+    // the one nearest the pointer; on a near tie, the one nearer the camera (it is drawn in front)
+    if (dd < pick.bd - 6 || (Math.abs(dd - pick.bd) <= 6 && cam < pick.bCam)) { pick.best = k; pick.bd = dd; pick.bCam = cam; }
   }
   /** Foes are generous to point at (PICK_PX); friends and bystanders need a closer aim, so clicking the ground beside them still walks. */
   const pickAt = (px: number, py: number) => pickNear(px, py, PICK_PX, harmable) ?? pickNear(px, py, FRIEND_PX);
@@ -738,7 +750,7 @@ export function createControls(d: ControlsDeps) {
     // floating action prompt follows its anchor
     const pr = $('#prompt');
     if (action) {
-      const sp = screenOf(action.x, action.y, action.z);
+      const sp = screenOf(action, 0);
       const W = d.canvas.clientWidth, H = d.canvas.clientHeight;
       // (its width is measured once per label, not every frame: reading it forces a layout)
       if (!promptW) promptW = pr.offsetWidth || 240;
@@ -804,7 +816,7 @@ export function createControls(d: ControlsDeps) {
     const jinx = [['j', 'jelly'], ['z', 'dance'], ['b', 'boils'], ['t', 'bats']].filter(([f]) => e.s.includes(f)).map(([, k]) => L(JINX_LABEL[k].zh, JINX_LABEL[k].en));
     if (jinx.length) status.push(`🕸️ ${jinx.join('、')}`);
     const m = model(k)!.root.position;
-    if (zonesAt(m.x, m.z).includes('great_hall')) status.push(L('🕊️ 安全区', '🕊️ safe zone'));
+    if (inZoneId('great_hall', m.x, m.z)) status.push(L('🕊️ 安全区', '🕊️ safe zone'));
     const dist = distTo(k);
     const frac = Math.max(0, Math.min(1, e.hp / Math.max(1, e.m)));
     if (!el.firstElementChild) {
@@ -1171,7 +1183,7 @@ function createTutorial(t: TutorialDeps) {
     }
     if (step === 2) {
       const p = t.myPos();
-      if (p && zonesAt(p.x, p.z).includes('great_hall')) { advance(); return; }
+      if (p && inZoneId('great_hall', p.x, p.z)) { advance(); return; }
     }
     if (step === 4 && me.ui.includes('tempus')) { advance(); return; }
     if (step === 5 && t.agent()?.connected) { advance(); return; }
