@@ -11,6 +11,15 @@ import { captureCamera, captureFocus } from './capture';
 import { gradedOutputPass } from './post';
 import { STORYBOOK, glowSprite, paintedClouds, paintedMoon } from './textures';
 
+/** The camera's vertical field of view; a portrait screen widens it for at least PORTRAIT_H_FOV across (up to PORTRAIT_V_MAX). */
+const BASE_FOV = 55, PORTRAIT_H_FOV = 60, PORTRAIT_V_MAX = 88;
+/** The vertical field of view for a screen of this width ÷ height (pure, for tests). */
+export function fovFor(aspect: number): number {
+  if (aspect >= 1) return BASE_FOV;
+  const need = (2 * Math.atan(Math.tan((PORTRAIT_H_FOV * Math.PI) / 360) / aspect) * 180) / Math.PI;
+  return Math.min(PORTRAIT_V_MAX, Math.max(BASE_FOV, need));
+}
+
 export interface Looks { skyTint: string; sunIntensity: number; fogDensity: number; glow: number }
 
 // ------------------------------------------------------------------ storybook shading (shared shader patches)
@@ -202,7 +211,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 5000);
+  const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 5000);
   scene.fog = new THREE.FogExp2(0x9fb8d9, 0.003);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -363,6 +372,9 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     composer.setSize(innerWidth, innerHeight);
     bloom.resolution.set(innerWidth / 2, innerHeight / 2);
     camera.aspect = innerWidth / innerHeight;
+    // a portrait phone: the vertical field of view widens so the horizontal one stays near PORTRAIT_H_FOV (at 55° a
+    // 390×844 screen saw 27° across — "I can't see anyone"), up to PORTRAIT_V_MAX
+    camera.fov = fovFor(camera.aspect);
     camera.updateProjectionMatrix();
   }
 

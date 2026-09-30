@@ -165,3 +165,14 @@ describe('Mac input (the desktop client runs in WKWebView)', () => {
     expect(clampDist(99)).toBe(40);
   });
 });
+
+describe('a portrait phone sees wider (render.ts fovFor)', () => {
+  it('landscape keeps 55°; a 390×844 phone opens up to at least 45° across (it saw 27°)', async () => {
+    const { fovFor } = await import('../client/render.js');
+    expect(fovFor(16 / 9)).toBe(55);
+    const a = 390 / 844, v = fovFor(a);
+    const across = (2 * Math.atan(Math.tan((v * Math.PI) / 360) * a) * 180) / Math.PI;
+    expect(v).toBeLessThanOrEqual(88);
+    expect(across).toBeGreaterThan(45);
+  });
+});

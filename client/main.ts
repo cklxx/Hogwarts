@@ -310,7 +310,9 @@ const actors = new THREE.Group();
 actors.name = 'actors';
 scene.add(actors);
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
-let camYaw = Math.PI, camPitch = 0.34, camDist = 8.5; // behind a new arrival, who faces south (the lawn, not the Great Hall's wall); // closer third-person framing: the wizard fills about a fifth of the screen height
+const phone = matchMedia('(hover: none) and (pointer: coarse)').matches;
+// a phone starts further out and higher: the wizard and what is around them, not a close-up of a robe
+let camYaw = Math.PI, camPitch = phone ? 0.5 : 0.34, camDist = phone ? 13 : 8.5; // behind a new arrival, who faces south (the lawn, not the Great Hall's wall); // closer third-person framing: the wizard fills about a fifth of the screen height
 let clock = 0;
 
 // ------------------------------------------------------------------ network
@@ -1669,7 +1671,8 @@ const view = createView({ scene, camera, renderer: R.renderer, ground: [world.gr
 const chatBox = $<HTMLInputElement>('#chat');
 function openChat() { chatBox.hidden = false; chatBox.focus(); }
 chatBox.addEventListener('blur', () => { if (!chatBox.value.trim()) { chatBox.value = ''; chatBox.hidden = true; } });
-$('#tb-chat').onclick = () => { if (chatBox.hidden) openChat(); else chatBox.blur(); };
+// on a phone the quill also shows the chat log (hidden otherwise: style.css, the short version)
+$('#tb-chat').onclick = () => { const open = document.body.classList.toggle('chat-open'); if (open && chatBox.hidden) openChat(); else chatBox.blur(); };
 
 // ------------------------------------------------------------------ close buttons (×) on every sheet, and the collapsed key line
 document.addEventListener('click', (e) => {

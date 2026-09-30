@@ -1247,3 +1247,7 @@ One realm now holds 1 000 spread clients inside the 50 ms tick budget at p99. Wh
 `writev` per socket per broadcast, and the tick. Beyond it the step is structural: gateway processes that
 own the sockets (parse input, assemble and write frames from the rows the world process publishes once per
 broadcast), leaving the world process with the tick and one encode.
+
+## 手机竖屏视角（2026-09-30，`wf/phone`）
+
+竖屏时竖直视角从 55° 放宽到最多 88°（`client/render.ts` `fovFor`），390×844 的屏幕水平视角从约 27° 变成约 45°；手机镜头默认距离 8.5 → 13 米。视野变大会画进更多东西（视锥更宽、更远），**没有真机数据**：这里只有软件渲染，帧率只看方向，不作结论。真机上若掉帧，先查 `?perf=1` 叠层的 draw call 和三角形数，再考虑把 `PORTRAIT_V_MAX` 降到 75。
