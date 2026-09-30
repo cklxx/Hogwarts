@@ -301,7 +301,7 @@ R.resize();
 // ------------------------------------------------------------------ state
 let snap: Snap | null = null;
 let me: Me | null = null;
-let myHandle = '';
+let myHandle = '', ownHandle = ''; // ownHandle: yours; myHandle: the body you move right now (me.actAs, a feature's loan)
 let token = '';
 let ws: WebSocket | null = null;
 let wsFails = 0;
@@ -335,7 +335,7 @@ function connect() {
     if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
     if (watch.onMessage(msg)) return; // 看 Agent 玩 (client/watch.ts)
     if (msg.t === 'welcome') {
-      myHandle = msg.handle;
+      myHandle = ownHandle = msg.handle;
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
       const hist: Ev[] = msg.events ?? [];
       for (const e of hist) if (e.type === 'owl' || e.type === 'ask') feed(e, false);
@@ -346,7 +346,7 @@ function connect() {
       if (msg.pair?.code) onPairCode(msg.pair);
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
-    else if (msg.t === 'me') me = msg.s;
+    else if (msg.t === 'me') { me = msg.s; myHandle = (msg.s as { actAs?: { handle: string } }).actAs?.handle ?? ownHandle; }
     else if (msg.t === 'event') { fun.onEvent(msg.e); for (const f of feats) f.onEvent?.(msg.e, true); feed(msg.e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {

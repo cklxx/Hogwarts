@@ -14,5 +14,7 @@ describe('instructionsFor', () => {
     expect(t).toMatch(/every ~90 s/);
     expect(t).not.toMatch(/__[A-Z]+__/);
     expect(t).toMatch(/duel_club/);
+    for (const tool of ['reflexes', 'inbox', 'batch', 'possess']) expect(t).toContain(tool);
+    expect(t).not.toMatch(/polyjuice|复方/i); // a player's secret stays a secret
   });
 });

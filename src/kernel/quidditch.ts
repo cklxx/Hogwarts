@@ -209,7 +209,7 @@ function startPlay(world: World, m: QdMatch) {
   m.until = world.now + s.play;
   m.snitchAt = world.now + s.snitch;
   // NPCs fill each side: their own house first, then guests nobody else has taken
-  const npcs = [...world.wizards.values()].filter((w) => w.npc && world.isActive(w) && !m.roster[w.id] && !inDuel(world, w.id));
+  const npcs = [...world.wizards.values()].filter((w) => w.npc && !w.heldBy && world.isActive(w) && !m.roster[w.id] && !inDuel(world, w.id));
   for (const side of [0, 1] as const) {
     const have = () => Object.values(m.roster).filter((x) => x.side === side).length;
     for (const w of [...npcs.filter((x) => x.house === m.sides[side]), ...npcs.filter((x) => x.house !== m.sides[side])]) {

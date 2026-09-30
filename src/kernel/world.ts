@@ -1023,9 +1023,13 @@ export class World {
    * passes within 1.5 m, from someone who may harm them, soonest first, with the seconds until they land.
    */
   incoming(wid: string, horizon = 2.5): { from: string; kind: string; eta: number }[] {
+    return this.threats(wid, horizon).map((t) => ({ from: this.entity(t.owner)?.name ?? '?', kind: t.kind, eta: t.eta }));
+  }
+  /** incoming, for the kernel (反射, kernel/reflexes.ts): who (the credited owner's id) and which way it flies. */
+  threats(wid: string, horizon = 2.5): { owner: string; kind: string; eta: number; vx: number; vz: number }[] {
     const w = this.wizards.get(wid);
     if (!w) return [];
-    const out: { from: string; kind: string; eta: number }[] = [];
+    const out: { owner: string; kind: string; eta: number; vx: number; vz: number }[] = [];
     for (const p of this.projectiles.values()) {
       if (p.owner === wid || !strikes(this, p.owner, p.homing, wid)) continue;
       const rx = w.pos.x - p.pos.x, rz = w.pos.z - p.pos.z;
@@ -1035,7 +1039,7 @@ export class World {
       if (t < 0 || t > horizon) continue;
       const miss = Math.hypot(rx - p.vel.x * t, rz - p.vel.z * t);
       if (p.homing !== wid && miss > 1.5) continue;
-      out.push({ from: this.entity(this.credit(p.owner) ?? p.owner)?.name ?? '?', kind: p.kind, eta: round(t) });
+      out.push({ owner: this.credit(p.owner) ?? p.owner, kind: p.kind, eta: round(t), vx: p.vel.x, vz: p.vel.z });
     }
     return out.sort((a, b) => a.eta - b.eta);
   }
@@ -1213,7 +1217,7 @@ export class World {
     const m = this.memeOf.get(w.id);
     if (m) m.still = this.now; // speaking is not lying flat
     this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${tz}` });
-    if (via !== 'npc') this.chatEggs(w, t, via);
+    if (via !== 'npc') { this.chatEggs(w, t, via); for (const f of HOOKS.said) f.said(this, w, t); }
   }
 
   /**
@@ -2494,7 +2498,7 @@ export class World {
       let t = c.target ? this.entity(c.target) : undefined;
       const provoked = (c.provokedUntil ?? 0) > this.now;
       if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, c.home) > (provoked ? PROVOKED_LEASH : 45) || dist(t.pos, c.pos) > (provoked ? PROVOKED_LEASH : def.aggro * 2.5))) { t = undefined; c.target = null; c.provokedUntil = 0; }
-      if (!t) {
+      if (!t && !c.driver) { // a possessed creature (possess.ts) goes for whom its driver names, no one else
         t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id), c.id, 1)[0];
         if (t) c.target = t.id;
       }
@@ -2509,7 +2513,10 @@ export class World {
           c.rangedCd = this.now + r.cooldown;
           this.spawnProjectile(c, r.kind, t.pos, null, r.power * sm * (c.dmgMult ?? 1), r.element, r.secs ?? 0, []);
         }
-      } else if (speed > 0 && !rooted) this.wander(c, speed, dt);
+      } else if (speed > 0 && !rooted) {
+        if (c.driver) { if (dist(c.pos, c.home) > 0.5) this.stepToward(c, c.home, speed, dt); } // walking where it was told
+        else this.wander(c, speed, dt);
+      }
     }
   }
 

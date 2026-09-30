@@ -14,7 +14,7 @@ import { ensureNpcs } from '../kernel/npc.js';
 import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { marketMessage } from '../kernel/market.js';
 import { schoolEvents } from '../kernel/wheel.js';
-import { FEATURE_BY_ID } from '../kernel/features.js';
+import { actingAs, FEATURE_BY_ID } from '../kernel/features.js';
 import { TICK, World } from '../kernel/world.js';
 import { visibleTo } from '../kernel/types.js';
 import { HISTORY } from '../lore/history.js';
@@ -368,9 +368,10 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
     // a feature's own messages {t: feature id, …} (kernel/features.ts), answered as {t, r}
     const feat = typeof m.t === 'string' ? FEATURE_BY_ID.get(m.t) : undefined;
     if (feat?.ws) { reply({ t: feat.id, r: feat.ws(world, wid, m as unknown as Record<string, unknown>) }); return; }
+    const body = actingAs(world, wid); // whom the keys move (a feature may lend you another body)
     switch (m.t) {
-      case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
-      case 'cast': reply({ t: 'cast', r: world.cast(wid, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
+      case 'input': world.setInput(body, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
+      case 'cast': reply({ t: 'cast', r: world.cast(body, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
       case 'unequip': world.unequip(wid, String(m.slot)); items(); break;
       case 'destroy': { const it = world.destroyItem(wid, String(m.item)); reply({ t: 'destroyed', item: it.id, name: it.name }); items(); break; }
@@ -389,8 +390,8 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
         break;
       }
       case 'unlearn': world.unlearn(wid, String(m.spell)); book(); break;
-      case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(wid, { x: m.x, z: m.z }) : world.setGoal(wid, null) }); break;
-      case 'dodge': world.dodge(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0); break; // (a roll on cooldown just does nothing)
+      case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(body, { x: m.x, z: m.z }) : world.setGoal(body, null) }); break;
+      case 'dodge': world.dodge(body, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0); break; // (a roll on cooldown just does nothing)
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
       case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
       case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;
