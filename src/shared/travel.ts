@@ -7,9 +7,9 @@ export interface Fireplace { id: string; x: number; z: number; zh: string; en: s
 export const FIREPLACES: readonly Fireplace[] = [
   { id: 'courtyard', x: 12, z: -12, zh: '庭院', en: 'the Courtyard' },
   { id: 'great_hall', x: 0, z: -48, zh: '礼堂', en: 'the Great Hall' },
-  { id: 'pitch', x: 40, z: -110, zh: '魁地奇球场', en: 'the Quidditch pitch' },
-  { id: 'hagrid', x: 80, z: 14, zh: '海格小屋', en: "Hagrid's hut" },
-  { id: 'lake', x: -44, z: 18, zh: '黑湖岸边', en: 'the Black Lake shore' },
+  { id: 'pitch', x: 48, z: -126, zh: '魁地奇球场', en: 'the Quidditch pitch' },
+  { id: 'hagrid', x: 96, z: 18, zh: '海格小屋', en: "Hagrid's hut" },
+  { id: 'lake', x: -82, z: 26, zh: '黑湖岸边', en: 'the Black Lake shore' },
   { id: 'hogsmeade', x: 10, z: 160, zh: '霍格莫德', en: 'Hogsmeade' },
 ];
 /** Stand within this of a fireplace to use it. */

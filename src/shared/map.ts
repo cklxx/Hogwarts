@@ -4,7 +4,7 @@
 export interface Box { kind: 'box'; x0: number; z0: number; x1: number; z1: number; h: number; style: Style; label?: string }
 export interface Disc { kind: 'disc'; x: number; z: number; r: number; h: number; style: Style; label?: string }
 export type Obstacle = Box | Disc;
-export type Style = 'stone' | 'tower' | 'wood' | 'tree' | 'water' | 'house' | 'willow' | 'tomb' | 'rock' | 'hoop';
+export type Style = 'stone' | 'tower' | 'wood' | 'tree' | 'water' | 'house' | 'willow' | 'tomb' | 'rock' | 'hoop' | 'veil';
 
 export interface Zone { id: ZoneId; name: string; x: number; z: number; r?: number; box?: [number, number, number, number] }
 export type ZoneId =
@@ -57,7 +57,7 @@ function buildObstacles(): Obstacle[] {
     // Greenhouses
     box(32, -44, 50, -36, 4, 'house', 'Greenhouse Three'),
     // --- The grounds ---
-    disc(-110, 40, 55, 0, 'water', 'The Black Lake'),
+    disc(-118, 40, 30, 0, 'water', 'The Black Lake'), // the lake's own scene (src/shared/scenes.ts): water, and a shore to walk round it
     disc(-52, 28, 1.6, 2, 'tomb', "Dumbledore's Tomb"),
     disc(45, 0, 3, 14, 'willow', 'Whomping Willow'),
     disc(95, 30, 5, 7, 'wood', "Hagrid's Hut"),
@@ -99,7 +99,7 @@ export const ZONES: Zone[] = [
   { id: 'dungeons', name: 'Dungeon Stair', x: -50, z: -36, r: 12 },
   { id: 'tomb', name: "Dumbledore's Tomb", x: -52, z: 28, r: 5 },
   { id: 'willow', name: 'Whomping Willow', x: 45, z: 0, r: 8 },
-  { id: 'lake_shore', name: 'Black Lake Shore', x: -110, z: 40, r: 75 },
+  { id: 'lake_shore', name: 'Black Lake Shore', x: -118, z: 40, r: 50 },
   // 无规则区: the far end of the Forbidden Forest, ~210 m from spawn (world.ts inLawless; README "不公平，但好玩")
   { id: 'deep_forest', name: 'The Deep Forest', x: 205, z: 35, r: 26 },
   { id: 'forest', name: 'The Forbidden Forest', x: 165, z: 15, r: 88 },
@@ -127,7 +127,7 @@ export const LANDMARKS: Landmark[] = [
   { id: 'willow', name: 'Whomping Willow', x: 45, z: 0, blurb: 'Planted the year Remus Lupin arrived. It hits back.' },
   { id: 'hagrid', name: "Hagrid's Hut", x: 95, z: 30, blurb: 'Rock cakes available. Teeth not guaranteed.' },
   { id: 'forest', name: 'The Forbidden Forest', x: 165, z: 15, blurb: 'Forbidden to all students. Acromantulas.' },
-  { id: 'lake', name: 'The Black Lake', x: -110, z: 40, blurb: 'Home to a giant squid, grindylows and merpeople. Dementors drift here at night.' },
+  { id: 'lake', name: 'The Black Lake', x: -86, z: 30, blurb: 'Home to a giant squid, grindylows and merpeople. Dementors drift here at night.' },
   { id: 'pitch', name: 'Quidditch Pitch', x: 40, z: -150, blurb: 'Six hoops, fifty feet high.' },
   { id: 'hogsmeade', name: 'Hogsmeade', x: 0, z: 172, blurb: 'The only all-wizarding village in Britain. Outside the anti-Apparition wards.' },
   { id: 'shack', name: 'Shrieking Shack', x: 64, z: 202, blurb: 'The most haunted building in Britain. (It is not haunted.)' },

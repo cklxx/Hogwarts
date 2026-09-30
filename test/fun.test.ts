@@ -2,6 +2,7 @@
  * Sprint 1 (README 学院杯 / 校园事件轮盘 / 巧克力蛙画片 / 隐藏宝箱): the term as a match, the event wheel, the cards and
  * the chests — all on deterministic seeded worlds.
  */
+import { sceneAt } from '../src/shared/scenes.js';
 import { describe, expect, it } from 'vitest';
 import { World } from '../src/kernel/world.js';
 import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
@@ -513,7 +514,9 @@ describe('隐藏宝箱: hidden chests', () => {
       if (lake.kind === 'disc') expect(Math.hypot(c.x - lake.x, c.z - lake.z)).toBeGreaterThan(lake.r + 1);
       expect(Math.abs(c.x) < WORLD_HALF - 4 && Math.abs(c.z) < WORLD_HALF - 4).toBe(true);
       expect(Math.hypot(c.x - WORLD_EDGE.x, c.z - WORLD_EDGE.z)).toBeLessThan(WORLD_EDGE.r - 4);
-      expect(findPath({ x: 0, z: -22 }, c), c.id).toBeTruthy();
+      const s = sceneAt(c.x, c.z);
+      expect(s, `${c.id} in a scene`).toBeTruthy();
+      expect(findPath(s!.entry ?? { x: 0, z: -22 }, c), c.id).toBeTruthy(); // from where you step into its scene
     }
   });
 

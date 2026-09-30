@@ -182,7 +182,7 @@ const decor = createDecor(scene, world.bannerSpots);
 {
   const sun = new THREE.Vector3(0.4, 0.6, 0.3).normalize(), at = new THREE.Vector3();
   const b = mergeStatic(scene, worldRoots, (step) => {
-    for (const [t, hour, x, z] of [[0, 3.2, 0, -56], [6.1, 9.7, 0, 0], [13.9, 15.1, 120, 90], [27.3, 21.4, -110, 40]]) {
+    for (const [t, hour, x, z] of [[0, 3.2, 0, -56], [6.1, 9.7, 0, 0], [13.9, 15.1, 120, 90], [27.3, 21.4, -118, 40]]) {
       world.tick(t, 0.05, t > 10, sun, { hour, banner: t > 10 ? 'Gryffindor' : null, focus: at.set(x, 0, z) });
       step();
     }

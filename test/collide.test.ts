@@ -3,6 +3,7 @@
  * creatures do not stand in each other; Ministers' statues come and go with the decree list; the world ends
  * where the Highlands begin to climb.
  */
+import { sceneAt } from '../src/shared/scenes.js';
 import { describe, expect, it } from 'vitest';
 import { heightAt } from '../client/terrain.js';
 import { STATIC_SOLIDS, Solids } from '../src/kernel/physics.js';
@@ -72,6 +73,7 @@ describe('the layout is solid', () => {
     let tested = 0;
     const missing: string[] = [];
     for (const c of STATIC_COLLIDERS) {
+      if (c.style === 'veil') continue; // the scenes' veil (test/scenes.test.ts): a wall 100 m long has no single approach
       const start = approach(c);
       if (!start) { missing.push(label(c)); continue; }
       a.pos = { ...start };
@@ -90,16 +92,16 @@ describe('the layout is solid', () => {
     w.setInput(a.id, 0, 0);
     // only colliders buried inside others (a buttress in a wing, a tree hemmed in) have no free approach
     expect(missing.length, missing.join('; ')).toBeLessThan(12);
-    expect(tested).toBeGreaterThan(STATIC_COLLIDERS.length - 12);
+    expect(tested).toBeGreaterThan(STATIC_COLLIDERS.filter((c) => c.style !== 'veil').length - 12);
   });
 
   it('the lake stops walkers at the waterline; bolts skim over it and over the tables', () => {
     const lake = STATIC_COLLIDERS.find((c) => c.style === 'water')!;
     expect(lake.h).toBeLessThan(BOLT_HEIGHT);
-    const p = { x: -110, z: 40 - 30 };
+    const p = { x: -118, z: 40 - 20 };
     STATIC_SOLIDS.resolve(p, 0.5);
     expect(signedDistance(lake, p.x, p.z)).toBeCloseTo(0.5, 5);
-    expect(STATIC_SOLIDS.hitSegment(-180, 40, -40, 40)).toBeNull();
+    expect(STATIC_SOLIDS.hitSegment(-172, 40, -72, 40)).toBeNull(); // (the lake's scene, veil to veil)
     expect(STATIC_SOLIDS.hitSegment(-7.5, -70, -7.5, -44, -1)?.label).toBe('House table');
     expect(STATIC_SOLIDS.hitSegment(-7.5, -70, -7.5, -44)).toBeNull();
   });
@@ -152,15 +154,18 @@ describe('pathfinding goes round everything', () => {
     const w = mkWorld();
     const a = join(w, 'Pathfinder');
     const rnd = mulberry32(2024);
-    const pick = () => {
+    // two points of one scene (src/shared/scenes.ts: between scenes the walk goes by a gate, test/scenes.test.ts)
+    const pick = (same?: { x: number; z: number }) => {
       for (;;) {
         const p = { x: (rnd() * 2 - 1) * 230, z: (rnd() * 2 - 1) * 230 };
+        const s = sceneAt(p.x, p.z);
+        if (!s || (same && s !== sceneAt(same.x, same.z))) continue;
         if (!STATIC_SOLIDS.blocked(p, 0.5) && walkableAt(p)) return p;
       }
     };
     let walks = 0, routes = 0;
     for (let n = 0; n < 60; n++) {
-      const from = pick(), to = pick();
+      const from = pick(), to = pick(from);
       const route = findPath(from, to);
       if (!route) continue; // (the far side of the lake from a pocket in the forest, say)
       routes++;
@@ -192,7 +197,7 @@ describe('pathfinding goes round everything', () => {
   it('a walker that starts inside a collider is put outside it and still gets a route', () => {
     const w = mkWorld();
     const a = join(w, 'Ghost');
-    a.pos = { x: 0, z: -95 }; // inside the Castle Keep
+    a.pos = { x: 41, z: -40 }; // inside Greenhouse Three
     w.setGoal(a.id, { x: 0, z: -22 });
     expect(a.route.length).toBeGreaterThan(0);
     for (let t = 0; t < 30 / 0.05 && a.goal; t++) w.tick();

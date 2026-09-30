@@ -33,17 +33,17 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   dementor: {
     kind: 'dementor', name: 'Dementor', faction: 'hostile', hp: 150, speed: 4, damage: 6, range: 6, cooldown: 1, aggro: 25, radius: 0.8,
-    xp: 90, rep: 10, galleons: 0, weak: {}, allDamage: 0.25, nightOnly: true, flying: true, spawn: { x: -110, z: 40, r: 72, max: 5 },
+    xp: 90, rep: 10, galleons: 0, weak: {}, allDamage: 0.25, nightOnly: true, flying: true, spawn: { x: -118, z: 40, r: 45, max: 5 }, // inside the lake's scene (src/shared/scenes.ts)
     lore: 'They drain the happiness out of the air. Expecto Patronum.',
   },
   inferius: {
     kind: 'inferius', name: 'Inferius', faction: 'hostile', hp: 90, speed: 2.8, damage: 9, range: 1.8, cooldown: 1.4, aggro: 12, radius: 0.6,
-    xp: 55, rep: 6, galleons: 3, weak: { fire: 3, light: 1.5 }, nightOnly: true, spawn: { x: -110, z: 40, r: 64, max: 4 }, bite: { aura: 'chill', secs: 2, mag: 0.4 },
+    xp: 55, rep: 6, galleons: 3, weak: { fire: 3, light: 1.5 }, nightOnly: true, spawn: { x: -118, z: 40, r: 40, max: 4 }, bite: { aura: 'chill', secs: 2, mag: 0.4 },
     lore: 'A corpse bewitched to do a Dark wizard\'s bidding. Their hands are cold as the lake. They fear fire and light.',
   },
   unicorn: {
     kind: 'unicorn', name: 'Unicorn', faction: 'benign', hp: 120, speed: 6, damage: 0, range: 0, cooldown: 99, aggro: 5, radius: 0.9,
-    xp: 0, rep: -50, galleons: 0, weak: {}, spawn: { x: 175, z: 5, r: 55, max: 2 }, grace: { radius: 8, mag: 2 },
+    xp: 0, rep: -50, galleons: 0, weak: {}, spawn: { x: 175, z: 5, r: 50, max: 2 }, grace: { radius: 8, mag: 2 },
     lore: 'Pure and swift. To stand near one is to heal; to harm one is to live a cursed life from that moment.',
   },
   phoenix: {

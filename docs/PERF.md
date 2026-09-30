@@ -1270,3 +1270,13 @@ Layout, not rendering: `client/phone.ts` runs at the HUD's 10 Hz (nine `getEleme
 write when the line changes) and only on a phone. Screen coverage (the point of it) is in docs/PLAYTEST.md: the
 middle of a 390×844 screen 29% → 6% under HUD after the tutorial, 23% → 17% during it. No frame-time change is
 expected or claimed; not measured separately (software rendering here would only show direction anyway).
+
+## 2026-09-30 — scenes (`wf/scenes`)
+
+The veil round each scene is 20 static box colliders (baked into the path grid and the spatial index once, like any
+wall); gates are a 10-gate proximity check per wizard in `stepLate`. `bench.ts kernel --n=1000 --secs=15 --warm=5`:
+p50 3.15 / 3.54 ms (p95 6.06 / 6.10) against main's 2.94–3.50 (p95 6.12–7.90) the same afternoon — inside the
+run-to-run spread. (The bench scatters its wizards over the whole 480 m square, most of them now in the mist; the
+spread still covers it.) Trace fingerprint `d164de1250926d69`, identical twice; changed on purpose (the lake shrank,
+two spawn rings and three fireplaces moved). A failing route costs a search of its connected region: the mist is the
+largest such region, so nothing may stand in it — loading a save moves anyone there to the courtyard.

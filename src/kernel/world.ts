@@ -32,6 +32,7 @@ import { Solids, dist } from './physics.js';
 import { Separator } from './separation.js';
 import { statueCollider } from '../shared/layout.js';
 import { findPath } from './pathfind.js';
+import { SCENES, routeVia, sceneAt, type Gate } from '../shared/scenes.js';
 import { thinkNpcs } from './npc.js';
 import { closePairs, EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
@@ -2088,6 +2089,8 @@ export class World {
     return Math.hypot(w.input.dx, w.input.dz) > 0.01 || (!!w.goal && w.goalBy === 'player') || this.now - (w.steerAt ?? -1e9) < PLAYER_GRACE_S;
   }
 
+  /** A walk into another scene, waiting on this side of its gate (src/shared/scenes.ts; the scenes Feature goes on). */
+  readonly via = new Map<string, { to: Vec2; by: 'player' | 'agent'; gate: Gate }>();
   /**
    * Walk to a point (A*), or stop with null. `by` says who asked: the MCP layer passes 'agent' for its
    * move_to and stop. An agent's walk is refused while it is paused (AGENT_PAUSED) and while the player is
@@ -2108,11 +2111,16 @@ export class World {
     w.route = [];
     w.goal = null;
     w.goalBy = null;
+    this.via.delete(w.id);
     if (!goal) return null;
     if (w.st.jailedUntil) throw new Error('The walls of Azkaban are thick.');
     const to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
+    if (sceneAt(w.pos.x, w.pos.z) && !sceneAt(to.x, to.z)) throw new Error(`(${Math.round(to.x)}, ${Math.round(to.z)}) is in the mist between the scenes: nobody walks there. Scenes: ${SCENES.map((s) => `${s.id} [${s.box.join(', ')}]`).join('; ')}. 那里在场景之间的雾里，走不过去。`);
+    // another scene: walk to the gate first; going through it walks on (the scenes Feature)
+    const hop = routeVia(w.pos, to);
+    if (hop) this.via.set(w.id, { to, by, gate: hop });
     this.syncSolids();
-    const route = findPath(w.pos, to, this.solids);
+    const route = findPath(w.pos, hop ? hop.at : to, this.solids);
     this.stuck.delete(w.id);
     if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
     w.route = route;

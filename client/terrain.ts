@@ -71,7 +71,7 @@ const freedom = (x: number, z: number) => { freedomTo(x, z); return OUT[0]; };
  */
 export const flatness = freedom;
 
-export const LAKE = { x: -110, z: 40, r: 55 };
+export const LAKE = { x: -118, z: 40, r: 30 }; // = the water obstacle in src/shared/map.ts
 /** The inner (fine) terrain mesh is a disc this wide round the origin; the Highlands' ring mesh lies beyond. */
 const RIM = 300;
 /** The sea plane's height: below the lowest rolling ground (about -6 m); only the southern inlet dips under it. */
