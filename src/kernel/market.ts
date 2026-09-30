@@ -609,7 +609,10 @@ export const MARKET_FEATURE: Feature = {
   id: 'market',
   init(world) { world.market = blankMarket(); },
   save: (world) => world.market,
-  load(world, data, legacy) { world.market = restoreMarket(data ?? legacy.market); },
+  load(world, data, legacy) { world.market = restoreMarket(data ?? legacy.market); sanitizeMarket(world); },
+  sweep: rollDay, // the day's royalty summary
+  // a decree (or a veto undoing one): promoted ⊆ published (Market.tla PromotedPublished), and the news of bans and promotions
+  rules(world, before, minister) { sanitizeMarket(world); marketDecreeNews(world, before, world.rules, minister ? [minister.id] : undefined); },
   tools: [
     {
       name: 'market_browse', title: 'The spell market (咒语集市)', cost: 0, readOnly: true, anonymous: true,

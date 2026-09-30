@@ -95,7 +95,8 @@ export function createDuel(d: DuelDeps) {
 }
 
 /** The Duelling Club as a client feature (client/features.ts). */
-export const duelFeature: ClientFeatureFactory = (d) => ({
-  id: 'duel',
-  ...createDuel({ send: d.send, toast: d.toast, du: () => d.wire<DuSnap>('du'), nameOf: d.nameOf, myHandle: d.myHandle, myPos: d.myPos, camYaw: d.camYaw }),
-});
+export const duelFeature: ClientFeatureFactory = (d) => {
+  const ui = createDuel({ send: d.send, toast: d.toast, du: () => d.wire<DuSnap>('du'), nameOf: d.nameOf, myHandle: d.myHandle, myPos: d.myPos, camYaw: d.camYaw });
+  // (G acts: not while you watch your agent play)
+  return { id: 'duel', ...ui, keydown: (e) => !d.observing() && ui.keydown(e) };
+};

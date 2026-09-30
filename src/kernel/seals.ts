@@ -1,4 +1,10 @@
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { LANDMARKS } from '../shared/map.js';
+import type { Feature } from './feature.js';
+import { dist } from './physics.js';
+import type { Wizard } from './types.js';
+import type { World } from './world.js';
 
 /**
  * The Restricted Section: four seals guarding the upper reaches of magic.
@@ -10,7 +16,24 @@ import { createHash } from 'node:crypto';
  *
  * The *generated* programs deliberately contain decoys: unreachable blocks, opaque predicates that
  * look input-dependent but never branch, and margin notes that lie. Players are warned about this.
+ *
+ * SEALS_FEATURE (the end of this file) is the quest: the pages, the attempts, the MCP tools and the browser's
+ * panel (R). How many seals a wizard has broken (Wizard.seals) is the kernel's: it lifts the Runes caps.
  */
+
+declare module './world.js' {
+  interface World {
+    /** The seals generated so far, by `${wizard}|${tier}` (SEALS_FEATURE; not saved: they regenerate from the secret). */
+    sealCache: Map<string, Seal>;
+  }
+}
+declare module './types.js' {
+  interface Wizard {
+    /** Pages of each seal collected (indexes into its tier's pages) and recent failed attempts per tier. Persisted. */
+    sealPages?: Record<string, number[]>;
+    sealTries?: Record<string, number[]>;
+  }
+}
 
 export type Op =
   | 'FEHU' | 'TIWAZ' | 'URUZ' | 'ANSUZ' | 'THURS' | 'NAUDIZ' | 'ISA' | 'KAUNA' | 'WUNJO' | 'RAIDO' | 'HAGAL'
@@ -291,4 +314,131 @@ export const parseWord = (s: string | number): number | null => {
   const t = s.trim().toLowerCase();
   const v = t.startsWith('0x') ? parseInt(t.slice(2), 16) : /^\d+$/.test(t) ? Number(t) : NaN;
   return Number.isInteger(v) && v >= 0 && v <= M32 ? v : null;
+};
+
+// ------------------------------------------------------------------ the quest (formal/tla/Seals.tla)
+function sealOf(world: World, w: Wizard, tier: number): Seal {
+  const k = `${w.id}|${tier}`;
+  let s = world.sealCache.get(k);
+  if (!s) { s = generateSeal(world.secret, w.id, tier); world.sealCache.set(k, s); }
+  return s;
+}
+const landmark = (id: string) => LANDMARKS.find((l) => l.id === id);
+function tierOf(tier: number) {
+  const t = SEAL_TIERS[tier - 1];
+  if (!t) throw new Error('There are four seals.');
+  return t;
+}
+
+export function restrictedSection(world: World, wid: string) {
+  const w = world.need(wid);
+  return {
+    warning: 'The Restricted Section lies. Margin notes may be false; not every block of runes can be reached. Only running the runes tells the truth.',
+    progress: `${w.seals}/4 seals broken`,
+    seals: SEAL_TIERS.map((t) => {
+      const have = w.sealPages?.[t.tier] ?? [];
+      return {
+        tier: t.tier, name: t.name, zh: t.zh, rewardZh: SEAL_REWARDS_ZH[t.tier], requiresYear: t.year, inputWords: t.words, reward: SEAL_REWARDS[t.tier],
+        state: w.seals >= t.tier ? 'broken' : w.seals === t.tier - 1 ? (w.year >= t.year ? 'open to you' : `needs year ${t.year}`) : 'break the previous seal first',
+        pages: t.pages.map((lm, i) => ({ page: i + 1, where: landmark(lm)?.name ?? lm, collected: have.includes(i) })),
+      };
+    }),
+    codex: Object.values(CODEX),
+    howTo: 'Stand within 10m of the landmark where a page rests and read it (read_seal_page). With every page, study the runes (inspect_seal), then speak the input words (break_seal). The seal accepts exactly one answer. Three failed attempts per seal every 10 minutes; each failure bites.',
+  };
+}
+
+export function readSealPage(world: World, wid: string, tier: number) {
+  const w = world.need(wid);
+  const t = tierOf(tier);
+  if (w.seals >= tier) throw new Error('That seal is already broken.');
+  const have = ((w.sealPages ??= {})[tier] ??= []);
+  const idx = t.pages.findIndex((lm, i) => !have.includes(i) && dist(landmark(lm)!, w.pos) <= 10);
+  if (idx < 0) {
+    const missing = t.pages.map((lm, i) => (have.includes(i) ? null : landmark(lm)?.name)).filter(Boolean);
+    throw new Error(missing.length ? `No page of this seal is here. Missing pages rest at: ${missing.join(', ')}.` : 'You already hold every page of this seal.');
+  }
+  have.push(idx);
+  have.sort((a, b) => a - b);
+  world.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
+  const s = sealOf(world, w, tier);
+  const [from, to] = s.pages[idx];
+  return { tier, page: idx + 1, of: t.pages.length, runes: disassemble(s.code, from, to) };
+}
+
+export function inspectSeal(world: World, wid: string, tier: number) {
+  const w = world.need(wid);
+  const t = tierOf(tier);
+  const s = sealOf(world, w, tier);
+  const have = w.sealPages?.[tier] ?? [];
+  const text = s.pages.map(([from, to], i) => (have.includes(i) ? disassemble(s.code, from, to) : `      [page ${i + 1} missing — it rests at ${landmark(t.pages[i])?.name}]`)).join('\n');
+  return { tier, name: t.name, zh: t.zh, inputWords: t.words, pagesCollected: `${have.length}/${t.pages.length}`, runes: text, broken: w.seals >= tier };
+}
+
+export function breakSeal(world: World, wid: string, tier: number, input: (string | number)[]) {
+  const w = world.need(wid), now = world.now;
+  const t = tierOf(tier);
+  if (w.seals >= tier) throw new Error('That seal is already broken.');
+  if (w.seals !== tier - 1) throw new Error('The seals must be broken in order.');
+  if (w.year < t.year) throw new Error(`The ${t.name} will not even speak to a wizard below year ${t.year}.`);
+  if ((w.sealPages?.[tier] ?? []).length < t.pages.length) throw new Error('You have not read every page of this seal.');
+  const tries = (w.sealTries?.[tier] ?? []).filter((x) => now - x < 600);
+  if (tries.length >= 3) throw new Error(`The seal is still smouldering from your last attempts. Wait ${Math.ceil(600 - (now - tries[0]))}s.`);
+  const words = input.map(parseWord);
+  if (words.length !== t.words || words.some((x) => x === null)) throw new Error(`This seal takes exactly ${t.words} 32-bit word(s), e.g. "0x1a2b3c4d".`);
+  const triesOf = (w.sealTries ??= {});
+  if (runSeal(sealOf(world, w, tier).code, words as number[])) {
+    const title0 = world.title(w).key;
+    w.seals = tier;
+    triesOf[tier] = [];
+    world.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
+    world.emit('achievement', `📕 ${w.name} broke ${t.name}! (${SEAL_REWARDS[tier]})`, { who: [w.id], zh: `📕 ${w.name} 破解了${t.zh}！（${SEAL_REWARDS_ZH[tier]}）` });
+    world.addRep(w, 25 * tier);
+    world.titleQuip(w, title0);
+    return { opened: true, reward: SEAL_REWARDS[tier], title: world.title(w).zh };
+  }
+  triesOf[tier] = [...tries, now];
+  world.damage(null, w.id, 15, 'arcane');
+  return { opened: false, message: 'SOWILO. The seal holds, and bites (-15 HP).', attemptsLeft: 2 - tries.length };
+}
+
+/** The browser's panel (R), {t:'seals', op?: 'read' | 'break', tier, words}: what you just did, the section, the seal you are on. */
+function sealsWs(world: World, wid: string, m: Record<string, unknown>) {
+  const tier = Number(m.tier);
+  const did = m.op === 'read' ? { read: readSealPage(world, wid, tier) }
+    : m.op === 'break' ? { broke: breakSeal(world, wid, tier, Array.isArray(m.words) ? m.words.slice(0, 4).map(String) : []) } : {};
+  return { ...did, section: restrictedSection(world, wid), current: inspectSeal(world, wid, Math.min(4, world.need(wid).seals + 1)) };
+}
+
+const TIER = z.number().int().min(1).max(4);
+export const SEALS_FEATURE: Feature = {
+  id: 'seals',
+  init(world) { world.sealCache = new Map(); },
+  tools: [
+    {
+      name: 'restricted_section', title: 'The Restricted Section', cost: 0, readOnly: true,
+      description: 'The four seals that guard the greatest magic: what each gives, where their pages rest, and the codex of Old Runes. Bigger magic is locked behind harder seals.',
+      input: {},
+      run: restrictedSection,
+    },
+    {
+      name: 'read_seal_page', title: 'Read a page of a seal', cost: 1,
+      description: 'Collect a page of a seal. You must be standing within 10m of the landmark where that page rests.',
+      input: { tier: TIER },
+      run: (world, wid, a) => readSealPage(world, wid, Number(a.tier)),
+    },
+    {
+      name: 'inspect_seal', title: 'Study a seal', cost: 0, readOnly: true,
+      description: 'The Old Runes of a seal, as far as the pages you hold reveal them.',
+      input: { tier: TIER },
+      run: (world, wid, a) => inspectSeal(world, wid, Number(a.tier)),
+    },
+    {
+      name: 'break_seal', title: 'Speak the words to a seal', cost: 2,
+      description: 'Attempt to break a seal with its input words (32-bit, e.g. "0x1a2b3c4d"). Exactly one answer opens it. 3 attempts per 10 minutes; every failure bites.',
+      input: { tier: TIER, words: z.array(z.union([z.string(), z.number()])).min(1).max(4) },
+      run: (world, wid, a) => breakSeal(world, wid, Number(a.tier), a.words as (string | number)[]),
+    },
+  ],
+  ws: sealsWs,
 };

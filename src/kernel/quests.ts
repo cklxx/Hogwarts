@@ -1,8 +1,8 @@
 /**
  * 今日课表 (a Feature): three small goals a day for each player, so there is always a next thing to do.
  *
- * The day is QUEST_DAY_S of world time; each wizard's three goals are picked from QUESTS by the day and their id
- * (the same for everyone who asks, different for everyone). Progress counts what the wizard's own counters gain
+ * The day is QUEST_DAY_S of world time; each wizard's three goals are picked from QUESTS by the day and their handle
+ * (the same all day, different for everyone, and the same on every run of a seeded world). Progress counts what the wizard's own counters gain
  * (creatures defeated, casts, spells forged, cards, rolls, perfect reflects, house points from school events and
  * Quidditch) — a counter that resets (a new term's ledger) never counts backwards. A goal pays QUEST_XP and
  * QUEST_GALLEONS once; all three add QUEST_ALL_XP: at most QUEST_DAY_MAX_XP a day (test/quests.test.ts).
@@ -56,7 +56,7 @@ function progressOf(world: World, w: Wizard): Progress {
   const day = dayOf(world);
   let p = world.quests.of.get(w.id);
   if (!p || p.day !== day) {
-    const ids = pickQuests(day, w.id);
+    const ids = pickQuests(day, w.handle); // the public handle, not the random registry id: the kernel stays reproducible (bench.ts trace)
     p = { day, ids, got: ids.map(() => 0), last: ids.map((id) => BY_ID.get(id)!.count(w)), paid: ids.map(() => false), all: false };
     world.quests.of.set(w.id, p);
   }
