@@ -1,10 +1,11 @@
 /**
- * 聊天 (a Feature): four channels over the one event feed.
+ * 聊天 (a Feature): five channels over the one event feed.
  *
  * - `all` — the whole school: World.say (the speech bubble, and the words that have power here);
  * - `house` — your house, wherever they are;
  * - `near` — whoever stands within CHAT_NEAR_M of you (a bubble over your head too);
- * - `dm` — a whisper to one wizard (by handle or name), seen by the two of you only.
+ * - `dm` — a whisper to one wizard (by handle or name), seen by the two of you only;
+ * - `da` — Dumbledore's Army, members only, across houses (playtest round 4: an organiser whispered each member in turn).
  *
  * A line is a 'chat' event with `ch` and, for the last three, `aud` (the registry ids it is delivered to: World
  * visibleTo; `aud` never goes on the wire). Silenced wizards cannot chat; a line carrying your own Owl Post key is
@@ -14,10 +15,11 @@
 import { z } from 'zod';
 import { SILENCED } from './hex.js';
 import type { Feature } from './feature.js';
+import { isDaMember } from './unfair.js';
 import { visibleTo, type WorldEvent } from './types.js';
 import type { World } from './world.js';
 
-export const CHAT_CHANNELS = ['all', 'house', 'near', 'dm'] as const;
+export const CHAT_CHANNELS = ['all', 'house', 'near', 'dm', 'da'] as const;
 export type ChatChannel = (typeof CHAT_CHANNELS)[number];
 export const CHAT_NEAR_M = 30, CHAT_MAX = 200, CHAT_BURST = 6, CHAT_WINDOW_S = 10, CHAT_READ_MAX = 50;
 const KEY_LEAK = 'That line contains your Owl Post key: not sent. Never write your key anywhere; if it has leaked, rotate it (Esc → Owl Post). 这句话里有你的猫头鹰邮递密钥：没有发出。别把密钥写在任何地方；如果泄露了，去换一把（Esc → 猫头鹰邮递）。';
@@ -48,6 +50,10 @@ export function chatSend(world: World, wid: string, a: { text?: unknown; ch?: un
   if (ch === 'house') {
     aud = [...world.wizards.values()].filter((x) => x.house === w.house).map((x) => x.id);
     label = { en: `[${w.house}]`, zh: '[学院]' };
+  } else if (ch === 'da') {
+    if (!isDaMember(world, w.id)) throw new Error("Only members of Dumbledore's Army hear the DA channel: join_dumbledores_army first. 只有邓布利多军成员能用这个频道。");
+    aud = [...world.da.members];
+    label = { en: '[D.A.]', zh: '[邓布利多军]' };
   } else if (ch === 'near') {
     aud = [...world.nearWizards(w.pos, CHAT_NEAR_M)].filter((x) => Math.hypot(x.pos.x - w.pos.x, x.pos.z - w.pos.z) <= CHAT_NEAR_M).map((x) => x.id);
     if (!aud.includes(w.id)) aud.push(w.id);
@@ -83,7 +89,7 @@ export const CHAT_FEATURE: Feature = {
   init(world) { world.chat = { recent: new Map() }; },
   tools: [{
     name: 'chat', title: 'Chat', cost: 1,
-    description: `Talk to other players. op "send" (default): text (≤${CHAT_MAX}) on channel ch — "all" (the whole school, the same as say: some words have power), "house" (your house only), "near" (whoever is within ${CHAT_NEAR_M} m), "dm" (a whisper to one wizard: to = their handle or name; only the two of you see it). op "read": the lines you can see, newest last (ch to filter, since = an event id, limit ≤ ${CHAT_READ_MAX}). At most ${CHAT_BURST} lines every ${CHAT_WINDOW_S} s. To talk privately to your own human, use tell_player instead. (聊天：全校 / 学院 / 附近 / 悄悄话。)`,
+    description: `Talk to other players. op "send" (default): text (≤${CHAT_MAX}) on channel ch — "all" (the whole school, the same as say: some words have power), "house" (your house only), "near" (whoever is within ${CHAT_NEAR_M} m), "dm" (a whisper to one wizard: to = their handle or name; only the two of you see it), "da" (Dumbledore's Army members only, any house). op "read": the lines you can see, newest last (ch to filter, since = an event id, limit ≤ ${CHAT_READ_MAX}). At most ${CHAT_BURST} lines every ${CHAT_WINDOW_S} s. To talk privately to your own human, use tell_player instead. (聊天：全校 / 学院 / 附近 / 悄悄话 / 邓布利多军。)`,
     input: {
       op: z.enum(['send', 'read']).optional(), text: z.string().max(CHAT_MAX).optional(), ch: z.enum(CHAT_CHANNELS).optional(),
       to: z.string().max(40).optional(), since: z.number().int().optional(), limit: z.number().int().min(1).max(CHAT_READ_MAX).optional(),

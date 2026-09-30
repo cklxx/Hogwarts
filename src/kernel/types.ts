@@ -141,8 +141,11 @@ export interface Wizard {
   connections: number;
   marauderUntil: number;
   say: { text: string; until: number } | null;
-  /** Easter-egg state. pointsTerm: the term in which this wizard last awarded house points ("Ten points to …!"). */
-  eggs: { rorCrossings: number[]; rorSide: number; inErised: boolean; pointsTerm?: number };
+  /**
+   * Easter-egg state. pointsTerm: the term in which this wizard last awarded house points ("Ten points to …!");
+   * pages: the chest Runes fragments (RUNES_FRAGMENTS indexes) already found, so a chest hands over a new one.
+   */
+  eggs: { rorCrossings: number[]; rorSide: number; inErised: boolean; pointsTerm?: number; pages?: number[] };
   lastDuel: Record<string, number>;
   hurtAt: number;
   /** Id of whoever last damaged this wizard. */
@@ -301,7 +304,7 @@ export interface WorldEvent {
   /** 巧克力蛙画片: the card this private event hands over (the browser flips it over). */
   card?: string;
   /** Chat (kernel/chat.ts): the channel of a chat line. */
-  ch?: 'all' | 'house' | 'near' | 'dm';
+  ch?: 'all' | 'house' | 'near' | 'dm' | 'da';
   /** Server-internal: delivered only to these wizard ids (a house, those near, a whisper's two ends). Never on the wire. */
   aud?: string[];
 }

@@ -11,6 +11,8 @@ export interface VetoView {
   perTerm: number; usedThisTerm: boolean; windowSeconds: number;
   decree: { minister: string; changes: string[]; secondsLeft: number } | null;
   votes: number; needed: number; voted: boolean;
+  /** Below quorum: why the veto cannot pass however many vote. */
+  blocked?: string; blockedZh?: string;
 }
 export interface DaView {
   member: boolean; eligible: boolean; size: number; online: number; quorum: number;

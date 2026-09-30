@@ -126,7 +126,11 @@ export function chestClues(world: World, w?: Wizard) {
   const left = chestsLeft(world);
   let near: { c: ChestSpot; d: number } | null = null;
   if (w) for (const c of left) { const d = dist(c, w.pos); if (!near || d < near.d) near = { c, d }; }
-  const warm = (d: number) => (d <= 30 ? { en: 'within 30 m', zh: '30 米内' } : d <= 80 ? { en: 'within 80 m', zh: '80 米内' } : { en: 'far off', zh: '还很远' });
+  // warmer and warmer (playtest round 4: "within 30 m" left a seeker pacing a whole courtyard)
+  const warm = (d: number) => {
+    const m = [5, 15, 30, 80].find((x) => d <= x);
+    return m ? { en: `within ${m} m`, zh: `${m} 米内` } : { en: 'far off', zh: '还很远' };
+  };
   return {
     left: left.length, total: CHESTS.length,
     where: left.map((c) => ({ en: c.en, zh: c.zh })),

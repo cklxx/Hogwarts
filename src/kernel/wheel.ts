@@ -86,6 +86,8 @@ export const blankWheel = (interval: number): WheelState => ({ nextAt: interval,
 
 /** Never roll sooner than this after the last event ended. */
 export const GAP_S = 20;
+/** An event is not started in the last TERM_TAIL_S of a term, and none is cut shorter than that by the bell. */
+const TERM_TAIL_S = 45;
 /** The result of an event stays on the HUD this long. */
 export const RESULT_S = 8;
 
@@ -270,7 +272,9 @@ export const EVENTS: Record<EventId, EventDef> = {
         const x = w.wizards.get(id);
         if (!x || d.kissed!.includes(h)) continue;
         const g = w.cupGain(x, 30, 'events');
-        w.emit('wheel', `🌫️ Nobody from ${h} fell to the Dementors: +${g} house points.`, { to: x.id, zh: `🌫️ ${zhHouse(h)}没有一个人倒在摄魂怪面前：+${g} 学院分。` });
+        // lost = the Dementors outlasted the school, yet a house that stood its ground is paid for it: say which (playtest round 4)
+        const held = e.outcome === 'won' ? { en: '', zh: '' } : { en: 'The Dementors were not driven off, but ', zh: '摄魂怪没被赶走，但' };
+        w.emit('wheel', `🌫️ ${held.en}nobody from ${h} fell to them: +${g} house points for holding out.`.replace('🌫️ nobody', '🌫️ Nobody'), { to: x.id, zh: `🌫️ ${held.zh}${zhHouse(h)}没有一个人倒在它们面前：坚持到底，+${g} 学院分。` });
       }
       if (e.outcome === 'won') {
         // the Patronus that did the most
@@ -338,6 +342,9 @@ export function stepWheel(w: World, dt: number) {
   if (!r.enabled || w.now < s.nextAt) return;
   const who = players(w);
   if (!who.length) { s.nextAt = w.now + 10; return; }
+  // not in the term's last seconds: it would be paid in the next term, past the final minute (playtest round 4: a
+  // Snitch caught just after the bell)
+  if (w.term.endsAt - w.now < TERM_TAIL_S) { s.nextAt = w.term.endsAt + GAP_S; return; }
   const id = choose(w);
   if (!id) { s.nextAt = w.now + 30; return; }
   startEvent(w, id);
@@ -360,7 +367,9 @@ export function startEvent(w: World, id: EventId): ActiveEvent | null {
   const s = w.wheel;
   if (s.active) return null;
   const def = EVENTS[id];
-  const e: ActiveEvent = { id, n: ++s.seq, startedAt: w.now, endsAt: w.now + Math.min(EVENT_MAX_S, def.seconds), outcome: 'on', paid: false, x: 0, z: 0, d: {} };
+  // an event ends with the term at the latest, so what it pays counts in the term it was played in
+  const end = Math.min(w.now + Math.min(EVENT_MAX_S, def.seconds), Math.max(w.now + TERM_TAIL_S, w.term.endsAt));
+  const e: ActiveEvent = { id, n: ++s.seq, startedAt: w.now, endsAt: end, outcome: 'on', paid: false, x: 0, z: 0, d: {} };
   s.active = e;
   const l = def.start(w, e);
   w.emit('wheel', `${l.en}`, { zh: l.zh });

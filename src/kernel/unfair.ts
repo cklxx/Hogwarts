@@ -326,9 +326,16 @@ export function daState(world: World, wid: string, med = reputationMedian(world)
     veto: {
       perTerm: DA_VETOES_PER_TERM, usedThisTerm: da.vetoTerm === world.term.n, windowSeconds: DA_VETO_WINDOW_S,
       decree: v ? { minister: v.minister, changes: world.decrees[v.decree]?.changes ?? [], secondsLeft: Math.max(0, Math.ceil(DA_VETO_WINDOW_S - (world.now - v.at))) } : null,
-      votes, needed: Math.floor(active.length / 2) + 1, voted: !!v && v.votes.includes(w.id),
+      // a majority of the members in play, and never fewer of them in play than the quorum (playtest round 4 read
+      // "needed 1" with nobody online): below quorum the veto cannot pass however many vote
+      votes, needed: Math.floor(Math.max(active.length, DA_QUORUM) / 2) + 1, voted: !!v && v.votes.includes(w.id),
+      ...(active.length < DA_QUORUM ? { blocked: `below quorum: ${active.length} of the ${DA_QUORUM} members needed are in play`, blockedZh: `不足法定人数：在场成员 ${active.length}，至少要 ${DA_QUORUM}` } : {}),
     },
-    joint: { members: DA_JOINT_MIN, withinSeconds: DA_JOINT_WINDOW_S, damagePct: DA_JOINT_PCT },
+    joint: {
+      members: DA_JOINT_MIN, withinSeconds: DA_JOINT_WINDOW_S, damagePct: DA_JOINT_PCT,
+      how: `Any damaging spell counts (no Patronus needed): when ${DA_JOINT_MIN} members hit the same target within ${DA_JOINT_WINDOW_S} s, their hits deal ×${DA_JOINT_PCT / 100}. Agree on a target (chat ch "da"), then strike together.`,
+      ...(member ? { now: jointNow(world, w.id) } : {}),
+    },
   };
 }
 
@@ -403,6 +410,22 @@ function jointBonus(world: World, by: string, dstId: string): number {
     world.emit('da', l.en, { zh: l.zh });
   }
   return pct / 100;
+}
+
+/** 联合一击 feedback: the targets you hit in the last window, and how many members are on each (playtest round 4: no way to tell). */
+function jointNow(world: World, wid: string) {
+  const out: { target: string; id?: string; members: number; need: number; secondsLeft: number }[] = [];
+  for (const [dst, m] of world.da.hits) {
+    const at = m.get(wid);
+    if (at === undefined || world.now - at > DA_JOINT_WINDOW_S) continue;
+    const on = [...m].filter(([id, t]) => world.now - t <= DA_JOINT_WINDOW_S && isDaMember(world, id));
+    const e = world.entity(dst);
+    out.push({
+      target: e?.name ?? '?', ...(e?.kind === 'creature' ? { id: dst } : {}), members: on.length, need: DA_JOINT_MIN,
+      secondsLeft: round(Math.max(0, DA_JOINT_WINDOW_S - (world.now - Math.min(...on.map(([, t]) => t))))),
+    });
+  }
+  return out;
 }
 
 const DA_OPS = ['status', 'join', 'leave', 'veto'] as const;

@@ -73,7 +73,7 @@ describe('brooms', () => {
     run(w, 0.1);
     expect(w.travel.riding.has(a.id)).toBe(false);
     a.pos = { x: 0, z: -30 };
-    expect(() => broom(w, a.id, true)).toThrow(/indoors|室内/);
+    expect(() => broom(w, a.id, true)).toThrow(/precinct|城堡范围/);
   });
 });
 

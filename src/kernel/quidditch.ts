@@ -138,14 +138,34 @@ export function qdJoin(world: World, wid: string, role?: QdRole) {
   if (!world.isActive(w)) throw new Error('You cannot play while stunned or in Azkaban. 被击晕或在阿兹卡班时不能上场。');
   if (inDuel(world, wid)) throw new Error('You are in the Duelling Club: finish or leave it first (duel_club leave). 你在决斗俱乐部里：先打完或退出（duel_club leave）。');
   const p = m.roster[wid];
-  if (p) { if (role) { p.wantSeeker = role === 'seeker'; p.wantKeeper = role === 'keeper'; } return qdStatus(world, wid); }
+  if (p) { if (role) { p.wantSeeker = role === 'seeker'; p.wantKeeper = role === 'keeper'; if (m.phase === 'play') take(world, m, wid, role); } return roleNote(world, m, wid, role); }
   if (Object.values(m.roster).filter((x) => x.side === side).length >= QD_SIDE_MAX) throw new Error('Your team is full. 你们队满员了。');
   m.roster[wid] = { side: side as 0 | 1, role: 'chaser', goals: 0, chase: false, wantSeeker: role === 'seeker', wantKeeper: role === 'keeper' };
   if (m.phase === 'play') {
     place(world, w, side as 0 | 1);
-    if (role && role !== 'chaser' && !roleOf(m, side as 0 | 1, role)) m.roster[wid].role = role;
+    if (role) take(world, m, wid, role);
   }
-  return qdStatus(world, wid);
+  return roleNote(world, m, wid, role);
+}
+
+/** Mid-match, a player takes the place they ask for when it is free or an NPC holds it (the NPC becomes a chaser). */
+function take(world: World, m: QdMatch, wid: string, role: QdRole) {
+  const p = m.roster[wid];
+  if (role === 'chaser' || p.role === role) return;
+  const holder = roleOf(m, p.side, role);
+  if (holder && !world.wizards.get(holder)?.npc) return;
+  if (holder) m.roster[holder].role = 'chaser';
+  if (p.role !== 'chaser') return; // a seeker asking to keep goal: stays where the team needs them
+  p.role = role;
+}
+
+/** The status, and why you did not get the place you asked for (playtest round 4: a seeker request quietly became chaser). */
+function roleNote(world: World, m: QdMatch, wid: string, role?: QdRole) {
+  const st = qdStatus(world, wid), p = m.roster[wid];
+  if (!role || role === 'chaser' || p.role === role) return st;
+  if (m.phase === 'call') return { ...st, note: `Asked for ${role}: places are handed out at the whistle (a player who asked first, else an NPC). 已申请${role === 'seeker' ? '找球手' : '守门员'}：开哨时分配（先申请的玩家优先，否则由 NPC 担任）。` };
+  const holder = roleOf(m, p.side, role);
+  return { ...st, note: `Your side's ${role} is ${world.wizards.get(holder ?? '')?.name ?? 'taken'}, a player: you play ${p.role}. 你们队的${role === 'seeker' ? '找球手' : '守门员'}已由玩家担任：你打${p.role === 'chaser' ? '追球手' : p.role}。` };
 }
 
 export function qdLeave(world: World, wid: string) {
@@ -567,7 +587,7 @@ export function qdStatus(world: World, wid: string | null) {
       quaffle: { x: round(m.quaffle.x), z: round(m.quaffle.z), carrier: name(m.quaffle.carrier), flying: m.quaffle.flying > 0 },
       bludgers: m.bludgers.map((b) => ({ x: round(b.x), z: round(b.z), chasing: name(b.target) })),
       snitch: m.snitch ? { x: round(m.snitch.x), z: round(m.snitch.z) } : m.phase === 'play' ? { appearsIn: Math.max(0, Math.ceil(m.snitchAt - world.now)) } : null,
-      roster: Object.entries(m.roster).map(([id, p]) => ({ name: name(id), house: m.sides[p.side], role: p.role, goals: p.goals, ...(p.saves ? { saves: p.saves } : {}), npc: !!world.wizards.get(id)?.npc })),
+      roster: Object.entries(m.roster).map(([id, p]) => ({ name: name(id), team: m.sides[p.side], house: world.wizards.get(id)?.house ?? m.sides[p.side], role: p.role, goals: p.goals, ...(p.saves ? { saves: p.saves } : {}), npc: !!world.wizards.get(id)?.npc })),
       caughtBy: name(m.caughtBy), winner: m.winner === null ? null : m.sides[m.winner],
       yourHoops: you ? QD_HOOPS[1 - you.side] : undefined,
     } : null,

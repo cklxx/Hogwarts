@@ -424,6 +424,7 @@ export class World {
    */
   resolveTarget(key: string | null | undefined, asker?: string): string | null {
     if (!key) return null;
+    if ((key === 'self' || key === 'me') && asker) return asker; // as reflexes and Runes say it
     if (this.creatures.has(key)) return key;
     if (this.wizards.has(key)) return key === asker || (asker !== undefined && this.wizards.get(asker)?.npc) ? key : null;
     const k = key.toLowerCase();
@@ -1529,7 +1530,7 @@ export class World {
     const f = n < GRIND_FREE_KILLS ? 1 : Math.max(GRIND_FLOOR, GRIND_FREE_KILLS / (n + 1));
     if (n === GRIND_FREE_KILLS) {
       const zh = zhCreature(kind), en = CREATURES[kind].name;
-      this.emit('system', `You have learned what ${en}s can teach for now: each one is worth less for a while. Try another creature, an O.W.L. exam, or the next school event.`, { to: w.id, zh: `${zh}能教你的，你这阵子都学会了：接下来一段时间，打它们得到的越来越少。换个对手、去考一门 O.W.L.，或者等下一件校园事件。` });
+      this.emit('system', `You have learned what ${en}s can teach for now: each one is worth less for a while (full again ${GRIND_FATIGUE_S / 60} minutes after these kills). Try another creature, an O.W.L. exam, or the next school event.`, { to: w.id, zh: `${zh}能教你的，你这阵子都学会了：接下来一段时间，打它们得到的越来越少（这几次击杀 ${GRIND_FATIGUE_S / 60} 分钟后恢复）。换个对手、去考一门 O.W.L.，或者等下一件校园事件。` });
     }
     return f;
   }
@@ -1615,8 +1616,14 @@ export class World {
     if (card || u < pct) out.card = rollCard(this, w, 'plain', why).card.id;
     else if (u < pct + (1 - pct) * 0.55) out.galleons = 12 + Math.floor(this.funRand() * 24);
     else {
-      out.fragment = RUNES_FRAGMENTS[Math.floor(this.funRand() * RUNES_FRAGMENTS.length)];
-      out.galleons = 8;
+      // a page you have not found, of a spell you do not already know (playtest round 4: the same page twice);
+      // none left: Galleons instead
+      const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
+      const known = new Set(w.spells.map((s) => flat(s.source)));
+      const fresh = RUNES_FRAGMENTS.map((_, i) => i).filter((i) => !w.eggs.pages?.includes(i) && !known.has(flat(RUNES_FRAGMENTS[i].source)));
+      const i = fresh[Math.floor(this.funRand() * fresh.length)];
+      if (i === undefined) out.galleons = 20;
+      else { out.fragment = RUNES_FRAGMENTS[i]; out.galleons = 8; w.eggs.pages = [...(w.eggs.pages ?? []), i]; }
     }
     if (!out.card && this.funRand() < 0.25) out.galleons += 10;
     if (out.galleons) w.galleons += out.galleons;
@@ -3177,6 +3184,9 @@ export class World {
       blocked: (this.canHarm(w.id, c.id) && !this.inBlast(w.pos, c.pos)) || undefined,
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
+      // what it shrugs off (the troll: arcane ×0.6), and whether a school event brought it (playtest round 4)
+      ...((r) => (r.length ? { resists: r } : {}))(Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) < 1).map(([k, v]) => `${k} ×${v}`)),
+      ...(c.ev !== undefined ? { schoolEvent: true, ...(c.dmgMult && c.dmgMult !== 1 ? { hitsHarder: `×${round(c.dmgMult)}` } : {}) } : {}),
     })).sort((a, b) => a.dist - b.dist).slice(0, 20);
     const landmarks = LANDMARKS.map((l) => ({ id: l.id, name: l.name, dist: round(dist(l, w.pos)), x: l.x, z: l.z })).sort((a, b) => a.dist - b.dist).slice(0, 5);
     return {
