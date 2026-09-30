@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { EFFECT_PRIMITIVES, FORGE_FAIL_PER_MIN, ITEM_MODS, ITEM_SLOTS, LISTEN_MAX_S } from '../shared/constants.js';
+import { SPELL_PRIMITIVES, FORGE_FAIL_PER_MIN, ITEM_MODS, ITEM_SLOTS, LISTEN_MAX_S } from '../shared/constants.js';
 import { LANDMARKS, landmarkById } from '../shared/map.js';
 import { describeRulebookSchema } from '../kernel/rulebook.js';
 import { visibleTo, type OwlMsg, type WorldEvent } from '../kernel/types.js';
@@ -668,7 +668,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     description: 'The complete current rules of this world, the constitutional bounds of every rule (JSON Schema), standing laws, and the history of decrees.',
     inputSchema: { include_schema: z.boolean().optional() },
     annotations: { readOnlyHint: true },
-  }, async ({ include_schema }: { include_schema?: boolean }) => out({ rules: world.rules, decrees: world.decrees, ...(include_schema ? { schema: describeRulebookSchema() } : {}), effectPrimitives: EFFECT_PRIMITIVES }));
+  }, async ({ include_schema }: { include_schema?: boolean }) => out({ rules: world.rules, decrees: world.decrees, ...(include_schema ? { schema: describeRulebookSchema() } : {}), effectPrimitives: SPELL_PRIMITIVES }));
 
   register('decree', {
     title: 'Issue a Ministry decree',

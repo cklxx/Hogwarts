@@ -12,7 +12,10 @@
  * (World keeps one list per hook, built once).
  */
 import type { z } from 'zod';
-import type { Projectile, Wizard } from './types.js';
+import type { Value } from '../runes/interp.js';
+import type { Node } from '../runes/parser.js';
+import type { Caps, Prim } from '../runes/primitives.js';
+import type { Projectile, Vec2, Wizard } from './types.js';
 import type { World } from './world.js';
 
 /** An MCP tool a feature brings (mcp/server.ts registers them all; `me` sessions only). */
@@ -32,8 +35,35 @@ export interface FeatureTool {
   runAnon?(world: World, wid: string | null, args: Record<string, unknown>): unknown;
 }
 
+/** What a plugin primitive's plan gets from the cast it is part of (kernel/magic.ts execute). */
+export interface SpellApi {
+  world: World;
+  caster: Wizard;
+  caps: Caps;
+  tags: string[];
+  /** Clamp a request to the caster's cap (noted in the report). */
+  clamp(what: string, asked: number, cap: number): number;
+  posOf(v: Value, at: Node): Vec2;
+  /** The id and position of an entity within range (throws a RuneError otherwise). */
+  harmable(v: Value, at: Node, range: number): { id: string; pos: Vec2; name: string };
+}
+/**
+ * A Runes primitive a feature brings (`prim.name` must be in PLUGIN_PRIMITIVES, src/shared/constants.ts, so the
+ * Rulebook can price and ban it). `plan` checks the arguments (throwing a RuneError) and returns what the effect
+ * costs (fed to `cost`) and does; `apply` runs only when the whole cast commits (never on a dry run or a fizzle).
+ */
+export interface FeatureSpell {
+  prim: Prim;
+  cost(x: Record<string, number>): number;
+  plan(api: SpellApi, args: Value[], at: Node): { cost: Record<string, number>; desc: string; apply(): void };
+}
+
 export interface Feature {
   id: string;
+  /** Runes primitives (the checker, the interpreter, simulate and the Grimoire pick them up). */
+  spells?: FeatureSpell[];
+  /** A spell struck `id` (after its damage, if any). */
+  hit?(world: World, p: Projectile, id: string): void;
   /** Set up this feature's state on a new World (and on a restored one, before `load`). */
   init?(world: World): void;
   /** Every tick (20 Hz), after the NPCs think and before spells and creatures move. */
@@ -68,6 +98,6 @@ export function hookLists(fs: readonly Feature[]) {
   const has = <K extends keyof Feature>(k: K) => fs.filter((f) => f[k] !== undefined) as (Feature & Required<Pick<Feature, K>>)[];
   return {
     step: has('step'), stepLate: has('stepLate'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'), castBlock: has('castBlock'),
-    helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), npc: has('npc'),
+    helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), npc: has('npc'), hit: has('hit'),
   };
 }

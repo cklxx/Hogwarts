@@ -21,7 +21,7 @@
 
 - **提交前必须全绿**：`npx tsc --noEmit && npx vitest run && npx vite build`。改了 `desktop/` 再跑 `cargo test --manifest-path desktop/src-tauri/Cargo.toml`。
 - **宪法**：`docs/RULES.md` 列出不能被打破的规则（密钥、公平、奖励上限、政治、Agent），每条都有代码位置和证明 / 测试。新功能不得违反；要加一条新的「不能破」，就写进去并配上证明或测试。
-- **新玩法写成插件**：内核一个 `Feature`（`src/kernel/feature.ts`）加进 `features.ts`，客户端一个 `ClientFeature` 加进 `client/features.ts`；不要在 `world.ts` / `mcp/server.ts` / `server/main.ts` / `client/main.ts` 里点名新玩法。状态用声明合并挂到 `World` 上，存档走 `save` / `load`。
+- **新玩法写成插件**：内核一个 `Feature`（`src/kernel/feature.ts`）加进 `features.ts`，客户端一个 `ClientFeature` 加进 `client/features.ts`；不要在 `world.ts` / `mcp/server.ts` / `server/main.ts` / `client/main.ts` 里点名新玩法。状态用声明合并挂到 `World` 上，存档走 `save` / `load`。插件还可以带 Runes 原语（`spells`：名字先登记进 `src/shared/constants.ts` 的 `PLUGIN_PRIMITIVES`，规则书才能给它定价、禁用）。
 - **改内核规则或常量**：同步更新 `formal/`（TLA+ 规格、Lean、`formal/vectors.json` / `test/formal.test.ts`），并跑 `formal/run.sh`。
 - **界面文字**用 `L('中文', 'English')`，中文在前；服务器事件带 `zh`。
 - **性能改动**先测后改，前后数字写进 `docs/PERF.md`（软件渲染的帧率只看方向，要写明）。
