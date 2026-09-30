@@ -70,10 +70,12 @@ describe('the layout is solid', () => {
     const w = mkWorld();
     w.flags.willowCalmUntil = 1e9; // (the Whomping Willow would knock the walker back)
     const a = join(w, 'Walker');
-    let tested = 0;
+    let tested = 0, atEdge = 0;
     const missing: string[] = [];
     for (const c of STATIC_COLLIDERS) {
       if (c.style === 'veil') continue; // the scenes' veil (test/scenes.test.ts): a wall 100 m long has no single approach
+      // at a scene's edge, pushing on takes you through the veil (边缘出口, test/scenes.test.ts): not a wall to stop at
+      { const o = centre(c), s = sceneAt(o.x, o.z); if (!s || Math.min(o.x - s.box[0], s.box[2] - o.x, o.z - s.box[1], s.box[3] - o.z) < 3) { atEdge++; continue; } }
       const start = approach(c);
       if (!start) { missing.push(label(c)); continue; }
       a.pos = { ...start };
@@ -92,7 +94,7 @@ describe('the layout is solid', () => {
     w.setInput(a.id, 0, 0);
     // only colliders buried inside others (a buttress in a wing, a tree hemmed in) have no free approach
     expect(missing.length, missing.join('; ')).toBeLessThan(12);
-    expect(tested).toBeGreaterThan(STATIC_COLLIDERS.filter((c) => c.style !== 'veil').length - 12);
+    expect(tested).toBeGreaterThan(STATIC_COLLIDERS.filter((c) => c.style !== 'veil').length - atEdge - 12);
   });
 
   it('the lake stops walkers at the waterline; bolts skim over it and over the tables', () => {

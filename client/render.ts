@@ -8,6 +8,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { loadEnvironments } from './assets';
 import { captureCamera, captureFocus } from './capture';
+import { OVERLAY } from './layers';
 import { gradedOutputPass } from './post';
 import { STORYBOOK, glowSprite, paintedClouds, paintedMoon } from './textures';
 
@@ -203,10 +204,15 @@ function cloudLayer() {
  */
 export function createRenderer(canvas: HTMLCanvasElement) {
   if (STORYBOOK) installStorybookShading();
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  // no multisampling on the canvas: the scene is multisampled in the composer's target, and the canvas only takes the
+  // output pass and the overlay (a second MSAA buffer there was memory and bandwidth for nothing)
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  /** The canvas: the screen's pixels (up to 2x). The scene renders at `scale` (setScale) and is upscaled into it. */
+  const outRatio = Math.min(2, devicePixelRatio);
+  let scale = outRatio;
+  renderer.setPixelRatio(outRatio);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // (three r18x dropped PCFSoft: it fell back to this with a warning)
   renderer.toneMapping = STORYBOOK ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -326,12 +332,20 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.45, 1.1);
   composer.addPass(bloom);
   const grade = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, tint: { value: new THREE.Color(1, 1, 1) }, saturation: { value: 1.08 }, vignette: { value: 0.32 }, uStory: { value: STORYBOOK ? 1 : 0 } },
+    uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1, 1) }, uSharp: { value: 0 }, tint: { value: new THREE.Color(1, 1, 1) }, saturation: { value: 1.08 }, vignette: { value: 0.32 }, uStory: { value: STORYBOOK ? 1 : 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform sampler2D tDiffuse; uniform vec3 tint; uniform float saturation; uniform float vignette; uniform float uStory; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform float uSharp; uniform vec3 tint; uniform float saturation; uniform float vignette; uniform float uStory; varying vec2 vUv;
       float h21( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
       void main(){
         vec4 c = texture2D(tDiffuse, vUv);
+        // upscaling from a lower render scale: sharpen, held to the neighbourhood's own range so it cannot ring
+        // (the idea of FSR 1's RCAS; four taps of the source)
+        if (uSharp > 0.0) {
+          vec3 n = texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb, s = texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb;
+          vec3 e = texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb, w = texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb;
+          vec3 lo = min(c.rgb, min(min(n, s), min(e, w))), hi = max(c.rgb, max(max(n, s), max(e, w)));
+          c.rgb = clamp(c.rgb + (c.rgb - 0.25 * (n + s + e + w)) * uSharp, lo, hi);
+        }
         float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
         c.rgb = mix(vec3(l), c.rgb, saturation) * tint;
         if (uStory > 0.5) {
@@ -370,6 +384,9 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
     composer.setSize(innerWidth, innerHeight);
+    grade.uniforms.uTexel.value.set(1 / Math.max(1, Math.floor(innerWidth * scale)), 1 / Math.max(1, Math.floor(innerHeight * scale)));
+    // the lower the scene's scale against the screen's, the more it is sharpened (none at 1:1)
+    grade.uniforms.uSharp.value = Math.min(0.8, Math.max(0, outRatio / scale - 1) * 0.8);
     bloom.resolution.set(innerWidth / 2, innerHeight / 2);
     camera.aspect = innerWidth / innerHeight;
     // a portrait phone: the vertical field of view widens so the horizontal one stays near PORTRAIT_H_FOV (at 55° a
@@ -515,18 +532,34 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         if (b) { l.position.set(b.x, b.y ?? 1.5, b.z); l.color.setHex(b.color); }
       });
     },
-    /** Low quality: 1x pixels, smaller shadow map, no bloom pass. Used on weak GPUs (auto-detected) or ?q=low. */
+    /** The scene's render scale (pixels per CSS pixel; the canvas keeps the screen's, up to 2x): dynres.ts drives it. */
+    setScale(r: number) {
+      scale = Math.min(outRatio, r);
+      composer.setPixelRatio(scale); // the HDR target is what is really rendered
+      resize();
+    },
+    get scale() { return scale; },
+    outRatio,
+    /** Low quality: smaller shadow map, no bloom pass (the render scale is dynres.ts's). Weak GPUs (auto-detected) or ?q=low. */
     setQuality(q: 'low' | 'high') {
       const low = q === 'low';
-      const ratio = low ? 0.75 : Math.min(2, devicePixelRatio);
-      renderer.setPixelRatio(ratio);
-      composer.setPixelRatio(ratio); // the HDR target is what is really rendered; scale it too
       sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
       sun.shadow.map?.dispose();
       sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
       bloom.enabled = !low;
       resize();
     },
-    render() { if (!captureCamera(camera)) composer.render(); },
+    render() {
+      if (captureCamera(camera)) return;
+      composer.render();
+      // the overlay (layers.ts): sharp text at the canvas's own resolution, over the finished frame
+      const bg = scene.background, clear = renderer.autoClear;
+      scene.background = null; renderer.autoClear = false;
+      camera.layers.set(OVERLAY);
+      renderer.setRenderTarget(null);
+      renderer.render(scene, camera);
+      camera.layers.set(0);
+      scene.background = bg; renderer.autoClear = clear;
+    },
   };
 }

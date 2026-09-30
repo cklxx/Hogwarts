@@ -32,7 +32,7 @@ import { Solids, dist } from './physics.js';
 import { Separator } from './separation.js';
 import { statueCollider } from '../shared/layout.js';
 import { findPath } from './pathfind.js';
-import { SCENES, routeVia, sceneAt, type Gate } from '../shared/scenes.js';
+import { edgeAt, edgeHop, nearEdge, SCENES, routeVia, sceneAt, type Gate } from '../shared/scenes.js';
 import { thinkNpcs } from './npc.js';
 import { closePairs, EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
@@ -2119,13 +2119,19 @@ export class World {
     this.via.delete(w.id);
     if (!goal) return null;
     if (w.st.jailedUntil) throw new Error('The walls of Azkaban are thick.');
-    const to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
-    if (sceneAt(w.pos.x, w.pos.z) && !sceneAt(to.x, to.z)) throw new Error(`(${Math.round(to.x)}, ${Math.round(to.z)}) is in the mist between the scenes: nobody walks there. Scenes: ${SCENES.map((s) => `${s.id} [${s.box.join(', ')}]`).join('; ')}. 那里在场景之间的雾里，走不过去。`);
-    // another scene: walk to the gate first; going through it walks on (the scenes Feature)
-    const hop = routeVia(w.pos, to);
-    if (hop) this.via.set(w.id, { to, by, gate: hop });
+    let to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
+    to = nearEdge(w.pos, to) ?? to;
+    // into the mist, or into the scene that lies past this edge: walk to the edge and through it (边缘出口); another
+    // scene: to its gate first; going through either walks on (the scenes Feature)
     this.syncSolids();
-    const route = findPath(w.pos, hop ? hop.at : to, this.solids);
+    let hop = edgeHop(w.pos, to);
+    let route = hop ? findPath(w.pos, hop.at, this.solids) : null;
+    // (the path ends where the grid lets it: that is the crossing, if it is still at the edge; else the gates)
+    hop = hop && route?.length ? edgeAt(hop, route[route.length - 1]) : null;
+    if (!hop) { hop = routeVia(w.pos, to); route = null; }
+    if (!hop && sceneAt(w.pos.x, w.pos.z) && !sceneAt(to.x, to.z)) throw new Error(`(${Math.round(to.x)}, ${Math.round(to.z)}) is in the mist between the scenes: nobody walks there. Scenes: ${SCENES.map((s) => `${s.id} [${s.box.join(', ')}]`).join('; ')}. 那里在场景之间的雾里，走不过去。`);
+    if (hop) this.via.set(w.id, { to: sceneAt(to.x, to.z) ? to : hop.out, by, gate: hop });
+    route ??= findPath(w.pos, hop ? hop.at : to, this.solids);
     this.stuck.delete(w.id);
     if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
     w.route = route;

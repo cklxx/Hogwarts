@@ -167,6 +167,7 @@ const canvas = $<HTMLCanvasElement>('#view');
 probe.mark('script');
 const R = createRenderer(canvas);
 probe.attach(R.renderer, R.scene);
+probe.setScaleOf(() => R.scale);
 probe.mark('renderer');
 // Shader errors are checked in development only: the check reads the compile status back from the GPU,
 // which waits for every command queued before it (a stall per program, and it defeats parallel compiling).
@@ -246,20 +247,26 @@ let quality: 'low' | 'high' = startQuality;
 const params = new URLSearchParams(location.search);
 const capturing = params.get('capture') === '1';
 /**
- * Dynamic resolution (dynres.ts) within each quality's range: 'high' renders at up to the screen's pixel
- * ratio (at most 2) and may go down to 60 % of 1x; 'low' between 0.5 and 0.75. The promo
- * capture keeps the fixed ratio.
+ * The scene's render scale (pixels per CSS pixel), by dynamic resolution (dynres.ts) within each quality's range. The
+ * canvas, the name tags and the rest of the text stay at the screen's resolution (render.ts, layers.ts), and the
+ * upscaled scene is sharpened, so a low scale softens the world, not the words. 'high': up to the screen's (at most
+ * 2x), down to 0.7x; 'low': 0.6-1x, a phone 0.75-1.5x. The promo capture keeps a fixed scale.
  */
-// a phone at 'low' may go up to 1.5x (it rendered 0.75x of the CSS pixels — a quarter of a 3x screen's — and the wizard
-// was a smudge); dynres still steps down when frames are slow
 const coarse = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? (coarse ? [0.75, Math.min(1.5, devicePixelRatio)] : [0.5, 0.75]) : [0.6 * Math.min(1, devicePixelRatio), Math.min(2, devicePixelRatio)]);
+const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? (coarse ? [0.75, Math.min(1.5, devicePixelRatio)] : [0.6, 1]) : [0.7, R.outRatio]);
 const dyn = capturing ? null : createDynRes({
   min: ratioRange(quality)[0], max: ratioRange(quality)[1],
-  apply: (r) => { R.renderer.setPixelRatio(r); R.composer.setPixelRatio(r); R.resize(); },
+  apply: (r) => R.setScale(r),
+  // still slow at the lowest scale: then (and only then, never on the loading's first hitches) the lighter pipeline
+  onFloor: () => {
+    if (quality !== 'high' || forcedQ) return;
+    applyQuality('low');
+    toast(L('画质已自动调低，画面更流畅（地址后加 ?q=high 可强制高画质）。', 'Graphics quality lowered for smoother play (add ?q=high to force).'));
+  },
 });
 const applyQuality = (q: 'low' | 'high') => {
-  quality = q; R.setQuality(q); world.setQuality(q); lighterLake(); dyn?.range(...ratioRange(q));
+  quality = q; R.setQuality(q); world.setQuality(q); lighterLake();
+  if (dyn) dyn.range(...ratioRange(q)); else R.setScale(q === 'low' ? 0.75 : R.outRatio);
   // multisampling: 4x at 'high', 2x at 'low' (half the resolve bandwidth; weak GPUs are fill-bound)
   const samples = q === 'low' ? 2 : 4;
   for (const rt of [R.composer.renderTarget1, R.composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
@@ -286,7 +293,23 @@ function lighterLake() {
 }
 applyQuality(quality);
 probe.mark('quality');
-const perf = { frames: 0, time: 0, done: !!forcedQ || startQuality === 'low' };
+/**
+ * A phone draws at most ~60 frames a second (a 120 Hz screen asks for twice that: twice the GPU work and the heat,
+ * for motion the thumb cannot tell apart — the frame cap mobile games ship with).
+ */
+const FRAME_MIN_MS = handheld && !capturing ? 12 : 0;
+/**
+ * Frames on the player's own GPU (this box only has a software renderer): the last 15 s of frame intervals go to the
+ * server's playtest metrics (kernel/metrics.ts `fps`, scripts/playtest/report.ts) as p50 / p95, with the render scale,
+ * the quality and the GPU's name — the numbers "卡" is argued from.
+ */
+const frameMs: number[] = [];
+const gpuName = (() => { try { const gl = R.renderer.getContext(); return String(gl.getParameter(gl.RENDERER) ?? ''); } catch { return ''; } })();
+setInterval(() => {
+  if (!snap || frameMs.length < 30 || document.hidden) { frameMs.length = 0; return; }
+  const s = frameMs.splice(0).sort((a, b) => a - b), at = (p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+  send({ t: 'metrics', fps: { p50: at(0.5), p95: at(0.95), scale: R.scale, q: quality, dpr: devicePixelRatio, gpu: gpuName } });
+}, 15000);
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
 const weatherPts = new THREE.Points(
   new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 3000 * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 40 : (Math.random() - 0.5) * 120)), 3)),
@@ -798,7 +821,7 @@ function hud() {
   fun.hud();
   renderTop(feats); // the Dark Lord's ribbon, the lawless zone, the veto card, the joint Patronus (client/features.ts)
   for (const f of feats) f.hud?.();
-  trackBars();
+  watchBars();
 }
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
 function meCard(me: Me, revealed: boolean) {
@@ -1259,9 +1282,25 @@ function renderAgentBox() {
   }
   if (html !== lastAgentHtml) { (el.querySelector('.ab-card') as HTMLElement).innerHTML = html; lastAgentHtml = html; }
 }
-/** The bottom stack's height, so toasts, the chat line and the coach mark sit just above it (read by hud() at 10 Hz). */
+/**
+ * The bottom stack's height, so toasts, the chat line and the coach mark sit just above it, and the top stack's
+ * edges. Measured when something in them changes size (a ResizeObserver: its callback runs after layout, so reading
+ * the rects costs nothing), not by reading them at the end of every HUD tick (that forced a layout ten times a second,
+ * right after the HUD's writes). Writing the edges moves the pieces below: measured once more on the next frame.
+ */
 let barsH = -1, tlBottom = -1;
+const BAR_IDS = ['bars', 'topleft', 'cupstrip', 'target', 'pn-top', 'tutorial'];
+const barsSeen = new WeakSet<HTMLElement>();
+let barsAgain = false;
+const barsRO = typeof ResizeObserver === 'function' ? new ResizeObserver(() => trackBars()) : null;
+function watchBars() {
+  if (!barsRO) { trackBars(); return; }
+  for (const id of BAR_IDS) { const e = document.getElementById(id); if (e && !barsSeen.has(e)) { barsSeen.add(e); barsRO.observe(e); } }
+}
+new MutationObserver(() => trackBars()).observe($('#tutorial'), { attributes: true, attributeFilter: ['hidden', 'data-at', 'data-over'] });
+addEventListener('resize', () => trackBars());
 function trackBars() {
+  const before = `${barsH},${tlBottom},${stackSig},${tutH},${tutB},${tutOver}`;
   const h = Math.round(innerHeight - $('#bars').getBoundingClientRect().top);
   if (h !== barsH && h > 0) { barsH = h; document.documentElement.style.setProperty('--bars-h', `${h}px`); }
   const tl = Math.round($('#topleft').getBoundingClientRect().bottom);
@@ -1281,6 +1320,8 @@ function trackBars() {
   if (bh !== tutB) { tutB = bh; document.documentElement.style.setProperty('--tut-b', `${bh}px`); }
   const oh = !tut.hidden && tut.dataset.over ? Math.round(tut.getBoundingClientRect().bottom) : 0;
   if (oh !== tutOver) { tutOver = oh; document.documentElement.style.setProperty('--tut-over', `${oh}px`); }
+  // something moved: the pieces placed from it moved too — measure again after the next layout
+  if (!barsAgain && `${barsH},${tlBottom},${stackSig},${tutH},${tutB},${tutOver}` !== before) { barsAgain = true; requestAnimationFrame(() => requestAnimationFrame(() => { barsAgain = false; trackBars(); })); }
 }
 let tutH = -1, tutOver = -1, tutB = -1, stackSig = '';
 $('#agentbox').addEventListener('click', (e) => {
@@ -1902,20 +1943,14 @@ function animBolt(b: THREE.Object3D & { tx?: number; tz?: number }) {
 }
 function frame() {
   requestAnimationFrame(frame);
+  const now = performance.now();
+  if (now - prev < FRAME_MIN_MS) return;
   probe.frameBegin();
   let tp = probe.begin();
-  const now = performance.now();
   const dt = Math.min(0.1, (now - prev) / 1000);
-  if (snap) dyn?.frame(now - prev);
+  if (snap) { dyn?.frame(now - prev); if (frameMs.length < 4000) frameMs.push(now - prev); }
   prev = now;
   clock += dt;
-  if (!perf.done && snap) {
-    perf.frames++; perf.time += dt;
-    if (perf.time > 3) {
-      perf.done = true;
-      if (perf.time / perf.frames > 0.045 && quality === 'high') { applyQuality('low'); toast(L('画质已自动调低，画面更流畅（地址后加 ?q=high 可强制高画质）。', 'Graphics quality lowered for smoother play (add ?q=high to force).')); }
-    }
-  }
   FR.k = 1 - Math.exp(-dt * 12);
   FR.dt = dt;
   // level of detail from last frame's camera (it moves a fraction of a metre per frame)
@@ -2046,6 +2081,8 @@ const warmed = (async () => {
   R.renderer.setRenderTarget(R.composer.renderTarget1);
   try { await R.renderer.compileAsync(scene, camera); } catch { /* compile on first use, as before */ }
   R.renderer.setRenderTarget(was);
+  // and the overlay's text (layers.ts), drawn on the canvas itself
+  try { await R.renderer.compileAsync(w.label.sprite, camera, scene); } catch { /* compile on first use */ }
   scene.remove(g);
   herd.begin(); herd.end();
   crowd.begin(); crowd.end(false);

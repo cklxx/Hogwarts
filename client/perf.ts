@@ -103,6 +103,9 @@ const api = {
     return i ? { programs: i.programs?.length ?? 0, geometries: i.memory.geometries, textures: i.memory.textures } : null;
   },
   /** Draw calls per render() since the last reset, keyed by scene type, target size and camera. */
+  /** The scene's render scale (render.ts setScale; main.ts sets `scaleOf`), next to the canvas's pixel ratio. */
+  scaleOf: () => state.renderer?.getPixelRatio() ?? 1,
+  scale() { return api.scaleOf(); },
   get passes() { return state.passes; },
   /** The shader programs three.js holds (name and cache key head), to see what compiled when. */
   programs() { return (state.renderer?.info.programs ?? []).map((p) => `${p.name} ${String(p.cacheKey).slice(0, 60)}`); },
@@ -161,7 +164,9 @@ function overlay() {
     const js = fr.reduce((a, f) => a + f.js, 0) / fr.length;
     const last = fr[fr.length - 1];
     const i = api.info();
-    const text = `${(1000 / mean).toFixed(0)} fps  ${mean.toFixed(1)} / ${worst.toFixed(0)} ms  ${state.renderer?.getPixelRatio().toFixed(2)}x\nJS ${js.toFixed(2)} ms/frame\n${last.calls} calls  ${(last.tris / 1000).toFixed(0)}k tris\n${i?.programs ?? 0} programs  ${i?.textures ?? 0} tex`;
+    const text = `${(1000 / mean).toFixed(0)} fps  ${mean.toFixed(1)} / ${worst.toFixed(0)} ms  ${state.renderer?.getPixelRatio().toFixed(2)}x (3D ${api.scale().toFixed(2)}x)\nJS ${js.toFixed(2)} ms/frame\n${last.calls} calls  ${(last.tris / 1000).toFixed(0)}k tris\n${i?.programs ?? 0} programs  ${i?.textures ?? 0} tex`;
     if (el.textContent !== text) el.textContent = text;
   }, 500);
 }
+/** Where the overlay reads the scene's render scale from (main.ts: render.ts's). */
+export function setScaleOf(f: () => number) { api.scaleOf = f; }
