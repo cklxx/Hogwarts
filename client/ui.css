@@ -1,0 +1,37 @@
+/* 界面 (client/ui.ts): hidden widgets, layout mode, the 界面 sheet, and the two other papers. */
+[data-ui-off] { display: none !important; }
+
+/* layout mode: every widget outlined and named, hidden ones faint; nothing underneath takes the clicks */
+body.ui-edit [data-ui-name] { outline: calc(2px * var(--u)) dashed var(--wax-l); outline-offset: calc(3px * var(--u)); cursor: move; pointer-events: auto !important; }
+body.ui-edit [data-ui-name]::before { content: attr(data-ui-name); position: absolute; left: 0; top: calc(-22px * var(--u)); z-index: 30; padding: 0 calc(6px * var(--u));
+  font: 500 calc(12px * var(--t))/1.6 var(--cjk); color: var(--light); background: var(--wax-d); border-radius: calc(3px * var(--u)); white-space: nowrap; pointer-events: none; }
+body.ui-edit [data-ui-off] { display: revert !important; opacity: .35; }
+body.ui-edit [data-ui-off]::before { text-decoration: line-through; }
+
+#uipanel { z-index: 8; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(92vw, calc(560px * var(--u))); max-height: 86vh; }
+#uipanel .ui-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(170px * var(--u)), 1fr)); gap: calc(4px * var(--u)) calc(12px * var(--u)); }
+#uipanel .ui-list label { display: flex; align-items: center; gap: calc(6px * var(--u)); font-size: var(--fs-cap); }
+#uipanel textarea { width: 100%; font: calc(13px * var(--t))/1.5 var(--mono); color: var(--ink); background: rgba(255, 250, 235, .45); border: 1px solid var(--hair); padding: calc(8px * var(--u)); resize: vertical; }
+
+/* 夜读: dark paper, pale ink */
+:root[data-theme='night'] {
+  --paper: #2e2a24; --paper2: #26221d; --paper3: #1c1915;
+  --ink: #efe3c8; --ink2: #cdbb98; --ink3: #b09c78;
+  --wax: #c2453c; --wax-d: #8a2a24; --wax-l: #e0675c;
+  --indigo: #8fb0e0; --verdigris: #7cc3ad; --ochre: #d9b060; --vermilion: #e3805f; --hex: #b99ae6;
+  --light: #f6ebd0; --hair: rgba(239, 227, 200, .22);
+  --sheen: 70 62 52; --sheen2: 58 51 42;
+}
+:root[data-theme='night'] #uipanel textarea { background: rgba(0, 0, 0, .25); }
+
+/* 高对比: white paper, black ink, no texture */
+:root[data-theme='contrast'] {
+  --paper: #fffdf6; --paper2: #fffaf0; --paper3: #f3ead6;
+  --ink: #000; --ink2: #1a1a1a; --ink3: #333;
+  --wax: #a0000a; --indigo: #002f80; --verdigris: #00543c;
+  --hair: rgba(0, 0, 0, .45);
+  --paper-bg: linear-gradient(var(--paper), var(--paper));
+  --halo: 0 0 calc(2px * var(--u)) #000, 0 0 calc(4px * var(--u)) #000;
+}
+/* a widget inside another (the key hints in the bottom stack) names itself underneath, so the two labels do not overlap */
+body.ui-edit [data-ui-name] [data-ui-name]::before { top: auto; bottom: calc(-22px * var(--u)); }

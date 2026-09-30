@@ -106,5 +106,5 @@ export function createDuel(d: DuelDeps) {
 export const duelFeature: ClientFeatureFactory = (d) => {
   const ui = createDuel({ send: d.send, toast: d.toast, du: () => d.wire<DuSnap>('du'), nameOf: d.nameOf, myHandle: d.myHandle, myPos: d.myPos, camYaw: d.camYaw });
   // (G acts: not while you watch your agent play)
-  return { id: 'duel', ...ui, keydown: (e) => !d.observing() && ui.keydown(e) };
+  return { id: 'duel', widgets: [{ id: 'duelslip', zh: '决斗俱乐部', en: 'Duelling Club' }], ...ui, keydown: (e) => !d.observing() && ui.keydown(e) };
 };

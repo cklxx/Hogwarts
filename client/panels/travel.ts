@@ -49,7 +49,7 @@ export const travelFeature: ClientFeatureFactory = (d): ClientFeature => {
     picker.id = 'floo';
     picker.className = 'sheet';
     picker.innerHTML = `<p><b>${L('飞路网', 'Floo Network')}</b> · ${esc(lang === 'zh' ? c.at.zh : c.at.en)}</p><p>${c.to.map((f) => `<button data-to="${f.id}">${esc(lang === 'zh' ? f.zh : f.en)} <small>${f.dist} m</small></button>`).join(' ')}</p><p><button class="ghost" data-to="">${L('取消', 'Cancel')}</button></p>`;
-    picker.style.cssText = 'position:fixed;left:50%;bottom:calc(180px * var(--u));transform:translateX(-50%);z-index:20;max-width:calc(100vw - 32px);padding:10px 14px;background:rgba(250,240,214,.96);border:1px solid #8a6a3a;border-radius:8px';
+    picker.style.cssText = 'position:fixed;left:50%;bottom:calc(180px * var(--u));transform:translateX(-50%);z-index:20;max-width:calc(100vw - 32px);padding:10px 14px;background:rgb(var(--sheen2) / .96);color:var(--ink);border:1px solid var(--ink3);border-radius:8px';
     picker.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('[data-to]') as HTMLElement | null;
       if (!b) return;

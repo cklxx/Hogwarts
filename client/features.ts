@@ -14,11 +14,13 @@ import { quidditchFeature } from './panels/quidditch';
 import { sealsFeature } from './panels/seals';
 import { studyFeature } from './panels/study';
 import { travelFeature } from './panels/travel';
+import { trunkFeature } from './panels/trunk';
 import { wardFeature } from './panels/ward';
+import { uiFeature } from './ui';
 
 // the top stack reads in this order: the Dark Lord's ribbon, the lawless zone, the DA's vote card and joint Patronus
 export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [
-  darkLordFeature, lawlessFeature, daFeature, studyFeature, sealsFeature, chatFeature, duelFeature, quidditchFeature, wardFeature, travelFeature, questsFeature, darkFeature,
+  darkLordFeature, lawlessFeature, daFeature, studyFeature, sealsFeature, chatFeature, duelFeature, quidditchFeature, wardFeature, travelFeature, questsFeature, darkFeature, trunkFeature, uiFeature,
 ];
 
 /** The stack at the top centre, under the target frame (#pn-top): every feature's `top`, in order. */

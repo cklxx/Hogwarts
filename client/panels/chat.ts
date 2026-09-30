@@ -60,6 +60,7 @@ export const chatFeature: ClientFeatureFactory = (): ClientFeature => {
   }
   return {
     id: 'chat',
+    widgets: [{ id: 'chatlog', zh: '聊天记录', en: 'Chat log' }],
     onEvent(e) {
       const ev = e as ChatEv;
       if (ev.type !== 'chat' || lines.some((l) => l.id === ev.id)) return;

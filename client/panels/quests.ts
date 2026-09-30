@@ -19,7 +19,7 @@ export const questsFeature: ClientFeatureFactory = (d): ClientFeature => {
   const el = document.createElement('div');
   el.id = 'quests';
   el.hidden = true;
-  el.style.cssText = 'position:fixed;left:calc(16px * var(--u));bottom:calc(440px * var(--u));z-index:6;max-width:min(calc(340px * var(--u)),calc(100vw - 32px));padding:calc(6px * var(--u)) calc(10px * var(--u));background:rgba(250,240,214,.9);border:1px solid #8a6a3a;border-radius:calc(6px * var(--u));font-size:calc(14px * var(--t));cursor:pointer';
+  el.style.cssText = 'position:fixed;left:calc(16px * var(--u));bottom:calc(440px * var(--u));z-index:6;max-width:min(calc(340px * var(--u)),calc(100vw - 32px));padding:calc(6px * var(--u)) calc(10px * var(--u));background:rgb(var(--sheen2) / .9);color:var(--ink);border:1px solid var(--ink3);border-radius:calc(6px * var(--u));font-size:calc(14px * var(--t));cursor:pointer';
   el.addEventListener('click', () => { open = !open; dirty = true; });
   document.body.append(el);
   const ask = () => { askedAt = performance.now(); d.send({ t: 'quests' }); };
@@ -32,6 +32,7 @@ export const questsFeature: ClientFeatureFactory = (d): ClientFeature => {
   }
   return {
     id: 'quests',
+    widgets: [{ id: 'quests', zh: '今日课表', en: 'Today\'s lessons' }],
     hud() {
       if (performance.now() - askedAt > QUEST_POLL_S * 1000) ask();
       if (dirty) render();
