@@ -348,6 +348,7 @@ function connect() {
       for (const e of hist) if (e.type === 'owl' || e.type === 'ask') feed(e, false);
       for (const e of hist) for (const f of feats) f.onEvent?.(e, false);
       for (const e of hist.filter((x) => x.type !== 'owl' && x.type !== 'ask' && !x.to).slice(-2)) feed(e, false);
+      if (typeof msg.invite === 'string') invite = msg.invite;
       menuInfo(msg.mcpUrl);
       onBuild(msg.build);
       if (msg.pair?.code) onPairCode(msg.pair);
@@ -853,6 +854,8 @@ async function showBoard() {
 
 // ------------------------------------------------------------------ Owl Post menu (Esc): pairing code, connect commands, your key (docs/AGENT_LINK.md §A, §C.6)
 let mcpUrl = '';
+/** The link a friend opens (welcome.invite: the LAN address when you play on the server's own machine). */
+let invite = location.origin;
 /** When each panel last asked the server for something: an 'err' right after belongs to that panel. */
 const lastSent = { owl: -1e9, trunk: -1e9, menu: -1e9 };
 const mark = (k: keyof typeof lastSent) => { lastSent[k] = performance.now(); };
@@ -891,6 +894,10 @@ function menuInfo(url?: string) {
       ${pn.menuHtml()}
     </section>
     ${pn.menuLinks(feats.map((f) => f.menu?.() ?? '').join(''))}
+    <h3>${ic('letter')}${L('邀请朋友', 'Invite a friend')}</h3>
+    <p class="hint">${L('朋友在能连到这台服务器的网络里打开这个链接（手机扫码）即可加入；桌面客户端里也可以直接粘贴它。', 'A friend on a network that reaches this server opens this link (or scans it with a phone); the desktop client takes it pasted too.')}</p>
+    <div class="op-cmd"><pre id="op-invite">${esc(invite)}</pre><button class="ghost" data-copy="op-invite">${L('复制', 'Copy')}</button></div>
+    <div id="op-qr"></div>
     <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
     <p>${shell?.claudeCode ? L(`<b>推荐：桌面客户端当桥</b>（在终端里运行一次；Agent 连的是这台服务器，密钥从系统钥匙串读，不写进任何配置。想接 Claude Desktop：按 <kbd>${switchKey}</kbd> 回到启动器，点「写入 Claude Desktop」）：`, `<b>Recommended: the desktop client as the bridge</b> (run it once in a terminal; the agent reaches this server and reads the key from the system keychain, never from a config file. For Claude Desktop: <kbd>${switchKey}</kbd> back to the launcher, then "写入 Claude Desktop"):`) : L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
@@ -915,6 +922,14 @@ function menuInfo(url?: string) {
   $('#close-menu').onclick = () => { $('#menu').hidden = true; };
   lastPairHtml = lastKeyHtml = '';
   renderMenuLive();
+  // the QR encoder loads with the first open menu, not with the game
+  void import('qrcode-generator').then(({ default: qrcode }) => {
+    const q = qrcode(0, 'M');
+    q.addData(invite);
+    q.make();
+    const el = document.getElementById('op-qr');
+    if (el) el.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  }, () => { /* offline: the link above still works */ });
 }
 $('#menu').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
