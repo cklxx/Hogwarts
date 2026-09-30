@@ -2,7 +2,7 @@
  * Client profiling harness: a busy world, the real server, headless Chromium, fixed camera spots.
  *
  *   npx vite build && npx tsx scripts/perf-client.ts [--port=8820] [--q=high,low] [--secs=8] [--warm=4]
- *        [--bots=60] [--crowd=30] [--npcs=12] [--aoi=0|1] [--spots=follow,crowd,castle,lake,overview] [--size=1280x720]
+ *        [--bots=60] [--crowd=30] [--npcs=12] [--spots=follow,crowd,castle,lake,overview] [--size=1280x720]
  *        [--label=before] [--out=results.jsonl] [--chromium=/opt/pw-browsers/chromium] [--census] [--shots=dir] [--url=&extra=1]
  *        [--viewer=x,z]   (spots also: close, hall, forest)   [--heap]  (what allocates, per spot: CDP sampling heap profiler)
  *        [--nodraw]  (every frame's JS runs, nothing is drawn: the page at the display's rate, without SwiftShader)
@@ -46,7 +46,6 @@ const WARM = Number(opt('warm', '4'));
 const BOTS = Number(opt('bots', '60'));
 const CROWD = Number(opt('crowd', '30'));
 const NPCS = Number(opt('npcs', '12'));
-const AOI = opt('aoi', ''); // '' = the client's default (area of interest since wf/fast), 0 = whole world, 1 = AOI
 const QS = opt('q', 'high,low').split(',');
 const SPOTS = opt('spots', 'follow,crowd,castle,lake,overview').split(',');
 const [VW, VH] = opt('size', '1280x720').split('x').map(Number);
@@ -183,13 +182,13 @@ async function main() {
       const half = Math.ceil(w.tokens.length / 2);
       for (let i = 0; i < 2; i++) {
         const slice = w.tokens.slice(i * half, (i + 1) * half);
-        if (slice.length) workers.push(new Worker(new URL('./bench-clients.ts', import.meta.url), { workerData: { url: `ws://127.0.0.1:${PORT}`, tokens: slice, offset: i * half, seed: 31 * i + 7, inputHz: 20, aoi: true } }));
+        if (slice.length) workers.push(new Worker(new URL('./bench-clients.ts', import.meta.url), { workerData: { url: `ws://127.0.0.1:${PORT}`, tokens: slice, offset: i * half, seed: 31 * i + 7, inputHz: 20 } }));
       }
       const ask = (wk: Worker, cmd: string, want: string) => new Promise<unknown>((ok) => { const h = (m: { t: string }) => { if (m.t === want) { wk.off('message', h); ok(m); } }; wk.on('message', h); wk.postMessage({ cmd }); });
       await Promise.all(workers.map((wk) => ask(wk, 'connect', 'connected')));
       for (const wk of workers) wk.postMessage({ cmd: 'drive' });
     }
-    console.log(`world: ${BOTS} bots (${CROWD} at the spawn), ${NPCS} NPCs, ${w.creatures} creatures at start; client aoi=${AOI || 'default'}; ${VW}x${VH}; ${SECS}s per spot after ${WARM}s`);
+    console.log(`world: ${BOTS} bots (${CROWD} at the spawn), ${NPCS} NPCs, ${w.creatures} creatures at start; ${VW}x${VH}; ${SECS}s per spot after ${WARM}s`);
 
     for (const q of QS) {
       const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
@@ -213,7 +212,7 @@ async function main() {
       });
       if (args.has('profile')) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 500 }); await cdp.send('Profiler.start'); }
       const t0 = Date.now();
-      await page.goto(`${base}/?perf=1&capture=1&q=${q}${EXTRA}${AOI ? `&aoi=${AOI}` : ''}#k=${w.viewer}`, { waitUntil: 'load' });
+      await page.goto(`${base}/?perf=1&capture=1&q=${q}${EXTRA}#k=${w.viewer}`, { waitUntil: 'load' });
       const loadMs = Date.now() - t0;
       await page.waitForFunction(() => (window as any).__perf?.marks?.firstFrame, null, { timeout: 180_000, polling: 250 });
       const marks = await page.evaluate(() => (window as any).__perf.marks);

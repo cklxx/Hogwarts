@@ -8,6 +8,7 @@ import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { z } from 'zod';
+import { onMsg } from './ws.js';
 
 const PORT = Number(process.env.HOGWARTS_BRIDGE_TEST_PORT ?? 8060);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -117,7 +118,7 @@ describe('stdio bridge (docs/AGENT_LINK.md §A.1, §C.4)', () => {
     expect(conf.data).toMatchObject({ approved: true, via: 'terminal' });
 
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${tok}` } });
-    const seen = new Promise<any>((ok) => ws.on('message', (raw) => { const m = JSON.parse(String(raw)); if (m.t === 'me' && m.s.agent?.seen) ok(m.s.agent.seen); }));
+    const seen = new Promise<any>((ok) => onMsg(ws, (m) => { if (m.t === 'me' && m.s.agent?.seen) ok(m.s.agent.seen); }));
     await new Promise((ok) => ws.once('open', ok));
     await b.call('look');
     expect((await seen).client).toBe('claude-code');

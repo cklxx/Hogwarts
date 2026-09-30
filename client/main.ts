@@ -231,9 +231,9 @@ const herd = createHerd(scene);
  * creatures drawn nearer than `creature` and animated nearer than `anim`.
  */
 const LOD = { high: { mid: 22, wizard: 42, label: 45, creature: 170, anim: 70 }, low: { mid: 14, wizard: 24, label: 30, creature: 110, anim: 45 } };
-// ?lod=0 (comparisons) and the offline promo renderer (?capture=1 without the ?perf=1 probe, which only steers
-// the camera) draw every model in full, as does the lake's mirror and the shadow map every frame
-const fullDetail = new URLSearchParams(location.search).get('lod') === '0' || (new URLSearchParams(location.search).get('capture') === '1' && !probe.PERF);
+// the offline promo renderer (?capture=1 without the ?perf=1 probe, which only steers the camera) draws every
+// model in full, as does the lake's mirror and the shadow map every frame
+const fullDetail = new URLSearchParams(location.search).get('capture') === '1' && !probe.PERF;
 if (fullDetail) for (const l of Object.values(LOD)) Object.assign(l, { mid: 1e9, wizard: 1e9, label: 1e9, creature: 1e9, anim: 1e9 });
 probe.mark('world');
 if (/[?&]debug=colliders\b/.test(location.search)) void import('./debug').then((d) => d.showColliders(scene, () => snap?.look?.statues.length ?? 0));
@@ -242,11 +242,11 @@ const params = new URLSearchParams(location.search);
 const capturing = params.get('capture') === '1';
 /**
  * Dynamic resolution (dynres.ts) within each quality's range: 'high' renders at up to the screen's pixel
- * ratio (at most 2) and may go down to 60 % of 1x; 'low' between 0.5 and 0.75. ?dyn=0 (and the promo
- * capture) keep the fixed ratio.
+ * ratio (at most 2) and may go down to 60 % of 1x; 'low' between 0.5 and 0.75. The promo
+ * capture keeps the fixed ratio.
  */
 const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? [0.5, 0.75] : [0.6 * Math.min(1, devicePixelRatio), Math.min(2, devicePixelRatio)]);
-const dyn = params.get('dyn') === '0' || capturing ? null : createDynRes({
+const dyn = capturing ? null : createDynRes({
   min: ratioRange(quality)[0], max: ratioRange(quality)[1],
   apply: (r) => { R.renderer.setPixelRatio(r); R.composer.setPixelRatio(r); R.resize(); },
 });
@@ -316,12 +316,9 @@ let clock = 0;
 // ------------------------------------------------------------------ network
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  // area-of-interest snapshots (what is near you, see apply); ?aoi=0 asks for the whole world instead
-  const q = new URLSearchParams(location.search);
-  // binary delta snapshots (src/shared/snapwire.ts); ?v=1 asks for the JSON ones
-  const params = [q.get('aoi') === '0' ? '' : 'aoi=1', q.get('v') === '1' ? '' : 'v=2'].filter(Boolean).join('&');
-  // the key rides in the subprotocol list, never in the address (src/server/key.ts)
-  ws = new WebSocket(`${proto}://${location.host}/ws${params ? `?${params}` : ''}`, [WS_PROTOCOL, WS_KEY_PREFIX + token]);
+  // snapshots: binary deltas of what is near you (src/shared/snapwire.ts, see apply); the key rides in the
+  // subprotocol list, never in the address (src/server/key.ts)
+  ws = new WebSocket(`${proto}://${location.host}/ws`, [WS_PROTOCOL, WS_KEY_PREFIX + token]);
   ws.binaryType = 'arraybuffer';
   const snaps = new SnapDecoder();
   ws.onmessage = (m) => {
@@ -357,7 +354,6 @@ function connect() {
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') { me = msg.s; myHandle = (msg.s as { actAs?: { handle: string } }).actAs?.handle ?? ownHandle; }
-    else if (msg.t === 'event') { fun.onEvent(msg.e); for (const f of feats) f.onEvent?.(msg.e, true); feed(msg.e, true); }
     else if (msg.t === 'evs') for (const e of msg.es) { fun.onEvent(e); for (const f of feats) f.onEvent?.(e, true); feed(e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {

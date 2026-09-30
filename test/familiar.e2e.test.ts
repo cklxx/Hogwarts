@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
+import { onMsg } from './ws.js';
 
 const PORT = 8740 + Math.floor(Math.random() * 20);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -70,7 +71,7 @@ describe('使魔 end to end', () => {
     const { token } = (await r.json()) as { token: string };
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const msgs: any[] = [];
-    ws.on('message', (d) => msgs.push(JSON.parse(String(d))));
+    onMsg(ws, (m) => msgs.push(m));
     const until = async (pred: (m: any) => boolean, ms = 15000) => {
       const end = Date.now() + ms;
       while (Date.now() < end) { const m = msgs.find(pred); if (m) return m; await new Promise((x) => setTimeout(x, 50)); }

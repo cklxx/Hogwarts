@@ -1,11 +1,9 @@
 import { CATS, FRAME, HAS_HEAD, M_LIVE, M_STATIC, Writer, fxJson, scaled } from '../shared/snapwire.js';
-import { OFF, lowerBound, pack, type Snapshot, type SnapshotFanout } from './fanout.js';
+import { OFF, lowerBound, type AoiGrid, type Snapshot } from './fanout.js';
 
 /**
- * Binary delta snapshots (wire format: src/shared/snapwire.ts) for sockets that connect with `v=2`.
- *
- * Same area of interest, grid and hysteresis as the JSON fan-out (the geometry comes from the
- * SnapshotFanout it is given), same idea for cost: every record is encoded ONCE per broadcast, filed
+ * The snapshots every browser gets: binary deltas (wire format: src/shared/snapwire.ts) of its area of interest
+ * (the geometry and hysteresis: fanout.ts AoiGrid). Every record is encoded ONCE per broadcast, filed
  * under its grid cell, and each grid row is one buffer, so a client's payload is a handful of memcpys.
  * Each cell is encoded twice: `delta` (live / static only where they changed or the entity is new to the
  * cell) and `full` (live and static for everyone). A client whose area did not move gets the delta of
@@ -23,7 +21,6 @@ interface Filed { cell: number; st: string; lv: string }
 /** One cell's records while encoding. */
 interface Cell { full: Uint8Array[]; delta: Uint8Array[] }
 
-const ALL = pack(0, 0);
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
 export class BinFanout {
@@ -46,7 +43,7 @@ export class BinFanout {
   /** Distinct payloads built since the last load (for stats and tests). */
   built = 0;
 
-  constructor(readonly geo: SnapshotFanout) {}
+  constructor(readonly geo: AoiGrid) {}
 
   load(snap: Snapshot) {
     this.snap = snap;
@@ -55,9 +52,6 @@ export class BinFanout {
     this.built = 0;
   }
 
-  private cellOf(prev: number | undefined, x: number, z: number) {
-    return this.geo.enabled ? this.geo.stickyCell(prev, x, z) : ALL;
-  }
 
   private wid(k: number, key: string) {
     let id = this.ids[k].get(key);
@@ -90,7 +84,7 @@ export class BinFanout {
         for (const e of lists[k]) {
           const key = String(e[cat.id]);
           const was = prev.get(key);
-          const cell = this.cellOf(was?.cell, e.x as number, e.z as number);
+          const cell = this.geo.stickyCell(was?.cell, e.x as number, e.z as number);
           const st: Record<string, unknown> = {}, lv: Record<string, unknown> = {};
           for (const f in e) { if (!skip.has(f)) st[f] = e[f]; }
           for (const f of cat.live) if (e[f] !== undefined) lv[f] = e[f];
@@ -124,7 +118,7 @@ export class BinFanout {
           const r = this.rec;
           r.reset(); r.str(fxJson(e));
           const b = r.take();
-          put(this.geo.enabled ? pack(this.geo.cellOf(e.x as number), this.geo.cellOf(e.z as number)) : ALL, b, b);
+          put(this.geo.stickyCell(undefined, e.x as number, e.z as number), b, b);
         }
       }
       this.rows[k].clear();
@@ -164,7 +158,7 @@ export class BinFanout {
     if (!this.snap) throw new Error('BinFanout.payloadFor before load');
     if (!this.encoded) this.encode();
     const prev = st.resync ? -1 : st.anchor;
-    const anchor = this.geo.enabled ? this.geo.stickyCell(st.anchor, round1(x), round1(z)) : ALL;
+    const anchor = this.geo.stickyCell(st.anchor, round1(x), round1(z));
     st.anchor = anchor;
     st.resync = false;
     const key = `${prev}:${anchor}`;
@@ -173,7 +167,7 @@ export class BinFanout {
     const D = 2 * OFF;
     const ax = Math.floor(anchor / D) - OFF, az = (anchor % D) - OFF;
     const px = prev < 0 ? 0 : Math.floor(prev / D) - OFF, pz = prev < 0 ? 0 : (prev % D) - OFF;
-    const lim = this.geo.enabled ? this.geo.lim : 0, span = this.geo.enabled ? this.geo.span : [0];
+    const { lim, span } = this.geo;
     // (buffer, from, to) per copied range, per category
     const parts = this.parts, lens = this.lens;
     parts.length = 0;

@@ -11,7 +11,7 @@
  * Every entity in the client's area gets its dyn part in every frame. live / static are sent only when
  * the client may not have them: the entity is new to its grid cell, the part changed, the cell is new to
  * the client's area, or the client missed a frame (resync). The client keeps them per wire id and forgets
- * an id when a frame no longer carries it. Presence is therefore exactly as in the JSON snapshot: an
+ * an id when a frame no longer carries it. Presence is therefore exactly as in the world snapshot cut to the area: an
  * entity is in the frame or it is not.
  *
  * Frame: u8 FRAME | u8 flags (1 = head present) | zz t×10 | zz hour×10 | vu bytes(w) | vu bytes(c) |

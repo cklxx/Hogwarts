@@ -22,8 +22,8 @@ import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
 import { FORGE_FAIL_PER_MIN, LOGIN_FAIL_PER_IP_PER_MIN } from '../shared/constants.js';
 import { FAMILIAR_OFF, Familiars, anthropicCreate, familiarConfig } from './familiar.js';
-import { BinFanout, binState } from './binfanout.js';
-import { SnapshotFanout } from './fanout.js';
+import { BinFanout } from './binfanout.js';
+import { AoiGrid } from './fanout.js';
 import { buyPreset } from './shop.js';
 import { FailWindow } from './limits.js';
 import { serveStatic } from './static.js';
@@ -379,7 +379,7 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
     if (feat?.ws) { reply({ t: feat.id, r: feat.ws(world, wid, m as unknown as Record<string, unknown>) }); return; }
     const body = actingAs(world, wid); // whom the keys move (a feature may lend you another body)
     switch (m.t) {
-      case 'resync': { const b = netState(ws).bin; if (b) b.resync = true; break; } // a v=2 decoder lost its place (shared/snapwire.ts)
+      case 'resync': netState(ws).bin.resync = true; break; // the decoder lost its place (shared/snapwire.ts)
       case 'cast': reply({ t: 'cast', r: world.cast(body, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
       case 'unequip': world.unequip(wid, String(m.slot)); items(); break;
@@ -436,11 +436,6 @@ http.on('upgrade', (req, socket, head) => {
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
     const recent = world.events.filter((e) => visibleTo(e, w.id)).slice(-30).map((e) => world.wireEvent(e));
     ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
-    // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
-    // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
-    netState(ws).aoi = fanout.enabled && (AOI_ALL || url.searchParams.get('aoi') === '1');
-    // v=2: binary delta snapshots (binfanout.ts); such a client handles entities leaving its area by design
-    if (url.searchParams.get('v') === '2') netState(ws).bin = binState();
     const handle = (x: unknown) => handleClient(ws, w.id, x as ClientMsg); // one per socket, not one per message
     ws.on('message', (raw) => {
       let m: ClientMsg;
@@ -452,21 +447,17 @@ http.on('upgrade', (req, socket, head) => {
   });
 });
 
-const EV_OPEN = Buffer.from('{"t":"event","e":'), EV_CLOSE = Buffer.from('}');
 // Events: encoded once, queued for the sockets connected right now, written with the next broadcast (net.ts).
 world.onEvent((e) => {
-  const bare = Buffer.from(JSON.stringify(world.wireEvent(e)));
-  const msg = Buffer.concat([EV_OPEN, bare, EV_CLOSE]);
-  for (const [ws, wid] of clients) if (visibleTo(e, wid)) enqueue(ws, msg, bare);
+  const msg = Buffer.from(JSON.stringify(world.wireEvent(e)));
+  for (const [ws, wid] of clients) if (visibleTo(e, wid)) enqueue(ws, msg);
 });
 
-// Snapshots: built and serialised once per broadcast (fanout.ts). Clients with AOI get the entities
-// within AOI_RADIUS metres of them (0 = AOI off), shared by every client anchored to the same cell;
-// the others share one full snapshot. The private 'me' state goes out at most 5 Hz and only when it
-// changed; slow sockets skip snapshots; each socket gets its events + snapshot + 'me' in one write (net.ts).
-const fanout = new SnapshotFanout(Number(process.env.AOI_RADIUS ?? 140), Number(process.env.AOI_CELL ?? 16), Number(process.env.AOI_MARGIN ?? 10));
-const binFanout = new BinFanout(fanout);
-const AOI_ALL = process.env.AOI_ALL === '1';
+// Snapshots: built once per broadcast and encoded once per broadcast as binary deltas of each client's area of
+// interest (binfanout.ts, fanout.ts), shared by every client anchored to the same cell. The private 'me' state goes
+// out at most 5 Hz and only when it changed; slow sockets skip snapshots; each socket gets its events + snapshot +
+// 'me' in one write (net.ts).
+const binFanout = new BinFanout(new AoiGrid());
 let broadcasts = 0;
 /**
  * The fan-out of one broadcast runs in slices of FANOUT_SLICE sockets, yielding to the event loop between
@@ -474,7 +465,7 @@ let broadcasts = 0;
  * took 60-80 ms in one go). Every slice sends from the same snapshot; a broadcast still sending when the
  * next one is due is finished first.
  */
-const FANOUT_SLICE = Math.max(1, Number(process.env.FANOUT_SLICE ?? 100));
+const FANOUT_SLICE = 100;
 let fanning: { rest: [WebSocket, string][]; i: number } | null = null;
 function fanSlice() {
   const f = fanning;
@@ -500,8 +491,7 @@ function sendFrame(ws: WebSocket, wid: string) {
   // 看 Agent 玩: what your agent is doing (with spell sources), once a second while it plays
   if (bc.second && w.agentSeen && world.agentActive(w)) ws.send(JSON.stringify({ t: 'agentlog', s: world.agentActivity(wid) }));
   const st = netState(ws);
-  if (st.bin) ws.send(binFanout.payloadFor(w.pos.x, w.pos.z, st.bin), { binary: true });
-  else ws.send(st.aoi ? fanout.payloadFor(w.pos.x, w.pos.z, st.anchor) : fanout.fullPayload(), { binary: false });
+  ws.send(binFanout.payloadFor(w.pos.x, w.pos.z, st.bin), { binary: true });
   if (meDue(ws, bc.no)) {
     const s = world.privateState(wid);
     sendMeIfChanged(ws, JSON.stringify({ t: 'me', s: { ...s, agent: { ...s.agent, sessions: agentSessions(wid), ...(familiars ? { familiar: familiars.stateOf(wid) } : {}) } } }));
@@ -516,7 +506,6 @@ setInterval(() => {
   broadcasts++;
   flushInputs();
   const snap = world.snapshot();
-  fanout.load(snap);
   binFanout.load(snap);
   bc.no = broadcasts;
   bc.second = broadcasts % 10 === 0;

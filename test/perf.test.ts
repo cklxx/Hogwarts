@@ -1,8 +1,7 @@
 /**
  * The performance work must not change behaviour. Each fast path is checked against the slow
  * reference it replaced: the spatial index against full scans, the zone raster against inZone,
- * the derived() cache against a fresh computation, and area-of-interest snapshots against the
- * full snapshot they are cut from.
+ * and the derived() cache against a fresh computation (area-of-interest snapshots: test/snapwire.test.ts).
  */
 import { describe, expect, it } from 'vitest';
 import { derived, derivedUncached } from '../src/kernel/progression.js';
@@ -10,7 +9,6 @@ import { resolve } from '../src/kernel/physics.js';
 import { closePairs, EntityMap, SpatialHash } from '../src/kernel/spatial.js';
 import { World } from '../src/kernel/world.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from '../src/kernel/zones.js';
-import { SnapshotFanout } from '../src/server/fanout.js';
 import { admit, flushInputs, forget, LIMITS, SLOW_DOWN, sendMeIfChanged } from '../src/server/net.js';
 import { adoptedSessionId, cookieRealm, loginToken, realmCookie, realmDataPath, realmOf } from '../src/server/realms.js';
 import { ZONES, inZone, mulberry32, WORLD_HALF } from '../src/shared/map.js';
@@ -231,122 +229,6 @@ describe('derived() cache', () => {
     w.rules.magic.manaPerYear = 33; check();
     w.rules = { ...w.rules, magic: { ...w.rules.magic, baseMaxMana: 150 } }; check();
     a.wand = { ...a.wand, core: 'Phoenix feather' }; check();
-  });
-});
-
-describe('area-of-interest snapshots', () => {
-  const R = 140, CELL = 16, M = 10;
-  /** Everything this close is always sent; nothing further than FAR ever is (see fanout.ts). */
-  const NEAR = R - 2 * M, FAR = R + 2 * M + 2 * CELL * Math.SQRT2;
-  const world = () => {
-    const { w, ids, rnd } = busyWorld(21, 150);
-    for (const id of ids) w.wizards.get(id)!.pos = { x: (rnd() * 2 - 1) * (WORLD_HALF - 5), z: (rnd() * 2 - 1) * (WORLD_HALF - 5) };
-    for (let t = 0; t < 30; t++) {
-      for (let i = 0; i < ids.length; i++) if ((t + i) % 15 === 0) w.cast(ids[i], 'Stupefy', { aim: { x: 0, z: 0 } });
-      w.tick();
-    }
-    return { w, ids, rnd };
-  };
-  type E = { x: number; z: number };
-  const key = (e: unknown) => JSON.stringify(e);
-  /** A client's payload must be the full snapshot with the four arrays cut down, in snapshot order. */
-  const checkPayload = (buf: Buffer, full: Record<string, unknown>, me: { handle: string; pos: E }) => {
-    const msg = JSON.parse(buf.toString());
-    expect(msg.t).toBe('snap');
-    expect(Object.keys(msg.s)).toEqual(Object.keys(full));
-    for (const k of Object.keys(full)) if (!['w', 'c', 'p', 'fx'].includes(k)) expect(msg.s[k]).toEqual(full[k]);
-    const mx = Math.round(me.pos.x * 10) / 10, mz = Math.round(me.pos.z * 10) / 10;
-    for (const k of ['w', 'c', 'p', 'fx'] as const) {
-      const got = new Set((msg.s[k] as unknown[]).map(key)); // (fx entries can repeat)
-      for (const e of full[k] as E[]) {
-        const d = Math.hypot(e.x - mx, e.z - mz);
-        if (d <= NEAR) expect(got.has(key(e))).toBe(true); // nothing within the guaranteed radius is ever cut
-        if (got.has(key(e))) expect(d).toBeLessThanOrEqual(FAR + 1e-6);
-      }
-    }
-    expect(msg.s.w.some((x: { h: string }) => x.h === me.handle)).toBe(true);
-    return msg.s as { w: { h: string }[]; c: { i: string }[] };
-  };
-
-  it('each client gets exactly the cells in reach (with no history yet: everything within the radius), itself — in the full snapshot schema', () => {
-    const { w, ids } = world();
-    const snap = w.snapshot();
-    const f = new SnapshotFanout(R, CELL, M);
-    f.load(snap);
-    const cellOf = (v: number) => Math.floor(v / CELL);
-    const full = JSON.parse(JSON.stringify(snap));
-    for (const id of ids.slice(0, 60)) {
-      const me = w.wizards.get(id)!;
-      const buf = f.payloadFor(me.pos.x, me.pos.z);
-      const s = checkPayload(buf, full, me) as unknown as Record<string, unknown[]>;
-      // First broadcast, no history: everything is filed under its own cell.
-      const cx = cellOf(Math.round(me.pos.x * 10) / 10), cz = cellOf(Math.round(me.pos.z * 10) / 10);
-      for (const k of ['w', 'c', 'p', 'fx'] as const) {
-        const want = (full[k] as E[]).filter((e) => f.inReach(cellOf(e.x) - cx, cellOf(e.z) - cz));
-        expect(s[k].map(key).sort()).toEqual(want.map(key).sort()); // the same entries (cell by cell, so in another order)
-      }
-      expect(f.payloadFor(me.pos.x + 0.001, me.pos.z)).toBe(f.payloadFor(me.pos.x, me.pos.z)); // shared within a cell
-    }
-  });
-
-  it('with hysteresis, whatever the history: everything within radius − 2·margin, nothing beyond radius + 2·margin + 2 cell diagonals', () => {
-    const { w, ids, rnd } = world();
-    const f = new SnapshotFanout(R, CELL, M);
-    const viewers = ids.slice(0, 25).map((id) => ({ id, anchor: { cell: -1 } }));
-    for (let b = 0; b < 40; b++) {
-      for (const id of ids) { const x = w.wizards.get(id)!; x.pos = { x: x.pos.x + (rnd() - 0.5) * 9, z: x.pos.z + (rnd() - 0.5) * 9 }; }
-      w.tick(); w.tick();
-      const snap = w.snapshot();
-      f.load(snap);
-      const full = JSON.parse(JSON.stringify(snap));
-      for (const v of viewers) {
-        const me = w.wizards.get(v.id)!;
-        checkPayload(f.payloadFor(me.pos.x, me.pos.z, v.anchor), full, me);
-      }
-    }
-  });
-
-  it('has hysteresis: going back and forth across a cell edge (by less than 2 x margin) changes nothing', () => {
-    // A synthetic world: a viewer at the centre of cell (0, 0) and one wizard on the row z = 8, walking
-    // over the edge of the viewer's area.
-    const f = new SnapshotFanout(R, CELL, M);
-    let edge = 1;
-    while (f.inReach(edge, 0)) edge++; // first column out of reach
-    const xb = edge * CELL; // the boundary between the last column in reach and the first out of it
-    const wiz = (h: string, x: number, z: number) => ({ h, n: h, ho: 'Gryffindor', x, z, f: 0, hp: 100, m: 100, y: 1, t: '', s: '', say: undefined });
-    const snapAt = (ex: number, vx = 8) => ({ t: 0, hour: 12, night: false, weather: 'clear', term: { n: 1, left: 100 }, w: [wiz('viewer', vx, 8), wiz('walker', ex, 8)], c: [], p: [], fx: [], elder: null, willowCalm: false, look: {} }) as never;
-    const anchor = { cell: -1 };
-    const sees = (ex: number, vx = 8) => {
-      f.load(snapAt(ex, vx));
-      return JSON.parse(f.payloadFor(vx, 8, anchor).toString()).s.w.some((x: { h: string }) => x.h === 'walker');
-    };
-    expect(sees(xb - 1)).toBe(true);
-    // wobbling over the edge, up to just under `margin` past it: still seen
-    for (let i = 0; i < 10; i++) { expect(sees(xb + M - 0.5)).toBe(true); expect(sees(xb - 1)).toBe(true); }
-    // really leaving (margin past the edge): gone; wobbling back over the edge: still gone
-    expect(sees(xb + M + 1)).toBe(false);
-    for (let i = 0; i < 10; i++) { expect(sees(xb - M + 0.5)).toBe(false); expect(sees(xb + 1)).toBe(false); }
-    // really coming back
-    expect(sees(xb - M - 1)).toBe(true);
-    // The viewer wobbling across its own cell's edge (x = 16) keeps its anchor, so what it sees stays put.
-    const far = xb + CELL - 2; // filed under column `edge`: in reach of the neighbouring cell (1, 0), not of the viewer's own (0, 0)
-    expect(sees(far, 15)).toBe(false);
-    for (let i = 0; i < 10; i++) { expect(sees(far, CELL + M - 0.5)).toBe(false); expect(sees(far, 15)).toBe(false); }
-    expect(sees(far, CELL + M + 1)).toBe(true); // moved on: anchored to (1, 0) now
-    for (let i = 0; i < 10; i++) { expect(sees(far, CELL - M + 0.5)).toBe(true); expect(sees(far, CELL + 1)).toBe(true); }
-  });
-
-  it('with AOI off every client gets the full snapshot, byte for byte; so do clients without AOI', () => {
-    const { w } = world();
-    const snap = w.snapshot();
-    const off = new SnapshotFanout(0);
-    off.load(snap);
-    expect(off.payloadFor(0, 0).toString()).toBe(JSON.stringify({ t: 'snap', s: snap }));
-    expect(off.payloadFor(200, -200)).toBe(off.payloadFor(0, 0));
-    const on = new SnapshotFanout(R, CELL, M);
-    on.load(snap);
-    expect(on.fullPayload().toString()).toBe(JSON.stringify({ t: 'snap', s: snap }));
-    expect(on.fullPayload()).toBe(on.fullPayload()); // serialised once per broadcast
   });
 });
 

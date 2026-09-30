@@ -6,7 +6,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import WebSocket from 'ws';
 
-interface Job { url: string; tokens: string[]; offset: number; seed: number; inputHz?: number; aoi?: boolean; v?: number }
+interface Job { url: string; tokens: string[]; offset: number; seed: number; inputHz?: number }
 const job = workerData as Job;
 
 let s = job.seed >>> 0;
@@ -20,7 +20,7 @@ let st = zero();
 const T = (b: Buffer, i: number) => String.fromCharCode(b[i]);
 function onMessage(c: Client, data: Buffer) {
   st.bytes += data.length;
-  // a binary v=2 snapshot frame (src/shared/snapwire.ts), or {"t":"snap"...  {"t":"me"...  {"t":"event"... / {"t":"evs"...  {"t":"cast"...
+  // a binary snapshot frame (src/shared/snapwire.ts), or {"t":"me"...  {"t":"evs"...  {"t":"cast"...
   const k = data[0] === 2 ? 'sn' : T(data, 6) + T(data, 7);
   if (k === 'sn') { st.snaps++; st.snapBytes += data.length; }
   else if (k === 'me') { st.mes++; st.meBytes += data.length; }
@@ -37,8 +37,7 @@ async function connectAll() {
     c.dx = Math.cos(a); c.dz = Math.sin(a); c.f = a;
     clients.push(c);
     pending.push(new Promise<void>((ok) => {
-      const q = [job.aoi === false ? '' : 'aoi=1', job.v === 2 ? 'v=2' : ''].filter(Boolean).join('&');
-      const ws = new WebSocket(`${job.url}/ws${q ? `?${q}` : ''}`, { perMessageDeflate: false, skipUTF8Validation: true, headers: { authorization: `Bearer ${job.tokens[i]}` } });
+      const ws = new WebSocket(`${job.url}/ws`, { perMessageDeflate: false, skipUTF8Validation: true, headers: { authorization: `Bearer ${job.tokens[i]}` } });
       c.ws = ws;
       ws.on('open', () => { c.open = true; ok(); });
       ws.on('message', (d: Buffer) => onMessage(c, d));

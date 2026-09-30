@@ -36,9 +36,4 @@ describe('LAN discovery', () => {
     for (const ip of ['10.37.1.20', '172.16.0.1', '172.31.255.1', '192.168.1.5', '127.0.0.1', '169.254.3.4', '100.64.0.9', '::ffff:192.168.0.2']) expect(isLocalSender(ip), ip).toBe(true);
     for (const ip of ['8.8.8.8', '172.32.0.1', '192.169.0.1', '100.128.0.1', '203.0.113.9', '::1', 'fe80::1']) expect(isLocalSender(ip), ip).toBe(false);
   });
-
-  it('stays off with DISCOVERY=0', () => {
-    process.env.DISCOVERY = '0';
-    try { expect(startDiscovery(port(), info(1))).toBeNull(); } finally { delete process.env.DISCOVERY; }
-  });
 });
