@@ -20,7 +20,7 @@ const behind = (world: World, id: string) => world.wizards.get(world.credit(id) 
 export function allied(world: World, x: string, y: string): boolean {
   const a = behind(world, x), b = behind(world, y);
   if (!a || !b || a.house !== b.house) return false;
-  return world.duelOpponent(a.id) !== b.id;
+  return !world.duelFoes(a.id, b.id);
 }
 
 /**
@@ -29,7 +29,7 @@ export function allied(world: World, x: string, y: string): boolean {
  */
 export function spared(world: World, src: string, id: string): boolean {
   const a = behind(world, src), b = behind(world, id);
-  return !!a && !!b && a.npc && !b.npc && world.duelOpponent(a.id) !== b.id;
+  return !!a && !!b && a.npc && !b.npc && !world.duelFoes(a.id, b.id);
 }
 
 /** A spell from `src` meant for `target` (null: a straight shot) may strike `id`: canHarm, and no ally but its target. */
