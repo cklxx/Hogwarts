@@ -92,6 +92,8 @@ export interface Feature {
   load?(world: World, data: unknown, legacy: Record<string, unknown>): void;
   /** Movement: a multiplier on this wizard's speed (0 holds them still). */
   moveMult?(world: World, w: Wizard): number;
+  /** A roll about to go along (dx, dz): a better way, or null to leave it (the Duelling Club keeps a duellist's roll on the stage). */
+  dodgeDir?(world: World, w: Wizard, dx: number, dz: number): [number, number] | null;
   /** Casting: a reason this wizard may not cast right now (both languages), else null. */
   castBlock?(world: World, w: Wizard): string | null;
   /** Healing and shielding: true when `src` may not help `dst` right now. */
@@ -135,7 +137,7 @@ export function hookLists(fs: readonly Feature[]) {
   const has = <K extends keyof Feature>(k: K) => fs.filter((f) => f[k] !== undefined) as (Feature & Required<Pick<Feature, K>>)[];
   const view = <K extends keyof NonNullable<Feature['view']>>(k: K) => fs.filter((f) => f.view?.[k] !== undefined) as (Feature & { view: Required<Pick<NonNullable<Feature['view']>, K | 'key'>> })[];
   return {
-    step: has('step'), stepLate: has('stepLate'), sweep: has('sweep'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'),
+    step: has('step'), stepLate: has('stepLate'), sweep: has('sweep'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'), dodgeDir: has('dodgeDir'),
     castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), reflect: has('reflect'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
     npc: has('npc'), actAs: has('actAs'), said: has('said'), toolBlock: has('toolBlock'), me: view('me'), whoami: fs.filter((f) => f.view?.me || f.view?.whoami) as (Feature & { view: NonNullable<Feature['view']> })[],
     look: view('look'), board: view('board'),
