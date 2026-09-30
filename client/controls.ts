@@ -982,6 +982,7 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ first-run onboarding
   const tutorial = createTutorial({
+    report: (n) => d.send({ t: 'metrics', tut: n, touch }),
     me: d.me, myPos, touch,
     creatures: () => [...cIdx.values()],
     creaturePos: (i) => d.creatures.get(i)?.root.position ?? null,
@@ -1084,6 +1085,8 @@ interface TutorialDeps {
   walkTo: (x: number, z: number) => void;
   /** A big panel is open (the coach mark then moves above it instead of hiding behind it). */
   panelOpen: () => boolean;
+  /** 试玩指标 (kernel/metrics.ts): the step reached, 1-based (0 when finished or skipped), and a coarse pointer. */
+  report: (step: number) => void;
 }
 /** The door of the Great Hall faces the courtyard; walking to just inside it (shared/map.ts ZONES great_hall). */
 const HALL = { x: 0, z: -50 };
@@ -1212,6 +1215,7 @@ function createTutorial(t: TutorialDeps) {
   function advance() {
     step++;
     start = null;
+    t.report(step >= STEPS.length ? STEPS.length : step + 1);
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
     if (step >= STEPS.length) { finish(true); return; }
     save(String(step));
