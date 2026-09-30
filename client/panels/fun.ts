@@ -24,6 +24,8 @@ export interface FunDeps {
   myPos: () => { x: number; z: number } | null;
   camYaw: () => number;
   solo: (el: HTMLElement) => void;
+  /** Walk there by the paths (controls.ts walkTo): a tap on the event slip takes you to it. */
+  walkTo: (x: number, z: number) => void;
 }
 
 const $ = (id: string) => document.getElementById(id);
@@ -88,6 +90,17 @@ export function createFun(d: FunDeps) {
     const clock = $('clock');
     if (!clock) return;
     const el = slot('evslip', () => clock.parentElement!, (e) => { ($('dl-compass') ?? clock).after(e); });
+    if (!el.dataset.go) {
+      // a tap on a live event walks you there (the 2026-09-30 phone playtest: one system of ten touched, mostly for want of the way)
+      el.dataset.go = '1';
+      el.addEventListener('click', () => {
+        const ev = d.snap()?.ev, t = ev?.id && ev.st === 'on' ? evTarget(ev) : null;
+        if (!ev?.id || !t) return;
+        const ink = EVENT_INK[ev.id];
+        d.walkTo(t.x, t.z);
+        d.toast(L(`正在前往：${ink.zh}`, `On the way: ${ink.en}`));
+      });
+    }
     const s = d.snap(), p = d.myPos(), me = d.me();
     const ev = s?.ev;
     if (!ev?.id) { el.hidden = true; edge.hidden = true; return; }

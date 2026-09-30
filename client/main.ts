@@ -1293,7 +1293,11 @@ function toggleBook(force?: boolean) {
   b.hidden = !(force ?? b.hidden);
   if (b.hidden) market.close();
   if (!b.hidden) { solo(b); b.dataset.house = me?.house ?? ''; send({ t: 'book' }); ctl.notify('book'); }
+  // a phone opens on a template (sliders, no code); the source waits behind 看代码 (the 2026-09-30 phone playtest:
+  // three of four closed a book of Lisp at once)
+  if (!b.hidden && phone && !bookSel && !tplKey) openTemplates();
 }
+$('#sp-code').addEventListener('click', () => { const b = $('#book'); if (b.dataset.code) delete b.dataset.code; else b.dataset.code = '1'; });
 function bookOut(text: string, cls = '') {
   const o = $('#sp-out');
   o.textContent = text;
@@ -1567,6 +1571,7 @@ function renderGoal() {
     goalKey = goal.key; lsSet('hogwarts.goal.seen', goal.key); goalOpen = false;
   }
   const html = `<div class="g-row"><button type="button" class="g-line" aria-expanded="${goalOpen}" title="${esc(L('点一下看怎么做', 'Click for how'))}">${ic('quill')}<span class="g-k">${L('下一步', 'Next')}</span><span class="g-t">${esc(goal.text)}</span></button>`
+    + (phone && goal.act ? `<button type="button" class="g-act g-go">${esc(goal.actLabel ?? '')}</button>` : '') // a phone: one tap does it
     + `<button type="button" class="g-x" title="${esc(L('隐藏（帮助面板 H 里可以重新打开）', 'Hide (the help panel, H, brings it back)'))}" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></div>`
     + (goalOpen ? `<div class="g-why">${esc(goal.why)}${goal.act ? `<div class="g-acts"><button type="button" class="g-act">${esc(goal.actLabel ?? '')}</button></div>` : ''}</div>` : '');
   setHtml(el, html);
@@ -1639,7 +1644,7 @@ function loadDraft(name: string, source: string, note: string) {
 const wantSpells = () => { if (!bookSpells.length) send({ t: 'book' }); };
 const pn = createPanels({ send, me: () => me, agentConnected: () => !!agentNow()?.connected, spells: () => bookSpells, wantSpells, solo });
 // ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 · 巧克力蛙画片 · 隐藏宝箱 (client/panels/fun.ts, client/funworld.ts)
-const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
+const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo, walkTo: (x, z) => ctl.walkTo(x, z) });
 // the features (client/features.ts: the Dark Lord, the DA, 偷师, the Restricted Section, the Duelling Club, Quidditch, …),
 // all built from the same deps
 const feats: ClientFeature[] = CLIENT_FEATURES.map((mk) => mk({
@@ -1804,6 +1809,39 @@ function animWizard(w: WizardEntry, h: string) {
   parts.add(w.root);
   if (fire) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
 }
+/**
+ * Name tags that would overlap on screen (a crowd seen from above, the 2026-09-30 phone playtest): you, then your
+ * target, then the nearer ones keep theirs; a tag that would land on a kept one hides for this frame.
+ */
+type Tagged = { root: THREE.Object3D; label: { sprite: THREE.Sprite; show(on: boolean): void } };
+const tagsNow: { m: Tagged; d: number; x: number; y: number; hw: number; hh: number }[] = [];
+const tagV = new THREE.Vector3();
+function declutterTags() {
+  tagsNow.length = 0;
+  const f = innerHeight / 2 / Math.tan((camera.fov * Math.PI) / 360);
+  const put = (m: Tagged, key: string) => {
+    const sp = m.label.sprite;
+    if (!sp.visible) return;
+    tagV.set(m.root.position.x, m.root.position.y + sp.position.y * m.root.scale.y, m.root.position.z).applyMatrix4(camera.matrixWorldInverse);
+    const depth = -tagV.z;
+    if (depth <= camera.near) return;
+    tagV.applyMatrix4(camera.projectionMatrix);
+    const k = (f / depth) * m.root.scale.y;
+    // (the painted name fills about two thirds of the tag's width)
+    tagsNow.push({ m, d: key === myHandle ? -2 : key === FR.focus ? -1 : depth, x: tagV.x * innerWidth / 2, y: tagV.y * innerHeight / 2, hw: sp.scale.x * k * 0.34, hh: sp.scale.y * k * 0.3 });
+  };
+  wizards.forEach(put);
+  creatures.forEach(put);
+  tagsNow.sort((a, b) => a.d - b.d);
+  for (let i = 0; i < tagsNow.length; i++) {
+    const a = tagsNow[i];
+    for (let j = 0; j < i; j++) {
+      const b = tagsNow[j];
+      if (b.hw < 0 || Math.abs(a.x - b.x) > a.hw + b.hw || Math.abs(a.y - b.y) > a.hh + b.hh) continue;
+      a.m.label.show(false); a.hw = -1; break;
+    }
+  }
+}
 function animCreature(c: CreatureEntry, i: string) {
   c.root.position.x += (c.tx - c.root.position.x) * FR.k;
   c.root.position.z += (c.tz - c.root.position.z) * FR.k;
@@ -1854,6 +1892,7 @@ function frame() {
   herd.begin();
   creatures.forEach(animCreature);
   herd.end();
+  declutterTags();
   bolts.forEach(animBolt);
   boltBatch.update(bolts.values());
   fxm.update(dt);

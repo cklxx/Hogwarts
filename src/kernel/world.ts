@@ -147,6 +147,8 @@ const NPC_NEWS = new Set<EventType>(['level', 'combat', 'creature', 'achievement
 const NPC_NEWS_GAP_S = 30;
 /** A school event's creature hits wizards of year ≤ EVENT_EASY_YEAR at EVENT_EASY_MULT of its plain strength. */
 const EVENT_EASY_YEAR = 2, EVENT_EASY_MULT = 0.5;
+/** At most this many wild creatures pick a first-year on their own at once (one that is hit keeps after them). */
+const NEWCOMER_PACK = 2;
 /** terms.ministerMinReputation's default before round 5 (restore moves an untouched one to today's default). */
 const MINISTER_OLD_DEFAULT = 100;
 
@@ -2612,6 +2614,15 @@ export class World {
 
   private stepCreatures(dt: number) {
     const sm = this.rules.creatures.statMultiplier;
+    // who the wild ones are already after: a first-year is picked by at most NEWCOMER_PACK of them at once
+    // (the 2026-09-30 phone playtest: a ring of pixies took a newcomer to 20 hp before they found the target button)
+    const hunted = new Map<string, number>();
+    for (const c of this.creatures.values()) if (c.target && !c.owner) hunted.set(c.target, (hunted.get(c.target) ?? 0) + 1);
+    const pickable = (c: Creature, e: { id: string }) => {
+      if (!this.canHarm(c.id, e.id)) return false;
+      const w = this.wizards.get(e.id);
+      return !w || w.year > 1 || (hunted.get(e.id) ?? 0) < NEWCOMER_PACK;
+    };
     for (const c of [...this.creatures.values()]) {
       const def = CREATURES[c.kind];
       c.attackCd -= dt;
@@ -2637,8 +2648,8 @@ export class World {
       const provoked = (c.provokedUntil ?? 0) > this.now;
       if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, c.home) > (provoked ? PROVOKED_LEASH : 45) || dist(t.pos, c.pos) > (provoked ? PROVOKED_LEASH : def.aggro * 2.5))) { t = undefined; c.target = null; c.provokedUntil = 0; }
       if (!t && !c.driver) { // a possessed creature (possess.ts) goes for whom its driver names, no one else
-        t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id), c.id, 1)[0];
-        if (t) c.target = t.id;
+        t = this.around(c.pos, def.aggro, (e) => pickable(c, e), c.id, 1)[0];
+        if (t) { c.target = t.id; hunted.set(t.id, (hunted.get(t.id) ?? 0) + 1); }
       }
       if (t) {
         const d = dist(t.pos, c.pos);

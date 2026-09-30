@@ -1251,3 +1251,15 @@ broadcast), leaving the world process with the tick and one encode.
 ## 手机竖屏视角（2026-09-30，`wf/phone`）
 
 竖屏时竖直视角从 55° 放宽到最多 88°（`client/render.ts` `fovFor`），390×844 的屏幕水平视角从约 27° 变成约 45°；手机镜头默认距离 8.5 → 13 米。视野变大会画进更多东西（视锥更宽、更远），**没有真机数据**：这里只有软件渲染，帧率只看方向，不作结论。真机上若掉帧，先查 `?perf=1` 叠层的 draw call 和三角形数，再考虑把 `PORTRAIT_V_MAX` 降到 75。
+
+## 2026-09-30 — the newcomer pack cap and name-tag declutter (`wf/phone7`)
+
+Kernel: `stepCreatures` counts which wizards the wild creatures are after once a tick (a Map over the creatures)
+so a first-year is picked by at most `NEWCOMER_PACK` = 2 at once. `bench.ts kernel --n=1000 --secs=15 --warm=5`:
+main p50 2.96 ms / p95 6.12; the branch 3.13 / 6.96, 2.94 / 6.24, 3.50 / 7.90 (three runs) — inside the run-to-run
+spread, no measurable cost. The trace fingerprint changes on purpose (creatures pick differently):
+`bac03b8755912379`, identical on two runs.
+
+Client: `declutterTags` projects each visible name tag once a frame and hides one that would land on a kept one
+(you, your target, then nearer first): O(n²) over the tags on screen (n ≤ ~50 with the label LOD), a few thousand
+comparisons at worst — not measured separately; the frame's `anim` section in `?perf=1` covers it.
