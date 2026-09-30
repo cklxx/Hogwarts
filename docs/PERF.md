@@ -1390,3 +1390,26 @@ by one multiply, to 92 px tall on a desktop and 84 px on a phone (`Label.zoom`, 
 not change). The narrower lens (30° against 55°) shows less ground at the same distance.
 
 No frame-rate claim: this box has only SwiftShader. The telemetry added in `wf/smooth` will show the real number.
+
+## 2026-09-30 — scene props, compact lake and forest (`wf/props`)
+
+Density first (numbers from the shared data; the 2.5D view shows about 23×17 m ≈ 390 m² of ground on a desktop):
+
+| | before | after |
+|---|---:|---:|
+| Screens of walkable ground (all scenes) | 175 | 106 (lake 35 → 7, forest 52 → 12) |
+| Things to do (places, chests, fireplaces, gates, spawn rings, event spots) + props | 56 | 56 + 61 props (9 groups of three) |
+| … per screen | 0.32 | 1.1 |
+
+Cost:
+- Client: props are one instanced mesh per kind, 9 kinds. The kinds that wake add a glow mesh and a ground ring.
+  That is 17 draw calls in the main pass, plus 9 in the shadow map, for all 61 props. Matrices are rewritten only
+  when the snapshot's `props` changes, plus the flames' breathing while something is awake.
+- Kernel: a bolt looks at an 8 m grid cell or two of props per tick. An area spell looks at the cells under it once.
+  The sweep runs once a second over what is broken or awake. `props` goes into the snapshot head only while
+  something is not at rest.
+- Frame rates: none claimed (SwiftShader).
+
+Found on the way: `putStrike` ran its per-axis "too far" test before its NaN test. A wizard with a NaN x and a far,
+finite z was left out, where `around()` keeps it. It now falls back to `around()` first, as its comment always said.
+test/perf.test.ts's cross-check caught it once props changed the course of that test's bolts.

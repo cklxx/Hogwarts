@@ -534,6 +534,7 @@ export class World {
    */
   private putStrike(e: Wizard | Creature, p: Vec2, r: number, limit: number): boolean {
     const ex = e.pos.x - p.x, ez = e.pos.z - p.z;
+    if (ex !== ex || ez !== ez) return false; // (a NaN coordinate: around decides — before the axis test, which a finite far axis would pass)
     if (ex > r || ex < -r || ez > r || ez < -r) return true; // farther than r along one axis (hypot ≥ each |axis|)
     const d = dist(e.pos, p);
     if (d !== d) return false;
@@ -1261,6 +1262,7 @@ export class World {
   nova(w: Wizard, radius: number, power: number, element: Element, tags: string[]) {
     this.fx({ k: 'nova', x: w.pos.x, z: w.pos.z, r: radius, e: element });
     for (const e of this.around(w.pos, radius, (e) => this.canHarm(w.id, e.id) && this.inBlast(w.pos, e.pos), w.id, 32)) this.damage(w.id, e.id, power, element, tags);
+    if (power > 0) for (const f of HOOKS.blast) f.blast(this, w.id, w.pos, radius, element, tags);
   }
 
   /** An area spell's blast reaches only what no wall stands in front of (the same test a bolt makes). */
@@ -1290,6 +1292,7 @@ export class World {
       hit.add(cur);
       pts.push(e.pos.x, e.pos.z);
       this.damage(w.id, cur, p, element, tags);
+      for (const f of HOOKS.blast) f.blast(this, w.id, e.pos, 1.5, element, tags);
       p *= 0.7;
       const from = { ...e.pos };
       cur = this.around(from, 8, (x) => !hit.has(x.id) && strikes(this, w.id, first, x.id), w.id, 1)[0]?.id ?? ''; // never leaps to an ally (allies.ts)
@@ -2349,6 +2352,7 @@ export class World {
       for (const s of due) {
         this.fx({ k: 'stormhit', x: s.x, z: s.z, r: s.r, e: s.element });
         for (const e of this.around(s, s.r, (e) => this.canHarm(s.owner, e.id) && this.inBlast(s, e.pos), s.owner, 32)) this.damage(s.owner, e.id, s.power, s.element, s.tags);
+        if (s.power > 0) for (const f of HOOKS.blast) f.blast(this, s.owner, s, s.r, s.element, s.tags);
       }
     }
     this.stepProjectiles(dt);
@@ -3284,6 +3288,7 @@ export class World {
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
       // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
       ...revealView(this, w),
+      ...this.views(HOOKS.here, (f) => f.view.here(this, w)), // what stands round you (the props)
     };
   }
 

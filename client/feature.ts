@@ -78,6 +78,9 @@ export interface ClientFeature {
   menu?(): string;
   /** Every frame: the feature's things in the 3D world. */
   frame?(dt: number): void;
+  /** Something of this feature's on the ground at (x, z) that a click or tap casts the chosen spell at (its point), or
+   *  null; `hover`: the pointer is only over it (show what it is). */
+  claim?(x: number, z: number, hover: boolean): { x: number; z: number } | null;
   /** Metres above the ground this wizard's model rides now (Quidditch brooms). */
   lift?(handle: string): number;
   /** Added to the scene once. */

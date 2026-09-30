@@ -16,7 +16,7 @@ import type { Line } from '../lore/memes.js';
 import type { Value } from '../runes/interp.js';
 import type { Node } from '../runes/parser.js';
 import type { Caps, Prim } from '../runes/primitives.js';
-import type { UiCharm } from '../shared/constants.js';
+import type { Element, UiCharm } from '../shared/constants.js';
 import type { Rulebook } from './rulebook.js';
 import type { Projectile, Vec2, Wizard } from './types.js';
 import type { World } from './world.js';
@@ -85,6 +85,8 @@ export interface Feature {
     me?(world: World, w: Wizard): unknown;
     whoami?(world: World, w: Wizard): unknown;
     look?(world: World, x: Wizard): unknown;
+    /** What stands round wizard `w` in their own MCP look (things on the ground: the props). */
+    here?(world: World, w: Wizard): unknown;
     board?(world: World): Record<string, unknown>;
   };
   /** What survives a restart (world.json `features[id]`); `load` gets it back (or undefined for an old save). */
@@ -102,6 +104,8 @@ export interface Feature {
   helpBlock?(world: World, src: Wizard, dst: Wizard): boolean;
   /** A spell in flight, every tick. */
   bolt?(world: World, p: Projectile): void;
+  /** An area spell going off (a nova round its caster, a storm breaking, each place a chain leaps to): where, how far, what element. */
+  blast?(world: World, by: string, at: Vec2, r: number, element: Element, tags: readonly string[]): void;
   /**
    * A spell landing on `dstId` — its damage (`dmg`; not damage over time), or a root or disarm — from `by` (the
    * attacker, or a summon's owner; `src` when a wizard cast it themselves): a multiplier on the damage (1 for none).
@@ -140,8 +144,8 @@ export function hookLists(fs: readonly Feature[]) {
   const view = <K extends keyof NonNullable<Feature['view']>>(k: K) => fs.filter((f) => f.view?.[k] !== undefined) as (Feature & { view: Required<Pick<NonNullable<Feature['view']>, K | 'key'>> })[];
   return {
     step: has('step'), stepLate: has('stepLate'), sweep: has('sweep'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'), dodgeDir: has('dodgeDir'), tag: has('tag'),
-    castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), reflect: has('reflect'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
+    castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), blast: has('blast'), parry: has('parry'), reflect: has('reflect'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
     npc: has('npc'), actAs: has('actAs'), said: has('said'), toolBlock: has('toolBlock'), me: view('me'), whoami: fs.filter((f) => f.view?.me || f.view?.whoami) as (Feature & { view: NonNullable<Feature['view']> })[],
-    look: view('look'), board: view('board'),
+    look: view('look'), here: view('here'), board: view('board'),
   };
 }
