@@ -133,6 +133,10 @@ export function wheelCam(e: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' |
 /** How to turn the camera, in the help and hints: a Mac trackpad has no right button to drag with. */
 export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+拖动' : '右键拖动';
 export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
+/** Where a thumb starts the stick: left of this share of the width, below this share of the height. */
+const STICK_ZONE_X = 0.45, STICK_ZONE_Y = 0.55;
+/** What an iPhone needs for a full screen (Safari has no fullscreen for a page): the home-screen app. */
+const FULL_HINT = () => L('iPhone：点 Safari 的「分享」→「添加到主屏幕」，从主屏幕打开就是全屏。', 'iPhone: Safari’s Share → Add to Home Screen, then open it from there for a full screen.');
 /** Camera distance limits (the wheel, the pinch and the touch pinch share them). */
 export const clampDist = (v: number) => Math.max(3.5, Math.min(40, v));
 
@@ -628,7 +632,8 @@ export function createControls(d: ControlsDeps) {
     d.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       for (const t of Array.from(e.changedTouches)) {
-        if (stickId === null && t.clientX < innerWidth * 0.42 && t.clientY > innerHeight * 0.3) {
+        // only the lower-left corner starts the stick: the rest of the screen stays for tapping targets and the ground
+        if (stickId === null && t.clientX < innerWidth * STICK_ZONE_X && t.clientY > innerHeight * STICK_ZONE_Y) {
           stickId = t.identifier; sx = t.clientX; sy = t.clientY;
           stick.style.left = `${sx}px`; stick.style.top = `${sy}px`; stick.classList.add('on');
           knob.style.transform = 'translate(-50%, -50%)';
@@ -679,6 +684,21 @@ export function createControls(d: ControlsDeps) {
     d.canvas.addEventListener('touchend', end);
     d.canvas.addEventListener('touchcancel', end);
     $('#tb-roll').addEventListener('touchstart', (e) => { e.preventDefault(); roll(); }, { passive: false });
+    // the camera's reach on a phone (a pinch works too, but two thumbs are busy)
+    $('#tb-zin').onclick = () => { d.cam.dist = clampDist(d.cam.dist / 1.3); };
+    $('#tb-zout').onclick = () => { d.cam.dist = clampDist(d.cam.dist * 1.3); };
+    const more = $('#tb-more'), extra = $('#tb-extra');
+    const fold = (open: boolean) => { extra.hidden = !open; more.setAttribute('aria-expanded', String(open)); };
+    more.onclick = () => fold(extra.hidden);
+    extra.addEventListener('click', () => fold(false)); // one pick and the drawer closes
+    // full screen where the browser allows it (Android); an iPhone needs the page added to the home screen
+    $('#tb-full').onclick = () => {
+      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else if (el.requestFullscreen) void el.requestFullscreen({ navigationUI: 'hide' }).catch(() => d.toast(FULL_HINT()));
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else d.toast(FULL_HINT());
+    };
     $('#tb-roll').onclick = () => roll();
     $('#tb-menu').onclick = () => { d.panels.menu(); tutorial.notify('menu'); };
     $('#tb-book').onclick = () => d.panels.book();

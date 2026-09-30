@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="霍格沃茨" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="color-scheme" content="light" />
   <title>Hogwarts — a world where spells are code</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
@@ -138,14 +143,20 @@
     <div id="stick"><i></i></div>
     <button id="tb-roll" type="button" title="Roll" data-zh-title="翻滚闪避"><svg class="ic"><use href="#i-swirl"/></svg></button>
     <div id="touchbar">
-      <button id="tb-menu" title="Owl Post" data-zh-title="猫头鹰邮递（菜单）"><svg class="ic"><use href="#i-letter"/></svg></button>
-      <button id="tb-book" title="Spellbook" data-zh-title="咒语书"><svg class="ic"><use href="#i-book"/></svg></button>
       <button id="tb-tab" title="Next target" data-zh-title="切换目标"><svg class="ic"><use href="#i-target"/></svg></button>
       <button id="tb-act" title="Interact" data-zh-title="交互"><svg class="ic"><use href="#i-hand"/></svg></button>
-      <button id="tb-owl" title="Owl (your agent)" data-zh-title="猫头鹰（你的 Agent）"><svg class="ic"><use href="#i-owl"/></svg></button>
-      <button id="tb-trunk" title="Trunk" data-zh-title="行囊"><svg class="ic"><use href="#i-trunk"/></svg></button>
-      <button id="tb-chat" title="Speak" data-zh-title="说话"><svg class="ic"><use href="#i-quill"/></svg></button>
-      <button id="tb-help" title="Help" data-zh-title="帮助"><svg class="ic"><use href="#i-help"/></svg></button>
+      <button id="tb-book" title="Spellbook" data-zh-title="咒语书"><svg class="ic"><use href="#i-book"/></svg></button>
+      <button id="tb-zin" class="tb-txt" title="Zoom in" data-zh-title="拉近">＋</button>
+      <button id="tb-zout" class="tb-txt" title="Zoom out" data-zh-title="拉远">－</button>
+      <button id="tb-more" class="tb-txt" title="More" data-zh-title="更多">⋯</button>
+      <div id="tb-extra" hidden>
+        <button id="tb-menu" title="Owl Post" data-zh-title="猫头鹰邮递（菜单）"><svg class="ic"><use href="#i-letter"/></svg></button>
+        <button id="tb-owl" title="Owl (your agent)" data-zh-title="猫头鹰（你的 Agent）"><svg class="ic"><use href="#i-owl"/></svg></button>
+        <button id="tb-trunk" title="Trunk" data-zh-title="行囊"><svg class="ic"><use href="#i-trunk"/></svg></button>
+        <button id="tb-chat" title="Speak" data-zh-title="说话"><svg class="ic"><use href="#i-quill"/></svg></button>
+        <button id="tb-help" title="Help" data-zh-title="帮助"><svg class="ic"><use href="#i-help"/></svg></button>
+        <button id="tb-full" class="tb-txt" title="Full screen" data-zh-title="全屏">⛶</button>
+      </div>
     </div>
     <input id="chat" maxlength="200" hidden placeholder="Speak — some words have power here" data-zh-ph="说点什么 —— 有些话在这里有魔力" />
     <div id="crosshair"></div>

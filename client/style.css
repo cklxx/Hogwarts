@@ -471,6 +471,9 @@ body.touch #tb-roll svg.ic { width: calc(34px * var(--u)); height: calc(34px * v
 body.touch #chatlog { bottom: calc(var(--bars-h, calc(150px * var(--u))) + calc(150px * var(--u))); }
 #stick i { position: absolute; left: 50%; top: 50%; width: calc(46px * var(--u)); height: calc(46px * var(--u)); border-radius: 50%; background: rgb(var(--sheen2) / .6); border: calc(2px * var(--u)) solid rgba(90, 64, 41, .6); transform: translate(-50%, -50%); }
 #touchbar { display: none; }
+body.touch #touchbar .tb-txt { font: 700 calc(24px * var(--t))/1 var(--latin); }
+body.touch #tb-extra:not([hidden]) { display: flex; flex-direction: column; gap: inherit; }
+body.touch #tb-more[aria-expanded="true"] { background: rgb(var(--sheen2)); box-shadow: inset 0 0 0 calc(2px * var(--u)) var(--wax); }
 body.touch #touchbar { display: flex; flex-direction: column; gap: calc(8px * var(--u)); position: fixed; right: max(calc(10px * var(--u)), env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); z-index: 3; }
 body.touch #touchbar button { width: calc(46px * var(--u)); height: calc(46px * var(--u)); padding: 0; display: grid; place-items: center; border-radius: 50%; color: var(--ink); text-shadow: none;
   background: var(--grain), radial-gradient(circle at 42% 36%, var(--paper) 45%, var(--paper2) 80%, var(--paper3)); border: 0;
@@ -930,4 +933,29 @@ body.touch:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #tb-r
 @media (max-width: 520px) {
   body.touch #quests { bottom: calc(var(--bars-h, calc(150px * var(--u))) + calc(150px * var(--u))) !important; }
   body.touch:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #quests { bottom: calc(var(--bars-h, calc(150px * var(--u))) + var(--tut-b, calc(56px * var(--u))) + calc(160px * var(--u))) !important; }
+}
+/* a phone: the page never scrolls, zooms or bounces (each of those brought Safari's toolbar back mid-walk); the
+   game's own gestures own the canvas; panels still scroll inside themselves */
+html:has(body.touch), body.touch { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.touch canvas, body.touch #stick, body.touch #tb-roll, body.touch #touchbar { touch-action: none; }
+/* a portrait phone, the short version: a slim name card (the house shows in its crest), the event slips one line
+   each, the chat log only when the quill opens it */
+@media (max-width: 520px) {
+  body.touch #me { min-height: calc(40px * var(--u)); padding: calc(2px * var(--u)) calc(12px * var(--u)) calc(2px * var(--u)) calc(34px * var(--u)); }
+  body.touch #me .crest { transform: scale(.66); transform-origin: left center; left: -20px; }
+  body.touch #me .meta, body.touch #me .stats { display: none; }
+  body.touch #me .name, body.touch #me .name.lat { font-size: calc(17px * var(--t)); }
+  body.touch #me .rank { font-size: calc(12px * var(--t)); }
+  body.touch:not(.chat-open) #chatlog { display: none; }
+}
+/* the "more" drawer opens beside the rail (to its left, bottom-aligned with ⋯) instead of pushing it up */
+body.touch #touchbar { position: fixed; }
+body.touch #tb-extra:not([hidden]) { position: absolute; right: calc(100% + calc(8px * var(--u))); bottom: 0; }
+@media (max-width: 520px) {
+  /* one event slip at a time on a phone: your own fight first, then the school event, then Quidditch */
+  body.touch #topright:has(#duelslip.fight:not([hidden])) #evslip, body.touch #topright:has(#evslip:not([hidden])) #qdslip:not(.fight),
+  body.touch #topright:has(#duelslip.fight:not([hidden])) #qdslip:not(.fight) { display: none; }
+  body.touch :is(#evslip, #duelslip, #qdslip) { font-size: calc(14px * var(--t)); }
+  body.touch :is(#evslip, #duelslip, #qdslip) > svg.ic { width: calc(24px * var(--u)); height: calc(24px * var(--u)); }
+  #banner { font-size: calc(14px * var(--t)); }
 }

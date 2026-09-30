@@ -1,0 +1,10 @@
+{
+  "name": "霍格沃茨 · Hogwarts",
+  "short_name": "霍格沃茨",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#1b120a",
+  "theme_color": "#1b120a",
+  "icons": [{ "src": "/ui/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
