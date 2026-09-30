@@ -1232,3 +1232,18 @@ main with `--v=2` (what the browser already used) against this branch (load < 2)
 separate that from noise.) The area-of-interest guarantees are now checked on the binary frames themselves
 (`test/snapwire.test.ts`: everything within 120 m, nothing beyond ~205 m, every field the snapshot's own, the
 hysteresis at the edge, the first frame exactly the cells in reach).
+
+**Together with wf/perf-server** (this branch merged with main `e84488a`), 1 000 clients, main and the
+branch alternating, 3 rounds each, same box and command (the branch with `--max-semi-space-size=64` and
+`--v=2`, as `npm start` and the browser client run it):
+
+| 1 000 clients | loop p99 ms | loop max ms | cast RTT p50 / p99 ms | KB/s per client | server CPU % |
+|---|---:|---:|---:|---:|---:|
+| main `e84488a` (v1 JSON) | 98.4 / 98.8 / 95.4 | 119 / 114 / 110 | 26.0 / 90.1, 28.3 / 87.6, 29.0 / 81.3 | 508 / 509 / 525 | 147 / 140 / 140 |
+| this branch (v2) | **43.5 / 36.3 / 36.1** | 84.9 / 70.6 / 76.0 | **12.2 / 40.4, 9.16 / 35.8, 8.29 / 38.7** | **104 / 104 / 103** | 116 / 109 / 115 |
+
+One realm now holds 1 000 spread clients inside the 50 ms tick budget at p99. What is left at that size
+(profile before the merge): receiving input (20 000 JSON messages a second through the ws receiver), one
+`writev` per socket per broadcast, and the tick. Beyond it the step is structural: gateway processes that
+own the sockets (parse input, assemble and write frames from the rows the world process publishes once per
+broadcast), leaving the world process with the tick and one encode.
