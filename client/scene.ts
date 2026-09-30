@@ -112,8 +112,11 @@ function gableRoof(x0: number, x1: number, z0: number, z1: number, y: number, ri
  * aTone 0 (the leaf shader draws it in INK's colour). So the forest stays one instanced draw call with or without ink.
  */
 function crownGeometry(ink: boolean) {
-  const TIERS = [[-0.5, 0.11, 1, 0.84], [-0.19, 0.33, 0.76, 0.95], [0.06, 0.5, 0.5, 1.06]]; // foot y, top y, radius, tone
   const SEGS = 8, DROOP = 0.035, GROW = 0.035; // (unit: ~0.15 m on a 4.4 m crown)
+  // foot y, top y, radius, tone. The bottom tier's hem and outline stay inside the unit box (the camera's soft crown
+  // solids, layout.ts): its lowest notch, outline included, at y -0.5, its outline's rim at radius 1.
+  const R0 = 1 - GROW, Y0 = -0.5 + DROOP * R0 + GROW * 0.35;
+  const TIERS = [[Y0, 0.11, R0, 0.84], [-0.19, 0.33, 0.76, 0.95], [0.06, 0.5, 0.5, 1.06]];
   const parts: THREE.BufferGeometry[] = [];
   const tier = ([y0, y1, r, tone]: number[], k: number, grow: number) => {
     const lo = y0 - grow * 0.35, hi = y1 + grow * 0.6;
