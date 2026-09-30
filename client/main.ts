@@ -338,6 +338,7 @@ function connect() {
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
       const hist: Ev[] = msg.events ?? [];
       for (const e of hist) if (e.type === 'owl' || e.type === 'ask') feed(e, false);
+      for (const e of hist) for (const f of feats) f.onEvent?.(e, false);
       for (const e of hist.filter((x) => x.type !== 'owl' && x.type !== 'ask' && !x.to).slice(-2)) feed(e, false);
       menuInfo(msg.mcpUrl);
       onBuild(msg.build);
@@ -345,7 +346,7 @@ function connect() {
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') me = msg.s;
-    else if (msg.t === 'event') { pn.onEvent(msg.e); fun.onEvent(msg.e); feed(msg.e, true); }
+    else if (msg.t === 'event') { pn.onEvent(msg.e); fun.onEvent(msg.e); for (const f of feats) f.onEvent?.(msg.e, true); feed(msg.e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
@@ -1149,7 +1150,7 @@ $('#atask').addEventListener('click', (e) => {
 function sendChat(raw: string) {
   const r = routeChat(raw);
   if (!r) return;
-  if (r.to === 'public') send({ t: 'chat', text: r.text });
+  if (r.to === 'public') send({ t: 'chat', text: r.text, ...(r.ch ? { ch: r.ch } : {}), ...(r.dm ? { to: r.dm } : {}) });
   else if (r.to === 'agent') sendOwl(r.text);
   else askWhere(r.word, r.text, r.rest);
 }
@@ -1722,7 +1723,9 @@ const ctl = createControls({
   extraAction: () => {
     const p = wizards.get(myHandle)?.root.position;
     const c = p && snap?.cup ? funWorld.chestNear(p, snap.cup.ch) : null;
-    return c ? { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) } : null;
+    if (c) return { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) };
+    for (const f of feats) { const a = f.action?.(); if (a) return a; } // a feature's own (飞路网, …: client/features.ts)
+    return null;
   },
 });
 // ------------------------------------------------------------------ the panels: 黑魔王, 邓布利多军, 偷师, O.W.L., 使魔, 专注力, 无规则区 (client/panels)

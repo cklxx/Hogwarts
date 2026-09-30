@@ -58,6 +58,9 @@ export const LIMITS: Record<string, [number, number]> = {
   exams: [2, 5],
   sit: [0.2, 3],
   examboard: [2, 5],
+  // 今日课表 (kernel/quests.ts): the slip polls every 20 s; 飞路网 / broom (kernel/travel.ts) have kernel cooldowns too
+  quests: [0.5, 3],
+  travel: [2, 5],
   // 不公平，但好玩 (README): Dumbledore's Army status/join/leave/veto, and studying a spell that hit you
   da: [1, 5],
   study: [1, 3],

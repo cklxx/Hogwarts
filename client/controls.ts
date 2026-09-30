@@ -48,13 +48,28 @@ export interface ControlsDeps {
 }
 
 // ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
-/** Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …` asks first. */
-export type ChatRoute = { to: 'public'; text: string } | { to: 'agent'; text: string } | { to: 'ask'; word: string; text: string; rest: string };
+/**
+ * Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …`
+ * asks first; `/h …` (or /学院) your house, `/n …` (/附近) those near you, `/w name …` (/私 name …) a whisper;
+ * anything else the whole school (kernel/chat.ts channels).
+ */
+export type ChatRoute =
+  | { to: 'public'; text: string; ch?: 'house' | 'near' | 'dm'; dm?: string }
+  | { to: 'agent'; text: string }
+  | { to: 'ask'; word: string; text: string; rest: string };
 export function routeChat(raw: string): ChatRoute | null {
   const text = String(raw ?? '').trim();
   if (!text) return null;
   const mine = /^@(?:agent|a)(?=$|[\s:：,，])[\s:：,，]*/i.exec(text);
   if (mine) { const rest = text.slice(mine[0].length).trim(); return rest ? { to: 'agent', text: rest } : null; }
+  const slash = /^\/(h|house|学院|n|near|附近|w|whisper|私)(?=$|\s)\s*/i.exec(text);
+  if (slash) {
+    const k = slash[1].toLowerCase(), rest = text.slice(slash[0].length).trim();
+    if (k === 'h' || k === 'house' || k === '学院') return rest ? { to: 'public', text: rest, ch: 'house' } : null;
+    if (k === 'n' || k === 'near' || k === '附近') return rest ? { to: 'public', text: rest, ch: 'near' } : null;
+    const m = /^(\S+)\s+([\s\S]+)$/.exec(rest);
+    return m ? { to: 'public', text: m[2].trim(), ch: 'dm', dm: m[1] } : null;
+  }
   const other = /^@([^\s:：,，]+)[\s:：,，]*/.exec(text);
   if (other) return { to: 'ask', word: other[1], text, rest: text.slice(other[0].length).trim() };
   return { to: 'public', text };
