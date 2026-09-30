@@ -52,6 +52,13 @@ CanHarm(src, dst) ==
   ELSE IF dst \in Wizards THEN PvP(src, dst)
   ELSE TRUE
 
+\* 误伤 (src/kernel/allies.ts): a spell with a target t — a homing bolt, a disarm, a root, a chain's leaps — strikes t
+\* or anyone its caster could have picked as a foe, and passes through an ally merely in the way. Allies: the wizards
+\* behind two entities are of one house and not the two sides of a match. t = "none" is a straight shot (canHarm alone).
+Allied(x, y) == Behind(x) \in Wizards /\ Behind(y) \in Wizards /\ house[Behind(x)] = house[Behind(y)]
+                /\ ~(InDuel(x) /\ InDuel(y) /\ Behind(x) # Behind(y))
+Strikes(src, t, e) == (t = "none" \/ e = t \/ ~Allied(src, e)) /\ CanHarm(src, e)
+
 \* ---- invariants
 NoSelfHarm          == \A e \in Entities : ~CanHarm(e, e)
 SafeZonesAreSafe    == \A s, d \in Entities : safe[d] => ~CanHarm(s, d)
@@ -72,4 +79,11 @@ DuelMutual          == duel => \A x, y \in Wizards :
 \* … and nothing outside the match touches them or is touched by them
 DuelIsolated        == duel => \A c \in Wild \cup Benign \cup Invuln, e \in Wizards \cup Summons :
                          ~CanHarm(c, e) /\ ~CanHarm(e, c)
+\* 误伤: an ally in the way is never struck by a spell meant for someone else (the target, a foe in the way and a
+\* straight shot are struck exactly when canHarm says so: that is Strikes' own definition) …
+NoAllyStray         == \A s, e \in Entities : Allied(s, e) => \A t \in Entities \ {e} : ~Strikes(s, t, e)
+\* … so without friendly fire the rule changes nothing (allies could not harm each other anyway) …
+FriendlyFireOffUnchanged == ~ff => \A s, e \in Entities : Allied(s, e) => ~CanHarm(s, e)
+\* … and two duellists of one house are opponents, not allies (their summons too)
+DuellistsNotAllied  == duel => \A x, y \in Wizards \cup Summons : Behind(x) # Behind(y) => ~Allied(x, y)
 ============================================================================

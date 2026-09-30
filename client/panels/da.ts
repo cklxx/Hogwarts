@@ -154,7 +154,7 @@ export const daFeature: ClientFeatureFactory = (d) => {
     },
     onError: (text) => performance.now() - asked < 3000 && da.onError(errHalf(text, lang)),
     // the joint Patronus (a public 'da' event) lights the badge
-    onEvent(e) { if (e.type === 'da' && !e.to) jointUntil = performance.now() + 8000; },
+    onEvent(e, fresh) { if (fresh && e.type === 'da' && !e.to) jointUntil = performance.now() + 8000; },
     close() { if (da.el.hidden) return false; da.el.hidden = true; return true; },
     open(what) { if (what !== 'da') return false; da.toggle(true); return true; },
     goal() { const u = live(); return { da: u ? { member: u.member, eligible: u.eligible } : null }; },

@@ -362,6 +362,11 @@ describe('咒语集市: the Minister bans and promotes, the DA vetoes', () => {
     w.forgeSpell(c.id, { name: 'Sneaky', source: SPARK });
     expect(() => publishSpell(w, c.id, 'Sneaky')).toThrow(/banned/);
     expect(w.armory(b.id).spells.find((s) => s.name === 'Wildfire Spark')).toMatchObject({ banned: true });
+    // the same words as an item's charm fizzle too (it is a cast like any other)
+    w.forgeItem(c.id, c.id, { name: 'Ember Amulet', slot: 'amulet', charm: SPARK });
+    const worn = w.useItem(c.id, 'Ember Amulet');
+    expect(worn.ok).toBe(false);
+    expect(worn.error).toMatch(/banned by Ministry decree|Educational Decree/);
     // Dumbledore's Army vetoes the decree: the ban is lifted, the spell works again
     const da = [wiz(w, 'DA One', 'gryffindor'), wiz(w, 'DA Two', 'hufflepuff'), wiz(w, 'DA Three', 'ravenclaw')];
     for (const x of da) { x.reputation = 0; joinDA(w, x.id); }

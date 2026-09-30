@@ -66,6 +66,13 @@ export const PAIR_TTL_S = 600;
 export const NEWCOMER_WARD_S = 180;
 export const NEWCOMER_WARD = 0.3;
 /**
+ * 以大欺小: knocking out a wizard more than BULLY_YEAR_GAP years below you pays no reputation (progression.ts
+ * stunPaysRep, Lean `stun_pays_rep`), and an NPC never picks a fight with a player that far below it (npc.ts).
+ */
+export const BULLY_YEAR_GAP = 2;
+/** NPCs keep the peace this close to the spawn point (npc.ts npcMayFight): nobody's first steps end in the Hospital Wing. */
+export const NPC_CALM_R = 30;
+/**
  * Failed pairing attempts per minute: per source (IP) and per realm. A source over its own cap is refused
  * without spending the realm's budget (World.redeemPairCode(code, source)), so locking a realm out takes
  * at least PAIR_FAIL_PER_REALM_PER_MIN / PAIR_FAIL_PER_IP_PER_MIN = 3 sources (Lean: realm_lock_needs_sources).
@@ -232,6 +239,9 @@ export const SNITCH_CAP_PER_TERM = 150;
 /** 宵禁: points lost when Filch or Mrs Norris catches you (never below zero), and the grace before they can again. */
 export const CURFEW_PENALTY = 5;
 export const CURFEW_GRACE_S = 20;
+/** 宵禁 pays only a real close call: Filch or Mrs Norris within this many metres, unseen, for this many seconds in all. */
+export const CURFEW_CLOSE_M = 12;
+export const CURFEW_CLOSE_S = 3;
 
 /** 巧克力蛙画片: rarities, and the Galleons a duplicate turns into. */
 export const CARD_RARITIES = ['common', 'rare', 'epic', 'legendary'] as const;
@@ -246,3 +256,14 @@ export const FRESH_SECONDS = 600;
 /** The browser's WebSocket carries the key as a subprotocol entry (it cannot set headers): src/server/key.ts. */
 export const WS_PROTOCOL = 'hogwarts';
 export const WS_KEY_PREFIX = 'hw-key.';
+
+/** 触发式铁甲咒 (src/kernel/ward.ts): the longest a ward stays armed, the seconds between wards, the mana it costs. */
+export const WARD_MAX_S = 3, WARD_CD_S = 8, WARD_MANA = 25;
+/**
+ * The default term: one hour. A 15-minute term (the first default) was too short for anyone to reach the Minister's
+ * bar (100) or the Dark Lord's (150) — an active player earns roughly 2–3 reputation a minute (live server: 37 in a
+ * term) — and it halved everyone's reputation 96 times a day, the absent included. `TERM_SECONDS` overrides it.
+ */
+export const TERM_DEFAULT_S = 3600;
+/** The term length before TERM_DEFAULT_S: a save still on it (and no decree ever changed it) moves to the new default. */
+export const TERM_OLD_DEFAULT_S = 900;

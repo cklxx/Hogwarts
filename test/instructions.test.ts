@@ -6,7 +6,7 @@ import { World } from '../src/kernel/world.js';
 describe('instructionsFor', () => {
   it('fills in the term length and the event interval', () => {
     const w = new World({ seed: 1, secret: 'instr' });
-    expect(instructionsFor(w)).toMatch(/A term \(15 min\)/);
+    expect(instructionsFor(w)).toMatch(/A term \(60 min\)/);
     w.rules.terms.lengthSeconds = 300;
     w.rules.events.intervalSeconds = 90;
     const t = instructionsFor(w);

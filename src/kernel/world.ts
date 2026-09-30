@@ -4,7 +4,7 @@ import {
   ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
-  CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, type CupSource, type EventId,
+  CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource, type EventId,
   type CreatureKind, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
 } from '../shared/constants.js';
 import { AZKABAN, LANDMARKS, LAWLESS_ZONE, SPAWN, WORLD_HALF, ZONES, mulberry32, type ZoneId } from '../shared/map.js';
@@ -16,7 +16,7 @@ import type { Node } from '../runes/parser.js';
 import { CREATURES } from './creatures.js';
 import { AURA_DEFS, type AuraKind, addAura, auraMag, hasAura, isDebuff, live, withoutDebuffs } from './auras.js';
 import { BOUND_REFUSAL, CURSE_BLESS, FORGE_REFUSAL, HEX_FRESH_SENDER, HEX_YEAR, JINX_NAMES, SILENCED, danceJitter, parseJinx } from './hex.js';
-import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
+import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, nameKey, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
 import { TITLES, titleIndex } from '../lore/titles.js';
 import {
   AFK_BUBBLES, CREATURE_STUN, Cooldowns, DOBBY_SOCK, ERROL, FIZZLE_QUIPS, FORGE_NAME_EGGS, GRIND_LINES, GRINGOTTS, HAGRID_HINTS, LEGACY_CODE,
@@ -37,13 +37,14 @@ import { EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
 import {
   MAX_ITEMS, derived, gasLimit, hexDotHp, hexPrice, hexTickDmg, moveSlow, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
-  duelSteal, focusAfter, stealPct,
+  duelSteal, electMinister, focusAfter, stealPct, stunPaysRep,
 } from './progression.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
 import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
 import { inMatch } from './duelclub.js';
+import { spared, strikes } from './allies.js';
 import { AGENT_TOOL_COST, FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
@@ -51,6 +52,7 @@ import { bannedCastText, bannedListing, marketDecreeErrors, payRoyalty } from '.
 import type {
   Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
 } from './types.js';
+import { visibleTo } from './types.js';
 
 export { FORGE_REFUSAL, SILENCED, BOUND_REFUSAL, CURSE_BLESS } from './hex.js';
 export { PAIR_REFUSAL, PAIR_THROTTLED, parsePairCode } from './identity.js';
@@ -82,9 +84,11 @@ const ONLINE_GRACE = 300;
 const DANCE_STEP_S = 0.4;
 const DANCE_MAX_RAD = 0.6;
 import { FRESH_SECONDS } from '../shared/constants.js';
+import { UI_CHARM_INFO } from '../shared/reveal.js';
+import { revealView } from './reveal.js';
 export { FRESH_SECONDS };
 /** Curriculum reveal charms and the HUD corner each one unlocks (a slot can be reused once it is). */
-const REVEAL_CHARM: Record<string, string> = { Tempus: 'tempus', Revelio: 'revelio', 'Point Me': 'point-me', 'Homenum Revelio': 'homenum' };
+const REVEAL_CHARM: Record<string, string> = Object.fromEntries(Object.entries(UI_CHARM_INFO).map(([k, v]) => [v.spell, k]));
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
 /** placeName's order: the most specific zone wins. */
@@ -100,7 +104,7 @@ export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: numbe
   leviosa: { name: "It's Levi-O-sa", zh: '是羽加迪姆勒维奥萨', rep: 10, text: 'You knocked out a troll the way Ron did in 1991.', textZh: '你像 1991 年的罗恩一样打晕了一只巨怪。羽加迪姆勒维奥萨，yyds。' },
   elder_wand: { name: 'Master of the Elder Wand', zh: '老魔杖的主人', rep: 20, text: 'The wand chooses the wizard — and it chose whoever beat its last master.', textZh: '是魔杖选择巫师 —— 它选择了击败它上一任主人的人。' },
   seeker: { name: 'Seeker', zh: '找球手', rep: 10, text: 'Accio Firebolt! Fastest broom in the world.', textZh: '火弩箭飞来！世界上最快的扫帚。' },
-  first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned another wizard. Bow first next time.', textZh: '你击晕了另一个巫师。下次记得先鞠躬。' },
+  first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned a rival wizard. Bow first next time.', textZh: '你击晕了一位对手巫师。下次记得先鞠躬。' },
   // Granted privately (achievePrivately): a public announcement in the same tick would unmask the anonymous sender.
   dark_arts: { name: 'The Dark Arts', zh: '黑魔法', rep: 0, text: 'You posted a curse. The forge asked no questions. Nobody saw you do it — this time.', textZh: '你寄出了一个诅咒。锻造炉什么也没问。这一次，没有人看见。' },
   hello_world: { name: 'Hello, World', zh: '你好，世界', rep: 1, text: 'Your spell said hello to the world. Every great wizard starts here — even Hermione had a first program.', textZh: '你的咒语向世界问了好。每个伟大的巫师都从这里开始——赫敏也写过她的第一个程序。' },
@@ -248,7 +252,7 @@ export class World {
   private nid(prefix: string) { return `${prefix}${(++this.seq).toString(36)}${Math.floor(this.rng() * 1296).toString(36)}`; }
   onEvent(fn: (e: WorldEvent) => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string } = {}) {
+  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string; ch?: WorldEvent['ch']; aud?: string[] } = {}) {
     const e: WorldEvent = { id: ++this.eventSeq, t: round(this.now), type, text, ...opts };
     this.events.push(e);
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
@@ -261,7 +265,7 @@ export class World {
    * which would hand every player everyone's registry number). Send `wireEvent(e)`, never `e`.
    */
   wireEvent(e: WorldEvent): WireEvent {
-    const { who: _who, ...rest } = e;
+    const { who: _who, aud: _aud, ...rest } = e;
     return rest;
   }
 
@@ -274,7 +278,7 @@ export class World {
     const out: WorldEvent[] = [];
     for (const e of this.events) {
       if (e.id <= sinceId) continue;
-      if (e.to && e.to !== wid) continue;
+      if (!visibleTo(e, wid)) continue;
       if (e.from === 'agent') continue;
       if (e.type === 'chat' && e.who?.[0] === wid) continue;
       out.push(e);
@@ -705,7 +709,9 @@ export class World {
   enroll(name: string, preference?: string): { wizard: Wizard; sorting: string } {
     const clean = name.trim().replace(/\s+/g, ' ');
     if (!/^[\p{L}\p{N} _'.-]{2,24}$/u.test(clean)) throw new Error('A name must be 2-24 letters, digits, spaces, _ \' . or -');
-    for (const w of this.wizards.values()) if (w.name.toLowerCase() === clean.toLowerCase()) throw new Error(`There is already a ${w.house} called ${w.name}.`);
+    // one name, one wizard: lookalikes (case, spacing, accents, Cyrillic letters) count as the same name
+    const key = nameKey(clean);
+    for (const w of this.wizards.values()) if (nameKey(w.name) === key) throw new Error(`There is already a ${w.house} called ${w.name}: that name is taken (so is anything that looks like it). Pick another. 已经有一位${zhHouse(w.house)}的巫师叫 ${w.name}：这个名字（以及看起来一样的名字）已被占用，换一个吧。`);
     const canon = canonFor(clean);
     let house: House;
     let sorting: string;
@@ -1026,7 +1032,7 @@ export class World {
     if (!w) return [];
     const out: { from: string; kind: string; eta: number }[] = [];
     for (const p of this.projectiles.values()) {
-      if (p.owner === wid || !this.canHarm(p.owner, wid)) continue;
+      if (p.owner === wid || !strikes(this, p.owner, p.homing, wid)) continue;
       const rx = w.pos.x - p.pos.x, rz = w.pos.z - p.pos.z;
       const v2 = p.vel.x * p.vel.x + p.vel.z * p.vel.z;
       if (v2 < 1e-6) continue;
@@ -1070,7 +1076,8 @@ export class World {
   private tryReflect(p: Projectile, id: string): boolean {
     const w = this.wizards.get(id);
     if (!w || (p.kind !== 'bolt' && p.kind !== 'disarm') || p.owner === w.id || p.tags.includes('reflected')) return false;
-    if (!(w.st.shieldUntil > this.now && w.st.shield > 0 && this.now - (w.st.shieldAt ?? -1e9) <= PERFECT_PROTEGO_S)) return false;
+    const timed = w.st.shieldUntil > this.now && w.st.shield > 0 && this.now - (w.st.shieldAt ?? -1e9) <= PERFECT_PROTEGO_S;
+    if (!timed && !HOOKS.parry.some((f) => f.parry(this, w, p))) return false; // e.g. an armed ward (ward.ts)
     const from = this.entity(p.owner);
     const sp = Math.hypot(p.vel.x, p.vel.z) || this.rules.physics.projectileSpeed;
     const tx = from ? from.pos.x - w.pos.x : -p.vel.x, tz = from ? from.pos.z - w.pos.z : -p.vel.z;
@@ -1151,11 +1158,11 @@ export class World {
     for (const f of HOOKS.reveal) f.reveal(this, w, key); // … and how their spells work (偷师)
     if (w.ui.includes(key)) return;
     w.ui.push(key);
-    const where = { tempus: 'the top-right corner: the time, and the term', revelio: 'the top-left corner: your own measure', 'point-me': 'the bottom-left corner: a radar that always points north', homenum: 'the bottom-right corner: everyone near you' }[key];
-    this.emit('egg', `✨ A new sense settles into ${where}.`, { to: w.id, zh: `✨ 一种新的感知落在了${({ tempus: '右上角：时间与学期', revelio: '左上角：你自己的斤两', 'point-me': '左下角：永远指北的雷达', homenum: '右下角：身边的每一个人' } as Record<string, string>)[key]}。` });
+    const c = UI_CHARM_INFO[key];
+    this.emit('egg', `✨ A new sense settles into ${c.en}. (MCP: look.${c.look})`, { to: w.id, zh: `✨ 一种新的感知落在了${c.zh}。（MCP：look.${c.look}）` });
   }
 
-  /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last. */
+  /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last (no ally of the caster). */
   chain(w: Wizard, first: string, power: number, element: Element, jumps: number, tags: string[]) {
     const hit = new Set<string>();
     const pts: number[] = [w.pos.x, w.pos.z];
@@ -1169,7 +1176,7 @@ export class World {
       this.damage(w.id, cur, p, element, tags);
       p *= 0.7;
       const from = { ...e.pos };
-      cur = this.around(from, 8, (x) => !hit.has(x.id) && this.canHarm(w.id, x.id), w.id, 1)[0]?.id ?? '';
+      cur = this.around(from, 8, (x) => !hit.has(x.id) && strikes(this, w.id, first, x.id), w.id, 1)[0]?.id ?? ''; // never leaps to an ally (allies.ts)
     }
     this.fx({ k: 'chain', x: w.pos.x, z: w.pos.z, e: element, pts });
   }
@@ -1335,6 +1342,8 @@ export class World {
       const last = kw.lastDuel[w.id] ?? -1e9;
       let gain = 0;
       const fresh = this.now - w.createdAt < FRESH_SECONDS || w.npc;
+      // 以大欺小: a victim more than BULLY_YEAR_GAP years below you pays nobody anything (Lean stun_pays_rep)
+      const bully = !stunPaysRep(kw.year, w.year);
       // 输赢代价不对称: the share stolen grows with the victim's standing (5% … 20%, a bounty — the Dark Lord — 30%),
       // and the lawless zone doubles the duel (base and share, the share still ≤ 30%). Lean: duel_steal_cap, duel_conserves_curve.
       let bounty: readonly Line[] | null = null;
@@ -1342,7 +1351,7 @@ export class World {
       const dark = !!bounty;
       const mult = this.inLawless(w.pos) ? LAWLESS_MULT : 1;
       let steal = 0, pct = 0;
-      if (this.now - last > 60 && !fresh) {
+      if (this.now - last > 60 && !fresh && !bully) {
         pct = stealPct(w.reputation, dark, this.rules.progression.duelRepStealPct, mult);
         steal = duelSteal(w.reputation, dark, this.rules.progression.duelRepStealPct, mult);
         w.reputation -= steal;
@@ -1350,15 +1359,16 @@ export class World {
         this.addRep(kw, gain, 'duels');
       }
       kw.lastDuel[w.id] = this.now;
-      const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
+      const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : bully ? ` (no reputation: they are ${kw.year - w.year} years below you)` : ' (no reputation: rematch too soon)';
       const q = this.stunQuip(w, kw, element);
       const extra = gain ? { en: `${pct ? `, ${pct}% of theirs` : ''}${mult > 1 ? ', doubled in the lawless forest' : ''}`, zh: `${pct ? `，夺走对方 ${pct}%` : ''}${mult > 1 ? '，无规则区翻倍' : ''}` } : { en: '', zh: '' };
-      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation${extra.en})` : why}.${q ? ` ${q.en}` : ''}`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}${extra.zh}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : '（重复击晕，不计声望）'}。${q ? q.zh : ''}` });
+      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation${extra.en})` : why}.${q ? ` ${q.en}` : ''}`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}${extra.zh}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : bully ? `（对方比你低 ${kw.year - w.year} 个年级，以大欺小不计声望）` : '（重复击晕，不计声望）'}。${q ? q.zh : ''}` });
       if (bounty && gain) {
         const l = fill(this.quip(bounty, w.handle, kw.handle), { name: w.name, k: kw.name, n: Math.round(steal) });
         this.emit('dark', l.en, { who: [kw.id, w.id], zh: l.zh });
       }
-      this.achieve(kw, 'first_blood');
+      // 决斗者 needs a real opponent: not an NPC, not a housemate caught by friendly fire (playtest round 2), not a much younger one
+      if (!w.npc && w.house !== kw.house && !bully) this.achieve(kw, 'first_blood');
       if (this.flags.elderWandHolder === w.id) this.transferElderWand(w, kw, 'defeated');
       this.runLaws('kill', kw, w.id);
     } else {
@@ -1872,6 +1882,10 @@ export class World {
     if (w.st.disarmedUntil > this.now) return fail('You have been disarmed!');
     if (this.silenced(w)) return fail(SILENCED);
     if (this.now < (w.cooldowns[it.id] ?? 0) || this.now < w.globalCd) return fail(`${it.name} is recharging.`);
+    // an item's charm is a cast like any other: the features' holds (a duel's bow) and the market's bans apply to it
+    for (const f of HOOKS.castBlock) { const why = f.castBlock(this, w); if (why) return fail(why); }
+    const asSpell = { id: it.id, name: it.name, source: it.charm.source } as Spell;
+    if (bannedListing(this, asSpell)) { this.fx({ k: 'fizzle', x: w.pos.x, z: w.pos.z, h: w.handle }); return fail(bannedCastText(this, asSpell, w.handle)); }
     const target = this.resolveTarget(opts.target, wid);
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     // Charms were validated against the forger's year; the holder's own caps still apply at runtime.
@@ -1980,7 +1994,7 @@ export class World {
     const w = this.need(wid);
     if (w.decreeCharges < 1) {
       const m = this.flags.ministerId ? this.wizards.get(this.flags.ministerId) : undefined;
-      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the wizard with the highest reputation (min ${this.ministerBar()}).`);
+      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the player with the highest reputation (min ${this.ministerBar()}; never an NPC).`);
     }
     const full = { ...patch } as Record<string, unknown>;
     if (proclamation) full.proclamation = proclamation;
@@ -2064,10 +2078,10 @@ export class World {
       this.emit('term', l.en, { zh: l.zh });
     }
     for (const w of this.wizards.values()) w.decreeCharges = 0;
-    const top = [...this.wizards.values()].filter((w) => !w.npc).sort((a, b) => b.reputation - a.reputation)[0];
+    const all = [...this.wizards.values()], top = all[electMinister(all, this.ministerBar())]; // players only (NPCs never rule)
     const cupZh = winner ? `${zhHouse(winner)}以 ${Math.round(points[winner])} 分赢得学院杯！城堡挂满了${zhHouse(winner)}的旗帜。` : '没有学院得分。';
     const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
-    if (top && top.reputation >= this.ministerBar()) {
+    if (top) {
       top.decreeCharges = 1;
       top.wasMinister = true;
       this.flags.ministerId = top.id;
@@ -2081,10 +2095,11 @@ export class World {
     }
     for (const w of this.wizards.values()) {
       const before = w.reputation;
-      w.reputation *= this.rules.terms.reputationDecay;
+      // only those who played this term: the absent keep what they had (a week away no longer means starting over)
+      if (w.npc || w.lastSeenAt >= this.term.startedAt || this.online(w)) w.reputation *= this.rules.terms.reputationDecay;
       w.termReputation = 0;
       // say it: every playtester thought the halving was a bug
-      if (!w.npc && before >= 1) {
+      if (!w.npc && before >= 1 && w.reputation < before) {
         const keep = Math.round(this.rules.terms.reputationDecay * 100);
         this.emit('term', `Term over: your reputation ${Math.round(before)} → ${Math.round(w.reputation)} (${keep}% carries into the next term; the rest was this term's race).`, { to: w.id, zh: `学期结束：你的声望 ${Math.round(before)} → ${Math.round(w.reputation)}（${keep}% 带进下学期，其余是这学期的比赛）。` });
       }
@@ -2094,6 +2109,13 @@ export class World {
   }
 
   forceEndTerm() { this.endTerm(); }
+
+  /** Change the term length now (TERM_SECONDS at start-up, the save migration): the running term ends at its new length, or in a minute. */
+  setTermLength(seconds: number) {
+    const len = Math.max(120, Math.min(86400, Math.round(seconds)));
+    this.rules.terms.lengthSeconds = len;
+    this.term.endsAt = Math.max(this.now + 60, this.term.startedAt + len);
+  }
 
   // ------------------------------------------------------------------ the tick
   tick(dt = TICK) {
@@ -2415,7 +2437,7 @@ export class World {
         for (const e of this.around(p.pos, 2.2, () => true, p.owner, 4)) {
           const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
           if (dist(e.pos, p.pos) > r + 0.45) continue;
-          if (!this.canHarm(p.owner, e.id)) continue;
+          if (!strikes(this, p.owner, p.homing, e.id)) continue; // a homing spell passes through the caster's allies (allies.ts)
           if (e.kind === 'wizard' && this.dodging(e.id)) continue; // 翻滚闪避: it flies past
           if (e.kind === 'wizard' && this.tryReflect(p, e.id)) break; // 完美格挡: back where it came from
           this.hit(p, e.id);
@@ -2522,7 +2544,7 @@ export class World {
     let t = c.target ? this.entity(c.target) : undefined;
     if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, o.pos) > 18)) { t = undefined; c.target = null; }
     if (!t) {
-      t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id) && !this.isBenign(e.id) && dist(e.pos, o.pos) < 16, c.id, 1)[0];
+      t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id) && !this.isBenign(e.id) && !spared(this, c.id, e.id) && dist(e.pos, o.pos) < 16, c.id, 1)[0];
       if (t) c.target = t.id;
     }
     if (t) {
@@ -3075,6 +3097,8 @@ export class World {
       schoolEvent: this.lookEvent(w),
       chests: chestsLeft(this).filter((c) => dist(c, w.pos) <= CHEST_SIGHT).map((c) => ({ id: c.id, x: round(c.x), z: round(c.z), dist: round(dist(c, w.pos)), howTo: 'walk within 2.6 m, then open_chest' })),
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
+      // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
+      ...revealView(this, w),
     };
   }
 
@@ -3094,7 +3118,9 @@ export class World {
       minister: m ? { name: m.name, decreeUnspent: m.decreeCharges > 0 } : null,
       ...Object.assign({}, ...HOOKS.board.map((f) => f.view.board(this))), // e.g. the Dark Lord
       ministerMinReputation: this.ministerBar(),
-      ministerRule: `At the end of each term the highest-reputation wizard (min ${this.ministerBar()}) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
+      // who would take office if the term ended now (NPCs on the board never do)
+      ministerInLine: ((all) => all[electMinister(all, this.ministerBar())]?.name ?? null)([...this.wizards.values()]),
+      ministerRule: `At the end of each term the highest-reputation player (min ${this.ministerBar()}; NPCs never hold office) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
       houseCups: this.houseCups.slice(-5),
       loopholeFirstFoundBy: this.flags.loopholeFoundBy,
     };
@@ -3315,7 +3341,7 @@ export class World {
   // ------------------------------------------------------------------ persistence
   serialize() {
     return {
-      version: 1, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
+      version: 2, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       // what each feature keeps across a restart (kernel/features.ts)
       features: Object.fromEntries(HOOKS.save.map((f) => [f.id, f.save(this)])),
       // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
@@ -3340,6 +3366,8 @@ export class World {
       chests: f0.chests ?? { term: 0, opened: {} },
     };
     w.seq = data.seq ?? 0;
+    // v1 saves ran 15-minute terms by default: move them to the new default unless a decree chose the length
+    if ((data.version ?? 1) < 2 && w.rules.terms.lengthSeconds === TERM_OLD_DEFAULT_S && !w.decrees.some((d) => d.changes.some((c) => c.startsWith('terms.lengthSeconds:')))) w.setTermLength(TERM_DEFAULT_S);
     const saved = (data as { features?: Record<string, unknown> }).features ?? {};
     for (const f of HOOKS.load) f.load(w, saved[f.id], data as unknown as Record<string, unknown>); // older saves kept these at the top
     for (const [id, f] of Object.entries((data as { focus?: Record<string, { pts?: unknown; at?: unknown }> }).focus ?? {})) {

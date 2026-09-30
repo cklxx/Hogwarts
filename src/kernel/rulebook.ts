@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   CARD_DROP_PCT_DEFAULT, CARD_DROP_PCT_MAX, CUP_CAP_DEFAULT, CUP_CAP_MAX, CUP_CAP_MIN, CUP_MULT_DEFAULT, CUP_MULT_MAX, EVENT_IDS, EVENT_INTERVAL_DEFAULT, EVENT_INTERVAL_MAX, EVENT_INTERVAL_MIN,
 } from '../shared/constants.js';
-import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, type EffectPrimitive, type Element, type WildKind } from '../shared/constants.js';
+import { CREATURE_KINDS, EFFECT_PRIMITIVES, ELEMENTS, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, TERM_DEFAULT_S, type EffectPrimitive, type Element, type WildKind } from '../shared/constants.js';
 
 /**
  * The Rulebook is ALL the policy of the world. The kernel is pure mechanism and reads every tunable
@@ -109,8 +109,8 @@ export const RulebookSchema = z.object({
     .prefault({}),
   terms: z
     .object({
-      lengthSeconds: num(120, 86400, 900, 'Length of a school term; at its end the House Cup is awarded and a Minister chosen'),
-      reputationDecay: num(0, 1, 0.5, 'Fraction of reputation that survives the end of term'),
+      lengthSeconds: num(120, 86400, TERM_DEFAULT_S, 'Length of a school term; at its end the House Cup is awarded and a Minister chosen'),
+      reputationDecay: num(0, 1, 0.5, 'Fraction of reputation that survives the end of term, for those who played in it (reputation of the absent is kept as it was)'),
       ministerMinReputation: num(0, 100000, 100, 'Minimum reputation to be appointed Minister for Magic'),
       finalMinuteMultiplier: num(1, CUP_MULT_MAX, CUP_MULT_DEFAULT, '决胜时刻: house points gained in the last minute of a term are multiplied by this'),
       wizardPointsCap: z.number().int().min(CUP_CAP_MIN).max(CUP_CAP_MAX).default(CUP_CAP_DEFAULT).describe('Anti-farm: the most house points one wizard can add in a term, from every source together'),

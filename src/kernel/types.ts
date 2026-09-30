@@ -300,10 +300,17 @@ export interface WorldEvent {
   owl?: { id: number; options?: string[]; expiresAt?: number; re?: number };
   /** 巧克力蛙画片: the card this private event hands over (the browser flips it over). */
   card?: string;
+  /** Chat (kernel/chat.ts): the channel of a chat line. */
+  ch?: 'all' | 'house' | 'near' | 'dm';
+  /** Server-internal: delivered only to these wizard ids (a house, those near, a whisper's two ends). Never on the wire. */
+  aud?: string[];
 }
 
-/** A WorldEvent as it may be sent to a browser: no `who`. */
-export type WireEvent = Omit<WorldEvent, 'who'>;
+/** A WorldEvent as it may be sent to a browser: no `who`, no `aud`. */
+export type WireEvent = Omit<WorldEvent, 'who' | 'aud'>;
+
+/** May `wid` see this event? Public, or addressed to them (`to`), or they are in its audience (`aud`). */
+export const visibleTo = (e: WorldEvent, wid: string) => (e.to ? e.to === wid : e.aud ? e.aud.includes(wid) : true);
 
 export interface Fx {
   k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal' | 'dodge' | 'reflect' | 'clash';

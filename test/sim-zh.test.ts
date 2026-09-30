@@ -9,6 +9,8 @@ const SOURCES = [
   '(push target 3)', '(nova 4 6 :fire)', '(patronus 5)', '(apparate (vec 3 3))', '(light 10)', '(reveal :tempus)',
   '(chain target 6 :lightning)', '(storm aim 4 6 :lightning)', '(say "hi there")', '(regen self 2 4)', '(cleanse self)',
   '(mend 5 8)', '(summon :serpent 10)', '(glamour :robe "#7a1f2b")', '(after 1 (heal self 2))',
+  // simulate expands delayed blocks: a fizzling one and one with nothing to act on read in Chinese too
+  '(heal self 1) (after 1 (after 1 (heal self 2))) (after 2 (when (> 0 1) (bolt aim 5)))',
 ];
 
 describe('simulate lines in Chinese', () => {

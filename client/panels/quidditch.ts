@@ -22,6 +22,14 @@ export interface QdDeps {
 const PITCH = { x: 40, z: -150 };
 const mm = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+interface League { season: number; table: { house: string; pts: number; played: number }[] }
+/** The season's table in one line (the reply to P when no match is on); pure, for tests. */
+export function leagueLine(l: League | undefined): string {
+  if (!l?.table.length) return '';
+  const rows = l.table.map((r) => `${houseName(r.house)} ${r.pts}`);
+  return L(` 第 ${l.season} 赛季积分：${rows.join(' · ')}`, ` Season ${l.season} table: ${rows.join(' · ')}`);
+}
+
 /** The slip's two lines; pure, for tests. */
 export function qdLine(qd: QdSnap | undefined, me: string, house: string | null): { title: string; sub: string; mine: boolean; canJoin: boolean } | null {
   if (!qd) return null;
@@ -34,7 +42,7 @@ export function qdLine(qd: QdSnap | undefined, me: string, house: string | null)
   else if (qd.ph === 'done') sub = qd.w === null || qd.w === undefined ? L('终场：平局', 'Full time: a draw') : L(`终场：${houseName(qd.s[qd.w])}获胜`, `Full time: ${houseName(qd.s[qd.w])} win`) + (qd.c ? L(`（${qd.c} 抓住了飞贼）`, ` (${qd.c} caught the Snitch)`) : '');
   else sub = `${mm(qd.t)} · ${qd.sn ? L('金色飞贼出现了！', 'The Snitch is out!') : L(`飞贼 ${qd.sa} 秒后出现`, `Snitch in ${qd.sa}s`)}`;
   if (mine) {
-    const role = mine[2] ? L('找球手', 'Seeker') : L('追球手', 'Chaser');
+    const role = mine[2] === 1 ? L('找球手', 'Seeker') : mine[2] === 2 ? L('守门员', 'Keeper') : L('追球手', 'Chaser');
     const carrying = qd.q?.[2] === me;
     sub += ` · ${role}${carrying ? L(' · 球在你手里：F 射门', ' · you have the Quaffle: F to shoot') : ''}`;
   } else if (canJoin) sub += L(' · 按 P 上场', ' · P to play');
@@ -86,11 +94,12 @@ export function createQuidditch(d: QdDeps) {
       return true;
     },
     /** The server's reply to {t:'quidditch'} (qdStatus); true when handled. */
-    onMessage(msg: { t: string; r?: { match: unknown; next: { teams: [string, string]; callsIn?: number; term: number } | null; you: { role: string } | null } }): boolean {
+    onMessage(msg: { t: string; r?: { match: unknown; next: { teams: [string, string]; callsIn?: number; term: number } | null; you: { role: string } | null; league?: League } }): boolean {
       if (msg.t !== 'quidditch' || !msg.r) return false;
       const r = msg.r;
-      if (r.you) d.toast(L(`🧹 你上场了：${r.you.role === 'seeker' ? '找球手——盯住金色飞贼' : '追球手——碰到鬼飞球就拿，F 射门'}。`, `🧹 You're on: ${r.you.role === 'seeker' ? 'Seeker — watch for the Snitch' : 'Chaser — touch the Quaffle to take it, F to shoot'}.`));
-      else if (!r.match && r.next) d.toast(L(`🧹 下一场魁地奇：${houseName(r.next.teams[0])}对${houseName(r.next.teams[1])}${r.next.callsIn !== undefined ? `，${r.next.callsIn} 秒后集合` : '，下学期'}。`, `🧹 Next Quidditch: ${houseName(r.next.teams[0])} v ${houseName(r.next.teams[1])}${r.next.callsIn !== undefined ? `, called in ${r.next.callsIn}s` : ', next term'}.`));
+      const role = r.you?.role;
+      if (r.you) d.toast(L(`🧹 你上场了：${role === 'seeker' ? '找球手——盯住金色飞贼' : role === 'keeper' ? '守门员——守住自己的三个球门' : '追球手——碰到鬼飞球就拿，F 射门'}。`, `🧹 You're on: ${role === 'seeker' ? 'Seeker — watch for the Snitch' : role === 'keeper' ? 'Keeper — guard your three hoops' : 'Chaser — touch the Quaffle to take it, F to shoot'}.`));
+      else if (!r.match && r.next) d.toast(L(`🧹 下一场魁地奇：${houseName(r.next.teams[0])}对${houseName(r.next.teams[1])}${r.next.callsIn !== undefined ? `，${r.next.callsIn} 秒后集合` : '，下学期'}。`, `🧹 Next Quidditch: ${houseName(r.next.teams[0])} v ${houseName(r.next.teams[1])}${r.next.callsIn !== undefined ? `, called in ${r.next.callsIn}s` : ', next term'}.`) + leagueLine(r.league));
       else if (r.match && !r.you) d.toast(L('🧹 你下场了。', '🧹 You left the pitch.'));
       return true;
     },

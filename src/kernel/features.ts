@@ -2,20 +2,25 @@
  * The features the game is built from (kernel/feature.ts), in the order their hooks run. Add one here and the
  * kernel, the MCP server, the browser socket and the snapshot pick it up.
  */
+import { CHAT_FEATURE } from './chat.js';
 import { DUEL_FEATURE } from './duelclub.js';
 import { EXAMS_FEATURE } from './exams-feature.js';
 import type { Feature } from './feature.js';
 import { hookLists } from './feature.js';
 import { MARKET_FEATURE } from './market.js';
 import { QD_FEATURE } from './quidditch.js';
+import { QUESTS_FEATURE } from './quests.js';
 import { SEALS_FEATURE } from './seals.js';
+import { TRAVEL_FEATURE } from './travel.js';
 import { DA_FEATURE, DARK_LORD_FEATURE, LAWLESS_FEATURE, STUDY_FEATURE } from './unfair.js';
+import { WARD_FEATURE } from './ward.js';
 import { WHEEL_FEATURE } from './wheel.js';
 
 // 不公平，但好玩 first, in its old order (the Dark Mark, the lawless zone, then the DA: the 1 Hz sweep's lines keep
 // theirs); the Duelling Club before Quidditch: an NPC in a duel is the duel's, even if it is also on a team
 export const FEATURES: readonly Feature[] = [
-  DARK_LORD_FEATURE, LAWLESS_FEATURE, DA_FEATURE, STUDY_FEATURE, SEALS_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE,
+  DARK_LORD_FEATURE, LAWLESS_FEATURE, DA_FEATURE, STUDY_FEATURE, SEALS_FEATURE,
+  CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE,
 ];
 export const FEATURE_BY_ID: ReadonlyMap<string, Feature> = new Map(FEATURES.map((f) => [f.id, f]));
 export const HOOKS = hookLists(FEATURES);

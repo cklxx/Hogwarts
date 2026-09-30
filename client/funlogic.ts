@@ -1,3 +1,5 @@
+import { STATIC_SOLIDS } from '../src/kernel/physics';
+import { SIGHT_H, sees } from '../src/shared/curfew';
 import { HOUSES, type EventId, type House } from '../src/shared/constants';
 import { CARDS, CARD_SETS, cardsOfSet, type Card } from '../src/lore/cards';
 import { L } from './i18n';
@@ -80,16 +82,16 @@ export const bossFrac = (ev: EvSnap) => (ev.m ? Math.max(0, Math.min(1, (ev.hp ?
 export const inCastle = (p: { x: number; z: number }) => p.x >= -64 && p.x <= 64 && p.z >= -73 && p.z <= -4;
 
 /**
- * The curfew hint for someone at `me`: the nearest of Filch and Mrs Norris, how far, and whether you stand in
- * Filch's cone (11 m, ±0.8 rad) — the HUD reddens its edge; it does not know about pillars (the kernel does).
+ * The curfew hint for someone at `me`: the nearest of Filch and Mrs Norris, how far, and whether they can see you —
+ * the same rule the kernel catches you by (shared/curfew.ts), pillars and walls included, so the HUD reddens its
+ * edge only when you would really be caught (the Marauder's Map aside).
  */
 export function curfewHint(ev: EvSnap, me: { x: number; z: number }) {
   if (ev.id !== 'curfew' || ev.st !== 'on' || !ev.p?.length) return null;
   let best: { k: 'filch' | 'norris'; d: number; inCone: boolean } | null = null;
   for (const p of ev.p) {
-    const dx = me.x - p.x, dz = me.z - p.z, d = Math.hypot(dx, dz);
-    const off = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, -dz) - p.f), Math.cos(Math.atan2(dx, -dz) - p.f)));
-    const inCone = p.k === 'filch' ? d <= 11 && (d <= 1.2 || off <= 0.8) : d <= 4;
+    const d = Math.hypot(me.x - p.x, me.z - p.z);
+    const inCone = sees(p, me, (ax, az, bx, bz) => !STATIC_SOLIDS.hitSegment(ax, az, bx, bz, SIGHT_H));
     if (!best || d < best.d) best = { k: p.k, d, inCone };
     else if (inCone && !best.inCone) best = { k: p.k, d, inCone };
   }

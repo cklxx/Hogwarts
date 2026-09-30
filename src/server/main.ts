@@ -16,6 +16,7 @@ import { marketMessage } from '../kernel/market.js';
 import { schoolEvents } from '../kernel/wheel.js';
 import { FEATURE_BY_ID } from '../kernel/features.js';
 import { TICK, World } from '../kernel/world.js';
+import { visibleTo } from '../kernel/types.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
@@ -61,14 +62,15 @@ function load(): World {
     try {
       const w = World.restore(JSON.parse(readFileSync(DATA, 'utf8')));
       console.log(`[hogwarts] restored ${w.wizards.size} wizards from ${DATA}`);
+      // TERM_SECONDS applies to a restored world too (it used to count only for a fresh one)
+      if (process.env.TERM_SECONDS) w.setTermLength(Number(process.env.TERM_SECONDS));
       return w;
     } catch (e) {
       console.error('[hogwarts] could not restore world, starting fresh:', e);
     }
   }
   const w = new World();
-  if (process.env.TERM_SECONDS) w.rules.terms.lengthSeconds = Math.max(120, Number(process.env.TERM_SECONDS));
-  w.term.endsAt = w.now + w.rules.terms.lengthSeconds;
+  w.setTermLength(Number(process.env.TERM_SECONDS) || w.rules.terms.lengthSeconds);
   return w;
 }
 const world = load();
@@ -77,10 +79,15 @@ warmPathfinding();
 ensureNpcs(world, Number(process.env.NPC_COUNT ?? 4));
 // 校园事件轮盘: EVENT_FIRST_S rolls the first event sooner (demos, e2e tests); the interval itself is a rule (rules.events)
 if (process.env.EVENT_FIRST_S) world.wheel.nextAt = world.now + Math.max(0, Number(process.env.EVENT_FIRST_S) || 0);
+/** Write a file whole or not at all (a crash mid-write leaves the last good copy). */
+function writeAtomic(path: string, data: unknown) {
+  writeFileSync(path + '.tmp', JSON.stringify(data));
+  renameSync(path + '.tmp', path);
+}
 function save() {
   mkdirSync(dirname(DATA), { recursive: true });
-  writeFileSync(DATA + '.tmp', JSON.stringify(world.serialize()));
-  renameSync(DATA + '.tmp', DATA);
+  writeAtomic(DATA, world.serialize());
+  if (familiars) writeAtomic(FAMILIARS_DATA, familiars.save());
 }
 
 // ------------------------------------------------------------------ the clock
@@ -188,16 +195,24 @@ function trimWizard(wid: string) {
   for (const [id, e] of mine.slice(0, Math.max(0, mine.length - (MCP_PER_WIZARD - 1)))) closeMcp(id, e);
 }
 /** MCP sessions bound to a wizard: derived by scanning, never counted (docs/AGENT_LINK.md §A.4). */
-function sessionsOf(wid: string) {
+function sessionsOf(wid: string, activeWithinMs = Infinity) {
   let n = 0;
-  for (const e of mcpSessions.values()) if (e.session.wizardId === wid) n++;
+  const t = Date.now();
+  for (const e of mcpSessions.values()) if (e.session.wizardId === wid && t - e.seen <= activeWithinMs) n++;
   return n;
 }
+/** Your own agent comes first, but only while it is actually there: a session left open and silent this long
+ * (the agent was closed without ending it) no longer keeps your familiar asleep; eviction removes it later. */
+const AGENT_AWAY_MS = 5 * 60_000;
+const FAMILIARS_DATA = join(dirname(DATA), 'familiars.json');
 // 使魔, the built-in agent (familiar.ts): only with ANTHROPIC_API_KEY; otherwise null and invisible.
 const familiarCfg = familiarConfig();
 const familiars = familiarCfg
-  ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: sessionsOf, session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
+  ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: (wid) => sessionsOf(wid, AGENT_AWAY_MS), session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
   : null;
+if (familiars && existsSync(FAMILIARS_DATA)) {
+  try { familiars.restore(JSON.parse(readFileSync(FAMILIARS_DATA, 'utf8'))); } catch (e) { console.error('[familiar] could not restore familiars:', (e as Error).message); }
+}
 if (familiarCfg) console.error(`[familiar] on: model ${familiarCfg.model}, effort ${familiarCfg.effort}, ${familiarCfg.daily}/wizard/day, ${familiarCfg.globalDaily}/day in all, ${familiarCfg.concurrency} at once`);
 /** Close code for a socket whose key was changed (it reconnects only with the new key). */
 const KEY_CHANGED = 4001;
@@ -356,7 +371,6 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
     switch (m.t) {
       case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
       case 'cast': reply({ t: 'cast', r: world.cast(wid, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
-      case 'chat': world.say(w, String(m.text ?? '')); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
       case 'unequip': world.unequip(wid, String(m.slot)); items(); break;
       case 'destroy': { const it = world.destroyItem(wid, String(m.item)); reply({ t: 'destroyed', item: it.id, name: it.name }); items(); break; }
@@ -410,7 +424,7 @@ http.on('upgrade', (req, socket, head) => {
     clients.set(ws, w.id);
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
-    const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
+    const recent = world.events.filter((e) => visibleTo(e, w.id)).slice(-30).map((e) => world.wireEvent(e));
     ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
@@ -428,7 +442,7 @@ http.on('upgrade', (req, socket, head) => {
 // Events: encoded once, queued for the sockets connected right now, written with the next broadcast (net.ts).
 world.onEvent((e) => {
   const msg = Buffer.from(JSON.stringify({ t: 'event', e: world.wireEvent(e) }));
-  for (const [ws, wid] of clients) if (!e.to || e.to === wid) enqueue(ws, msg);
+  for (const [ws, wid] of clients) if (visibleTo(e, wid)) enqueue(ws, msg);
 });
 
 // Snapshots: built and serialised once per broadcast (fanout.ts). Clients with AOI get the entities

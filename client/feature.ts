@@ -46,19 +46,19 @@ export interface ClientFeature {
   top?(): string;
   /** A key the game has not used: true when this feature took it (one that acts: not while `observing`). */
   keydown?(e: KeyboardEvent): boolean;
+  /** Every world event you receive (fresh = just happened; false = the backlog in the welcome). */
+  onEvent?(e: { id: number; type: string; text: string; zh?: string; to?: string }, fresh: boolean): void;
   /** A server message: true when it was this feature's. */
   onMessage?(msg: { t: string; [k: string]: unknown }): boolean;
   /** An error the server sent (translated): true when this feature showed it (it asked a moment ago). */
   onError?(text: string): boolean;
-  /** A world event, before the feed shows it. */
-  onEvent?(e: { type: string; to?: string; zh?: string; text: string }): void;
   /** Esc: close this feature's panel if it is open (true), topmost first. */
   close?(): boolean;
   /** Open what the next-goal line (client/play.ts GoalAct) points at, if it is this feature's (true). */
   open?(what: string): boolean;
   /** The next-goal line's view of this feature (fields of client/play.ts GoalState). */
   goal?(): Record<string, unknown>;
-  /** F: something to do here. */
+  /** What F would do right here (a page of a seal at its landmark, a fireplace, …), or null; the first feature with one wins. */
   action?(): ClientAction | null;
   /** A mark beside a wizard's name: text for the 3D name tag, markup for the parchment (`html`), or ''. */
   badge?(handle: string, html?: boolean): string;

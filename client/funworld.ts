@@ -1,3 +1,4 @@
+import { FILCH } from '../src/shared/curfew';
 import * as THREE from 'three';
 import { CHESTS } from '../src/shared/chests';
 import { heightAt } from './terrain';
@@ -36,8 +37,8 @@ export function makeFilch() {
   const lantern = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), new THREE.MeshBasicMaterial({ color: 0xffc860 }));
   lantern.position.set(0.45, 1.05, -0.3);
   m.body.add(lantern);
-  // the cone he sees in: 11 m, ±0.8 rad (kernel/wheel.ts FILCH), drawn flat on the ground
-  const cone = new THREE.Mesh(new THREE.CircleGeometry(11, 24, Math.PI / 2 - 0.8, 1.6), new THREE.MeshBasicMaterial({ color: 0xffb040, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
+  // the cone he sees in (shared/curfew.ts FILCH), drawn flat on the ground
+  const cone = new THREE.Mesh(new THREE.CircleGeometry(FILCH.range, 24, Math.PI / 2 - FILCH.halfAngle, 2 * FILCH.halfAngle), new THREE.MeshBasicMaterial({ color: 0xffb040, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
   cone.rotation.x = -Math.PI / 2;
   cone.position.y = 0.06;
   m.body.add(cone);

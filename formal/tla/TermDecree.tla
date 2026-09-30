@@ -15,12 +15,13 @@ Init == rep \in [Wizards -> 0..MaxRep] /\ charges = [w \in Wizards |-> 0] /\ rul
 
 Gain(w) == rep[w] < MaxRep /\ rep' = [rep EXCEPT ![w] = rep[w] + 1] /\ UNCHANGED <<charges, rule, decreesThisTerm, minister>>
 
-\* end of term: the highest-reputation *player* with >= MinRep becomes Minister; all other charges lapse; reputation halves
+\* end of term: the highest-reputation *player* with >= MinRep becomes Minister; all other charges lapse; the
+\* reputation of those who played this term halves (NPCs always play; the absent keep theirs: any subset may be absent)
 EndTerm ==
   LET eligible == {p \in Players : rep[p] >= MinRep /\ \A q \in Players : rep[q] <= rep[p]}
   IN /\ IF eligible = {} THEN charges' = [w \in Wizards |-> 0] /\ minister' = "none"
         ELSE \E m \in eligible : charges' = [w \in Wizards |-> IF w = m THEN 1 ELSE 0] /\ minister' = m
-     /\ rep' = [w \in Wizards |-> rep[w] \div 2]
+     /\ \E absent \in SUBSET Players : rep' = [w \in Wizards |-> IF w \in absent THEN rep[w] ELSE rep[w] \div 2]
      /\ decreesThisTerm' = 0
      /\ UNCHANGED rule
 
@@ -39,4 +40,6 @@ NPCsNeverRule == \A n \in NPCs : charges[n] = 0
 RulesWithinConstitution == rule \in Lo..Hi
 OneDecreePerTerm == decreesThisTerm <= 1
 OnlyMinisterDecrees == \A w \in Wizards : charges[w] = 1 => w = minister
+\* progression.ts electMinister (Lean elect_never_npc): the office is a player's or vacant, whatever the NPCs' reputation
+MinisterIsPlayer == minister \in Players \cup {"none"}
 =============================================================================

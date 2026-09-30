@@ -10,9 +10,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  darkLordTakes, derived, derivedUncached, duelSteal, focusAfter, hexDotHp, hexHpFloor, hexPrice, hexTickDmg, hpFloor, jointPct, moveSlow, stealAmount, stealPct,
-  stealTier, vetoPasses, yearForXp,
+  darkLordTakes, derived, derivedUncached, duelSteal, electMinister, focusAfter, hexDotHp, hexHpFloor, hexPrice, hexTickDmg, hpFloor, jointPct, moveSlow, stealAmount, stealPct,
+  stealTier, stunPaysRep, vetoPasses, yearForXp,
 } from '../src/kernel/progression.js';
+import { strikes } from '../src/kernel/allies.js';
 import { titleIndex } from '../src/lore/titles.js';
 import { World } from '../src/kernel/world.js';
 import { royaltyGrant, royaltyStep } from '../src/kernel/market.js';
@@ -54,7 +55,24 @@ const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.
   yearForXp: [number, number][]; titleIndex: [number, number, number, number, number][]; steal: [number, number, number][];
   agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors; cup: CupVectors; duel: DuelVectors;
   quidditch: { constants: Record<string, number>; rep: [number, number, number, number][]; cup: [number, number][] };
+  minister: [[number, number][], number, number][]; bully: { BULLY_YEAR_GAP: number; pays: [number, number, number][] };
 };
+
+describe('Lean conformance vectors: 魔法部长 (elect_never_npc, elect_top_player, elect_vacant) and 以大欺小 (stun_pays_*)', () => {
+  it('electMinister picks what Lean picks, and never an NPC', () => {
+    expect(V.minister.length).toBeGreaterThan(30);
+    for (const [cs, bar, out] of V.minister) {
+      const got = electMinister(cs.map(([r, n]) => ({ reputation: r, npc: n === 1 })), bar);
+      expect([cs, bar, got]).toEqual([cs, bar, out]);
+      if (got >= 0) expect(cs[got][1]).toBe(0); // the theorem, on the vector
+    }
+    expect(V.minister.some(([cs, , out]) => out >= 0 && cs.some(([r, n]) => n === 1 && r > cs[out][0]))).toBe(true); // an NPC out-ranked the Minister
+  });
+  it('stunPaysRep and BULLY_YEAR_GAP agree with Lean', () => {
+    expect(V.bully.BULLY_YEAR_GAP).toBe(K.BULLY_YEAR_GAP);
+    for (const [k, v, p] of V.bully.pays) expect([k, v, stunPaysRep(k, v) ? 1 : 0]).toEqual([k, v, p]);
+  });
+});
 
 describe('Lean conformance vectors: 魁地奇 (qd_rep_bounded, qd_rep_mono, qd_cup_bounded, qd_cup_mono)', () => {
   it('the constants, qdRep and qdCup agree with Lean', () => {
@@ -264,7 +282,8 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
     const rnd = mulberry32(2024);
     const rj = mulberry32(88); // jinxes draw from their own stream, so the worlds above are the ones they always were
     const rd = mulberry32(3141); // and duels from theirs
-    const seen = { bit: 0, spared: 0, senderElsewhere: 0, capped: 0, duels: 0 }; // each branch below must actually be exercised
+    const rs = mulberry32(2718); // and the NPC flag of the strikes check from its own
+    const seen = { bit: 0, spared: 0, senderElsewhere: 0, capped: 0, duels: 0, strays: 0 }; // each branch below must actually be exercised
     const SAFE = { x: 0, z: -56 }; // the Great Hall
     for (let trial = 0; trial < 3000; trial++) {
       const w = new World({ seed: trial, secret: 'x' });
@@ -321,6 +340,26 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
           if (!w.rules.combat.pvp && [a.id, b.id].includes(s) && [a.id, b.id].includes(d)) expect(can).toBe(false); // NoPvP
         }
       }
+      // 误伤 (Hostility.tla Allied / Strikes, allies.ts): a spell meant for t strikes e iff canHarm, and e is t, or it is a
+      // straight shot, or e is no ally of the caster — and, beyond the model, an NPC's spell passes players by
+      const behindOf = (id: string) => owner[id] ?? (id === a.id || id === b.id ? id : null);
+      const alliedM = (x: string, y: string) => {
+        const bx = behindOf(x), by = behindOf(y);
+        if (!bx || !by) return false;
+        const hx = w.wizards.get(bx)!.house, hy = w.wizards.get(by)!.house;
+        return hx === hy && !(duel && bx !== by);
+      };
+      const npcB = rs() < 0.3;
+      b.npc = npcB;
+      for (const s of ids) for (const t of [null, ...ids]) for (const e of ids) {
+        const bs = behindOf(s), be = behindOf(e);
+        const spares = npcB && bs === b.id && be === a.id && !duel;
+        const want = w.canHarm(s, e) && (!t || t === e || !(alliedM(s, e) || spares));
+        expect(strikes(w, s, t, e)).toBe(want);
+        if (!w.rules.combat.friendlyFire && !spares) expect(strikes(w, s, t, e)).toBe(w.canHarm(s, e)); // FriendlyFireOffUnchanged
+        if (alliedM(s, e) && t !== e && t !== null) { expect(strikes(w, s, t, e)).toBe(false); seen.strays++; } // NoAllyStray
+      }
+      b.npc = false;
       expect(w.canHarm('sa', a.id)).toBe(false); // SummonLoyal
       expect(w.canHarm('sb', b.id)).toBe(false);
       for (const [s, o] of Object.entries(owner)) {
@@ -366,7 +405,7 @@ describe('Hostility.tla invariants hold for World.canHarm', () => {
       }
       void sa; void sb;
     }
-    expect(Math.min(seen.bit, seen.spared, seen.senderElsewhere, seen.capped, seen.duels)).toBeGreaterThan(20);
-  });
+    expect(Math.min(seen.bit, seen.spared, seen.senderElsewhere, seen.capped, seen.duels, seen.strays)).toBeGreaterThan(20);
+  }, 90_000); // heavy: ~5–7 s on an idle box, several times that under a loaded CI runner
 });
 

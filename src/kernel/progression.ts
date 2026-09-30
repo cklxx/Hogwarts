@@ -1,7 +1,7 @@
 import {
   HEX_HP_FLOOR_FRAC, HEX_MALICE_TAX, HP_FLOOR, HP_FLOOR_FRAC, ITEM_MODS, MANA_FLOOR, MANA_FLOOR_FRAC, MANAREGEN_FLOOR_FRAC, MAX_YEAR,
   MOVE_SLOW_FLOOR, NEG_LIMITS, POWER_FLOOR, SPEED_FLOOR, STEAL_BASE_PCT, STEAL_CAP_PCT, STEAL_DARK_LORD_PCT, STEAL_TIERS, WARD_MAX, WARD_MIN,
-  DA_JOINT_MIN, DA_JOINT_PCT, DA_QUORUM, DARK_LORD_HYSTERESIS_PCT, type ItemMod,
+  BULLY_YEAR_GAP, DA_JOINT_MIN, DA_JOINT_PCT, DA_QUORUM, DARK_LORD_HYSTERESIS_PCT, type ItemMod,
 } from '../shared/constants.js';
 import { CORE_BONUS } from '../lore/wands.js';
 import type { Rulebook } from './rulebook.js';
@@ -43,6 +43,20 @@ export const darkLordTakes = (holder: number, challenger: number) => challenger 
 export const jointPct = (n: number) => (n >= DA_JOINT_MIN ? DA_JOINT_PCT : 100);
 /** 邓布利多军 veto: at least DA_QUORUM members in play and ⌊online/2⌋ + 1 of their votes, a strict majority (Lean: veto_strict_majority). */
 export const vetoPasses = (online: number, votes: number) => online >= DA_QUORUM && votes >= Math.floor(online / 2) + 1;
+
+/** 以大欺小: a knock-out pays reputation unless the victim is more than BULLY_YEAR_GAP years below (Lean `stunPaysRep`). */
+export const stunPaysRep = (killerYear: number, victimYear: number) => killerYear <= victimYear + BULLY_YEAR_GAP;
+
+/**
+ * Who takes office at the end of a term (World.endTerm; formal/tla/TermDecree.tla EndTerm, Lean `electMinister`):
+ * the highest-reputation *player* with at least `bar`. An NPC never holds office, however far it leads the board
+ * (it would have no one to answer to and nobody to vote it out); ties go to the earlier entry. The index, or -1.
+ */
+export function electMinister(cands: readonly { reputation: number; npc: boolean }[], bar: number): number {
+  let best = -1;
+  for (let i = 0; i < cands.length; i++) if (!cands[i].npc && (best < 0 || cands[i].reputation > cands[best].reputation)) best = i;
+  return best >= 0 && cands[best].reputation >= bar ? best : -1;
+}
 
 /**
  * 专注力 (agent concentration): the pool after `dt` seconds of regeneration, capped at `max` (Lean: focus_bounded).

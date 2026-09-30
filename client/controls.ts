@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CreatureKind, House } from '../src/shared/constants';
+import { WARD_CD_S, WARD_MANA, WARD_MAX_S, type CreatureKind, type House } from '../src/shared/constants';
 import { zonesAt } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
 import { heightAt, rayGround } from './terrain';
@@ -48,13 +48,28 @@ export interface ControlsDeps {
 }
 
 // ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
-/** Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …` asks first. */
-export type ChatRoute = { to: 'public'; text: string } | { to: 'agent'; text: string } | { to: 'ask'; word: string; text: string; rest: string };
+/**
+ * Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …`
+ * asks first; `/h …` (or /学院) your house, `/n …` (/附近) those near you, `/w name …` (/私 name …) a whisper;
+ * anything else the whole school (kernel/chat.ts channels).
+ */
+export type ChatRoute =
+  | { to: 'public'; text: string; ch?: 'house' | 'near' | 'dm'; dm?: string }
+  | { to: 'agent'; text: string }
+  | { to: 'ask'; word: string; text: string; rest: string };
 export function routeChat(raw: string): ChatRoute | null {
   const text = String(raw ?? '').trim();
   if (!text) return null;
   const mine = /^@(?:agent|a)(?=$|[\s:：,，])[\s:：,，]*/i.exec(text);
   if (mine) { const rest = text.slice(mine[0].length).trim(); return rest ? { to: 'agent', text: rest } : null; }
+  const slash = /^\/(h|house|学院|n|near|附近|w|whisper|私)(?=$|\s)\s*/i.exec(text);
+  if (slash) {
+    const k = slash[1].toLowerCase(), rest = text.slice(slash[0].length).trim();
+    if (k === 'h' || k === 'house' || k === '学院') return rest ? { to: 'public', text: rest, ch: 'house' } : null;
+    if (k === 'n' || k === 'near' || k === '附近') return rest ? { to: 'public', text: rest, ch: 'near' } : null;
+    const m = /^(\S+)\s+([\s\S]+)$/.exec(rest);
+    return m ? { to: 'public', text: m[2].trim(), ch: 'dm', dm: m[1] } : null;
+  }
   const other = /^@([^\s:：,，]+)[\s:：,，]*/.exec(text);
   if (other) return { to: 'ask', word: other[1], text, rest: text.slice(other[0].length).trim() };
   return { to: 'public', text };
@@ -878,6 +893,7 @@ export function createControls(d: ControlsDeps) {
       ${row('P', L('魁地奇：每学期一场，两个学院轮流对阵。集合时按 P 上场；在球场上飞得更快；碰到鬼飞球就拿，F 射门（从另一端的圈里穿过 +10）；任何咒语擦过游走球都能把它打开；找球手贴着金色飞贼 0.8 秒就抓住（+150，比赛结束）', 'Quidditch: one match a term, two houses in turn. P to play while it is called; you fly faster on the pitch; touch the Quaffle to take it, F to shoot (through a hoop at the other end, +10); any spell that passes a Bludger beats it away; a Seeker who stays on the Snitch for 0.8 s catches it (+150, the match ends)'))}
       ${row('G', L('决斗俱乐部：报名 / 退出。凑齐两人就在庭院决斗台开打，打倒不进医院，赢了加声望（每学期最多 5 场有奖励）', 'Duelling Club: join / leave. Two make a match on the Courtyard stage; a knock-out sends nobody to the Hospital Wing; wins pay reputation (up to 5 rewarded a term)'))}
       ${row(L('空格', 'Space'), L('翻滚闪避：瞄准你的咒语和飞刺会落空；盔甲护身卡在咒语落地前一瞬间举起，能把它弹回去', 'Dodge roll: aimed spells and thorns miss; raise Protego just before a bolt lands to send it back'))}
+      ${row('X', L(`铁甲咒待发：${WARD_MAX_S} 秒内第一道打向你的咒语会被完美格挡（${WARD_MANA} 法力，${WARD_CD_S} 秒一次，举着时不能施别的咒语）`, `Ward: for ${WARD_MAX_S} s the first spell at you meets a perfect Protego (${WARD_MANA} mana, once every ${WARD_CD_S} s, no other spell meanwhile)`))}
       ${row('V', L('看你的 Agent 玩（按键不打断它）', 'Watch your agent play (your keys will not interrupt it)'))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}
       </table>

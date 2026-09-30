@@ -84,6 +84,8 @@ export interface Feature {
   rules?(world: World, before: Rulebook, minister: Wizard | null): void;
   /** A reveal charm cast on yourself (Revelio): what it also shows you. */
   reveal?(world: World, w: Wizard, charm: UiCharm): void;
+  /** A hostile bolt or disarm reaching wizard `w` without a perfect Protego: true to meet it with one now (it is sent back). */
+  parry?(world: World, w: Wizard, p: Projectile): boolean;
   /** An NPC thinking (twice a second): true when this feature drove it (the NPC's own brain then rests). */
   npc?(world: World, w: Wizard): boolean;
   /** MCP tools. */
@@ -98,7 +100,7 @@ export function hookLists(fs: readonly Feature[]) {
   const view = <K extends keyof NonNullable<Feature['view']>>(k: K) => fs.filter((f) => f.view?.[k] !== undefined) as (Feature & { view: Required<Pick<NonNullable<Feature['view']>, K | 'key'>> })[];
   return {
     step: has('step'), stepLate: has('stepLate'), sweep: has('sweep'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'),
-    castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
+    castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
     npc: has('npc'), me: view('me'), whoami: fs.filter((f) => f.view?.me || f.view?.whoami) as (Feature & { view: NonNullable<Feature['view']> })[],
     look: view('look'), board: view('board'),
   };
