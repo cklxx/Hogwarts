@@ -1263,3 +1263,10 @@ spread, no measurable cost. The trace fingerprint changes on purpose (creatures 
 Client: `declutterTags` projects each visible name tag once a frame and hides one that would land on a kept one
 (you, your target, then nearer first): O(n²) over the tags on screen (n ≤ ~50 with the label LOD), a few thousand
 comparisons at worst — not measured separately; the frame's `anim` section in `?perf=1` covers it.
+
+## 2026-09-30 — the phone shell (`wf/phone-shell`)
+
+Layout, not rendering: `client/phone.ts` runs at the HUD's 10 Hz (nine `getElementById`s, a queue step, one text
+write when the line changes) and only on a phone. Screen coverage (the point of it) is in docs/PLAYTEST.md: the
+middle of a 390×844 screen 29% → 6% under HUD after the tutorial, 23% → 17% during it. No frame-time change is
+expected or claimed; not measured separately (software rendering here would only show direction anyway).

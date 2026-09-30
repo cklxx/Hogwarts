@@ -34,6 +34,7 @@ import { createFun } from './panels/fun';
 import { CLIENT_FEATURES, renderTop } from './features';
 import type { ClientFeature } from './feature';
 import { createFunWorld } from './funworld';
+import { PRIO, createPhoneShell } from './phone';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
@@ -311,6 +312,8 @@ actors.name = 'actors';
 scene.add(actors);
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
 const phone = matchMedia('(hover: none) and (pointer: coarse)').matches;
+/** 手机壳 (client/phone.ts): on a phone one owner lays out the screen, and every line of words goes through its queue. */
+const shell = phone ? createPhoneShell() : null;
 // a phone starts further out and higher: the wizard and what is around them, not a close-up of a robe
 let camYaw = Math.PI, camPitch = phone ? 0.5 : 0.34, camDist = phone ? 13 : 8.5; // behind a new arrival, who faces south (the lawn, not the Great Hall's wall); // closer third-person framing: the wizard fills about a fifth of the screen height
 let clock = 0;
@@ -626,6 +629,7 @@ function feed(e: Ev, fresh: boolean) {
   feedLine(text, `${e.type}${e.to ? ' private' : ''}`);
 }
 function feedLine(text: string, cls: string) {
+  if (shell) { if (cls.includes('private')) shell.say(text, PRIO.note); else shell.log(text); return; }
   const box = $('#feed');
   const d = document.createElement('div');
   d.className = cls;
@@ -635,15 +639,15 @@ function feedLine(text: string, cls: string) {
   setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 1300); }, FEED_S * 1000 + Math.min(4000, text.length * 40));
 }
 let bannerT = 0;
-$('#banner').addEventListener('click', () => { bannerT = Math.min(bannerT, 0.01); });
 function banner(text: string, type = 'system') {
+  if (shell) { shell.say(text, PRIO.news); return; }
   // one big thing in the centre at a time: while the House Cup ceremony or a card reveal holds it, news goes to the feed
   if (fun.claimsCentre()) { feedLine(text, type); return; }
   const b = $('#banner');
   b.textContent = text;
   b.classList.remove('out');
   b.hidden = false;
-  bannerT = phone ? 4 : 7; // a phone: shorter, and a tap puts it away (the 2026-09-30 phone playtest: news piled up)
+  bannerT = 7;
 }
 /** A line for you alone (an error, a note from a cast): one at a time, above the hotbar, then gone. */
 let toastTimer = 0;
@@ -671,6 +675,7 @@ function onBuild(b: unknown) {
   }, 5000);
 }
 function toast(text: string) {
+  if (shell) { shell.say(text, PRIO.note); return; }
   const t = $('#toast');
   t.textContent = text;
   t.classList.remove('out');
@@ -696,6 +701,7 @@ const setStyle = (el: HTMLElement, k: string, v: string) => { if (el.style.getPr
 const cdMax = new Map<string, number>();
 
 function hud() {
+  shell?.tick();
   if (!me || !snap) return;
   const has = (k: string) => me!.ui.includes(k);
   // top-left: one quiet line (title · name · house); Revelio reveals your own measure
@@ -1555,6 +1561,7 @@ let goalOff = lsGet('hogwarts.goal.off') === '1';
 let goalKey = lsGet('hogwarts.goal.seen') ?? '';
 let goalOpen = false;
 let goal: Goal | null = null;
+let goalSaid = '';
 function renderGoal() {
   const el = $('#goal');
   if (!me || goalOff || ctl.tutorialActive() || me.stunned || me.jailed) { el.hidden = true; return; }
@@ -1565,6 +1572,12 @@ function renderGoal() {
     ...Object.assign({}, ...feats.map((f) => f.goal?.() ?? {})), // the Dark Lord, the DA
   });
   if (!goal) { el.hidden = true; return; }
+  if (shell && goal.key !== goalSaid) {
+    // a phone: each new goal once on the message line; a tap does it (or opens the drawer where it waits)
+    goalSaid = goal.key;
+    const a = goal.act;
+    shell.say(L(`下一步：${goal.text}`, `Next: ${goal.text}`), PRIO.goal, a ? () => runGoalAct(a) : () => shell.open(true));
+  }
   if (goal.key !== goalKey) {
     // progress: remember it and say so once
     if (goalKey) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
@@ -1582,9 +1595,12 @@ $('#goal').addEventListener('click', (e) => {
   if (!b) return;
   if (b.classList.contains('g-line')) goalOpen = !goalOpen;
   else if (b.classList.contains('g-x')) { goalOff = true; lsSet('hogwarts.goal.off', '1'); }
-  else if (b.classList.contains('g-act') && goal?.act) {
-    const a = goal.act;
-    goalOpen = false;
+  else if (b.classList.contains('g-act') && goal?.act) { goalOpen = false; runGoalAct(goal.act); }
+  b.blur();
+  renderGoal();
+});
+function runGoalAct(a: NonNullable<Goal['act']>) {
+  {
     if ('cast' in a) ctl.castOnSelf(a.cast);
     else if (a.open === 'book') toggleBook(true);
     else if (a.open === 'tpl') { toggleBook(true); openTemplates(); }
@@ -1593,9 +1609,8 @@ $('#goal').addEventListener('click', (e) => {
     else if (a.open === 'exams') pn.openExams();
     else feats.some((f) => f.open?.(a.open)); // the Restricted Section, the DA, …
   }
-  b.blur();
-  renderGoal();
-});
+  shell?.open(false);
+}
 document.addEventListener('click', (e) => {
   if (!(e.target as HTMLElement).closest('#help-goal')) return;
   goalOff = false; lsSet('hogwarts.goal.off', '0');

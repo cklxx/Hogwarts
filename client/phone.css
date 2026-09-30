@@ -1,0 +1,64 @@
+/* 手机壳 (client/phone.ts): a portrait phone's screen, zone by zone. It owns the layout: the rules here win over the
+   HUD's own placements (hence !important on position), and nothing else puts words in the middle of the screen. */
+body.phone { --pt: max(8px, env(safe-area-inset-top)); --pbar: 48px; }
+
+/* ---- top: your card · the clock · the drawer · the owl, then one message line */
+body.phone #topleft { left: 16px !important; top: var(--pt) !important; right: auto !important; width: auto !important; max-width: calc(100vw - 180px) !important; }
+body.phone #topright { left: auto !important; right: 116px !important; top: calc(var(--pt) + 4px) !important; width: auto !important; margin: 0 !important; }
+body.phone #topright > :not(#clock) { display: none !important; }
+body.phone #agentbox { top: var(--pt) !important; right: 8px !important; }
+#pd-btn { position: fixed; z-index: 4; top: calc(var(--pt) + 2px); right: 64px; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border-radius: 50%;
+  background: rgb(246 235 208 / .94); color: var(--ink); text-shadow: none; box-shadow: 0 2px 6px rgba(40, 20, 5, .35); --ic-s: var(--ink); --ic-t: var(--ink); --ic-fo: rgba(190, 140, 70, .28); }
+#pd-btn svg.ic { width: 26px; height: 26px; vertical-align: 0; }
+#pd-btn i { position: absolute; top: 4px; right: 4px; width: 11px; height: 11px; border-radius: 50%; background: var(--wax); box-shadow: 0 0 0 2px #f3e6c4; display: none; }
+#pd-btn.dot i { display: block; }
+#pmsg { position: fixed; z-index: 5; left: 8px; right: 8px; top: calc(var(--pt) + var(--pbar) + 4px); padding: 5px 12px; font-size: 15px; line-height: 1.45;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); background: rgb(var(--sheen2, 246 235 208) / .93); border-radius: 6px; box-shadow: 0 2px 8px rgba(40, 20, 5, .3); animation: fadein .2s var(--ease) both; }
+#pmsg.full { white-space: normal; }
+#pmsg.act::after { content: ' ›'; color: var(--wax); font-weight: 700; }
+/* the locked target: one compact row under the message line */
+body.phone #target { top: calc(var(--pt) + var(--pbar) + 44px) !important; left: 50% !important; right: auto !important; transform: translateX(-50%) !important; max-width: 70vw !important; max-height: 46px; overflow: hidden; }
+
+/* ---- middle: no words. The pieces that used to sit here are in the drawer, the message line, or gone on a phone */
+body.phone :is(#banner, #toast, #lore, #minimap, #feed, #owlpop) { display: none !important; }
+body.phone:not(.chat-open) #chatlog { display: none !important; }
+
+/* ---- bottom: the stick left, book / act / target / roll right, the bars */
+body.phone #touchbar { top: auto !important; right: 12px !important; bottom: calc(var(--bars-h, 150px) + 12px) !important; transform: none !important;
+  display: grid !important; grid-template-columns: 56px 64px; grid-template-rows: 56px 64px; grid-template-areas: "book act" "tab roll"; gap: 10px; place-items: center; }
+body.phone #tb-book { grid-area: book; } body.phone #tb-act { grid-area: act; } body.phone #tb-tab { grid-area: tab; }
+body.phone #touchbar button { width: 52px !important; height: 52px !important; }
+body.phone #touchbar :is(#tb-more, #tb-zin, #tb-zout) { display: none !important; }
+body.phone #tb-roll { left: auto !important; top: auto !important; right: 12px !important; bottom: calc(var(--bars-h, 150px) + 12px) !important; width: 64px !important; height: 64px !important; }
+body.phone #stick:not(.on) { top: calc(100dvh - var(--bars-h, 150px) - 76px) !important; }
+/* the coach mark: one line just above the thumbs (topleft / topright steps too) */
+body.phone #tutorial { left: 8px !important; right: 8px !important; top: auto !important; bottom: calc(var(--bars-h, 150px) + 152px) !important; transform: none !important; width: auto !important; max-width: none !important; flex-wrap: nowrap !important; padding: 3px 6px !important; }
+body.phone #tutorial::after { display: none !important; }
+body.phone #tutorial .tut-line { flex: 1 1 auto !important; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.phone #tutorial .tut-live .dir { margin-left: .4em; }
+body.phone #tutorial .tut-n { min-width: 28px; height: 28px; font-size: 12px; }
+body.phone #tutorial .tut-acts { margin-left: 0 !important; }
+body.phone #tutorial .tut-acts button:not(.tut-skip) { padding: 3px 10px; font-size: 14px; }
+body.phone #tutorial[data-over] { bottom: auto !important; top: var(--pt) !important; }
+
+/* ---- the drawer: 现在 (goal, event, duel / Quidditch slips, lessons, House Cup) · 消息 · 更多 */
+#pdrawer { position: fixed; z-index: 8; left: 8px; right: 8px; top: calc(var(--pt) + var(--pbar) + 4px); bottom: calc(var(--bars-h, 150px) + 8px); overflow: auto; overscroll-behavior: contain; padding: 12px 14px; }
+#pdrawer > .x { position: absolute; top: 4px; right: 4px; }
+#pdrawer .pd-tabs { display: flex; gap: 8px; margin: 0 44px 12px 0; }
+#pdrawer .pd-tabs button { flex: 1; padding: 6px 0; font-size: 15px; }
+#pdrawer .pd-tabs button:not(.on) { background: transparent; box-shadow: none; color: var(--ink2); text-shadow: none; }
+#pdrawer .pd-page > * { position: static !important; inset: auto !important; transform: none !important; translate: none !important; width: auto !important; max-width: none !important; margin: 0 0 10px !important; }
+#pdrawer .pd-page > [hidden] { display: none !important; }
+#pdrawer .pd-log { list-style: none; margin: 0; padding: 0; font-size: 15px; line-height: 1.5; }
+#pdrawer .pd-log li { padding: 6px 0; border-bottom: 1px solid rgba(120, 80, 30, .18); }
+#pdrawer .pd-log small { color: var(--ink3); margin-right: .6em; }
+#pdrawer .pd-page[data-p="more"] { display: flex; flex-wrap: wrap; gap: 14px; }
+#pdrawer .pd-page[data-p="more"][hidden] { display: none; }
+#pdrawer #tb-extra { display: contents !important; }
+#pdrawer .pd-page[data-p="more"] button { width: 76px !important; height: 76px !important; padding: 6px 0 0 !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 10px;
+  font: 700 24px/1 var(--latin); background: rgb(250 242 222); color: var(--ink); text-shadow: none; box-shadow: inset 0 0 0 1.5px rgba(120, 80, 30, .35); --ic-s: var(--ink); --ic-t: var(--ink); --ic-fo: rgba(190, 140, 70, .28); --ic-f2o: var(--wax); }
+#pdrawer .pd-page[data-p="more"] button svg.ic { width: 28px; height: 28px; vertical-align: 0; }
+#pdrawer .pd-page[data-p="more"] button::after { content: attr(data-lb); font: 400 12px/1.2 var(--cjk); color: var(--ink2); max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.phone #pdrawer #quests:not([hidden]) { display: block !important; }
+/* the selected spell's name floats over the hotbar on a desktop; on a phone it sat under the roll button */
+body.phone #hotbar > div.sel > span { display: none !important; }
