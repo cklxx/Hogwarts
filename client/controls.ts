@@ -604,7 +604,8 @@ export function createControls(d: ControlsDeps) {
   d.canvas.addEventListener('gestureend', (e) => { e.preventDefault(); pinchFrom = 0; });
 
   /** Left click / tap: a foe → target it and cast the attack spell; a friend → target it; the ground → walk there. Shift: cast at the ground. */
-  function primaryAt(px: number, py: number, shift = false) {
+  /** A click or a tap: a foe is targeted (and struck), the ground walked to — except by a tap (`walk` false): on a phone the stick walks, and a tap that missed its target used to march you off (the owner's phone test). */
+  function primaryAt(px: number, py: number, shift = false, walk = true) {
     if (!d.me()) return;
     groundAt(px, py, aim);
     if (shift) { castSlot(selected, { at: { x: aim.x, z: aim.z } }); return; }
@@ -614,7 +615,7 @@ export function createControls(d: ControlsDeps) {
       if (harmable(k)) castSlot(selected);
       return;
     }
-    walkTo(aim.x, aim.z);
+    if (walk) walkTo(aim.x, aim.z);
   }
 
   /** 翻滚闪避: the way you are pushing (keys or stick), else straight ahead. */
@@ -676,7 +677,7 @@ export function createControls(d: ControlsDeps) {
         if (t.identifier === stickId) { stickId = null; joy.x = joy.y = 0; stick.classList.remove('on'); stick.style.left = stick.style.top = ''; knob.style.transform = 'translate(-50%, -50%)'; }
         else if (t.identifier === lookId) {
           lookId = null;
-          if (!lookMoved && e.timeStamp - lt0 < 450) primaryAt(t.clientX, t.clientY);
+          if (!lookMoved && e.timeStamp - lt0 < 450) primaryAt(t.clientX, t.clientY, false, false);
         }
       }
       if (e.touches.length < 2) pinch = 0;
@@ -993,7 +994,7 @@ export function createControls(d: ControlsDeps) {
       ${row('U', L('界面布局：拖动面板换位置、双击隐藏；Esc 菜单里的「界面」还能换主题、写自己的 CSS（只存在这台浏览器）', 'Layout: drag panels around, double-click to hide; "Interface" in the Esc menu also switches the theme and takes your own CSS (this browser only)'))}
       ${row('H / ?', L('打开 / 关闭本帮助', 'This help'))}
       </table>
-      <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。考试在咒语书里「咒语集市」旁边的「考试」标签，邓布利多军在猫头鹰邮递（信封）里。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom. The exams are a tab in the spellbook, beside the spell market; the DA is in the Owl Post (the letter).')}</p>
+      <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆（手机上只用摇杆走路，点地面不会走）；点一下敌人 = 锁定并攻击；在右侧拖动转视角，双指缩放或右侧的 ＋ / － 拉近拉远。考试在咒语书里「咒语集市」旁边的「考试」标签，邓布利多军在猫头鹰邮递（信封）里。', 'Hold and drag on the lower left for a joystick (on a phone only the stick walks; a tap on the ground does not); tap a foe to attack it; drag on the right to look, pinch or the + / − on the right to zoom. The exams are a tab in the spellbook, beside the spell market; the DA is in the Owl Post (the letter).')}</p>
       </div></div>
       <p class="row"><button id="help-goal" class="ghost">${L('显示「下一步」提示', 'Show the next-goal line')}</button> <button id="help-tutorial" class="ghost">${L('重新开始新手引导', 'Restart the tutorial')}</button> <button id="help-close">${L('关闭', 'Close')}</button></p>`;
     $('#help-close').onclick = () => toggleHelp(false);
@@ -1160,7 +1161,7 @@ function createTutorial(t: TutorialDeps) {
     {
       at: 'bottom',
       line: () => t.touch
-        ? L('按住<b>左下方</b>拖动行走，或<b>点一下地面</b>走过去', 'Drag on the <b>lower left</b> to walk, or <b>tap the ground</b>')
+        ? L('按住<b>左下方</b>拖动行走', 'Drag on the <b>lower left</b> to walk')
         : L(`${key('W')}${key('A')}${key('S')}${key('D')} 行走，或<b>左键点地面</b>走过去 · ${LOOK_ZH}转视角`, `${key('W')}${key('A')}${key('S')}${key('D')} to walk, or <b>click the ground</b> · ${LOOK_EN} to look`),
     },
     {
