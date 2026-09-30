@@ -75,8 +75,8 @@
 
 | 内容 | 提交 |
 |---|---|
-| 试玩第 4 轮（Agent 扮真人的小社会，`docs/PLAYTEST.md`）：inbox 已读按巫师记；batch 示例与连续施法自动等待；`wait arrived` 不空等；forge 试运行提示；规则书写出实际部长门槛；DA 否决门槛 / `blocked`、联合一击进度 `joint.now`、`da` 聊天频道；考试评分说明与 O 级文案；宝箱冷热 5/15/30/80 m、残页不重复；look 标事件怪与抗性；摄魂怪结算文案；学期末 45 秒不开新事件（TLA+ `EventWheel` 同步）；扫帚提示；魁地奇 `team`/`house` 与找球手顶替 NPC；集市计数含新生；反射 `keep` / 按代号 / `self` | ROUND6 |
-| 决斗俱乐部第 3 轮（`wf/duel3`）：走进安全区算下台；开打前离开只算取消；离开队列有私信；陪练 NPC 会打（不以大欺小）；定向约战 `with`、2v2 指定搭档 `partner`；弹反当场给反弹者计分（新钩子 `reflect`）；2v2 的 `last` 列全队；「魔杖没电」只在真没电时说一次 | DUEL3 |
+| 试玩第 4 轮（Agent 扮真人的小社会，`docs/PLAYTEST.md`）：inbox 已读按巫师记；batch 示例与连续施法自动等待；`wait arrived` 不空等；forge 试运行提示；规则书写出实际部长门槛；DA 否决门槛 / `blocked`、联合一击进度 `joint.now`、`da` 聊天频道；考试评分说明与 O 级文案；宝箱冷热 5/15/30/80 m、残页不重复；look 标事件怪与抗性；摄魂怪结算文案；学期末 45 秒不开新事件（TLA+ `EventWheel` 同步）；扫帚提示；魁地奇 `team`/`house` 与找球手顶替 NPC；集市计数含新生；反射 `keep` / 按代号 / `self` | `48eacb0` |
+| 决斗俱乐部第 3 轮（`wf/duel3`）：走进安全区算下台；开打前离开只算取消；离开队列有私信；陪练 NPC 会打（不以大欺小）；定向约战 `with`、2v2 指定搭档 `partner`；弹反当场给反弹者计分（新钩子 `reflect`）；2v2 的 `last` 列全队；「魔杖没电」只在真没电时说一次 | `b992850` |
 | owner 问题清单（第 5 轮）：考试统一效果校验（`EFFECT_MIN`，伤害 / 治疗 / 护盾 ≥ 5，反馈说哪些太弱）；指定目标的咒语只打目标；宝箱线索（`school_events` 列地点、`look.chestHint` 冷热、Point Me 雷达 `$`、画片册里列出）；巨怪按出力分账（伤害按本人年级魔弹上限折算）；分工与功能冻结写进 PLAN | `acd7bc1` |
 | 试玩第 3 轮（claude-db）：打已消失 / 隔墙的目标拒绝且不扣法力，`look` 标 `blocked` 和 `incoming`；时刻锚定，法令改一天长度不再跳变；野生魔物一击最多 40 % 最大生命（Lean `creature_hit_capped`）；魔物不在你仇恨范围内刷出，八眼巨蛛往禁林深处收；反射：四套预设、每条触发次数与未触发原因、`explain`、`reflex` 私人事件、随存档保存 | `ecc062f` |
 | 删除式重构：浏览器只走二进制增量快照 + 视野裁剪（删掉 JSON 快照、整份快照、`?v=` / `?aoi=`、`AOI_ALL`、单条事件消息）；调参环境变量改成实测过的常量；删掉 `?lod=0` / `?dyn=0`、`DISCOVERY=0`、`HOGWARTS_CHANNEL=0`、`bench.ts churn`；16 个没人用的导出；tsconfig 开 `noUnusedLocals`。视野的保证改在二进制帧上测（`test/snapwire.test.ts`）；压测与 main 持平（`docs/PERF.md`） | `ec7f6fa`、`8ab9831` |
