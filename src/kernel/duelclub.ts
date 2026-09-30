@@ -18,6 +18,7 @@
 import { z } from 'zod';
 import type { Feature } from './feature.js';
 import { qdOnTeam, qdPlaying } from './quidditch.js';
+import { stunPaysRep } from './progression.js';
 import type { World } from './world.js';
 import type { Wizard } from './types.js';
 
@@ -57,15 +58,15 @@ export function duelStep(wins: number, cap: number, fresh: boolean): [number, nu
 }
 
 /** What one finished match pays (mutating the ledger): winner/loser XP and the winner's reputation. */
-export function duelGrant(l: DuelLedger, winner: string, loser: string, now: number, term: number, npc: boolean) {
+export function duelGrant(l: DuelLedger, winner: string, loser: string, now: number, term: number, npc: boolean, bully = false) {
   if (l.term !== term) { l.term = term; l.wins = {}; }
   const key = [winner, loser].sort().join('|');
   const rematch = now - (l.pairs[key] ?? -1e12) < DUEL_PAIR_GAP_S;
-  const fresh = !npc && !rematch;
+  const fresh = !npc && !rematch && !bully; // 以大欺小: beating someone BULLY_YEAR_GAP+ years below you is no glory
   const [wins, rep] = duelStep(l.wins[winner] ?? 0, DUEL_TERM_CAP, fresh);
   l.wins[winner] = wins;
   if (!rematch) l.pairs[key] = now;
-  const why: 'ok' | 'npc' | 'rematch' | 'cap' = npc ? 'npc' : rematch ? 'rematch' : rep ? 'ok' : 'cap';
+  const why: 'ok' | 'npc' | 'rematch' | 'bully' | 'cap' = npc ? 'npc' : rematch ? 'rematch' : bully ? 'bully' : rep ? 'ok' : 'cap';
   // NPC sparring always pays its (half) XP — the rematch gap guards reputation between players, not practice
   return { rep, xpWinner: npc ? Math.round(DUEL_WIN_XP / 2) : rematch ? 0 : DUEL_WIN_XP, xpLoser: rematch || npc ? 0 : DUEL_LOSS_XP, why };
 }
@@ -183,14 +184,16 @@ function endMatch(world: World, winner: string | null, how: 'knockout' | 'forfei
   const W = winner === A.id ? A : B, Lz = W === A ? B : A;
   // a win nobody fought for pays nothing and leaves the ledger alone (a friend joining and walking off is no farm)
   const earned = m.phase === 'fight' && (m.stats[W.id]?.dealt ?? 0) > 0;
-  const g = earned ? duelGrant(c.ledger, W.id, Lz.id, world.now, world.term.n, m.npc) : { rep: 0, xpWinner: 0, xpLoser: 0, why: 'unearned' as const };
+  const g = earned ? duelGrant(c.ledger, W.id, Lz.id, world.now, world.term.n, m.npc, !stunPaysRep(W.year, Lz.year)) : { rep: 0, xpWinner: 0, xpLoser: 0, why: 'unearned' as const };
   if (g.rep) world.addRep(W, g.rep, 'duels');
   if (g.xpWinner) world.gainXp(W, g.xpWinner);
   if (g.xpLoser) world.gainXp(Lz, g.xpLoser);
+  // 决斗者: a rated bout won by knock-out is a real opponent stunned, whatever the houses (never an NPC sparring partner)
+  if (earned && !m.npc && how === 'knockout' && stunPaysRep(W.year, Lz.year)) world.achieve(W, 'first_blood');
   const s = m.stats[W.id], r = (W.stats.reflects ?? 0) - s.reflects0, dd = (W.stats.dodges ?? 0) - s.dodges0;
   const howEn = how === 'knockout' ? 'knocked out' : how === 'forfeit' ? 'by forfeit' : 'on points at the bell';
   const howZh = how === 'knockout' ? '击倒' : how === 'forfeit' ? '对方弃权' : '时间到按伤害判';
-  const pay = g.rep ? { en: ` (+${g.rep} reputation)`, zh: `（声望 +${g.rep}）` } : g.why === 'unearned' ? { en: ' (no blow landed: no reward)', zh: '（一招未中，不计奖励）' } : { en: g.why === 'rematch' ? ' (a rematch: no reward)' : g.why === 'cap' ? ' (this term\'s rewarded wins are used up)' : ' (sparring: XP only)', zh: g.why === 'rematch' ? '（重赛，不计奖励）' : g.why === 'cap' ? '（本学期的计奖胜场已用完）' : '（陪练，只给经验）' };
+  const pay = g.rep ? { en: ` (+${g.rep} reputation)`, zh: `（声望 +${g.rep}）` } : g.why === 'unearned' ? { en: ' (no blow landed: no reward)', zh: '（一招未中，不计奖励）' } : { en: g.why === 'rematch' ? ' (a rematch: no reward)' : g.why === 'bully' ? ` (${W.year - Lz.year} years below: no reputation)` : g.why === 'cap' ? ' (this term\'s rewarded wins are used up)' : ' (sparring: XP only)', zh: g.why === 'rematch' ? '（重赛，不计奖励）' : g.why === 'bully' ? `（对方低 ${W.year - Lz.year} 个年级，不计声望）` : g.why === 'cap' ? '（本学期的计奖胜场已用完）' : '（陪练，只给经验）' };
   world.emit('duel', `Duelling Club: ${W.name} beat ${Lz.name} ${howEn} in ${secs}s — ${Math.round(s.dealt)} damage, ${s.hits} hits${r ? `, ${r} perfect Protego` : ''}${dd ? `, ${dd} rolls` : ''}.${pay.en}`, { who: [W.id, Lz.id], zh: `决斗俱乐部：${W.name} ${howZh}战胜 ${Lz.name}，用时 ${secs} 秒——造成 ${Math.round(s.dealt)} 伤害、命中 ${s.hits} 次${r ? `、完美格挡 ${r} 次` : ''}${dd ? `、翻滚 ${dd} 次` : ''}。${pay.zh}` });
 }
 

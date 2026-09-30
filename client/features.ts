@@ -5,5 +5,6 @@
 import type { ClientFeatureFactory } from './feature';
 import { duelFeature } from './panels/duel';
 import { quidditchFeature } from './panels/quidditch';
+import { wardFeature } from './panels/ward';
 
-export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [duelFeature, quidditchFeature];
+export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [duelFeature, quidditchFeature, wardFeature];

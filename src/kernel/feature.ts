@@ -53,6 +53,8 @@ export interface Feature {
   helpBlock?(world: World, src: Wizard, dst: Wizard): boolean;
   /** A spell in flight, every tick. */
   bolt?(world: World, p: Projectile): void;
+  /** A hostile bolt or disarm reaching wizard `w` without a perfect Protego: true to meet it with one now (it is sent back). */
+  parry?(world: World, w: Wizard, p: Projectile): boolean;
   /** An NPC thinking (twice a second): true when this feature drove it (the NPC's own brain then rests). */
   npc?(world: World, w: Wizard): boolean;
   /** MCP tools. */
@@ -66,6 +68,6 @@ export function hookLists(fs: readonly Feature[]) {
   const has = <K extends keyof Feature>(k: K) => fs.filter((f) => f[k] !== undefined) as (Feature & Required<Pick<Feature, K>>)[];
   return {
     step: has('step'), stepLate: has('stepLate'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'), castBlock: has('castBlock'),
-    helpBlock: has('helpBlock'), bolt: has('bolt'), npc: has('npc'),
+    helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), npc: has('npc'),
   };
 }
