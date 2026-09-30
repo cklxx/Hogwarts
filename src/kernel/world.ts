@@ -40,7 +40,7 @@ import {
   duelSteal, electMinister, focusAfter, stealPct, stunPaysRep,
 } from './progression.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
-import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
+import { chestClues, chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
 import { duelFoes, inFight, inMatch, sideOf } from './duelclub.js';
@@ -1098,7 +1098,7 @@ export class World {
     if (!w) return [];
     const out: { owner: string; kind: string; eta: number; vx: number; vz: number }[] = [];
     for (const p of this.projectiles.values()) {
-      if (p.owner === wid || !strikes(this, p.owner, p.homing, wid)) continue;
+      if (p.owner === wid || (p.homing && p.homing !== wid) || !strikes(this, p.owner, p.homing, wid)) continue; // (a spell meant for someone else flies past)
       const rx = w.pos.x - p.pos.x, rz = w.pos.z - p.pos.z;
       const v2 = p.vel.x * p.vel.x + p.vel.z * p.vel.z;
       if (v2 < 1e-6) continue;
@@ -2517,7 +2517,10 @@ export class World {
         for (let i = 0, n = this.boltTargets(p.pos, 2.2, p.owner, 4); i < n; i++) {
           const e = this.strikeE[i], isW = 'house' in e;
           if (this.strikeD[i] > (isW ? 0.5 : CREATURES[e.kind].radius) + 0.45) continue;
-          if (!strikes(this, p.owner, p.homing, e.id)) continue; // a homing spell passes through the caster's allies (allies.ts)
+          // a spell with a target strikes only that target: it flies past allies, bystanders and whatever wanders into its
+          // path (playtest round 3: a bolt for one pixie hit an NPC walking by); a straight shot hits what it meets
+          if (p.homing && p.homing !== e.id) continue;
+          if (!strikes(this, p.owner, p.homing, e.id)) continue;
           if (isW && this.dodging(e.id)) continue; // 翻滚闪避: it flies past
           if (isW && this.tryReflect(p, e.id)) break; // 完美格挡: back where it came from
           this.hit(p, e.id);
@@ -3186,6 +3189,7 @@ export class World {
       yourHits: this.recentHits(w.id),
       schoolEvent: this.lookEvent(w),
       chests: chestsLeft(this).filter((c) => dist(c, w.pos) <= CHEST_SIGHT).map((c) => ({ id: c.id, x: round(c.x), z: round(c.z), dist: round(dist(c, w.pos)), howTo: 'walk within 2.6 m, then open_chest' })),
+      chestHint: chestClues(this, w).nearest ?? null, // the nearest closed chest, as a place and how warm (school_events lists them all)
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
       // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
       ...revealView(this, w),

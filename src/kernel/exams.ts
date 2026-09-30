@@ -160,7 +160,24 @@ export interface Run {
   mana: number;
 }
 
-const mine = (r: Run, k: Spy['k']) => r.spy.filter((x) => x.k === k && x.src === r.s.me.id);
+/**
+ * 效果校验: an effect only counts when it is real magic, not a tickle — every check sees effects through this, so an
+ * exam can never again be passed by "doing it" with nothing behind it (playtest: a power-1 double tap, then a
+ * (heal a 0) that healed). What lands is judged, not what was cast: damage dealt, health healed and shield given
+ * must each be at least EFFECT_MIN (a 3.5-power ice bolt that deals 7 to a pixie is real; a 1-point tap is not);
+ * damage over time, roots, disarms and the rest have no amount to judge.
+ */
+export const EFFECT_MIN = 5;
+const weak = (x: Spy) => !x.dot && (x.k === 'damage' || x.k === 'heal' || x.k === 'shield') && (x.amount ?? 0) < EFFECT_MIN - 1e-6;
+const mine = (r: Run, k: Spy['k']) => r.spy.filter((x) => x.k === k && x.src === r.s.me.id && !weak(x));
+/** The effects of yours too weak to count, said in a failed case's feedback. */
+function weakNote(r: Run): Line | null {
+  const w = r.spy.filter((x) => x.src === r.s.me.id && weak(x));
+  if (!w.length) return null;
+  const what = (x: Spy) => `${x.k} ${fmt(x.amount ?? 0)}`;
+  const list = [...new Set(w.map(what))].slice(0, 4).join(', ');
+  return L(`（有 ${w.length} 个效果太弱没算：${list}；每个至少 ${EFFECT_MIN} 点。）`, `(${w.length} effect(s) too weak to count: ${list}; each needs at least ${EFFECT_MIN}.)`);
+}
 const said = (r: Run) => mine(r, 'say').map((x) => x.text ?? '');
 const lastSaid = (r: Run) => said(r).at(-1);
 const nameOf = (r: Run, id: string) => r.s.names.get(id) ?? id;
@@ -596,14 +613,10 @@ function helloCheck(r: Run): Line | null {
   return L(`应该说「${r.s.answer}」，你说的是「${s ?? '（什么也没说）'}」。`, `Expected "${r.s.answer}", you said "${s ?? '(nothing)'}".`);
 }
 
-/** Each of the double tap's hits must really hurt (a power-1 tickle once passed under par). */
-const DOUBLE_TAP_MIN = 5;
+/** Two real hits on the target (a tickle is not a hit: EFFECT_MIN). */
 function doubleTap(r: Run): Line | null {
-  const dmg = mine(r, 'damage').filter((x) => x.dst === r.s.target && !x.dot && (x.amount ?? 0) > 0);
-  const hits = dmg.map((x) => x.t);
+  const hits = mine(r, 'damage').filter((x) => x.dst === r.s.target && !x.dot).map((x) => x.t);
   if (hits.length !== 2) return L(`目标被击中了 ${hits.length} 次，要恰好 2 次。`, `The target was hit ${hits.length} time(s); exactly 2 wanted.`);
-  const weak = dmg.find((x) => (x.amount ?? 0) < DOUBLE_TAP_MIN - 1e-6);
-  if (weak) return L(`有一发只造成了 ${fmt(weak.amount ?? 0)} 点伤害；每发至少 ${DOUBLE_TAP_MIN} 点，挠痒痒不算。`, `One hit dealt only ${fmt(weak.amount ?? 0)} damage; each must deal at least ${DOUBLE_TAP_MIN} (a tickle does not count).`);
   const gap = hits[1] - hits[0];
   if (gap < 1.5 - 1e-6) return L(`两次命中只隔了 ${gap.toFixed(2)} 秒。`, `The two hits were only ${gap.toFixed(2)} s apart.`);
   return null;
@@ -763,6 +776,8 @@ export function gradeExam(exam: ExamDef, source: string, opts: { budgetMs?: numb
     else {
       const bad = run.delayed.find((d) => !d.ok && !d.error?.startsWith(NOTHING));
       detail = c.check(run) ?? (bad ? L(`延迟块失败了：${bad.error}`, `A delayed block fizzled: ${bad.error}`) : null);
+      const note = detail && weakNote(run);
+      if (detail && note) detail = L(`${detail.zh}${note.zh}`, `${detail.en} ${note.en}`);
     }
     const effects = [...run.report.effects, ...run.delayed.flatMap((d) => d.effects.map((x) => `(after) ${x}`))];
     base.cases.push({ n: i + 1, name: c.name, ok: !detail, detail, gas: run.gas, mana: run.mana, effects, ...(error ? { error } : {}), notes: [...run.report.notes, ...run.delayed.flatMap((d) => d.notes)] });

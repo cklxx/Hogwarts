@@ -118,4 +118,19 @@ export function chestNear(world: World, w: Wizard, reach = 2.6): ChestSpot | nul
   for (const c of chestsLeft(world)) { const d = dist(c, w.pos); if (d <= bd) { bd = d; best = c; } }
   return best;
 }
+/**
+ * 宝箱线索: where the chests still closed this term are, as places (not coordinates: it is a hunt), and how warm
+ * the nearest one is from where you stand (playtest round 3: "13 chests, no way to find any").
+ */
+export function chestClues(world: World, w?: Wizard) {
+  const left = chestsLeft(world);
+  let near: { c: ChestSpot; d: number } | null = null;
+  if (w) for (const c of left) { const d = dist(c, w.pos); if (!near || d < near.d) near = { c, d }; }
+  const warm = (d: number) => (d <= 30 ? { en: 'within 30 m', zh: '30 米内' } : d <= 80 ? { en: 'within 80 m', zh: '80 米内' } : { en: 'far off', zh: '还很远' });
+  return {
+    left: left.length, total: CHESTS.length,
+    where: left.map((c) => ({ en: c.en, zh: c.zh })),
+    ...(near ? { nearest: { en: near.c.en, zh: near.c.zh, distance: warm(near.d).en, distanceZh: warm(near.d).zh } } : {}),
+  };
+}
 export { CHESTS, CARD_BY_ID };

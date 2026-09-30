@@ -6,6 +6,7 @@
  */
 import { UI_CHARMS, type UiCharm } from '../shared/constants.js';
 import { OBSTACLES } from '../shared/map.js';
+import { chestsLeft } from './cards.js';
 import { HOMENUM_RANGE, RADAR_RANGE, UI_CHARM_INFO, compass, homenum } from '../shared/reveal.js';
 import type { Wizard } from './types.js';
 import type { World } from './world.js';
@@ -83,11 +84,12 @@ function radar(world: World, w: Wizard) {
     }
   }
   const reach = RADAR_RANGE * Math.SQRT2 + RADAR_CELL;
+  for (const c of chestsLeft(world)) put(c.x, c.z, '$'); // 宝箱: Point Me finds what is hidden (under anyone standing there)
   for (const c of world.nearCreatures(w.pos, reach)) put(c.pos.x, c.pos.z, '*');
   for (const x of world.nearWizards(w.pos, reach)) if (x !== w && world.online(x)) put(x.pos.x, x.pos.z, HOUSE_CHAR[x.house] ?? 'W');
   g[half][half] = '@';
   return {
     rows: g.map((r) => r.join('')),
-    legend: `north is up (−z), east is right (+x); one character = ${RADAR_CELL} m, you (@) in the middle. G H R S a wizard of that house · * a creature · # wall or building · ~ water · . open ground`,
+    legend: `north is up (−z), east is right (+x); one character = ${RADAR_CELL} m, you (@) in the middle. G H R S a wizard of that house · * a creature · $ a closed chest · # wall or building · ~ water · . open ground`,
   };
 }

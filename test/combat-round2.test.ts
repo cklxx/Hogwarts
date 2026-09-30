@@ -55,12 +55,17 @@ describe('误伤: a homing spell passes through the caster\'s allies', () => {
     expect(mate.hp).toBeLessThan(hp);
   });
 
-  it('a foe in the path is still struck; a housemate aimed at on purpose is struck', () => {
+  it('a spell with a target strikes only it (playtest round 3); a straight shot strikes the foe in its path; a housemate aimed at on purpose is struck', () => {
     const w = mk();
     const a = join(w, 'Harry', 'Gryffindor', 100, 100), foe = join(w, 'Draco', 'Slytherin', 100, 106), mate = join(w, 'Seamus', 'Gryffindor', 120, 100);
     const t = beast(w, 'c_troll', 100, 114);
-    const hp = foe.hp;
+    const hp = foe.hp, thp = t.hp;
     w.spawnProjectile(a, 'bolt', t.pos, t.id, 20, 'arcane', 0, []);
+    expect(w.incoming(foe.id)).toEqual([]); // and nobody else is warned of it
+    run(w, 1.5);
+    expect(foe.hp).toBe(hp);
+    expect(t.hp).toBeLessThan(thp);
+    w.spawnProjectile(a, 'bolt', { x: 100, z: 114 }, null, 20, 'arcane', 0, []);
     run(w, 1.5);
     expect(foe.hp).toBeLessThan(hp);
     expect(strikes(w, a.id, mate.id, mate.id)).toBe(true);

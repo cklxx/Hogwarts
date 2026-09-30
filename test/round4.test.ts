@@ -163,3 +163,38 @@ describe('反射: strategies you can see', () => {
     expect(w2.whoami(a.id)).toMatchObject({ reflexes: expect.stringMatching(/3 set/) });
   });
 });
+
+describe('宝箱线索 and 巨怪 by effort (the owner\'s list)', () => {
+  it('school_events lists where the closed chests are, look says how warm the nearest is, Point Me marks it', async () => {
+    const { chestClues } = await import('../src/kernel/cards.js');
+    const { CHESTS } = await import('../src/shared/chests.js');
+    const w = mk();
+    const c = CHESTS.find((x) => x.id === 'hagrid')!;
+    const a = join(w, 'Seeker Kid', 'Hufflepuff', c.x + 20, c.z);
+    const clues = chestClues(w, a);
+    expect(clues.left).toBe(CHESTS.length);
+    expect(clues.where.map((x) => x.en)).toContain(c.en);
+    expect(clues.nearest).toMatchObject({ en: c.en, distance: 'within 30 m' });
+    expect(w.look(a.id).chestHint).toMatchObject({ en: c.en });
+    a.ui = [...(a.ui ?? []), 'point-me'] as never;
+    const radar = (w.look(a.id) as { pointMe?: { rows: string[] } }).pointMe!;
+    expect(radar.rows.join('')).toContain('$');
+  });
+
+  it('the troll pays by effort against each hitter\'s year: a first-year\'s full bolts count as a seventh-year\'s', async () => {
+    const { startEvent } = await import('../src/kernel/wheel.js');
+    const { capsFor } = await import('../src/runes/primitives.js');
+    const w = mk();
+    w.rules.events.pool = ['troll'] as never;
+    const kid = join(w, 'First Year', 'Hufflepuff', 0, 0, 1), vet = join(w, 'Seventh Year', 'Slytherin', 0, 0, 7);
+    const e = startEvent(w, 'troll')!;
+    const t = w.creatures.get(e.d.mobs![0])!;
+    kid.pos = { x: t.pos.x + 6, z: t.pos.z }; vet.pos = { x: t.pos.x - 6, z: t.pos.z };
+    // five full-strength bolts each
+    for (let i = 0; i < 5; i++) { w.damage(kid.id, t.id, capsFor(1).boltPower, 'light'); w.damage(vet.id, t.id, capsFor(7).boltPower, 'light'); }
+    while (w.creatures.has(t.id)) { w.damage(kid.id, t.id, capsFor(1).boltPower, 'light'); if (w.creatures.has(t.id)) w.damage(vet.id, t.id, capsFor(7).boltPower, 'light'); }
+    const pk = kid.cup?.src.events ?? 0, pv = vet.cup?.src.events ?? 0;
+    expect(pk).toBeGreaterThan(0);
+    expect(Math.abs(pk - pv)).toBeLessThanOrEqual(Math.max(pk, pv) * 0.25); // about even, not 1 : 3
+  });
+});
