@@ -46,6 +46,7 @@
 |---|---|---|
 | 每学期最多一位部长、一道法令；只有部长能颁布法令 | `World.endTerm` / `World.decree` | TLA+ `TermDecree` |
 | NPC 永远当不了部长，也当不了黑魔王 | `World.endTerm`、`darkLordEligible` | TLA+ `TermDecree`（`NPCsNeverRule`） |
+| 被附身的 NPC 还是 NPC：照样当不了部长，打不到新生、残血和低好几个年级的人；附身的人拿不到任何奖励 | `src/kernel/possess.ts`（`hit` 钩子用 `npcMayFight`） | `test/agents.test.ts` |
 | 邓布利多军每学期最多否决一次，只能在窗口期内、只能在达到法定人数时否决 | `World.vetoDecree` | TLA+ `DAVeto` |
 | 被集市禁令禁掉的咒语谁都施放不了，物品上的咒语也一样；禁令被否决后恢复 | `bannedListing` | TLA+ `Market`（`BannedNeverCast`、`VetoRestoresBan`），`test/market.test.ts` |
 | 老魔杖全服只有一根 | `src/kernel/world.ts` | TLA+ `ElderWand` |

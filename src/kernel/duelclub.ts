@@ -242,7 +242,7 @@ function endMatch(world: World, winSide: 0 | 1 | null, how: 'knockout' | 'forfei
 }
 
 /** An NPC free to fill a place: in play, not in this match, not on a Quidditch team, not queued. */
-const freeNpcs = (world: World, taken: Set<string>) => [...world.wizards.values()].filter((w) => w.npc && world.isActive(w) && !qdOnTeam(world, w.id) && !taken.has(w.id) && !queued(world.duel, w.id));
+const freeNpcs = (world: World, taken: Set<string>) => [...world.wizards.values()].filter((w) => w.npc && !w.heldBy && world.isActive(w) && !qdOnTeam(world, w.id) && !taken.has(w.id) && !queued(world.duel, w.id));
 
 /** Called every tick by World.tick. */
 export function stepDuelClub(world: World) {

@@ -7,11 +7,14 @@ import { DARK_FEATURE } from './dark.js';
 import { DUEL_FEATURE } from './duelclub.js';
 import { EXAMS_FEATURE } from './exams-feature.js';
 import type { Feature, FeatureSpell } from './feature.js';
+import type { World } from './world.js';
 import { registerPrims } from '../runes/primitives.js';
 import { hookLists } from './feature.js';
 import { MARKET_FEATURE } from './market.js';
 import { QD_FEATURE } from './quidditch.js';
+import { POSSESS_FEATURE } from './possess.js';
 import { QUESTS_FEATURE } from './quests.js';
+import { REFLEX_FEATURE } from './reflexes.js';
 import { SEALS_FEATURE } from './seals.js';
 import { TRAVEL_FEATURE } from './travel.js';
 import { DA_FEATURE, DARK_LORD_FEATURE, LAWLESS_FEATURE, STUDY_FEATURE } from './unfair.js';
@@ -22,10 +25,17 @@ import { WHEEL_FEATURE } from './wheel.js';
 // theirs); the Duelling Club before Quidditch: an NPC in a duel is the duel's, even if it is also on a team
 export const FEATURES: readonly Feature[] = [
   DARK_LORD_FEATURE, LAWLESS_FEATURE, DA_FEATURE, STUDY_FEATURE, SEALS_FEATURE,
-  CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE, DARK_FEATURE,
+  CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE, DARK_FEATURE, REFLEX_FEATURE, POSSESS_FEATURE,
 ];
 export const FEATURE_BY_ID: ReadonlyMap<string, Feature> = new Map(FEATURES.map((f) => [f.id, f]));
 export const HOOKS = hookLists(FEATURES);
+/** Whom `wid`'s actions move right now: a feature's vessel (actAs), else themselves. */
+export function actingAs(world: World, wid: string): string {
+  for (const f of HOOKS.actAs) { const v = f.actAs(world, wid); if (v && world.wizards.has(v)) return v; }
+  return wid;
+}
+/** Why `wid` may not use MCP tool `tool` right now, else null. */
+export const toolBlocked = (world: World, wid: string, tool: string) => { for (const f of HOOKS.toolBlock) { const r = f.toolBlock(world, wid, tool); if (r) return r; } return null; };
 
 /** The features' own Runes primitives (kernel/magic.ts runs them), registered with the checker once. */
 export const FEATURE_SPELLS: ReadonlyMap<string, FeatureSpell> = new Map(FEATURES.flatMap((f) => (f.spells ?? []).map((s) => [s.prim.name, s] as const)));

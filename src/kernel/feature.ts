@@ -116,6 +116,12 @@ export interface Feature {
   parry?(world: World, w: Wizard, p: Projectile): boolean;
   /** An NPC thinking (twice a second): true when this feature drove it (the NPC's own brain then rests). */
   npc?(world: World, w: Wizard): boolean;
+  /** A wizard (not an NPC) said something aloud (world.say: the open chat, say, a spell's words). */
+  said?(world: World, w: Wizard, text: string): void;
+  /** Whom this wizard's actions move right now (their MCP tools, their browser's keys), when not themselves: else null. */
+  actAs?(world: World, wid: string): string | null;
+  /** A reason this wizard's MCP tool may not run right now (both languages), else null. */
+  toolBlock?(world: World, wid: string, tool: string): string | null;
   /** MCP tools. */
   tools?: FeatureTool[];
   /** Browser messages {t: id, …}: the reply is sent back as {t: id, r}. */
@@ -129,7 +135,7 @@ export function hookLists(fs: readonly Feature[]) {
   return {
     step: has('step'), stepLate: has('stepLate'), sweep: has('sweep'), load: has('load'), wire: has('wire'), save: has('save'), moveMult: has('moveMult'),
     castBlock: has('castBlock'), helpBlock: has('helpBlock'), bolt: has('bolt'), parry: has('parry'), hit: has('hit'), bounty: has('bounty'), rules: has('rules'), reveal: has('reveal'),
-    npc: has('npc'), me: view('me'), whoami: fs.filter((f) => f.view?.me || f.view?.whoami) as (Feature & { view: NonNullable<Feature['view']> })[],
+    npc: has('npc'), actAs: has('actAs'), said: has('said'), toolBlock: has('toolBlock'), me: view('me'), whoami: fs.filter((f) => f.view?.me || f.view?.whoami) as (Feature & { view: NonNullable<Feature['view']> })[],
     look: view('look'), board: view('board'),
   };
 }
