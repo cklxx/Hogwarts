@@ -171,3 +171,61 @@ describe('the duel slip (client/panels/duel.ts) reads what the kernel sends', ()
     expect(duelLine(du, null, names, 'someone')?.mine).toBe(false);
   });
 });
+
+describe('the Duelling Club, 2v2', () => {
+  it('four make a match with the years balanced; partners cannot harm each other but may heal; foes can', () => {
+    const w = mk();
+    const [p1, p2, p3, p4] = ['Fred', 'George', 'Lee', 'Angelina'].map((n) => join(w, n));
+    p1.year = 5; p2.year = 4; p3.year = 2; p4.year = 1;
+    for (const p of [p1, p2, p3, p4]) duelJoin(w, p.id, '2v2');
+    run(w, 0.1);
+    const m = w.duel.match!;
+    expect(m.sides.map((s) => s.length)).toEqual([2, 2]);
+    expect(new Set(m.sides[0])).toEqual(new Set([p1.id, p4.id])); // 5 + 1 against 4 + 2
+    run(w, DUEL_BOW_S + DUEL_COUNT_S + 0.1);
+    expect(m.phase).toBe('fight');
+    expect(w.canHarm(p1.id, p4.id)).toBe(false); // partners
+    expect(w.canHarm(p1.id, p2.id)).toBe(true); // foes, all Gryffindors
+    p4.hp = 10;
+    w.heal(p1, p4, 20);
+    expect(p4.hp).toBe(30); // a partner may heal
+    const hp = p2.hp;
+    w.heal(p1, p2, 20);
+    expect(p2.hp).toBe(hp); // not a foe
+    expect(duelStatus(w, p1.id).match).toMatchObject({ mode: '2v2' });
+    expect((w.snapshot() as { du?: { a2?: string } }).du?.a2).toBeTruthy();
+  });
+
+  it('a knocked-out duelist is out (untouchable, harmless) and the match goes on; a side with everyone out loses', () => {
+    const w = mk();
+    const [p1, p2, p3, p4] = ['Harry', 'Ron', 'Draco', 'Goyle'].map((n) => join(w, n));
+    for (const p of [p1, p2, p3, p4]) { p.year = 3; duelJoin(w, p.id, '2v2'); }
+    run(w, 0.1);
+    const m = w.duel.match!;
+    run(w, DUEL_BOW_S + DUEL_COUNT_S + 0.1);
+    const [s0, s1] = m.sides;
+    const foe = w.wizards.get(s1[0])!, mate = w.wizards.get(s1[1])!, me = w.wizards.get(s0[0])!;
+    w.damage(me.id, foe.id, 10_000, 'arcane');
+    expect(m.out[foe.id]).toBe('ko');
+    expect(w.duel.match).toBe(m); // the partner fights on
+    expect(w.canHarm(me.id, foe.id)).toBe(false); // out: untouchable
+    expect(w.canHarm(foe.id, me.id)).toBe(false); // … and harmless
+    w.damage(me.id, mate.id, 10_000, 'arcane');
+    run(w, 0.1);
+    expect(w.duel.match).toBeNull();
+    expect(w.duel.last.at(-1)).toMatchObject({ winner: s0[0] });
+    expect(w.events.some((e) => e.type === 'duel' && /2v2|战胜/.test(e.zh ?? ''))).toBe(true);
+  });
+
+  it('NPCs fill the empty places after a wait', () => {
+    const w = mk();
+    ensureNpcs(w, 4);
+    const a = join(w, 'Neville'), b = join(w, 'Luna', 'Ravenclaw');
+    duelJoin(w, a.id, '2v2'); duelJoin(w, b.id, '2v2');
+    run(w, DUEL_NPC_AFTER_S + 0.2);
+    const m = w.duel.match!;
+    expect(m.sides.flat()).toHaveLength(4);
+    expect(m.npc).toBe(true);
+    expect(m.sides.flat()).toEqual(expect.arrayContaining([a.id, b.id]));
+  });
+});

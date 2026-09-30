@@ -1,6 +1,7 @@
 /**
- * 决斗俱乐部 in the browser (src/kernel/duelclub.ts): G joins or leaves the queue; a slip under the clock shows the
- * match on the stage (who, phase, seconds) or your place in the queue, with a compass to the Courtyard stage.
+ * 决斗俱乐部 in the browser (src/kernel/duelclub.ts): G joins or leaves the queue (Shift+G: the 2v2 queue); a slip under
+ * the clock shows the match on the stage (both sides, who is out, phase, seconds) or your place in the queue, with a
+ * compass to the Courtyard stage.
  */
 import type { ClientFeatureFactory } from '../feature';
 import { L } from '../i18n';
@@ -8,8 +9,8 @@ import { ic } from '../ink';
 import { bearing, esc, fmtDist } from './logic';
 
 /** Snapshot `du` (duelWire). */
-export interface DuSnap { a?: string; b?: string; ph: 'bow' | 'count' | 'fight'; t: number }
-interface DuelStatus { closed?: string | false | null; stage: { x: number; z: number }; queue: number; you: { position?: number; inMatch?: boolean } | null }
+export interface DuSnap { a?: string; b?: string; a2?: string; b2?: string; out?: string[]; ph: 'bow' | 'count' | 'fight'; t: number }
+interface DuelStatus { closed?: string | false | null; stage: { x: number; z: number }; queue: number; you: { position?: number; mode?: '1v1' | '2v2'; inMatch?: boolean } | null }
 
 export interface DuelDeps {
   send: (o: unknown) => void;
@@ -23,14 +24,21 @@ export interface DuelDeps {
 
 const PHASE = { bow: ['鞠躬', 'Bow'], count: ['倒数', 'Countdown'], fight: ['决斗中', 'Duel'] } as const;
 
+/** Everyone on the stage (both sides). */
+const duelists = (du: DuSnap) => [du.a, du.a2, du.b, du.b2].filter((h): h is string => !!h);
+
 /** One line for the slip; pure, for tests. */
 export function duelLine(du: DuSnap | undefined, st: DuelStatus | null, nameOf: (h: string | undefined) => string, me: string): { title: string; sub: string; mine: boolean } | null {
   if (du) {
-    const mine = du.a === me || du.b === me;
+    const mine = duelists(du).includes(me);
     const [zh, en] = PHASE[du.ph];
-    return { title: `${nameOf(du.a)} ⚔ ${nameOf(du.b)}`, sub: `${L(zh, en)} · ${du.t}s${mine && du.ph !== 'fight' ? L(' · 站定，不能施法', ' · hold still, no casting') : ''}`, mine };
+    const side = (hs: (string | undefined)[]) => hs.filter(Boolean).map((h) => (du.out?.includes(h!) ? `${nameOf(h)}✗` : nameOf(h))).join(' & ');
+    return { title: `${side([du.a, du.a2])} ⚔ ${side([du.b, du.b2])}`, sub: `${du.a2 ? '2v2 · ' : ''}${L(zh, en)} · ${du.t}s${mine && du.ph !== 'fight' ? L(' · 站定，不能施法', ' · hold still, no casting') : ''}${du.out?.includes(me) ? L(' · 你出局了：看队友的', " · you're out: it's up to your partner") : ''}`, mine };
   }
-  if (st?.you?.position) return { title: L('决斗俱乐部', 'Duelling Club'), sub: L(`排队中：第 ${st.you.position} 位 · 按 G 退出`, `queued: #${st.you.position} · G to leave`), mine: true };
+  if (st?.you?.position) {
+    const two = st.you.mode === '2v2';
+    return { title: L(two ? '决斗俱乐部 · 2v2' : '决斗俱乐部', two ? 'Duelling Club · 2v2' : 'Duelling Club'), sub: L(`排队中：第 ${st.you.position} 位 · 按 G 退出`, `queued: #${st.you.position} · G to leave`), mine: true };
+  }
   return null;
 }
 
@@ -55,7 +63,7 @@ export function createDuel(d: DuelDeps) {
       const du = d.du();
       // a match that started or ended moves you out of the queue without a reply: follow the snapshot quietly
       if (status) {
-        const inDu = !!du && (du.a === d.myHandle() || du.b === d.myHandle());
+        const inDu = !!du && duelists(du).includes(d.myHandle());
         if (inDu) status.you = { inMatch: true };
         else if (status.you?.inMatch) status.you = null;
       }
@@ -77,8 +85,8 @@ export function createDuel(d: DuelDeps) {
     keydown(e: KeyboardEvent): boolean {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return false;
       if (e.key !== 'g' && e.key !== 'G') return false;
-      const inIt = !!status?.you || (() => { const du = d.du(); return !!du && (du.a === d.myHandle() || du.b === d.myHandle()); })();
-      d.send({ t: 'duel', op: inIt ? 'leave' : 'join' });
+      const inIt = !!status?.you || (() => { const du = d.du(); return !!du && duelists(du).includes(d.myHandle()); })();
+      d.send({ t: 'duel', op: inIt ? 'leave' : 'join', ...(e.shiftKey ? { mode: '2v2' } : {}) });
       return true;
     },
     /** The server's reply to {t:'duel'} (duelStatus); true when handled. */

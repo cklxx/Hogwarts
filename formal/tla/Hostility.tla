@@ -22,7 +22,9 @@ Init ==
   /\ pvp    \in BOOLEAN
   /\ ff     \in BOOLEAN
   /\ duel   \in BOOLEAN                         \* 决斗俱乐部: a and b are fighting a match (duelclub.ts)
-  /\ side   \in [Wizards -> {1, 2}]             \* … on these sides: different = opponents, the same = 2v2 partners
+  \* … on these sides: different = opponents, the same = 2v2 partners. The labels are symmetric, so a is on side 1;
+  \* outside a match the sides mean nothing, so they are fixed (no duplicate states)
+  /\ side   \in {[w \in Wizards |-> IF w = "a" THEN 1 ELSE s] : s \in (IF duel THEN {1, 2} ELSE {2})}
   /\ duel => pvp                                \* a match only opens while PvP is on (duelClosed)
 Next == UNCHANGED vars                          \* a static relation: TLC checks every initial state
 

@@ -141,7 +141,7 @@ export function duelStatus(world: World, wid: string | null) {
     closed: duelClosed(world),
     stage: DUEL_STAGE,
     queue: c.queue.length, queue2v2: c.queue2.length,
-    you: pos >= 0 ? { position: pos + 1, mode: p1 >= 0 ? '1v1' : '2v2' } : m && inMatch(c, wid) ? { inMatch: true, side: sideOf(m, wid), out: !!m.out[wid!] } : null,
+    you: pos >= 0 ? { position: pos + 1, mode: (p1 >= 0 ? '1v1' : '2v2') as '1v1' | '2v2' } : m && inMatch(c, wid) ? { inMatch: true, side: sideOf(m, wid), out: !!m.out[wid!] } : null,
     match: m ? {
       a: m.sides[0].map(name).join(' & '), b: m.sides[1].map(name).join(' & '), mode: m.sides[0].length > 1 ? '2v2' : '1v1', phase: m.phase, secondsLeft: Math.max(0, Math.ceil(phaseEnd(m) - world.now)),
       // every duelist's health and shields, so an agent can duel from status alone (playtest round 2)
