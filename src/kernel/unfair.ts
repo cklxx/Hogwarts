@@ -343,8 +343,10 @@ export function vetoDecree(world: World, wid: string) {
   if (!world.online(w) || w.st.jailedUntil) throw new Error('You must be in the world to vote. 你得在场才能投票。');
   if (da.vetoTerm === world.term.n) throw new Error(`The DA has already used its veto this term (${DA_VETOES_PER_TERM} per term). 邓布利多军本学期的否决权已经用过了（每学期 ${DA_VETOES_PER_TERM} 次）。`);
   const v = da.veto;
-  if (!v || v.term !== world.term.n) throw new Error('There is no decree this term to veto. 本学期还没有可以否决的法令。');
-  if (world.now - v.at > DA_VETO_WINDOW_S) throw new Error(`Too late: a decree can only be vetoed within ${DA_VETO_WINDOW_S}s of being enacted. 太晚了：法令颁布 ${DA_VETO_WINDOW_S} 秒内才能否决。`);
+  const late = `Too late: a decree can only be vetoed within ${DA_VETO_WINDOW_S}s of being enacted. 太晚了：法令颁布 ${DA_VETO_WINDOW_S} 秒内才能否决。`;
+  // the 1 Hz sweep drops a closed window: a vote after it is still "too late" for this term's decree, not "no decree" (test/society.test.ts)
+  if (!v || v.term !== world.term.n) throw new Error(world.decrees.some((d) => d.term === world.term.n && !d.vetoed) ? late : 'There is no decree this term to veto. 本学期还没有可以否决的法令。');
+  if (world.now - v.at > DA_VETO_WINDOW_S) throw new Error(late);
   if (!v.votes.includes(w.id)) v.votes = [...v.votes, w.id];
   const active = daActive(world);
   const votes = v.votes.filter((id) => active.some((a) => a.id === id)).length;
