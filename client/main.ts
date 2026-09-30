@@ -40,7 +40,7 @@ import { PRIO, createPhoneShell } from './phone';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
-interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
+interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string; /** 梗牌 (kernel/memetags.ts) */ mm?: string }
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string; b?: 1 }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
@@ -233,7 +233,9 @@ const herd = createHerd(scene);
  * beyond, with a few metres of hysteresis), name tags nearer than `label` (and always on your target),
  * creatures drawn nearer than `creature` and animated nearer than `anim`.
  */
-const LOD = { high: { mid: 22, wizard: 42, label: 45, creature: 170, anim: 70 }, low: { mid: 14, wizard: 24, label: 30, creature: 110, anim: 45 } };
+// ('low' is a phone's: its top-down camera stands ~15 m above you, so the full models and the name tags reach further
+// than they did for the old close follow camera — 2026-09-30, the wizard next to you was a blob)
+const LOD = { high: { mid: 22, wizard: 42, label: 45, creature: 170, anim: 70 }, low: { mid: 18, wizard: 32, label: 40, creature: 110, anim: 45 } };
 // the offline promo renderer (?capture=1 without the ?perf=1 probe, which only steers the camera) draws every
 // model in full, as does the lake's mirror and the shadow map every frame
 const fullDetail = new URLSearchParams(location.search).get('capture') === '1' && !probe.PERF;
@@ -248,7 +250,10 @@ const capturing = params.get('capture') === '1';
  * ratio (at most 2) and may go down to 60 % of 1x; 'low' between 0.5 and 0.75. The promo
  * capture keeps the fixed ratio.
  */
-const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? [0.5, 0.75] : [0.6 * Math.min(1, devicePixelRatio), Math.min(2, devicePixelRatio)]);
+// a phone at 'low' may go up to 1.5x (it rendered 0.75x of the CSS pixels — a quarter of a 3x screen's — and the wizard
+// was a smudge); dynres still steps down when frames are slow
+const coarse = matchMedia('(hover: none) and (pointer: coarse)').matches;
+const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? (coarse ? [0.75, Math.min(1.5, devicePixelRatio)] : [0.5, 0.75]) : [0.6 * Math.min(1, devicePixelRatio), Math.min(2, devicePixelRatio)]);
 const dyn = capturing ? null : createDynRes({
   min: ratioRange(quality)[0], max: ratioRange(quality)[1],
   apply: (r) => { R.renderer.setPixelRatio(r); R.composer.setPixelRatio(r); R.resize(); },
@@ -466,7 +471,7 @@ function apply(s: Snap) {
     m.seen = g;
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
     const extra = badges(w.h) + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
-    m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
+    m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra, w.mm);
     setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
     m.glow.intensity = w.s.includes('L') ? 30 : 0;

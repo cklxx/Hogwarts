@@ -10,7 +10,7 @@ export class Label {
   private canvas = document.createElement('canvas');
   private ctx = this.canvas.getContext('2d')!;
   private tex: THREE.CanvasTexture;
-  private last: [string, string, number, string | undefined, string] | null = null;
+  private last: [string, string, number, string | undefined, string, string] | null = null;
   constructor(scale = 1) {
     this.canvas.width = 512;
     this.canvas.height = 160;
@@ -20,18 +20,18 @@ export class Label {
     this.sprite.scale.set(4.8 * scale, 1.5 * scale, 1);
     this.sprite.renderOrder = 10;
   }
-  private pending: [string, string, number, string | undefined, string] | null = null;
+  private pending: [string, string, number, string | undefined, string, string] | null = null;
   /**
    * Set what the tag says. Painting the canvas and uploading it (512 x 160 RGBA) is the costly part, so it
    * happens only when something changed, and for a hidden tag (far away, see main.ts) only once it is shown.
    */
-  draw(name: string, color: string, hpFrac: number, say?: string, extra = '') {
+  draw(name: string, color: string, hpFrac: number, say?: string, extra = '', tag = '') {
     // (compared field by field, not as one key string: every entity's tag is told what to say every snapshot)
     const was = this.last, hp = Math.round(hpFrac * 100);
-    if (was && was[0] === name && was[1] === color && was[2] === hp && was[3] === say && was[4] === extra) { this.pending = null; return; }
-    if (!this.sprite.visible) { this.pending = [name, color, hpFrac, say, extra]; return; }
-    this.last = [name, color, hp, say, extra];
-    this.paint(name, color, hpFrac, say, extra);
+    if (was && was[0] === name && was[1] === color && was[2] === hp && was[3] === say && was[4] === extra && was[5] === tag) { this.pending = null; return; }
+    if (!this.sprite.visible) { this.pending = [name, color, hpFrac, say, extra, tag]; return; }
+    this.last = [name, color, hp, say, extra, tag];
+    this.paint(name, color, hpFrac, say, extra, tag);
   }
   /** Free the tag's texture and material (the sprite's geometry is three.js's shared quad). */
   dispose() { this.tex.dispose(); this.sprite.material.dispose(); }
@@ -41,7 +41,7 @@ export class Label {
     this.sprite.visible = on;
     if (on && this.pending) { const p = this.pending; this.pending = null; this.draw(...p); }
   }
-  private paint(name: string, color: string, hpFrac: number, say: string | undefined, extra: string) {
+  private paint(name: string, color: string, hpFrac: number, say: string | undefined, extra: string, tag = '') {
     const c = this.ctx;
     c.clearRect(0, 0, 512, 160);
     if (say) {
@@ -65,6 +65,15 @@ export class Label {
     c.fillRect(156, 106, 200, 14);
     c.fillStyle = hpFrac > 0.5 ? '#5bd15b' : hpFrac > 0.25 ? '#e0c040' : '#e04040';
     c.fillRect(158, 108, 196 * Math.max(0, Math.min(1, hpFrac)), 10);
+    // 梗牌 (kernel/memetags.ts): a wax-red chip under the health bar
+    if (tag) {
+      c.font = 'bold 24px "Noto Sans SC", "PingFang SC", sans-serif';
+      const w = c.measureText(tag).width + 22;
+      c.fillStyle = 'rgba(150, 32, 36, 0.92)';
+      c.beginPath(); c.roundRect?.(256 - w / 2, 124, w, 32, 10); if (!c.roundRect) c.rect(256 - w / 2, 124, w, 32); c.fill();
+      c.fillStyle = '#fff4dc';
+      c.fillText(tag, 256, 149);
+    }
     this.tex.needsUpdate = true;
   }
 }
@@ -107,7 +116,9 @@ const SCARF: Record<House, [string, string]> = {
 };
 const SKIN = [0xf2cba8, 0xe6b48c, 0xc98f66, 0x9a6444, 0x6e4530, 0xf6dcc4];
 /** School black. Storybook: a deep indigo charcoal, so robes read as painted cloth rather than holes. */
-const CLOTH = STORYBOOK ? 0x2b2838 : 0x1c1c22, HAT = STORYBOOK ? 0x262334 : 0x17171e, TROUSERS = STORYBOOK ? 0x2e2c38 : 0x24242a;
+const CLOTH = STORYBOOK ? 0x2b2838 : 0x1c1c22, TROUSERS = STORYBOOK ? 0x2e2c38 : 0x24242a;
+/** The hat's crown: a shade lighter than the school black, so its point reads from above. */
+const HAT_CROWN = STORYBOOK ? 0x3a3550 : 0x2c2c38;
 const ROBE_RGB = STORYBOOK ? [34, 31, 46] : [26, 26, 32];
 const HAIR = [0x2b1a10, 0x4a2c17, 0x7a4a22, 0xa8561f, 0xd8b56a, 0x141414, 0x6b6b6b];
 const WOOD = [0x4a2e19, 0x6b4526, 0x2d1d12, 0x8a6a45, 0x3a2418];
@@ -490,7 +501,8 @@ export function makeWizard(house: House, isMe: boolean, seed = ''): WizardModel 
   const hatMat = once('hatMat', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }));
   const hatMesh = hat.add(shadow(new THREE.Mesh(once(`hatGeo:${house}`, () => {
     const band = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); band.translate(0, 0.032, 0);
-    return painted([[hatGeo(), HAT], [brimGeo(), HAT], [band, new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.6)]]);
+    // the brim in the house's colour: from above (a phone's top-down view) a wizard is a ring of house colour, not a black dot
+    return painted([[hatGeo(), HAT_CROWN], [brimGeo(), new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.72)], [band, new THREE.Color(HOUSE_COLORS[house]).multiplyScalar(0.45)]]);
   }), hatMat))).children.at(-1) as THREE.Mesh;
   head.add(hat);
   rig.add(head);
@@ -985,11 +997,14 @@ function dressUp(d: Dress, g: Glamour, key: string) {
     });
   }
   // hat: crown and brim in the hat colour, the band in the trim; the preset's surface
-  const hatCol = g.hat ?? PRESET_CLOTH[mat] ?? HAT;
-  const band = trim ?? new THREE.Color(HOUSE_COLORS[d.house]).multiplyScalar(0.6).getHex();
-  d.hat.geometry = take(d, `hg:${hatCol}:${band}`, () => {
+  // (no hat of your own: the school hat, its brim in the house colour as makeWizard draws it)
+  const own = g.hat ?? PRESET_CLOTH[mat];
+  const hatCol = own ?? HAT_CROWN;
+  const brimCol = own ?? new THREE.Color(HOUSE_COLORS[d.house]).multiplyScalar(0.72).getHex();
+  const band = trim ?? new THREE.Color(HOUSE_COLORS[d.house]).multiplyScalar(own === undefined ? 0.45 : 0.6).getHex();
+  d.hat.geometry = take(d, `hg:${hatCol}:${brimCol}:${band}`, () => {
     const b = new THREE.CylinderGeometry(0.22, 0.227, 0.065, 18, 1, true); b.translate(0, 0.032, 0);
-    return painted([[hatGeo(), hatCol], [brimGeo(), hatCol], [b, band]]);
+    return painted([[hatGeo(), hatCol], [brimGeo(), brimCol], [b, band]]);
   });
   d.hat.material = take(d, `hm:${mat}:${spark.getHex()}:${detail}`, () =>
     withEffect(surface(mat, hi, { color: 0xffffff, vertexColors: true, side: THREE.DoubleSide }, new THREE.Color(hatCol)), mat, spark, `glam-hat:${mat}`));

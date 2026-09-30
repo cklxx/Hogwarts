@@ -1296,3 +1296,19 @@ The growth is the per-module lazy-init wrappers and the kept export names. The 1
 page's modulepreload links (served from memory, cached a year as content-hashed assets); first-load time was not
 measured separately (software rendering dominates here). The server's new-build check is one `stat` of
 dist/index.html every 3 s.
+
+## 2026-09-30 — top-down clarity on phones, 梗牌 (`wf/look`)
+
+The owner: from overhead the wizards were a blur. The cause was the renderer's pixel ratio, not the textures: on a
+touch screen the `low` quality range was 0.5–0.75 of a CSS pixel, so a 390×844 phone at DPR 3 drew into a 292×633
+canvas and upscaled it ×4 per axis. Now `low` on a coarse pointer is 0.75–min(1.5, DPR) (client/main.ts
+`ratioRange`), and the phone LOD keeps name tags to 40 m. Headless 390×844 at DPR 3 (`?perf=1&dyn=0`): canvas
+292×633 → 585×1266, i.e. 4.0× the pixels at the top of the range; names and the house-coloured hat brims (the crown was
+one near-black for everyone, now the brim carries the house) readable in the screenshot. Frame cost was not compared:
+software rendering (SwiftShader) here gives about 1 fps either way, which says nothing about a phone GPU; dynamic
+resolution still steps the ratio down to 0.75 when frames run long, so a slow phone lands at 1.5× the old pixel count,
+not 4×.
+
+梗牌 (src/kernel/memetags.ts): one pass over online wizards per second (16 rule checks each, a map write), one string
+field in the static part of the snapshot entry — sent only when a tag changes; a label repaint only then too.
+

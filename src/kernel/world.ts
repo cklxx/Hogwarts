@@ -3379,8 +3379,11 @@ export class World {
       if (w.npc) s += 'N';
       if (w.st.silencedUntil > this.now) s += 'Q';
       s += auraFlags(w.auras, this.now);
+      let mm: string | undefined;
+      for (const f of HOOKS.tag) { mm = f.tag(this, w); if (mm) break; }
       // g: the glamour (shared/glamour.ts glamourKey, e.g. "velvet:7a1f2b:d4af37:::"), absent for the house look
-      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text, g: glamourKey(lookOf(w, this.now)) };
+      // mm: the features' line under the name (梗牌: kernel/memetags.ts)
+      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text, g: glamourKey(lookOf(w, this.now)), ...(mm ? { mm } : {}) };
     });
     return {
       t: round(this.now), hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather, term: { n: this.term.n, left: Math.max(0, Math.round(this.term.endsAt - this.now)) },
