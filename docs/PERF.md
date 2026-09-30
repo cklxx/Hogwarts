@@ -877,3 +877,107 @@ from before the WebGPU renderer ignores `?gpu=webgl`.
 500 人那一行又交替跑了 3 轮（main / plugins / main / …）：main 的 mean 为 3.14 / 3.15 / 3.22，plugins 为
 3.22 / 3.77 / 3.34。取中位数是 +6%。plugins 自己三轮之间的波动（0.55 ms）大于两个分支的差值，
 所以 +11% 按噪声处理。两边的生物、弹道、施法和成功率统计完全一致：行为没变。
+
+## Client polish and GC (wf/client-polish)
+
+Two passes on `wf/client-polish`, measured against `main` at `31956f1` with the same harness, back to back:
+the leftovers from docs/TODO.md (Great Hall roof, candles, forest, mountains, hotbar) and, measured first,
+the garbage the client made every frame (「GC 卡顿」: the owner saw the JS heap grow 24–45 MB/s in the follow
+camera, and frames over 50 ms).
+
+### How it is measured
+
+* `scripts/perf-client.ts` as in [wf/fast](#client-browser-wffast), 640x360, `q=high`, `&dyn=0`, two new flags:
+  **`--nodraw`** runs every frame's JavaScript at the display's rate (60 Hz here) but draws nothing
+  (`window.__capture = { skip: true }`): the page's own CPU and allocation work without SwiftShader's ~1 fps in
+  the way, which is what a GPU player's frame looks like to the garbage collector. **`--heap`** records a CDP
+  sampling heap profile per spot (objects already collected included) and prints the top allocating functions,
+  builtins such as `Math.random` or an iterator's `next` shown with their caller. New spots `hall` (the Great
+  Hall from its doorway) and `forest`, and `--viewer=x,z` to stand the viewer somewhere else (`-1.3,-61.5`: in
+  the Great Hall, so `follow` is the indoor camera with a candle between it and the wizard).
+* "heap MB/s" is the JS heap's growth between collections (`performance.memory`, sampled every 50 ms), "GCs"
+  the drops in it (≈ collections) per 10 s window; "GC %" the `(garbage collector)` share of a CDP CPU profile of
+  the window (`--profile=spot`, which itself causes one ~70–140 ms frame when it starts, in both builds).
+* **SwiftShader renders on the CPU**: fps and render milliseconds say only which way things moved. The box
+  (4 cores) was shared with two other agents' jobs (load average 5–7).
+
+### GC: before / after
+
+60 bots (30 round the spawn) casting every second, 12 NPCs, `--nodraw`, 10 s per spot after 3 s:
+
+| | follow (game camera, in the courtyard crowd) | crowd (the courtyard from 70 m) |
+|---|---:|---:|
+| **JS heap growth, MB/s** (three rounds) | 18.0 / 19.0 / 19.1 → **3.9 / 4.2 / 4.1** (4.6x) | 17.2 / 17.7 / 18.6 → **3.2 / 3.5 / 3.0** (5.5x) |
+| collections per 10 s | 41 / 47 / 48 → **3 / 4 / 12** | 30 / 31 / 29 → **3 / 3 / 4** |
+| GC share of the main thread (CPU profile, rounds 1–2) | 1.1 % / 1.0 % → **0.1 % / 0.8 %** | 1.3 % / 0.9 % → **0.1 % / 0.5 %** |
+| frames over 50 ms in 10 s, without the profiler (round 3) | 0 → **0** (worst 24 → 37 ms) | 0 → **0** (worst 32 → 21 ms) |
+| … with the CPU profiler on (rounds 1–2; its start costs a 70–100 ms frame in both) | 1 / 1 → 1 / 1 | 1 / 1 → 1 / 1 |
+| frame p95, ms | 18.6–18.7 → 18.1–19.4 | 17.8–18.9 → 17.6–18.2 |
+| JS per frame (all sections but the message handler and the HUD), ms | 1.65–1.76 → **1.19–1.37** | 1.36–1.44 → **0.93–1.01** |
+
+Rounds alternate main / branch, one server and one browser each. (Intermediate builds of this branch measured on the
+way: 4.8 / 5.9 / 6.0 MB/s.) The owner's 24–45 MB/s was measured on another machine; this harness shows main at
+~19 MB/s at 60 Hz. The target was ≥ 5x and no GC hitch over 50 ms: **5.5x in the crowd view, 4.6x in the follow
+camera** (short of 5x there), and no frame over 50 ms in either build here once the profiler is off, so the hitches
+the owner saw could not be reproduced on this box as GC pauses; what the branch does guarantee is 4–12x fewer
+collections to pause for.
+
+What allocated, from `--heap` (main, follow, KB/s): `heightAt` and its helpers ~6 000–8 000 (Math.hypot, for-of
+destructuring over array literals, doubles returned from calls V8 does not inline), bolt trails' `Math.random`
+~800 (V8 boxes every result) plus two new Colors per trail per frame, the partbatch's group key string per part per
+frame ~2 350, picking under the pointer (`zonesAt().filter().map()` per entity, a new `{x, y}` per projected point,
+`allKeys()` arrays) ~2 000, for-of over Map entries and closures made per frame in the entity loops, the grass'
+`` `${cx},${cz}` `` chunk keys, the light budget's candidate objects and sort. After, the largest left are
+`JSON.parse` of the snapshots (~200 KB/s, 10 a second) and doubles passed to calls V8 does not inline
+(~100–400 KB/s each in the wizard, creature and bolt visitors). See the commit for the list of changes.
+
+Drawn by SwiftShader (same world, follow, 10 s): 0.9 → 0.7 fps, every frame over 50 ms in both (1.8–2.3 s each: the
+software renderer), heap growth 0.46 → 0.36 MB/s (at ~1 fps the per-frame garbage hardly shows), GC share 0.2 % →
+0.1 %: under SwiftShader the GC is not what makes frames long, the renderer is.
+
+### The scene: before / after
+
+No bots (a quiet world: the scene's own cost), `--census`, 8 s per spot:
+
+| spot | draw calls | triangles | frame JS ms ¹ | fps (SwiftShader) |
+|---|---:|---:|---:|---:|
+| follow (courtyard) | 131 → 141 ² | 253 136 → **220 047** | 6.83 → 9.47 | 0.86 → 0.79 |
+| castle (from above) | 326 → 314 | 430 987 → **370 983** | 12.8 → 14.8 | 0.88 → 0.78 |
+| forest | 105 → 152 ² | 184 885 → **155 103** | 4.12 → 6.20 | 1.83 → 0.92 |
+| follow in the Great Hall (a candle between camera and wizard) | 110 → 105 | 251 559 → **214 549** | 5.94 → 6.10 | 1.54 → 1.36 |
+| hall (the Great Hall from its doorway) | 124 → 120 | 254 373 → **216 329** | 6.65 → 4.71 | 0.63 → 0.83 |
+
+¹ Mostly the renderer's submit, which waits on SwiftShader (render 2.9–11 ms of it): on this shared box it moved
+±40 % between runs of the same build; read it as noise. ² Not the scene: creatures wander, and in these runs more of
+them were in view (census: 112 → 162 actor objects in the forest shot; the static scene's draws are unchanged, the
+forest is still one instanced crown mesh and its shadow-map draw). Triangles fell by 30–60 k everywhere: the inner
+terrain is a disc now (below). Shader programs at the warm-up 86 → 87.
+
+* **Roof** (`scene.ts`, view.ts `dissolvable`): dissolves over 0.3 s on the fade's dither instead of vanishing;
+  its own copies of six materials sharing the originals' programs. While fully in or out nothing changes.
+* **Candles**: soft view solids (`HALL_CANDLES`); their instanced glow fades by alpha inside the cut-out
+  (`fadeGlow`). One more shader program at the warm-up (the candle glows no longer share the other billboards'
+  program): 86 → 87.
+* **Forest**: one instanced crown per tree (145 instances, was 290) of three tiers with their ink outline in the
+  same geometry: the same one draw call (plus its shadow-map draw), 56 → 96 triangles per tree at 'high'
+  (+5 800 in all; 'low' has no ink: 48).
+* **Mountains**: the inner terrain mesh is a 300 m disc (was a 640 m square overlapping the Highlands' ring):
+  fewer triangles, no z-fighting.
+
+Screenshots (not committed; `gpu-shots.ts --shots=hall-candles,forest,mountains,castle-dusk --viewer=-1.3,-61.5`):
+the candle over the wizard is cut away and its glow faded; the forest has three-tier crowns with ink outlines;
+the green blotches on the mountains are gone; the roof at dissolve 0 / 0.35 / 0.7 / 1 dithers away evenly.
+`scripts/view-audit.ts` (500 spots, seed 11): **100 %** (main: 100 %); `--n=1000 --seed=3`: **100 %**. (A first cut of the
+crowns had its lowest hem and outline a few centimetres outside the camera's soft crown solids: 99.4 %; they are inside now.)
+
+### Reproduce
+
+```bash
+npx vite build
+npx tsx scripts/perf-client.ts --port=9310 --q=high --spots=follow,crowd --secs=10 --warm=3 --size=640x360 --nodraw --url='&dyn=0'
+#   --heap (what allocates)   --profile=spot (GC share)   --nodraw off: drawn by SwiftShader
+npx tsx scripts/perf-client.ts --port=9310 --q=high --spots=follow,castle,forest --bots=0 --npcs=0 --secs=8 --warm=3 --size=640x360 --census --url='&dyn=0'
+npx tsx scripts/perf-client.ts --port=9310 --q=high --spots=follow,hall --viewer=-1.3,-61.5 --bots=0 --npcs=0 --secs=8 --warm=3 --size=640x360 --census --url='&dyn=0'
+npx tsx scripts/gpu-shots.ts --gpu=webgl --size=640x360 --viewer=-1.3,-61.5 --shots=hall-candles,forest,mountains,castle-dusk --wait=8
+```
+For "before", build `31956f1` and run the same commands with this branch's scripts.
