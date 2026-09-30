@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
-  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, CREATURE_HIT_CAP,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource,
@@ -288,10 +288,13 @@ export class World {
   fx(f: Fx) { this.fxQueue.push(f); }
   drainFx() { const f = this.fxQueue; this.fxQueue = []; return f; }
 
-  hour() {
-    if (this.rules.world.eternalNight) return 0;
-    return ((this.now / this.rules.world.dayLengthSeconds) * 24 + 8) % 24;
-  }
+  /**
+   * The time of day, counted on from `clock` (hour `clock.hour` at world time `clock.at`): a decree that changes
+   * the day's length re-anchors it (rulesChanged), so the hour never jumps (playtest round 3: 21.8 -> 0.4 in 1.5 s).
+   */
+  clock = { at: 0, hour: 8 };
+  hour() { return this.rules.world.eternalNight ? 0 : this.hourUnder(this.rules); }
+  private hourUnder(r: Rulebook) { return (((this.clock.hour + ((this.now - this.clock.at) / r.world.dayLengthSeconds) * 24) % 24) + 24) % 24; }
   isNight() { const h = this.hour(); return this.rules.world.eternalNight || h < 6 || h >= 20; }
   // Zones are rasterised once (zones.ts); answers are identical to testing every zone with inZone.
   zoneIds(p: Vec2): ZoneId[] { return zoneIdsAt(p.x, p.z); }
@@ -923,12 +926,20 @@ export class World {
       if (this.now < (w.cooldowns[spell.id] ?? 0)) return fail(`${spell.name} is recharging (${(w.cooldowns[spell.id] - this.now).toFixed(1)}s). 「${zhSpell(spell.name)}」还在冷却。 retry_after=${retry(w.cooldowns[spell.id])}`);
     }
     const target = this.resolveTarget(opts.target, wid);
+    // a target named but not here (gone, dead, logged off): say so, spend nothing — it used to fly straight ahead and
+    // hit whoever stood there (playtest round 3: a bolt for a vanished pixie struck Goyle 5 m away)
+    if (!opts.dryRun && opts.target && !target) return { ...fail(`There is no "${opts.target}" here any more (gone, or out of sight). No mana spent. 目标「${opts.target}」已经不在了。没有消耗法力。`), spell: spell.name };
     // an attack aimed at someone you may not harm: say so, spend nothing (it used to fly, fizzle on arrival, and cost mana)
     if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.canHarm(wid, target)) {
       const t = this.entity(target)!;
       const why = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? 'they are in a Duelling Club match' : inMatch(this.duel, wid) ? 'in a duel only your opponents can be hit' : this.inSafe(t.pos) || this.inSafe(w.pos) ? 'a safe zone' : 'the rules (house, PvP, or they are down)';
       const whyZh = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? '对方正在决斗' : inMatch(this.duel, wid) ? '决斗中只能打你的对手' : this.inSafe(t.pos) || this.inSafe(w.pos) ? '安全区' : '规则（学院、PvP，或对方已倒下）';
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
+    }
+    // …or behind a wall, a tree, a rock: the bolt would only hit that (playtest round 3: four casts, 72 mana, nothing)
+    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inBlast(w.pos, this.entity(target)!.pos)) {
+      const t = this.entity(target)!;
+      return { ...fail(`Something stands between you and ${t.name}: no clear shot. Move for one. No mana spent. 你和 ${t.name} 之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
     }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     if (!opts.dryRun && Math.hypot(aim.x - w.pos.x, aim.z - w.pos.z) > 0.1) w.facing = Math.atan2(aim.x - w.pos.x, -(aim.z - w.pos.z));
@@ -1359,6 +1370,10 @@ export class World {
     if (!w) return 0;
     a *= 1 - derived(w, rb).ward;
     if (srcId && this.creatures.has(srcId) && !w.npc && this.now - w.createdAt < NEWCOMER_WARD_S) a *= 1 - NEWCOMER_WARD;
+    // no wild creature takes more than CREATURE_HIT_CAP of your health in one blow, however strong the event made it:
+    // there is always a moment to shield, heal or run (playtest round 3: a troll's 100+ against a first-year's 100)
+    const wild = srcId ? this.creatures.get(srcId) : undefined;
+    if (wild && !wild.owner && !opts.dot) a = Math.min(a, CREATURE_HIT_CAP * derived(w, rb).maxHp);
     if (opts.hex) a = hexTickDmg(amount, a);
     if (w.st.shieldUntil > this.now && w.st.shield > 0) {
       const absorbed = Math.min(w.st.shield, a);
@@ -2094,7 +2109,10 @@ export class World {
   }
 
   /** A decree (by `minister`) or a veto (null) replaced the Rulebook: the features react (kernel/feature.ts `rules`). */
-  rulesChanged(before: Rulebook, minister: Wizard | null) { for (const f of HOOKS.rules) f.rules(this, before, minister); }
+  rulesChanged(before: Rulebook, minister: Wizard | null) {
+    if (before.world.dayLengthSeconds !== this.rules.world.dayLengthSeconds) this.clock = { at: this.now, hour: this.hourUnder(before) };
+    for (const f of HOOKS.rules) f.rules(this, before, minister);
+  }
 
   private lawCache = new Map<string, Node[]>();
   runLaws(on: Law['on'], subject: Wizard, object: string | null = null) {
@@ -2680,7 +2698,10 @@ export class World {
         this.solids.resolve(q, def.radius);
         if (!def.flying && dist(p, q) > 0.01) continue;
         if (this.inSafe(p) || this.within(p, 'great_hall') || (def.faction === 'hostile' && this.within(p, 'courtyard'))) continue;
-        if (def.faction === 'hostile' && [...this.nearWizards(p, 8)].some((w) => this.isActive(w) && dist(w.pos, p) < 8)) continue;
+        // never born already on top of someone: outside its own aggro reach of every wizard (playtest round 3: an
+        // acromantula appearing beside whoever walked into the forest)
+        const clear = Math.max(8, def.aggro + 2);
+        if (def.faction === 'hostile' && [...this.nearWizards(p, clear)].some((w) => this.isActive(w) && dist(w.pos, p) < clear)) continue;
         const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
         const c: Creature = {
           id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,
@@ -3143,12 +3164,14 @@ export class World {
       handle: x.handle, name: x.name, house: x.house, year: x.year, hp: Math.round(x.hp), dist: round(dist(x.pos, w.pos)), x: round(x.pos.x), z: round(x.pos.z),
       title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
+      blocked: (this.canHarm(w.id, x.id) && !this.inBlast(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
       elderWand: this.flags.elderWandHolder === x.id || undefined,
       ...this.views(HOOKS.look, (f) => f.view.look(this, x)), // e.g. darkLord
     })).sort((a, b) => a.dist - b.dist);
     const creatures = [...this.nearCreatures(w.pos, r)].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
       id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
       canHarm: this.canHarm(w.id, c.id), auras: live(c.auras, this.now).map((a) => a.k),
+      blocked: (this.canHarm(w.id, c.id) && !this.inBlast(w.pos, c.pos)) || undefined,
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
     })).sort((a, b) => a.dist - b.dist).slice(0, 20);
@@ -3157,6 +3180,8 @@ export class World {
       you: { x: round(w.pos.x), z: round(w.pos.z), facing: round(w.facing), place: this.placeName(w.pos), safeZone: this.inSafe(w.pos), onGrounds: this.onGrounds(w.pos), lawless: this.inLawless(w.pos) },
       time: { hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather },
       wizards, creatures, landmarks,
+      // hostile spells flying at you now (reflexes can meet them for you: the reflexes tool)
+      ...(() => { const inc = this.incoming(w.id); return inc.length ? { incoming: inc } : {}; })(),
       // what an agent could not see before (playtest round 2): your own recent hits, the school event's target, a chest in sight
       yourHits: this.recentHits(w.id),
       schoolEvent: this.lookEvent(w),
@@ -3406,7 +3431,7 @@ export class World {
   // ------------------------------------------------------------------ persistence
   serialize() {
     return {
-      version: 2, secret: this.secret, now: this.now, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
+      version: 2, secret: this.secret, now: this.now, clock: this.clock, rules: this.rules, term: this.term, houseCups: this.houseCups, decrees: this.decrees, flags: this.flags, seq: this.seq,
       // what each feature keeps across a restart (kernel/features.ts)
       features: Object.fromEntries(HOOKS.save.map((f) => [f.id, f.save(this)])),
       // 专注力: a restart does not refill a tired agent's concentration (the joint-hit memory is a 4 s window: not saved)
@@ -3419,6 +3444,7 @@ export class World {
   static restore(data: ReturnType<World['serialize']>, seed?: number): World {
     const w = new World({ seed, secret: data.secret, rules: applyPatch(defaultRulebook(), data.rules).ok ? (applyPatch(defaultRulebook(), data.rules) as { rulebook: Rulebook }).rulebook : defaultRulebook() });
     w.now = data.now;
+    w.clock = (data as { clock?: World['clock'] }).clock ?? { at: 0, hour: 8 };
     w.term = data.term;
     w.houseCups = data.houseCups ?? [];
     w.decrees = data.decrees ?? [];

@@ -301,7 +301,7 @@ describe('knock-outs, fizzles and growing up', () => {
     revive(b);
     w.now += M.MEME.STUN_GAP_S;
     const spider = creature(w, 'spider', 60, 61);
-    w.damage(spider.id, b.id, 1000, 'arcane');
+    for (let i = 0; i < 3; i++) w.damage(spider.id, b.id, 1000, 'arcane'); // (no single blow takes more than 40 %: CREATURE_HIT_CAP)
     expect(w.events.filter((x) => x.type === 'combat').at(-1)!.zh).toMatch(/蝴蝶|罗恩/);
     const s = join(w, 'Seamus Finnigan', 'gryffindor');
     w.damage(d.id, s.id, 1000, 'fire');

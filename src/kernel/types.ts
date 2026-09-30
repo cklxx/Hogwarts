@@ -281,7 +281,7 @@ export interface Pending {
 }
 
 export type EventType = 'system' | 'chat' | 'combat' | 'creature' | 'achievement' | 'decree' | 'term' | 'level' | 'egg' | 'azkaban' | 'elder' | 'forge' | 'cast'
-  | 'owl' | 'ask' | 'curse' | 'dark' | 'da' | 'market' | 'wheel' | 'card' | 'duel' | 'quidditch';
+  | 'owl' | 'ask' | 'curse' | 'dark' | 'da' | 'market' | 'wheel' | 'card' | 'duel' | 'quidditch' | 'reflex';
 
 export interface WorldEvent {
   id: number;

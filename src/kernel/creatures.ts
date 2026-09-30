@@ -21,7 +21,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   spider: {
     kind: 'spider', name: 'Acromantula', faction: 'hostile', hp: 80, speed: 5, damage: 8, range: 2, cooldown: 1.3, aggro: 16, radius: 0.9,
-    xp: 40, rep: 4, galleons: 4, weak: { fire: 1.8 }, spawn: { x: 165, z: 15, r: 70, max: 10 }, bite: { aura: 'poison', secs: 4, mag: 3 },
+    xp: 40, rep: 4, galleons: 4, weak: { fire: 1.8 }, spawn: { x: 185, z: 18, r: 48, max: 10 }, bite: { aura: 'poison', secs: 4, mag: 3 },
     ranged: { range: 16, power: 0, cooldown: 6, element: 'arcane', kind: 'root', secs: 1.2 },
     lore: "Aragog's descendants. Their bite is venomous. Hagrid would like you to know they are misunderstood.",
   },

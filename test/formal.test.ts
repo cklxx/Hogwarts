@@ -56,6 +56,7 @@ const V = JSON.parse(readFileSync(new URL('../formal/vectors.json', import.meta.
   agentLink: AgentLinkVectors; unfair: UnfairVectors; market: MarketVectors; cup: CupVectors; duel: DuelVectors;
   quidditch: { constants: Record<string, number>; rep: [number, number, number, number][]; cup: [number, number][] };
   minister: [[number, number][], number, number][]; bully: { BULLY_YEAR_GAP: number; pays: [number, number, number][] };
+  creature: { CAP_PCT: number; hits: [number, number, number][] };
 };
 
 describe('Lean conformance vectors: 魔法部长 (elect_never_npc, elect_top_player, elect_vacant) and 以大欺小 (stun_pays_*)', () => {
@@ -67,6 +68,11 @@ describe('Lean conformance vectors: 魔法部长 (elect_never_npc, elect_top_pla
       if (got >= 0) expect(cs[got][1]).toBe(0); // the theorem, on the vector
     }
     expect(V.minister.some(([cs, , out]) => out >= 0 && cs.some(([r, n]) => n === 1 && r > cs[out][0]))).toBe(true); // an NPC out-ranked the Minister
+  });
+  it('a wild blow is capped as Lean caps it (creature_hit_capped, creature_two_blows_survive)', () => {
+    expect(V.creature.CAP_PCT).toBe(Math.round(K.CREATURE_HIT_CAP * 100));
+    expect(V.creature.hits.length).toBeGreaterThan(40);
+    for (const [a, m, hit] of V.creature.hits) expect([a, m, Math.floor(Math.min(a, K.CREATURE_HIT_CAP * m))]).toEqual([a, m, hit]);
   });
   it('stunPaysRep and BULLY_YEAR_GAP agree with Lean', () => {
     expect(V.bully.BULLY_YEAR_GAP).toBe(K.BULLY_YEAR_GAP);
