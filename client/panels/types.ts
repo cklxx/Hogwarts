@@ -1,6 +1,6 @@
 /**
  * The shapes the browser panels read (docs/UNFAIR.md "For the client", README 普通巫师等级考试 and 使魔). They mirror
- * World.privateState().unfair, World.daState, listExams / sitExam / examLeaderboard and FamiliarState structurally,
+ * World.privateState() (the features' fields), unfair.ts daState, listExams / sitExam / examLeaderboard and FamiliarState structurally,
  * so nothing from the server is imported into the client bundle.
  */
 
@@ -23,15 +23,13 @@ export interface DaView {
 }
 export interface StudyEntry { spell: string; from: string; handle: string; readyAt: number }
 export interface FocusView { on: boolean; cur: number; max: number; regen: number }
-export interface UnfairState {
-  darkLord: { handle: string; name: string; house: string; reputation: number; place: string; placeZh: string; x: number; z: number; since: number } | null;
-  youAreDarkLord: boolean;
-  da: DaView;
-  study: StudyEntry[];
+/** What the features put in your private state (src/kernel/unfair.ts views: me.darkLord, me.da, me.studyable), and the kernel's me.focus / me.lawless. */
+export interface UnfairMe {
+  darkLord: boolean;
+  da: DaView & { /** Seconds the joint-Patronus badge still shows for you. */ jointBadge: number };
+  studyable: StudyEntry[];
   focus: FocusView;
   lawless: boolean;
-  /** Seconds the joint-Patronus badge still shows for you (World.unfairState). */
-  joint?: number;
 }
 
 /** src/server/familiar.ts FamiliarState (me.agent.familiar, welcome.familiar, the {t:'familiar'} reply). */

@@ -4,7 +4,7 @@
  */
 import { z } from 'zod';
 import type { Feature } from './feature.js';
-import { examLeaderboard, listExams, sitExam, type OwlBook } from './exams.js';
+import { RANKED_SITS, examLeaderboard, listExams, sitExam, type OwlBook } from './exams.js';
 
 declare module './world.js' {
   interface World {
@@ -32,7 +32,7 @@ export const EXAMS_FEATURE: Feature = {
     },
     {
       name: 'sit_exam', title: 'Sit an O.W.L. exam', cost: 0,
-      description: 'Submit Runes source for one of this week\'s exams (ids from owl_exams). It is checked at the exam\'s year and cast for real in a private exam hall, once per hidden test case, then graded like CI: a per-case log with why a case failed, a hint, your score (100 × mean of nodes/par, gas/par, mana/par; 100 = par, lower is better) and grade. The first pass of each exam each week pays XP, Galleons and reputation; a better grade later pays the difference. Costs no mana. At most 10 sittings a minute.',
+      description: `Submit Runes source for one of this week's exams (ids from owl_exams). It is checked at the exam's year and cast for real in a private exam hall, once per hidden test case, then graded like CI: a per-case log with why a case failed, a hint, your score (100 × mean of nodes/par, gas/par, mana/par; 100 = par, lower is better) and grade. The first pass of each exam each week pays XP, Galleons and reputation; a better grade later pays the difference. Only your first ${RANKED_SITS} sittings of each exam each week can place you on its leaderboard (the reply's \`sitting\` says which one this was); later ones are practice — graded, paid and counted for your own best as ever. Costs no mana. At most 10 sittings a minute.`,
       input: {
         exam_id: z.string().min(1).max(40).describe('an id from owl_exams, e.g. "counting-door"'),
         source: z.string().min(1).max(4000).describe('the Runes program, e.g. (say (count (creatures 15)))'),

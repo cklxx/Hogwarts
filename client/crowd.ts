@@ -54,19 +54,17 @@ export function createCrowd(scene: THREE.Scene, max = 1024) {
   }
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
-  const c = new THREE.Color();
   let n = 0;
   return {
     body,
     begin() { n = 0; },
-    /** One far wizard at (x, y, z) facing `yaw` (the model's body.rotation.y), lifted by `bob`. */
-    put(x: number, y: number, z: number, yaw: number, bob: number, robe: number, trim: number) {
+    /** One far wizard at (x, y, z) facing `yaw` (the model's body.rotation.y), lifted by `bob`, in these colours. */
+    put(x: number, y: number, z: number, yaw: number, bob: number, robe: THREE.Color, trim: THREE.Color) {
       if (n >= max) return;
       m.compose(p.set(x, y + bob, z), q.setFromAxisAngle(up, yaw), one);
       body.setMatrixAt(n, m);
-      body.setColorAt(n, c.set(trim));
-      c.set(robe);
-      robeAttr.setXYZ(n, c.r, c.g, c.b);
+      body.setColorAt(n, trim);
+      robeAttr.setXYZ(n, robe.r, robe.g, robe.b);
       n++;
     },
     end(showInk: boolean) {

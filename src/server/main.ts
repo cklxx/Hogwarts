@@ -14,8 +14,9 @@ import { ensureNpcs } from '../kernel/npc.js';
 import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { marketMessage } from '../kernel/market.js';
 import { schoolEvents } from '../kernel/wheel.js';
-import { FEATURE_BY_ID } from '../kernel/features.js';
+import { actingAs, FEATURE_BY_ID } from '../kernel/features.js';
 import { TICK, World } from '../kernel/world.js';
+import { visibleTo } from '../kernel/types.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
@@ -329,12 +330,9 @@ type ClientMsg =
   | { t: 'forge'; name: string; incantation?: string; source: string; slot?: number }
   | { t: 'unlearn'; spell: string }
   | { t: 'hotbar'; slots: (string | null)[] }
-  | { t: 'seals' }
-  | { t: 'readpage'; tier: number }
-  | { t: 'breakseal'; tier: number; words: string[] }
   | { t: 'goto'; x: number; z: number }
   | { t: 'dodge'; dx: number; dz: number }
-  // (a feature's own messages, {t: feature id, …}, go to kernel/features.ts before this switch)
+  // (a feature's own messages, {t: feature id, …} — seals, da, study, duel, quidditch, … — go to kernel/features.ts before this switch)
   // Owl Post (docs/AGENT_LINK.md §C.5)
   | { t: 'owl'; text: string }
   | { t: 'answer'; id: number; choice: string }
@@ -350,9 +348,6 @@ type ClientMsg =
   | { t: 'examboard'; id?: string }
   // the browser shop: a fixed preset forged into your own trunk (shop.ts)
   | { t: 'buy'; item: string; lang?: string }
-  // 不公平，但好玩: Dumbledore's Army and 偷师 (README; replies { t: 'da', r } and { t: 'study', r })
-  | { t: 'da'; op?: 'status' | 'join' | 'leave' | 'veto' }
-  | { t: 'study'; spell: string; from?: string; copy?: boolean; name?: string; slot?: number }
   // 咒语集市 (kernel/market.ts marketMessage): reads and actions; replies { t: 'market', op, r } (+ a fresh book)
   | { t: 'market'; op?: 'browse' | 'spell'; [k: string]: unknown }
   | { t: 'marketop'; op: 'publish' | 'unpublish' | 'copy' | 'fork'; [k: string]: unknown }
@@ -375,11 +370,11 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
     // a feature's own messages {t: feature id, …} (kernel/features.ts), answered as {t, r}
     const feat = typeof m.t === 'string' ? FEATURE_BY_ID.get(m.t) : undefined;
     if (feat?.ws) { reply({ t: feat.id, r: feat.ws(world, wid, m as unknown as Record<string, unknown>) }); return; }
+    const body = actingAs(world, wid); // whom the keys move (a feature may lend you another body)
     switch (m.t) {
       case 'resync': { const b = netState(ws).bin; if (b) b.resync = true; break; } // a v=2 decoder lost its place (shared/snapwire.ts)
-      case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
-      case 'cast': reply({ t: 'cast', r: world.cast(wid, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
-      case 'chat': world.say(w, String(m.text ?? '')); break;
+      case 'input': world.setInput(body, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
+      case 'cast': reply({ t: 'cast', r: world.cast(body, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
       case 'unequip': world.unequip(wid, String(m.slot)); items(); break;
       case 'destroy': { const it = world.destroyItem(wid, String(m.item)); reply({ t: 'destroyed', item: it.id, name: it.name }); items(); break; }
@@ -398,20 +393,8 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
         break;
       }
       case 'unlearn': world.unlearn(wid, String(m.spell)); book(); break;
-      case 'seals': {
-        const tier = Math.min(4, w.seals + 1);
-        reply({ t: 'seals', section: world.restrictedSection(wid), current: world.inspectSeal(wid, tier) });
-        break;
-      }
-      case 'readpage': reply({ t: 'sealmsg', ok: true, r: world.readSealPage(wid, Number(m.tier)) }); handleClient(ws, wid, { t: 'seals' }); break;
-      case 'breakseal': {
-        const words = Array.isArray(m.words) ? m.words.slice(0, 4).map(String) : [];
-        reply({ t: 'sealmsg', ok: true, r: world.breakSeal(wid, Number(m.tier), words) });
-        handleClient(ws, wid, { t: 'seals' });
-        break;
-      }
-      case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(wid, { x: m.x, z: m.z }) : world.setGoal(wid, null) }); break;
-      case 'dodge': world.dodge(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0); break; // (a roll on cooldown just does nothing)
+      case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(body, { x: m.x, z: m.z }) : world.setGoal(body, null) }); break;
+      case 'dodge': world.dodge(body, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0); break; // (a roll on cooldown just does nothing)
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
       case 'exams': reply({ t: 'exams', r: listExams(world, wid) }); break;
       case 'sit': reply({ t: 'sat', r: sitExam(world, wid, String(m.id ?? ''), String(m.source ?? '').slice(0, 4000)) }); break;
@@ -420,17 +403,6 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'buy': reply({ t: 'bought', r: buyPreset(world, wid, String(m.item ?? ''), m.lang === 'en' ? 'en' : 'zh') }); book(); break;
       case 'chest': reply({ t: 'chest', r: world.openChest(wid) }); break;
       case 'school': reply({ t: 'school', r: schoolEvents(world, wid) }); break;
-      case 'da': {
-        const r = m.op === 'join' ? world.joinDA(wid) : m.op === 'leave' ? world.leaveDA(wid) : m.op === 'veto' ? world.vetoDecree(wid) : world.daState(wid);
-        reply({ t: 'da', op: m.op ?? 'status', r });
-        break;
-      }
-      case 'study': {
-        const r = world.studySpell(wid, String(m.spell ?? ''), { from: typeof m.from === 'string' ? m.from : undefined, copy: m.copy === true, name: typeof m.name === 'string' ? m.name : undefined, slot: finite(m.slot) ? m.slot : undefined });
-        reply({ t: 'study', r });
-        if (r.copied) book();
-        break;
-      }
       case 'market':
       case 'marketop': {
         const r = marketMessage(world, wid, m);
@@ -456,7 +428,7 @@ http.on('upgrade', (req, socket, head) => {
     clients.set(ws, w.id);
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
-    const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
+    const recent = world.events.filter((e) => visibleTo(e, w.id)).slice(-30).map((e) => world.wireEvent(e));
     ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
@@ -479,7 +451,7 @@ const EV_OPEN = Buffer.from('{"t":"event","e":'), EV_CLOSE = Buffer.from('}');
 world.onEvent((e) => {
   const bare = Buffer.from(JSON.stringify(world.wireEvent(e)));
   const msg = Buffer.concat([EV_OPEN, bare, EV_CLOSE]);
-  for (const [ws, wid] of clients) if (!e.to || e.to === wid) enqueue(ws, msg, bare);
+  for (const [ws, wid] of clients) if (visibleTo(e, wid)) enqueue(ws, msg, bare);
 });
 
 // Snapshots: built and serialised once per broadcast (fanout.ts). Clients with AOI get the entities

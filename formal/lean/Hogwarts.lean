@@ -1256,6 +1256,191 @@ def agentLinkVectors : String :=
     ("hexTick", arr hexT), ("longestHex", toString longestHex)]
 
 
+/-! ## 魔法部长 — who takes office at the end of a term (src/kernel/progression.ts `electMinister`, World.endTerm)
+
+The highest-reputation *player* with at least the bar becomes Minister; ties go to the earlier wizard. NPCs stand on
+the leaderboard but never hold office (formal/tla/TermDecree.tla `NPCsNeverRule`, `MinisterIsPlayer`). Proved: the
+Minister is a player who reached the bar (`elect_never_npc`), has at least every player's reputation, NPCs not
+counted (`elect_top_player`), and the post stays vacant only when no player reaches the bar (`elect_vacant`). -/
+
+/-- progression.ts `electMinister`'s scan: (index, reputation) of the first highest-reputation *player* (npc = false). -/
+def bestPlayer : List (Nat × Bool) → Option (Nat × Nat)
+  | [] => none
+  | (r, npc) :: t =>
+    let rest := (bestPlayer t).map fun (p : Nat × Nat) => (p.1 + 1, p.2)
+    if npc then rest
+    else match rest with
+      | some (i, r') => if r < r' then some (i, r') else some (0, r)
+      | none => some (0, r)
+
+/-- progression.ts `electMinister`: the index of the Minister, or none for a vacant post. -/
+def electMinister (cs : List (Nat × Bool)) (bar : Nat) : Option Nat :=
+  match bestPlayer cs with
+  | some (i, r) => if bar ≤ r then some i else none
+  | none => none
+
+theorem best_player_is_player : ∀ (cs : List (Nat × Bool)) (i r : Nat), bestPlayer cs = some (i, r) → cs[i]? = some (r, false) := by
+  intro cs
+  induction cs with
+  | nil => intro i r h; simp [bestPlayer] at h
+  | cons c t ih =>
+    intro i r h
+    obtain ⟨r0, npc⟩ := c
+    cases hb : bestPlayer t with
+    | none =>
+      cases npc <;> simp [bestPlayer, hb] at h
+      obtain ⟨rfl, rfl⟩ := h; simp
+    | some p =>
+      obtain ⟨j, rj⟩ := p
+      have hj := ih j rj hb
+      cases npc
+      · by_cases hlt : r0 < rj
+        · simp [bestPlayer, hb, hlt] at h; obtain ⟨rfl, rfl⟩ := h; simpa using hj
+        · simp [bestPlayer, hb, hlt] at h; obtain ⟨rfl, rfl⟩ := h; simp
+      · simp [bestPlayer, hb] at h; obtain ⟨rfl, rfl⟩ := h; simpa using hj
+
+theorem best_player_none : ∀ (cs : List (Nat × Bool)), bestPlayer cs = none → ∀ (k r : Nat), cs[k]? ≠ some (r, false) := by
+  intro cs
+  induction cs with
+  | nil => intro _ k r; simp
+  | cons c t ih =>
+    intro h k r
+    obtain ⟨r0, npc⟩ := c
+    cases hb : bestPlayer t with
+    | none =>
+      cases npc
+      · simp [bestPlayer, hb] at h
+      · cases k with
+        | zero => simp
+        | succ m => simpa using ih hb m r
+    | some p =>
+      obtain ⟨j, rj⟩ := p
+      cases npc
+      · by_cases hlt : r0 < rj <;> simp [bestPlayer, hb, hlt] at h
+      · simp [bestPlayer, hb] at h
+
+theorem best_player_top : ∀ (cs : List (Nat × Bool)) (i r : Nat), bestPlayer cs = some (i, r) →
+    ∀ (j r' : Nat), cs[j]? = some (r', false) → r' ≤ r := by
+  intro cs
+  induction cs with
+  | nil => intro i r h; simp [bestPlayer] at h
+  | cons c t ih =>
+    intro i r h j r' hj
+    obtain ⟨r0, npc⟩ := c
+    cases hb : bestPlayer t with
+    | none =>
+      cases npc <;> simp [bestPlayer, hb] at h
+      obtain ⟨rfl, rfl⟩ := h
+      cases j with
+      | zero => simp at hj; omega
+      | succ k => simp at hj; exact (best_player_none t hb k r' hj).elim
+    | some p =>
+      obtain ⟨k, rk⟩ := p
+      have htop := ih k rk hb
+      cases npc
+      · by_cases hlt : r0 < rk
+        · simp [bestPlayer, hb, hlt] at h; obtain ⟨rfl, rfl⟩ := h
+          cases j with
+          | zero => simp at hj; omega
+          | succ m => simp at hj; exact htop m r' hj
+        · simp [bestPlayer, hb, hlt] at h; obtain ⟨rfl, rfl⟩ := h
+          cases j with
+          | zero => simp at hj; omega
+          | succ m => simp at hj; have := htop m r' hj; omega
+      · simp [bestPlayer, hb] at h; obtain ⟨rfl, rfl⟩ := h
+        cases j with
+        | zero => simp at hj
+        | succ m => simp at hj; exact htop m r' hj
+
+/-- elect_never_npc: whoever takes office is a player who reached the bar, never an NPC — however far it leads. -/
+theorem elect_never_npc (cs : List (Nat × Bool)) (bar i : Nat) (h : electMinister cs bar = some i) :
+    ∃ r, cs[i]? = some (r, false) ∧ bar ≤ r := by
+  unfold electMinister at h
+  cases hb : bestPlayer cs with
+  | none => simp [hb] at h
+  | some p =>
+    obtain ⟨j, r⟩ := p
+    simp [hb] at h
+    obtain ⟨hbar, rfl⟩ := h
+    exact ⟨r, best_player_is_player cs j r hb, hbar⟩
+
+/-- elect_top_player: the Minister has at least the reputation of every player (NPCs do not count). -/
+theorem elect_top_player (cs : List (Nat × Bool)) (bar i : Nat) (h : electMinister cs bar = some i) :
+    ∃ r, cs[i]? = some (r, false) ∧ ∀ (j r' : Nat), cs[j]? = some (r', false) → r' ≤ r := by
+  unfold electMinister at h
+  cases hb : bestPlayer cs with
+  | none => simp [hb] at h
+  | some p =>
+    obtain ⟨j, r⟩ := p
+    simp [hb] at h
+    obtain ⟨_, rfl⟩ := h
+    exact ⟨r, best_player_is_player cs j r hb, best_player_top cs j r hb⟩
+
+/-- elect_vacant: the post stays empty only when no player reaches the bar (an NPC never fills it). -/
+theorem elect_vacant (cs : List (Nat × Bool)) (bar : Nat) (h : electMinister cs bar = none) :
+    ∀ (j r : Nat), cs[j]? = some (r, false) → r < bar := by
+  intro j r hj
+  unfold electMinister at h
+  cases hb : bestPlayer cs with
+  | none => exact (best_player_none cs hb j r hj).elim
+  | some p =>
+    obtain ⟨k, rk⟩ := p
+    simp [hb] at h
+    have := best_player_top cs k rk hb j r hj
+    omega
+
+/-- The 魔法部长 part of the vectors: candidate lists [reputation, npc] with a bar, and the index elected (-1: vacant). -/
+def ministerVectors : String :=
+  let enc (cs : List (Nat × Bool)) : String := "[" ++ ",".intercalate (cs.map fun (r, n) => s!"[{r},{if n then 1 else 0}]") ++ "]"
+  let res (cs : List (Nat × Bool)) (bar : Nat) : String := match electMinister cs bar with | some i => toString i | none => "-1"
+  let fixed : List (List (Nat × Bool) × Nat) :=
+    [([], 0), ([(40, true)], 3), ([(40, true), (5, false)], 3), ([(40, true), (2, false)], 3), ([(5, false), (5, false)], 1),
+     ([(3, false), (9, true), (7, false), (7, false)], 7), ([(0, false)], 0)]
+  Id.run do
+    let mut out : List String := fixed.map fun (cs, bar) => s!"[{enc cs},{bar},{res cs bar}]"
+    let mut seed : Nat := 20260929
+    for n in [1, 2, 3, 4, 5, 6, 8] do
+      for k in [0, 1, 2, 3] do
+        let mut cs : List (Nat × Bool) := []
+        for _ in List.range n do
+          seed := (seed * 1103515245 + 12345) % 2147483648
+          let r := seed / 65536 % 12
+          seed := (seed * 1103515245 + 12345) % 2147483648
+          cs := cs ++ [(r, seed / 65536 % 3 == 0)]
+        out := out ++ [s!"[{enc cs},{k * 3},{res cs (k * 3)}]"]
+    return "[" ++ ",".intercalate out ++ "]"
+
+/-! ## 以大欺小 — no glory in bullying (src/kernel/progression.ts `stunPaysRep`, World.stun, duelclub.ts `duelGrant`)
+
+A knock-out (in the open or a Duelling-Club win) pays reputation only when the victim is at most BULLY_YEAR_GAP years
+below the victor: then nothing is stolen and nothing is created. Proved: the underdog (or an equal) is always paid
+(`stun_pays_underdog`), a victim further up never pays less (`stun_pays_mono`), and a refusal means a gap of more
+than BULLY_YEAR_GAP years (`bully_gap`). -/
+
+def BULLY_YEAR_GAP : Nat := 2
+
+/-- progression.ts `stunPaysRep`. -/
+def stunPaysRep (killer victim : Nat) : Bool := decide (killer ≤ victim + BULLY_YEAR_GAP)
+
+theorem stun_pays_underdog (k v : Nat) (h : k ≤ v + BULLY_YEAR_GAP) : stunPaysRep k v = true := by
+  unfold stunPaysRep; simp [h]
+
+theorem stun_pays_mono (k v v' : Nat) (h : v ≤ v') (hp : stunPaysRep k v = true) : stunPaysRep k v' = true := by
+  unfold stunPaysRep at *; simp at *; omega
+
+theorem bully_gap (k v : Nat) (h : stunPaysRep k v = false) : v + BULLY_YEAR_GAP < k := by
+  unfold stunPaysRep at h; simp at h; omega
+
+/-- The 以大欺小 part of the vectors: the gap, and [killer year, victim year, pays] over every pair of years. -/
+def bullyVectors : String :=
+  let rows := Id.run do
+    let mut out : List String := []
+    for k in [1, 2, 3, 4, 5, 6, 7] do
+      for v in [1, 2, 3, 4, 5, 6, 7] do
+        out := out ++ [s!"[{k},{v},{if stunPaysRep k v then 1 else 0}]"]
+    return out
+  "{\"BULLY_YEAR_GAP\":" ++ toString BULLY_YEAR_GAP ++ ",\"pays\":[" ++ ",".intercalate rows ++ "]}"
+
 def xpSamples : List Nat := (List.range 90).map (· * 50)
 
 def vectors : String :=
@@ -1275,7 +1460,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ ",\"duel\":" ++ duelVectors ++ ",\"quidditch\":" ++ qdVectors ++ "}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ ",\"duel\":" ++ duelVectors ++ ",\"quidditch\":" ++ qdVectors ++ ",\"minister\":" ++ ministerVectors ++ ",\"bully\":" ++ bullyVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 

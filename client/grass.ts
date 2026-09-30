@@ -91,7 +91,7 @@ interface Chunk {
   offs: THREE.InstancedBufferAttribute;
   shape: THREE.InstancedBufferAttribute;
   /** The world chunk "cx,cz" it holds (null: not filled yet). */
-  key: string | null;
+  key: number | null;
   /** Clumps that grow there (the first `kept` instances). */
   kept: number;
   x0: number;
@@ -167,6 +167,8 @@ export function createGrass(scene: THREE.Scene) {
   let chunks: Chunk[] = [];
   /** Chunk offsets around the player's chunk, nearest first (after a teleport the grass regrows from the feet out). */
   let order: [number, number][] = [];
+  /** A chunk's key: its world chunk coordinates in one number (compared every frame: no string per chunk). */
+  const keyOf = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
   let visible = true;
 
   function build(l: Level) {
@@ -219,7 +221,7 @@ export function createGrass(scene: THREE.Scene) {
       if (y < y0) y0 = y;
       if (y > y1) y1 = y;
     }
-    c.key = `${cx},${cz}`;
+    c.key = keyOf(cx, cz);
     c.kept = n;
     c.x0 = cx * chunk;
     c.z0 = cz * chunk;
@@ -246,11 +248,12 @@ export function createGrass(scene: THREE.Scene) {
       const { grid, chunk } = level;
       const ccx = Math.floor(focus.x / chunk), ccz = Math.floor(focus.z / chunk);
       let done = 0;
-      const first = chunks.every((c) => c.key === null);
-      for (const [dx, dz] of order) {
-        const cx = ccx + dx, cz = ccz + dz;
+      let first = true;
+      for (let i = 0; i < chunks.length; i++) if (chunks[i].key !== null) { first = false; break; }
+      for (let i = 0; i < order.length; i++) {
+        const cx = ccx + order[i][0], cz = ccz + order[i][1];
         const c = chunks[(((cx % grid) + grid) % grid) + grid * (((cz % grid) + grid) % grid)];
-        if (c.key === `${cx},${cz}`) continue;
+        if (c.key === keyOf(cx, cz)) continue;
         if (!first && done >= budget) break;
         fill(c, cx, cz);
         done++;
@@ -259,12 +262,13 @@ export function createGrass(scene: THREE.Scene) {
       // shrink toward the edge of the field, none beyond it (this also hides a chunk that scrolled
       // out of the field and has not been regrown yet)
       const R = uniforms.uRadius.value;
-      for (const c of chunks) {
+      for (let i = 0; i < chunks.length; i++) {
+        const c = chunks[i];
         let n = 0;
         if (c.kept) {
           const ex = Math.max(c.x0 - focus.x, 0, focus.x - c.x0 - chunk);
           const ez = Math.max(c.z0 - focus.z, 0, focus.z - c.z0 - chunk);
-          const d = Math.hypot(ex, ez);
+          const d = Math.sqrt(ex * ex + ez * ez);
           if (d < R) n = Math.ceil(c.kept * (1 - 0.75 * ss(0.35 * R, R, d)));
         }
         c.geo.instanceCount = n;

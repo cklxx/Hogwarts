@@ -50,8 +50,21 @@ export interface EmitOpts {
   wind?: [number, number];
 }
 
+/**
+ * A uniform random number in [0, 1) (xorshift32) that allocates nothing: V8's Math.random boxes every result it
+ * returns, and particles draw a thousand random numbers a frame.
+ */
+const RND = new Uint32Array([0x9e3779b9]);
+const rnd = () => { let x = RND[0]; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; RND[0] = x; return RND[0] / 4294967296; };
 const tmpC = new THREE.Color();
 const white = new THREE.Color(1, 1, 1);
+/**
+ * The particle Pool.put writes next: set its fields, then put(colour). (Fields rather than a dozen number
+ * arguments: V8 boxes every double passed to a call it does not inline, and trails write thousands a second.)
+ */
+const P = { x: 0.5, y: 0.5, z: 0.5, vx: 0.5, vy: 0.5, vz: 0.5, life: 0.5, size: 0.5, grow: 0.5, gravity: 0.5, drag: 0.5 };
+/** Scratch colours for emit() and trail() (put() copies what it is given). */
+const tmpE = new THREE.Color(), tmpHot = new THREE.Color(), tmpCore = new THREE.Color();
 const tmpV = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 
@@ -142,42 +155,42 @@ class Pool {
     this.points.renderOrder = additive ? 5 : 4;
     scene.add(this.points);
   }
-  /** Write one particle. */
-  put(x: number, y: number, z: number, vx: number, vy: number, vz: number, c: THREE.Color, life: number, size: number, grow: number, gravity: number, drag: number) {
+  /** Write one particle: P's fields, in colour `c`. */
+  put(c: THREE.Color) {
     const o = this.head * STRIDE, d = this.data;
-    d[o] = x; d[o + 1] = y; d[o + 2] = z;
-    d[o + 3] = vx; d[o + 4] = vy; d[o + 5] = vz;
+    d[o] = P.x; d[o + 1] = P.y; d[o + 2] = P.z;
+    d[o + 3] = P.vx; d[o + 4] = P.vy; d[o + 5] = P.vz;
     d[o + 6] = c.r; d[o + 7] = c.g; d[o + 8] = c.b;
-    d[o + 9] = this.time; d[o + 10] = life; d[o + 11] = size; d[o + 12] = grow;
-    d[o + 13] = gravity; d[o + 14] = drag;
+    d[o + 9] = this.time; d[o + 10] = P.life; d[o + 11] = P.size; d[o + 12] = P.grow;
+    d[o + 13] = P.gravity; d[o + 14] = P.drag;
     this.head = (this.head + 1) % this.capacity;
     this.written++;
   }
   emit(x: number, y: number, z: number, o: EmitOpts, n: number) {
     const base = tmpC.set(o.color).multiplyScalar(o.intensity ?? 1);
     const br = base.r, bg = base.g, bb = base.b;
-    const c = new THREE.Color();
-    const hot = new THREE.Color(1, 1, 1).multiplyScalar(o.intensity ?? 1);
+    const c = tmpE, hot = tmpHot.setScalar(o.intensity ?? 1);
     const wx = o.wind?.[0] ?? 0, wz = o.wind?.[1] ?? 0;
     for (let i = 0; i < n; i++) {
       // spawn offset
-      let px = x, py = y, pz = z;
+      P.x = x; P.y = y; P.z = z;
       if (o.radius) {
-        randomUnit(tmpV).multiplyScalar(o.radius * Math.cbrt(Math.random()));
+        randomUnit(tmpV).multiplyScalar(o.radius * Math.cbrt(rnd()));
         if (o.flat) tmpV.y *= 0.1;
-        px += tmpV.x; py += tmpV.y; pz += tmpV.z;
+        P.x += tmpV.x; P.y += tmpV.y; P.z += tmpV.z;
       }
       // velocity
-      const sp = (o.speed ?? 0) * (1 + (Math.random() * 2 - 1) * (o.speedJitter ?? 0.4));
+      const sp = (o.speed ?? 0) * (1 + (rnd() * 2 - 1) * (o.speedJitter ?? 0.4));
       if (o.dir) {
         randomUnit(tmpD).multiplyScalar(o.cone ?? 0.3).add(o.dir).normalize();
       } else randomUnit(tmpD);
-      const vx = tmpD.x * sp + wx, vy = tmpD.y * sp + (o.up ?? 0), vz = tmpD.z * sp + wz;
+      P.vx = tmpD.x * sp + wx; P.vy = tmpD.y * sp + (o.up ?? 0); P.vz = tmpD.z * sp + wz;
       c.setRGB(br, bg, bb);
-      if (o.whiten) c.lerp(hot, Math.random() * o.whiten);
-      const life = (o.life ?? 0.8) * (1 + (Math.random() * 2 - 1) * (o.lifeJitter ?? 0.3));
-      const size = (o.size ?? 0.3) * (1 + (Math.random() * 2 - 1) * (o.sizeJitter ?? 0.3));
-      this.put(px, py, pz, vx, vy, vz, c, Math.max(0.05, life), size, o.grow ?? 0.3, o.gravity ?? 0, o.drag ?? 0.5);
+      if (o.whiten) c.lerp(hot, rnd() * o.whiten);
+      P.life = Math.max(0.05, (o.life ?? 0.8) * (1 + (rnd() * 2 - 1) * (o.lifeJitter ?? 0.3)));
+      P.size = (o.size ?? 0.3) * (1 + (rnd() * 2 - 1) * (o.sizeJitter ?? 0.3));
+      P.grow = o.grow ?? 0.3; P.gravity = o.gravity ?? 0; P.drag = o.drag ?? 0.5;
+      this.put(c);
     }
   }
   /** Advance time and upload only the ring-buffer slots written since the last frame. */
@@ -203,7 +216,7 @@ class Pool {
 }
 
 function randomUnit(v: THREE.Vector3) {
-  const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+  const u = rnd() * 2 - 1, a = rnd() * Math.PI * 2, s = Math.sqrt(1 - u * u);
   return v.set(s * Math.cos(a), u, s * Math.sin(a));
 }
 
@@ -221,7 +234,7 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
   const trails = new WeakMap<object, { x: number; y: number; z: number; acc: number; frame: number }>();
   let frameNo = 0;
   const up = new THREE.Vector3(0, 1, 0);
-  const smokeAcc = chimneys.map(() => Math.random());
+  const smokeAcc = chimneys.map(() => rnd());
   const cam = new THREE.Vector3();
 
   const api = {
@@ -241,20 +254,27 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
       const fresh = s.frame < frameNo - 1;
       s.frame = frameNo;
       const dx = p.x - s.x, dy = p.y - s.y, dz = p.z - s.z;
-      const d = Math.hypot(dx, dy, dz);
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (fresh || d > 30) { s.x = p.x; s.y = p.y; s.z = p.z; s.acc = 0; return; } // teleported or reappeared: restart the tail
       const step = spacing / density;
       s.acc += d;
-      const hot = new THREE.Color(color).multiplyScalar(4);
-      const core = new THREE.Color(color).lerp(white, 0.3).multiplyScalar(4);
+      if (s.acc < step) { s.x = p.x; s.y = p.y; s.z = p.z; return; }
+      // (scratch colours: put() copies them; trails run for every bolt every frame)
+      const hot = tmpHot.set(color).multiplyScalar(4);
+      const core = tmpCore.set(color).lerp(white, 0.3).multiplyScalar(4);
       while (s.acc >= step) {
         s.acc -= step;
         const k = 1 - s.acc / Math.max(d, 1e-6);
         const x = s.x + dx * k, y = s.y + dy * k, z = s.z + dz * k;
         // bright core streak that shrinks fast, and element-coloured embers that drift and fall
-        glow.put(x, y, z, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, core, 0.18 + Math.random() * 0.08, 0.55, 0.2, 0, 1);
-        glow.put(x + (Math.random() - 0.5) * 0.2, y + (Math.random() - 0.5) * 0.2, z + (Math.random() - 0.5) * 0.2,
-          (Math.random() - 0.5) * 1.6, (Math.random() - 0.2) * 1.6, (Math.random() - 0.5) * 1.6, hot, 0.45 + Math.random() * 0.4, 0.28 + Math.random() * 0.14, 0.1, 2.5, 1.5);
+        P.x = x; P.y = y; P.z = z;
+        P.vx = (rnd() - 0.5) * 0.3; P.vy = (rnd() - 0.5) * 0.3; P.vz = (rnd() - 0.5) * 0.3;
+        P.life = 0.18 + rnd() * 0.08; P.size = 0.55; P.grow = 0.2; P.gravity = 0; P.drag = 1;
+        glow.put(core);
+        P.x = x + (rnd() - 0.5) * 0.2; P.y = y + (rnd() - 0.5) * 0.2; P.z = z + (rnd() - 0.5) * 0.2;
+        P.vx = (rnd() - 0.5) * 1.6; P.vy = (rnd() - 0.2) * 1.6; P.vz = (rnd() - 0.5) * 1.6;
+        P.life = 0.45 + rnd() * 0.4; P.size = 0.28 + rnd() * 0.14; P.grow = 0.1; P.gravity = 2.5; P.drag = 1.5;
+        glow.put(hot);
       }
       s.x = p.x; s.y = p.y; s.z = p.z;
     },
@@ -274,9 +294,12 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
       const c = new THREE.Color(color).multiplyScalar(4);
       const drag = 3.5;
       for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + Math.random() * 0.05;
-        const v = r * drag * (0.9 + Math.random() * 0.2);
-        glow.put(x + Math.cos(a) * 0.4, y + 0.15 + Math.random() * 0.4, z + Math.sin(a) * 0.4, Math.cos(a) * v, Math.random() * 1.2, Math.sin(a) * v, c, 0.55 + Math.random() * 0.25, 0.4, 0.3, 1, drag);
+        const a = (i / n) * Math.PI * 2 + rnd() * 0.05;
+        const v = r * drag * (0.9 + rnd() * 0.2);
+        P.x = x + Math.cos(a) * 0.4; P.y = y + 0.15 + rnd() * 0.4; P.z = z + Math.sin(a) * 0.4;
+        P.vx = Math.cos(a) * v; P.vy = rnd() * 1.2; P.vz = Math.sin(a) * v;
+        P.life = 0.55 + rnd() * 0.25; P.size = 0.4; P.grow = 0.3; P.gravity = 1; P.drag = drag;
+        glow.put(c);
       }
       smoke.emit(x, y + 0.2, z, { color: DUST, speed: r * 2.2, dir: up, cone: 3, up: 0.3, size: 1.2, life: 1.1, drag: 2.8, grow: 3, radius: 0.6, flat: true }, N(Math.min(40, r * 4)));
     },
@@ -292,7 +315,7 @@ export function createFx(scene: THREE.Scene, chimneys: THREE.Vector3[] = []) {
         const d = a.distanceTo(b);
         const n = N(Math.min(40, d * 3));
         for (let k = 0; k < n; k++) {
-          tmpV.copy(a).lerp(b, Math.random());
+          tmpV.copy(a).lerp(b, rnd());
           api.burst(tmpV.x, tmpV.y, tmpV.z, { count: 1, color, intensity: 5, whiten: 0.6, speed: 2.2, size: 0.16, life: 0.4, gravity: 3, drag: 2 });
         }
         api.sparks(b.x, b.y, b.z, color, 14);

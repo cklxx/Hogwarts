@@ -135,14 +135,18 @@ nothing.
   the top of the fragment shader (`VIEW_FADE_GLSL`, appended to three.js's clipping-plane chunks, opted into
   per material with the `VIEW_FADE` define), so it works on the merged static batches (`batch.ts` keeps the
   materials), instanced trees, the storybook shading and the merged ink outline alike, and depth and shadows
-  are unchanged. The terrain, grass, roads and floors never fade; characters are never marked.
+  are unchanged. The terrain, grass, roads and floors never fade; characters are never marked. The Great
+  Hall's 48 floating candles are soft solids (`HALL_CANDLES`): one in the way turns the cut-out on, and their
+  glows (one instanced billboard) fade by alpha inside it (`fadeGlow`) rather than dithering.
 - **X-ray.** You, your locked target and up to four allies (your house) within 12 m, while something hides
   them, get a house-coloured rim drawn through walls: a second pass of their meshes with depth *Greater* and a
   stencil test (world materials write 1, bodies write 0), so a body never rims itself. The composer's render
   target has a stencil buffer for this. The rim meshes are children of the model's own meshes (so they follow
   its animation, and a part drawn instanced by `partbatch.ts` still has its rim); wizards drawn as the far
   crowd (`crowd.ts`) and far herds are never x-rayed (your target and allies within 12 m are always full models).
-- **Indoors.** `INTERIORS` (the Great Hall, doorway included) hides its roof (`scene.ts`), and the camera's
+- **Indoors.** `INTERIORS` (the Great Hall, doorway included) dissolves its roof over 0.3 s on the same dither
+  (`scene.ts`, view.ts `dissolvable`: its own copies of the roof's materials, same shader programs; at once with
+  prefers-reduced-motion), and the camera's
   arm shortens to 11 m and its pitch range moves up to 36°–81°; outside it eases back.
 - A scripted shot (`?capture=1`) drives the camera itself: no arm, no fading, no x-ray. `?debug=view` exposes
   `window.__view` (the orbit, the rig, timings, and the audit below).

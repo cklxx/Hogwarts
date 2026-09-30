@@ -33,7 +33,7 @@
 #book .mk-list li.sel { background: linear-gradient(90deg, rgba(150, 32, 36, .13), transparent 85%); }
 #book .mk-list li.banned .sp-ic { border-style: dashed; opacity: .7; }
 #book .mk-list li.mk-empty { display: block; cursor: default; color: var(--ink2); font-size: var(--fs-body); line-height: var(--lh); }
-#book .mk-list .sp-ic { width: calc(46px * var(--u)); height: calc(46px * var(--u)); border-radius: 50%; display: grid; place-items: center; border: calc(1.5px * var(--u)) solid rgba(42, 27, 15, .55); background: rgba(255, 248, 230, .5); }
+#book .mk-list .sp-ic { width: calc(46px * var(--u)); height: calc(46px * var(--u)); border-radius: 50%; display: grid; place-items: center; border: calc(1.5px * var(--u)) solid rgba(42, 27, 15, .55); background: rgb(var(--sheen) / .5); }
 #book .mk-list .sp-ic svg.ic { width: calc(34px * var(--u)); height: calc(34px * var(--u)); vertical-align: 0; }
 #book .mk-list .sp-tx { min-width: 0; }
 #book .mk-list .sp-tx b { display: block; font-size: calc(18px * var(--t)); font-weight: 500; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

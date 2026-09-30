@@ -1,10 +1,11 @@
-import { L } from '../i18n';
+import type { ClientFeatureFactory } from '../feature';
+import { L, lang } from '../i18n';
 import { ic } from '../ink';
-import { esc, newlyReady, readyIn, studyKey } from './logic';
+import { errHalf, esc, newlyReady, readyIn, studyKey } from './logic';
 import type { StudyEntry } from './types';
 
 /**
- * 偷师: a custom spell of another wizard that hit you can be studied 120 s after it first did (me.unfair.study).
+ * 偷师: a custom spell of another wizard that hit you can be studied 120 s after it first did (me.studyable).
  * When one becomes ready a slip says so (under the clock); the spellbook's left page lists them all — who hit you
  * with what, ready now or in N s — with 「看源码」 (read it into the editor: that spends this spell's one study) and
  * 「抄进咒语书」 (forged into your book, credited to its author).
@@ -121,3 +122,25 @@ export function createStudy(d: StudyDeps) {
     onError(text: string) { if (!asked) return false; asked = null; d.toast(text); return true; },
   };
 }
+
+/** 偷师 as a client feature (client/features.ts; src/kernel/unfair.ts STUDY_FEATURE). */
+export const studyFeature: ClientFeatureFactory = (d) => {
+  let asked = -1e9;
+  const study = createStudy({
+    send: d.send, list: () => (d.me()?.studyable as StudyEntry[] | undefined) ?? [], now: d.now, spells: d.spells,
+    openBook: d.openBook, loadDraft: d.loadDraft, toast: d.toast, mark: () => { asked = performance.now(); },
+  });
+  return {
+    id: 'study',
+    widgets: [{ id: 'studyslip', zh: '偷师', en: 'Study' }],
+    hud() { if (d.me()) study.update(); },
+    onMessage(msg) {
+      if (msg.t !== 'study') return false;
+      const r = msg.r as Parameters<typeof study.onReply>[0];
+      study.onReply(r);
+      if (r.copied) d.send({ t: 'book' }); // the copy is in your book now
+      return true;
+    },
+    onError: (text) => performance.now() - asked < 3000 && study.onError(errHalf(text, lang)),
+  };
+};

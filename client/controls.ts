@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { CreatureKind, House } from '../src/shared/constants';
-import { LANDMARKS, zonesAt } from '../src/shared/map';
+import { WARD_CD_S, WARD_MANA, WARD_MAX_S, type CreatureKind, type House } from '../src/shared/constants';
+import { inZoneId } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
 import { heightAt, rayGround } from './terrain';
 
@@ -48,13 +48,28 @@ export interface ControlsDeps {
 }
 
 // ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
-/** Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …` asks first. */
-export type ChatRoute = { to: 'public'; text: string } | { to: 'agent'; text: string } | { to: 'ask'; word: string; text: string; rest: string };
+/**
+ * Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …`
+ * asks first; `/h …` (or /学院) your house, `/n …` (/附近) those near you, `/w name …` (/私 name …) a whisper;
+ * anything else the whole school (kernel/chat.ts channels).
+ */
+export type ChatRoute =
+  | { to: 'public'; text: string; ch?: 'house' | 'near' | 'dm'; dm?: string }
+  | { to: 'agent'; text: string }
+  | { to: 'ask'; word: string; text: string; rest: string };
 export function routeChat(raw: string): ChatRoute | null {
   const text = String(raw ?? '').trim();
   if (!text) return null;
   const mine = /^@(?:agent|a)(?=$|[\s:：,，])[\s:：,，]*/i.exec(text);
   if (mine) { const rest = text.slice(mine[0].length).trim(); return rest ? { to: 'agent', text: rest } : null; }
+  const slash = /^\/(h|house|学院|n|near|附近|w|whisper|私)(?=$|\s)\s*/i.exec(text);
+  if (slash) {
+    const k = slash[1].toLowerCase(), rest = text.slice(slash[0].length).trim();
+    if (k === 'h' || k === 'house' || k === '学院') return rest ? { to: 'public', text: rest, ch: 'house' } : null;
+    if (k === 'n' || k === 'near' || k === '附近') return rest ? { to: 'public', text: rest, ch: 'near' } : null;
+    const m = /^(\S+)\s+([\s\S]+)$/.exec(rest);
+    return m ? { to: 'public', text: m[2].trim(), ch: 'dm', dm: m[1] } : null;
+  }
   const other = /^@([^\s:：,，]+)[\s:：,，]*/.exec(text);
   if (other) return { to: 'ask', word: other[1], text, rest: text.slice(other[0].length).trim() };
   return { to: 'public', text };
@@ -211,8 +226,6 @@ export function createControls(d: ControlsDeps) {
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
   const fullCd = new Map<string, number>();
   const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null }[] = [];
-  let seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] | null = null;
-  let sealsAsked = -1, lastRead = -1e9;
   let hotbarSig = '';
   /** A phone or tablet: no hover, a coarse pointer. (Touch laptops keep the mouse UI; their touches still work.) */
   const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -262,7 +275,7 @@ export function createControls(d: ControlsDeps) {
     const e = wIdx.get(k) ?? cIdx.get(k), m = model(k);
     if (!e || !m || e.hp <= 0) return false;
     if (wIdx.has(k) && (e.s.includes('X') || e.s.includes('J'))) return false;
-    return !zonesAt(m.root.position.x, m.root.position.z).includes('great_hall');
+    return !inZoneId('great_hall', m.root.position.x, m.root.position.z);
   }
   /** A foe: what clicks, Tab and smart casting go for without being told. */
   const harmable = (k: string) => relation(k) === 'hostile' && attackable(k);
@@ -271,33 +284,45 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ screen-space picking
   const v3 = new THREE.Vector3();
-  function screenOf(x: number, y: number, z: number): { x: number; y: number } | null {
-    v3.set(x, y, z).project(d.camera);
+  type XY = { x: number; y: number };
+  const sa: XY = { x: 0, y: 0 }, sb: XY = { x: 0, y: 0 };
+  /**
+   * Where `p` (raised `dy` m) is on screen, into `out`, or null behind the camera. (A point and an offset, not three
+   * numbers, into a reused `out`: picking runs every frame over every entity, and V8 boxes each double argument.)
+   */
+  function screenOf(p: { x: number; y: number; z: number }, dy: number, out: XY = { x: 0, y: 0 }): XY | null {
+    v3.set(p.x, p.y + dy, p.z).project(d.camera);
     if (v3.z > 1 || v3.z < -1) return null;
-    return { x: ((v3.x + 1) / 2) * d.canvas.clientWidth, y: ((1 - v3.y) / 2) * d.canvas.clientHeight };
+    out.x = ((v3.x + 1) / 2) * d.canvas.clientWidth; out.y = ((1 - v3.y) / 2) * d.canvas.clientHeight;
+    return out;
   }
   function segDist(px: number, py: number, a: { x: number; y: number }, b: { x: number; y: number }) {
     const vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy;
     const t = l2 ? Math.max(0, Math.min(1, ((px - a.x) * vx + (py - a.y) * vy) / l2)) : 0;
-    return Math.hypot(px - (a.x + t * vx), py - (a.y + t * vy));
+    const ex = px - (a.x + t * vx), ey = py - (a.y + t * vy);
+    return Math.sqrt(ex * ex + ey * ey);
   }
   /** The entity whose body passes closest to the pointer on screen, within `radius` px (optionally only those passing `only`). */
   function pickNear(px: number, py: number, radius: number, only?: (k: string) => boolean): string | null {
-    let best: string | null = null, bd = Infinity, bCam = Infinity;
-    const cp = d.camera.position;
-    for (const k of allKeys()) {
-      if (only && !only(k)) continue;
-      const p = model(k)!.root.position;
-      const cam = p.distanceTo(cp);
-      if (cam > 110) continue;
-      const a = screenOf(p.x, p.y + 0.15, p.z), b = screenOf(p.x, p.y + heightOf(k), p.z);
-      if (!a || !b) continue;
-      const dd = segDist(px, py, a, b);
-      if (dd > radius) continue;
-      // the one nearest the pointer; on a near tie, the one nearer the camera (it is drawn in front)
-      if (dd < bd - 6 || (Math.abs(dd - bd) <= 6 && cam < bCam)) { best = k; bd = dd; bCam = cam; }
-    }
-    return best;
+    Object.assign(pick, { px, py, radius, only, me: d.myHandle(), best: null, bd: Infinity, bCam: Infinity });
+    d.wizards.forEach(considerPick);
+    d.creatures.forEach(considerPick);
+    return pick.best;
+  }
+  // (every frame the pointer is over the view, over every entity: the running best lives in an object made once,
+  // and the visitor is made once, so nothing is allocated per entity)
+  const pick = { px: 0.5, py: 0.5, radius: 0.5, only: undefined as ((k: string) => boolean) | undefined, me: '', best: null as string | null, bd: 0.5, bCam: 0.5 };
+  function considerPick(m: { root: THREE.Object3D }, k: string) {
+    if (k === pick.me || (pick.only && !pick.only(k))) return;
+    const p = m.root.position;
+    const cam = p.distanceTo(d.camera.position);
+    if (cam > 110) return;
+    const a = screenOf(p, 0.15, sa), b = screenOf(p, heightOf(k), sb);
+    if (!a || !b) return;
+    const dd = segDist(pick.px, pick.py, a, b);
+    if (dd > pick.radius) return;
+    // the one nearest the pointer; on a near tie, the one nearer the camera (it is drawn in front)
+    if (dd < pick.bd - 6 || (Math.abs(dd - pick.bd) <= 6 && cam < pick.bCam)) { pick.best = k; pick.bd = dd; pick.bCam = cam; }
   }
   /** Foes are generous to point at (PICK_PX); friends and bystanders need a closer aim, so clicking the ground beside them still walks. */
   const pickAt = (px: number, py: number) => pickNear(px, py, PICK_PX, harmable) ?? pickNear(px, py, FRIEND_PX);
@@ -474,23 +499,6 @@ export function createControls(d: ControlsDeps) {
     if (fallen && rk) {
       const w = wIdx.get(fallen)!, m = model(fallen)!.root.position;
       return { label: L(`按 F 扶起 ${esc(w.n)}（快快复苏）`, `F — revive ${esc(w.n)} (Rennervate)`), x: m.x, z: m.z, y: m.y + 2.6, act: () => castAt(rk, fallen) };
-    }
-    if (seals) {
-      for (const s of seals) {
-        if (s.tier <= me.seals) continue;
-        // a seal below its year will not even speak to you: no prompt at the spawn for a first-year
-        if (me.year < (s.requiresYear ?? 1)) continue;
-        for (const pg of s.pages) {
-          if (pg.collected) continue;
-          const l = LANDMARKS.find((x) => x.name === pg.where);
-          if (!l || Math.hypot(l.x - p.x, l.z - p.z) > 9.5) continue;
-          return {
-            label: L(`按 F 阅读书页 ·「${esc(s.zh)}」第 ${pg.page} 页`, `F — read the page (${esc(s.name.split('—')[0].trim())}, page ${pg.page})`),
-            x: l.x, z: l.z, y: heightAt(l.x, l.z) + 3.8,
-            act: () => { lastRead = now(); d.send({ t: 'readpage', tier: s.tier }); },
-          };
-        }
-      }
     }
     return d.extraAction?.() ?? null;
   }
@@ -738,7 +746,7 @@ export function createControls(d: ControlsDeps) {
     // floating action prompt follows its anchor
     const pr = $('#prompt');
     if (action) {
-      const sp = screenOf(action.x, action.y, action.z);
+      const sp = screenOf(action, 0);
       const W = d.canvas.clientWidth, H = d.canvas.clientHeight;
       // (its width is measured once per label, not every frame: reading it forces a layout)
       if (!promptW) promptW = pr.offsetWidth || 240;
@@ -760,7 +768,6 @@ export function createControls(d: ControlsDeps) {
     const sig = me.hotbar.map((s) => s?.id ?? '').join('|');
     if (sig !== hotbarSig) { hotbarSig = sig; d.send({ t: 'book' }); }
     for (const s of me.hotbar) if (s && s.cd > (fullCd.get(s.id) ?? 0) + 0.05) fullCd.set(s.id, s.cd);
-    if (sealsAsked !== me.seals) { sealsAsked = me.seals; d.send({ t: 'seals' }); }
     // keep the hotbar's click spell an attack spell if there is one
     const sel = me.hotbar[selected];
     if (!sel || kindOf(sel) !== 'harm') { const h = me.hotbar.findIndex((s) => s && kindOf(s) === 'harm'); if (h >= 0) selected = h; }
@@ -804,7 +811,7 @@ export function createControls(d: ControlsDeps) {
     const jinx = [['j', 'jelly'], ['z', 'dance'], ['b', 'boils'], ['t', 'bats']].filter(([f]) => e.s.includes(f)).map(([, k]) => L(JINX_LABEL[k].zh, JINX_LABEL[k].en));
     if (jinx.length) status.push(`🕸️ ${jinx.join('、')}`);
     const m = model(k)!.root.position;
-    if (zonesAt(m.x, m.z).includes('great_hall')) status.push(L('🕊️ 安全区', '🕊️ safe zone'));
+    if (inZoneId('great_hall', m.x, m.z)) status.push(L('🕊️ 安全区', '🕊️ safe zone'));
     const dist = distTo(k);
     const frac = Math.max(0, Math.min(1, e.hp / Math.max(1, e.m)));
     if (!el.firstElementChild) {
@@ -896,14 +903,16 @@ export function createControls(d: ControlsDeps) {
       ${row('L', L('排行榜：学期末声望第一成为魔法部长（改写规则）；声望 ≥150 的第一名戴上黑魔标记', 'Leaderboard: the top wizard at term end becomes Minister (rewrites the rules); the top one with 150+ wears the Dark Mark'))}
       ${row('J', L('邓布利多军：弱者的联盟，加入、在法令颁布后投票否决、联合守护神', "Dumbledore's Army: the underdogs' union; join, veto a fresh decree, strike together"))}
       ${row('P', L('魁地奇：每学期一场，两个学院轮流对阵。集合时按 P 上场；在球场上飞得更快；碰到鬼飞球就拿，F 射门（从另一端的圈里穿过 +10）；任何咒语擦过游走球都能把它打开；找球手贴着金色飞贼 0.8 秒就抓住（+150，比赛结束）', 'Quidditch: one match a term, two houses in turn. P to play while it is called; you fly faster on the pitch; touch the Quaffle to take it, F to shoot (through a hoop at the other end, +10); any spell that passes a Bludger beats it away; a Seeker who stays on the Snitch for 0.8 s catches it (+150, the match ends)'))}
-      ${row('G', L('决斗俱乐部：报名 / 退出。凑齐两人就在庭院决斗台开打，打倒不进医院，赢了加声望（每学期最多 5 场有奖励）', 'Duelling Club: join / leave. Two make a match on the Courtyard stage; a knock-out sends nobody to the Hospital Wing; wins pay reputation (up to 5 rewarded a term)'))}
+      ${row('G', L('决斗俱乐部：报名 / 退出（Shift+G 报名 2v2）。凑齐两人就在庭院决斗台开打，打倒不进医院，赢了加声望（每学期最多 5 场有奖励）', 'Duelling Club: join / leave (Shift+G: the 2v2 queue). Two make a match on the Courtyard stage; a knock-out sends nobody to the Hospital Wing; wins pay reputation (up to 5 rewarded a term)'))}
       ${row(L('空格', 'Space'), L('翻滚闪避：瞄准你的咒语和飞刺会落空；盔甲护身卡在咒语落地前一瞬间举起，能把它弹回去', 'Dodge roll: aimed spells and thorns miss; raise Protego just before a bolt lands to send it back'))}
+      ${row('X', L(`铁甲咒待发：${WARD_MAX_S} 秒内第一道打向你的咒语会被完美格挡（${WARD_MANA} 法力，${WARD_CD_S} 秒一次，举着时不能施别的咒语）`, `Ward: for ${WARD_MAX_S} s the first spell at you meets a perfect Protego (${WARD_MANA} mana, once every ${WARD_CD_S} s, no other spell meanwhile)`))}
       ${row('V', L('看你的 Agent 玩（按键不打断它）', 'Watch your agent play (your keys will not interrupt it)'))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}
       </table>
       <h3>${L('其他', 'Everything else')}</h3><table>
       ${row('Esc', L('猫头鹰邮递：生成配对码把你的 AI Agent 连进来、召唤使魔、管理密钥、切换语言', 'Owl Post: a pairing code for your AI agent, a familiar, your key, the language'))}
       ${row('R', L('禁书区（选修）：四道封印谜题，破解后提高咒语上限', 'Restricted Section (elective): four seal puzzles that raise your spell caps'))}
+      ${row('U', L('界面布局：拖动面板换位置、双击隐藏；Esc 菜单里的「界面」还能换主题、写自己的 CSS（只存在这台浏览器）', 'Layout: drag panels around, double-click to hide; "Interface" in the Esc menu also switches the theme and takes your own CSS (this browser only)'))}
       ${row('H / ?', L('打开 / 关闭本帮助', 'This help'))}
       </table>
       <h3>${L('手机 / 平板', 'Phones & tablets')}</h3><p>${L('左下角按住拖动是摇杆；点一下敌人 = 锁定并攻击，点地面 = 走过去；在右侧拖动转视角，双指缩放。考试在咒语书里「咒语集市」旁边的「考试」标签，邓布利多军在猫头鹰邮递（信封）里。', 'Hold and drag on the lower left for a joystick; tap a foe to attack it, tap the ground to walk; drag on the right to look, pinch to zoom. The exams are a tab in the spellbook, beside the spell market; the DA is in the Owl Post (the letter).')}</p>
@@ -941,15 +950,10 @@ export function createControls(d: ControlsDeps) {
   }
   function onError() {
     if (dest?.pending && now() - dest.t < 3) clearDest();
-    // a page read that failed means our copy of the Restricted Section is stale (an agent may have read it over MCP)
-    if (now() - lastRead < 3) sealsAsked = -1;
   }
   function onArmory(spells: { id: string; incantation: string; effects: string[] }[]) {
     spellInfo.clear();
     for (const s of spells) spellInfo.set(s.id, { incantation: s.incantation, effects: s.effects });
-  }
-  function onSeals(section: { seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] }) {
-    seals = section.seals;
   }
 
   setupTouch();
@@ -967,7 +971,7 @@ export function createControls(d: ControlsDeps) {
     notify: (ev: 'book' | 'menu' | 'owl') => tutorial.notify(ev),
     /** The tutorial (or its closing word) is on screen. */
     tutorialActive: () => tutorial.active(),
-    onCast, onGoto, onError, onArmory, onSeals,
+    onCast, onGoto, onError, onArmory,
   };
 }
 
@@ -1171,7 +1175,7 @@ function createTutorial(t: TutorialDeps) {
     }
     if (step === 2) {
       const p = t.myPos();
-      if (p && zonesAt(p.x, p.z).includes('great_hall')) { advance(); return; }
+      if (p && inZoneId('great_hall', p.x, p.z)) { advance(); return; }
     }
     if (step === 4 && me.ui.includes('tempus')) { advance(); return; }
     if (step === 5 && t.agent()?.connected) { advance(); return; }

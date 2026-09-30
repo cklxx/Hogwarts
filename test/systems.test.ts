@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../src/kernel/world.js';
 import { ensureNpcs } from '../src/kernel/npc.js';
-import { generateSeal, runSeal } from '../src/kernel/seals.js';
+import { breakSeal, generateSeal, inspectSeal, readSealPage, restrictedSection, runSeal } from '../src/kernel/seals.js';
 import { LANDMARKS } from '../src/shared/map.js';
 import type { Creature, Wizard } from '../src/kernel/types.js';
 import type { CreatureKind } from '../src/shared/constants.js';
@@ -62,22 +62,22 @@ describe('the Restricted Section', () => {
   it('needs the year, every page read in place, and the one true answer', () => {
     const w = mk();
     const a = join(w, 'Scholar');
-    expect(() => w.breakSeal(a.id, 1, ['0x0'])).toThrow(/year 2/);
+    expect(() => breakSeal(w, a.id, 1, ['0x0'])).toThrow(/year 2/);
     setYear(w, a, 2);
-    expect(() => w.breakSeal(a.id, 1, ['0x0'])).toThrow(/every page/);
-    expect(() => w.readSealPage(a.id, 1)).toThrow(/Missing pages rest at/);
+    expect(() => breakSeal(w, a.id, 1, ['0x0'])).toThrow(/every page/);
+    expect(() => readSealPage(w, a.id, 1)).toThrow(/Missing pages rest at/);
     at(w, a, 'courtyard');
-    expect(w.readSealPage(a.id, 1).runes).toMatch(/TIWAZ/);
+    expect(readSealPage(w, a.id, 1).runes).toMatch(/TIWAZ/);
     at(w, a, 'great_hall');
-    w.readSealPage(a.id, 1);
-    expect(w.inspectSeal(a.id, 1).runes).not.toMatch(/missing/);
+    readSealPage(w, a.id, 1);
+    expect(inspectSeal(w, a.id, 1).runes).not.toMatch(/missing/);
     a.pos = { x: 60, z: 60 };
     const hp = a.hp;
-    const bad = w.breakSeal(a.id, 1, ['0x12345678']);
+    const bad = breakSeal(w, a.id, 1, ['0x12345678']);
     expect(bad.opened).toBe(false);
     expect(a.hp).toBeLessThan(hp);
     const key = generateSeal(SECRET, a.id, 1).key;
-    const ok = w.breakSeal(a.id, 1, key.map((k) => '0x' + k.toString(16)));
+    const ok = breakSeal(w, a.id, 1, key.map((k) => '0x' + k.toString(16)));
     expect(ok.opened).toBe(true);
     expect(a.seals).toBe(1);
   });
@@ -86,10 +86,20 @@ describe('the Restricted Section', () => {
     const w = mk();
     const a = join(w, 'Guesser');
     setYear(w, a, 2);
-    a.sealPages[1] = [0, 1];
-    for (let i = 0; i < 3; i++) { a.hp = 100; w.breakSeal(a.id, 1, [String(i)]); }
+    a.sealPages = { 1: [0, 1] };
+    for (let i = 0; i < 3; i++) { a.hp = 100; breakSeal(w, a.id, 1, [String(i)]); }
     a.hp = 100;
-    expect(() => w.breakSeal(a.id, 1, ['7'])).toThrow(/smouldering/);
+    expect(() => breakSeal(w, a.id, 1, ['7'])).toThrow(/smouldering/);
+    // the pages and the attempts are the wizard's: a restart keeps them (the same fields as before the feature)
+    const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    expect(back.wizards.get(a.id)!.sealPages).toEqual({ 1: [0, 1] });
+    expect(() => breakSeal(back, a.id, 1, ['7'])).toThrow(/smouldering/);
+    // a wizard saved before seals existed has neither: they start from nothing
+    const old = JSON.parse(JSON.stringify(w.serialize()));
+    for (const x of old.wizards) { delete x.sealPages; delete x.sealTries; }
+    const fresh = World.restore(old);
+    expect(restrictedSection(fresh, a.id).seals[0].pages.every((p) => !p.collected)).toBe(true);
+    expect(() => breakSeal(fresh, a.id, 1, ['7'])).toThrow(/every page/);
   });
 
   it('every seal is unique per wizard and per server secret', () => {

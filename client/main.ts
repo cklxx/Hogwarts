@@ -21,17 +21,18 @@ import { createDynRes } from './dynres';
 import { instanceAlike } from './instancer';
 import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
-import { PANELS, agentView, agoText, createControls, curseText, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
-import { SHOP, TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, shopPrice, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
+import { PANELS, agentView, agoText, createControls, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
+import { TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
 import { PAIR_TTL_S, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
 import { SnapDecoder } from '../src/shared/snapwire';
 import { TIPS } from '../src/lore/memes';
-import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
+import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, spellIcon } from './ink';
 import * as probe from './perf';
 import { createMarket } from './market';
-import { createPanels, type FamiliarState, type UnfairState } from './panels';
+import { createPanels, type FamiliarState, type FocusView } from './panels';
 import { createFun } from './panels/fun';
-import { CLIENT_FEATURES } from './features';
+import { CLIENT_FEATURES, renderTop } from './features';
+import type { ClientFeature } from './feature';
 import { createFunWorld } from './funworld';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
@@ -50,8 +51,9 @@ interface Me {
   /** Your agent (World.agentState, plus the MCP session count the server may add). */
   agent?: (AgentInfo & { familiar?: FamiliarState | null }) | null;
   agents?: { sessions?: number } | null;
-  /** 不公平，但好玩 (World.unfairState): the Dark Lord, the DA, 偷师, concentration, the lawless zone (client/panels). */
-  unfair?: UnfairState | null;
+  /** 专注力 and 无规则区 (README 不公平，但好玩); the features' own fields (darkLord, da, studyable, …) are theirs to read. */
+  focus?: FocusView | null;
+  lawless?: boolean;
   /** While stunned: what put you down (World.knockedOutBy). */
   down?: Down | null;
   /** 学院杯 / 巧克力蛙画片 (World.funState): your house points this term, your album, the curfew grace. */
@@ -60,10 +62,6 @@ interface Me {
 /** Owl Post events carry `from` and `owl` (docs/AGENT_LINK.md §C.2). */
 interface Ev { id: number; type: string; text: string; zh?: string; to?: string; t?: number; from?: 'player' | 'agent'; owl?: { id: number; options?: string[]; expiresAt?: number; re?: number }; card?: string }
 /** An item as World.armory lists it. */
-interface TrunkItem {
-  id: string; name: string; slot: string; mods: Record<string, number>; lore?: string; charm?: unknown; unique?: string; equipped: boolean;
-  cursed?: boolean; anon?: boolean; bound?: boolean; boundSecondsLeft?: number; jinx?: { kind: string; mag: number; seconds: number } | null; forgedByName?: string;
-}
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const LS = 'hogwarts.token';
@@ -301,7 +299,7 @@ R.resize();
 // ------------------------------------------------------------------ state
 let snap: Snap | null = null;
 let me: Me | null = null;
-let myHandle = '';
+let myHandle = '', ownHandle = ''; // ownHandle: yours; myHandle: the body you move right now (me.actAs, a feature's loan)
 let token = '';
 let ws: WebSocket | null = null;
 let wsFails = 0;
@@ -343,48 +341,46 @@ function connect() {
     }
     probe.end('parse', tp);
     probe.wsMessage(typeof m.data === 'string' ? m.data.length : (m.data as ArrayBuffer).byteLength, msg.t === 'snap');
+    for (const f of observers) f.observe!(msg); // features that follow what others asked for (the trunk reads every armory)
     if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
     if (watch.onMessage(msg)) return; // 看 Agent 玩 (client/watch.ts)
     if (msg.t === 'welcome') {
-      myHandle = msg.handle;
+      myHandle = ownHandle = msg.handle;
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
       const hist: Ev[] = msg.events ?? [];
       for (const e of hist) if (e.type === 'owl' || e.type === 'ask') feed(e, false);
+      for (const e of hist) for (const f of feats) f.onEvent?.(e, false);
       for (const e of hist.filter((x) => x.type !== 'owl' && x.type !== 'ask' && !x.to).slice(-2)) feed(e, false);
       menuInfo(msg.mcpUrl);
       onBuild(msg.build);
       if (msg.pair?.code) onPairCode(msg.pair);
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
-    else if (msg.t === 'me') me = msg.s;
-    else if (msg.t === 'event') { pn.onEvent(msg.e); fun.onEvent(msg.e); feed(msg.e, true); }
-    else if (msg.t === 'evs') for (const e of msg.es) { pn.onEvent(e); fun.onEvent(e); feed(e, true); }
+    else if (msg.t === 'me') { me = msg.s; myHandle = (msg.s as { actAs?: { handle: string } }).actAs?.handle ?? ownHandle; }
+    else if (msg.t === 'event') { fun.onEvent(msg.e); for (const f of feats) f.onEvent?.(msg.e, true); feed(msg.e, true); }
+    else if (msg.t === 'evs') for (const e of msg.es) { fun.onEvent(e); for (const f of feats) f.onEvent?.(e, true); feed(e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
       ctl.onCast(msg.r);
       if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
       else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
-      if (!$('#trunk').hidden) send({ t: 'book' }); // Finite Incantatem / Revelio change what the trunk shows
     }
-    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); onArmory(msg.armory); market.onBook(); }
+    else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); market.onBook(); }
     else if (feats.some((f) => f.onMessage?.(msg))) { /* a feature's own reply (client/features.ts) */ }
     else if (msg.t === 'market') market.onMessage(msg); // 咒语集市 (client/market.ts)
     else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
     else if (msg.t === 'token') onToken(String(msg.token ?? ''));
     else if (msg.t === 'owls' && Array.isArray(msg.owls)) { for (const o of msg.owls) owlFromMsg(o); renderOwl(); }
-    else if (msg.t === 'seals') { ctl.onSeals(msg.section); renderSeals(msg.section, msg.current); }
     else if (msg.t === 'goto') ctl.onGoto(msg.goal);
-    else if (msg.t === 'sealmsg') { const r = msg.r; toast(r.runes ? L(`📜 第 ${r.tier} 道封印的第 ${r.page}/${r.of} 页已抄进你的笔记。`, `📜 Page ${r.page}/${r.of} of seal ${r.tier} copied into your notes.`) : r.opened ? L(`📕 封印打开了！`, `📕 The seal opens! ${r.reward}`) : `✗ ${L('ALGIZ 没有出现。封印纹丝不动，还反咬了你一口（-15 生命）。', r.message)}`); }
     else if (msg.t === 'sim') showSim(msg.r);
     else if (msg.t === 'forged') { bookOut(`✓ ${L('已铸造', 'Forged')} ${msg.name}${L('。', '.')}${msg.notes.length ? '\n' + msg.notes.map(tr).join('\n') : ''}`, 'good'); }
-    else if (msg.t === 'bought') onBought(msg.r);
     else if (msg.t === 'err') {
       ctl.onError();
       const text = `✗ ${tr(String(msg.error ?? ''))}`;
       if (market.onError(text)) { /* shown on the market page */ }
       else if (!$('#book').hidden) bookOut(text, 'bad');
-      else if (pn.onError(text) || onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
+      else if (pn.onError(text) || feats.some((f) => f.onError?.(text)) || onOwlError(text) || onMenuError(text)) { /* shown in the open panel */ }
       else toast(text);
     }
   };
@@ -414,8 +410,16 @@ const watch = createWatch({ send: rawSend, toast: (s) => toast(s) });
  * creature or spell that vanishes near you (inside the always-sent 120 m) died or struck, and gets its puff
  * or burst. Parked wizards not seen for a while, and pooled models beyond what a pool keeps, are freed.
  */
-type WizardEntry = WizardModel & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
-type CreatureEntry = ReturnType<typeof makeCreature> & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number };
+/** Where an entity last stood (gx, gz) and the ground's height there: see groundOf. */
+type Grounded = { root: THREE.Object3D; gx?: number; gz?: number; gy?: number };
+type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
+type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number };
+/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame). */
+const groundOf = (e: Grounded) => {
+  const p = e.root.position;
+  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; e.gy = heightAt(p.x, p.z); }
+  return e.gy!;
+};
 const parked = new Map<string, { m: WizardEntry; at: number }>();
 const herdPool = new Map<CreatureKind, CreatureEntry[]>();
 /** Things that vanish nearer than this (m) to you vanished for real (the server always sends everything within 120 m). */
@@ -441,7 +445,7 @@ function apply(s: Snap) {
       const p = parked.get(w.h);
       if (p) { parked.delete(w.h); m = p.m; }
       else {
-        m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing() }) as WizardEntry;
+        m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as WizardEntry;
         m.root.add(m.aura);
         m.root.name = 'wizard';
         m.label.sprite.visible = false; // (the frame's level of detail shows it when near)
@@ -454,7 +458,7 @@ function apply(s: Snap) {
     }
     m.seen = g;
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
-    const extra = (w.s.includes('V') ? '☠' : '') + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
+    const extra = badges(w.h) + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
     setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
@@ -482,7 +486,7 @@ function apply(s: Snap) {
     if (!m) {
       m = herdPool.get(c.k)?.pop();
       if (!m) {
-        m = Object.assign(makeCreature(c.k), { k: c.k, tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing() }) as CreatureEntry;
+        m = Object.assign(makeCreature(c.k), { k: c.k, tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as CreatureEntry;
         m.root.add(m.aura);
         m.root.name = 'creature';
         m.label.sprite.visible = false;
@@ -613,10 +617,7 @@ function feed(e: Ev, fresh: boolean) {
   if (e.type === 'owl' || e.type === 'ask') { onOwlEvent(e, fresh); return; }
   const text = lang === 'zh' && e.zh ? e.zh : e.text;
   // a curse addressed to you belongs to the curse banner (and the trunk), not to the feed
-  if (e.type === 'curse' && e.to) {
-    if (fresh) { curseNews = { text, until: performance.now() + 12000 }; if (!$('#trunk').hidden) send({ t: 'book' }); }
-    return;
-  }
+  if (e.type === 'curse' && e.to) return; // (client/panels/trunk.ts shows it)
   if (fresh && (e.type === 'decree' || e.type === 'term' || (e.type === 'wheel' && !e.to) || (e.type === 'egg' && e.to) || (e.type === 'achievement' && e.text.includes(me?.name ?? '\u0000')))) { banner(text, e.type); return; }
   // history from before you arrived: only the last couple of public lines, and they fade like the rest
   feedLine(text, `${e.type}${e.to ? ' private' : ''}`);
@@ -676,8 +677,6 @@ function toast(text: string) {
   lastLore = performance.now(); // a toast and an idle tip never share the space
   $('#lore').classList.remove('show');
 }
-/** Private news of a curse (arrival, Finite, Revelio, wearing off), shown in the curse banner for a few seconds. */
-let curseNews: { text: string; until: number } | null = null;
 
 /** A dark corner of the HUD: a faint rune whose tooltip says which spell lights it. */
 const rune = (icon: string, tip: string, cls = '', cast = '') => `<button type="button" class="rune ${cls}" data-tip="${esc(tip)}" aria-label="${esc(tip)}"${cast ? ` data-cast="${esc(cast)}"` : ''}><svg class="ic"><use href="#i-${icon}"/></svg></button>`;
@@ -767,6 +766,7 @@ function hud() {
   renderGoal();
   pn.hud();
   fun.hud();
+  renderTop(feats); // the Dark Lord's ribbon, the lawless zone, the veto card, the joint Patronus (client/features.ts)
   for (const f of feats) f.hud?.();
   trackBars();
 }
@@ -847,10 +847,10 @@ async function showBoard() {
   solo(b);
   b.innerHTML = `<h2>${ic('cup')}<span>${L('排行榜', 'Leaderboard')} <small>${L(`第 ${lb.term.n} 学期 · 剩余 <span class="num">${fmtT(lb.term.secondsLeft)}</span>`, `term ${lb.term.n} · <span class="num">${fmtT(lb.term.secondsLeft)}</span> left`)} · <kbd>L</kbd></small></span> <button class="x" data-close="board" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
     <p class="hp-line"><b>${L('学院分', 'House points')}:</b> ${Object.entries(lb.housePoints).map(([h, p]) => `<span>${ic(houseIcon(h))}${houseName(h)} <span class="num">${p}</span></span>`).join('')}</p>
-    ${pn.boardHtml(lb)}
+    ${feats.map((f) => f.board?.(lb) ?? '').join('')}
     <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : ((need: number) => L(`空缺${me ? `——你现在 ${Math.round(me.reputation)} 声望${me.reputation >= need ? '，学期结束时若你最高就当选' : `，还差 ${Math.ceil(need - me.reputation)}`}` : ''}`, `vacant${me ? ` — you have ${Math.round(me.reputation)} reputation${me.reputation >= need ? ': top the board at term end to take office' : `, ${Math.ceil(need - me.reputation)} to go`}` : ''}`))(Number(lb.ministerMinReputation ?? 100))}<br/><small>${L(`每学期结束时，声望最高（至少 ${Number(lb.ministerMinReputation ?? 100)}）的玩家成为魔法部长，可以颁布一道法令改写世界规则；学期结束时每人的声望减半。`, esc(lb.ministerRule))}</small></p>
     <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th></tr>
-    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${lb.darkLord?.name === w.name ? `${ic('darkmark')} ` : ''}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
+    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${badges(w.handle, true)}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
     ${lb.loopholeFirstFoundBy ? `<p>${ic('star')} ${L('第一个发现韦斯莱漏洞的人', 'First to find the Weasley Loophole')}: <b>${esc(lb.loopholeFirstFoundBy)}</b></p>` : ''}`;
   b.hidden = false;
 }
@@ -893,7 +893,7 @@ function menuInfo(url?: string) {
       <div id="op-agent" class="hint"></div>
       ${pn.menuHtml()}
     </section>
-    ${pn.menuLinks()}
+    ${pn.menuLinks(feats.map((f) => f.menu?.() ?? '').join(''))}
     <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
     <p>${shell?.claudeCode ? L('<b>推荐：桌面客户端当桥</b>（在终端里运行一次；Agent 连的是这台服务器，密钥从系统钥匙串读，不写进任何配置。想接 Claude Desktop：按 <kbd>Ctrl+Shift+S</kbd> 回到启动器，点「写入 Claude Desktop」）：', '<b>Recommended: the desktop client as the bridge</b> (run it once in a terminal; the agent reaches this server and reads the key from the system keychain, never from a config file. For Claude Desktop: <kbd>Ctrl+Shift+S</kbd> back to the launcher, then "写入 Claude Desktop"):') : L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
@@ -1162,7 +1162,7 @@ $('#atask').addEventListener('click', (e) => {
 function sendChat(raw: string) {
   const r = routeChat(raw);
   if (!r) return;
-  if (r.to === 'public') send({ t: 'chat', text: r.text });
+  if (r.to === 'public') send({ t: 'chat', text: r.text, ...(r.ch ? { ch: r.ch } : {}), ...(r.dm ? { to: r.dm } : {}) });
   else if (r.to === 'agent') sendOwl(r.text);
   else askWhere(r.word, r.text, r.rest);
 }
@@ -1232,167 +1232,11 @@ $('#agentbox').addEventListener('click', (e) => {
 });
 document.addEventListener('pointerdown', (e) => { if (!(e.target as HTMLElement).closest('#agentbox')) $('#agentbox').classList.remove('open'); });
 
-// ------------------------------------------------------------------ curse banner (from me.hex)
-function renderCurseBar() {
-  const el = $('#cursebar');
-  const c = curseText(me?.hex);
-  if (curseNews && performance.now() > curseNews.until) curseNews = null;
-  if ((!c || (!c.hexed && !c.respite)) && !curseNews) { el.hidden = true; return; }
-  if (!el.firstElementChild) {
-    el.innerHTML = `<div class="cb-news"></div><div class="cb-text"></div><div class="cb-acts"><button data-act="finite">${L('咒立停', 'Finite Incantatem')}</button> <button class="ghost" data-act="revelio">${L('原形立现', 'Revelio')}</button> <button class="ghost" data-act="trunk">${L('行囊', 'Trunk')} <kbd>T</kbd></button></div>`;
-  }
-  const hexed = !!c?.hexed;
-  el.classList.toggle('quiet', !hexed && !curseNews);
-  el.classList.toggle('news', !hexed && !!curseNews);
-  const news = el.querySelector('.cb-news') as HTMLElement;
-  const nt = curseNews?.text ?? '';
-  if (news.textContent !== nt) news.textContent = nt;
-  news.hidden = !nt;
-  // fresh news already says how to end it and how to find out who: the banner then lists only what is on you
-  const text = hexed
-    ? `<b>${esc(c!.head)}</b>${c!.parts.map(esc).join(' · ')}${L('。', '.')}${curseNews ? '' : `<br/>${esc(c!.cure)} ${esc(c!.who)}`}${c!.resting ? `<br/>${esc(c!.resting)}` : ''}`
-    : curseNews ? '' : esc(c?.respite ?? '');
-  const t = el.querySelector('.cb-text') as HTMLElement;
-  if (t.innerHTML !== text) t.innerHTML = text;
-  t.hidden = !text;
-  (el.querySelector('.cb-acts') as HTMLElement).hidden = !hexed && !curseNews;
-  const fin = el.querySelector('[data-act="finite"]') as HTMLButtonElement;
-  const why = finiteBlocked();
-  fin.disabled = !!why;
-  fin.title = why ?? '';
-  el.hidden = false;
-}
-$('#cursebar').addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-  if (!b || b.disabled) return;
-  if (b.dataset.act === 'finite') ctl.castOnSelf('Finite Incantatem');
-  if (b.dataset.act === 'revelio') ctl.castOnSelf('Revelio');
-  if (b.dataset.act === 'trunk') toggleTrunk(true);
-});
-
-// ------------------------------------------------------------------ the trunk (T): equip, unequip, destroy; break a cursed binding (§C.6)
-let trunkItems: TrunkItem[] = [];
-let trunkAt = 0;
-let knownSpells: Set<string> | null = null;
-let trunkMsg = '';
-let destroyArmed: string | null = null;
-let trunkRefetch = 0;
-/** The armory has arrived at least once (so an empty trunk really is empty). */
-let trunkKnown = false;
-let trunkOk = false;
-const SLOT_ZH: Record<string, string> = { wand: '魔杖', robe: '长袍', amulet: '护身符', trinket: '小饰物', broom: '扫帚' };
-const MOD_ZH: Record<string, string> = { maxHp: '生命上限', maxMana: '法力上限', manaRegen: '回蓝', speed: '移速', power: '威力', ward: '护甲' };
-function onArmory(armory: { items?: TrunkItem[]; spells?: { name: string }[] }) {
-  if (Array.isArray(armory.items)) { trunkItems = armory.items; trunkAt = performance.now(); trunkKnown = true; }
-  if (Array.isArray(armory.spells)) knownSpells = new Set(armory.spells.map((s) => s.name));
-  renderTrunk(true);
-}
-const knows = (name: string, year: number) => knownSpells ? knownSpells.has(name) : (me?.year ?? 1) >= year;
-/** Why Finite Incantatem cannot be cast from the trunk or the banner, or null. */
-function finiteBlocked(): string | null {
-  return knows('Finite Incantatem', 2) ? null : L('你还不会「咒立停」：需 2 年级', 'You do not know Finite Incantatem yet: needs year 2');
-}
-function boundLeft(it: TrunkItem): number {
-  const live = me?.hex?.bound?.find((b) => b.id === it.id);
-  if (live) return live.left;
-  if (!it.bound) return 0;
-  return Math.max(0, Math.ceil((it.boundSecondsLeft ?? 0) - (performance.now() - trunkAt) / 1000));
-}
-function modsText(m: Record<string, number>) {
-  return Object.entries(m ?? {}).filter(([, v]) => v).map(([k, v]) => `<span class="${v < 0 ? 'neg' : 'pos'}">${esc(L(MOD_ZH[k] ?? k, k))} ${v > 0 ? '+' : ''}${v}</span>`).join(' ');
-}
-function renderTrunk(rebuild = false) {
-  const el = $('#trunk');
-  if (el.hidden) return;
-  if (rebuild) {
-    const fin = finiteBlocked(), rev = knows('Revelio', 1) ? null : L('你还不会「原形立现」', 'You do not know Revelio yet');
-    $('#trunk-cure').innerHTML = `<button data-act="finite"${fin ? ` disabled title="${esc(fin)}"` : ''}>${ic('finite')}${L('念咒立停解咒', 'Cast Finite Incantatem to break curses')}</button>${fin ? ` <span class="hint">${esc(fin)}</span>` : ''}
-      <button class="ghost" data-act="revelio"${rev ? ` disabled title="${esc(rev)}"` : ''}>${ic('eye')}${L('念原形立现，看看是谁', 'Cast Revelio: who sent it?')}</button>`;
-    $('#trunk-list').innerHTML = trunkItems.length ? trunkItems.map((it) => {
-      const bound = boundLeft(it) > 0;
-      const badges = [
-        it.equipped ? `<span class="tb eq">${L('已穿戴', 'equipped')}</span>` : '',
-        it.cursed ? (bound ? `<span class="tb curse">🔒 ${L('被诅咒（粘身，剩', 'cursed (stuck,')} <b data-bound="${esc(it.id)}">${boundLeft(it)}</b> ${L('秒）', 's left)')}</span>` : `<span class="tb curse">☠️ ${L('被诅咒', 'cursed')}</span>`) : '',
-        it.jinx ? `<span class="tb curse">🕸️ ${L('带恶咒', 'jinxed')}</span>` : '',
-        it.anon ? `<span class="tb anon">✉️ ${L('匿名寄来', 'anonymous')}</span>` : it.forgedByName && it.forgedByName !== me?.name && it.forgedByName !== 'Legend' ? `<span class="tb">${L('寄件人', 'from')} ${esc(it.forgedByName)}</span>` : '',
-      ].join(' ');
-      const stuck = bound ? ` disabled title="${esc(L('粘身中：先念咒立停，或等它消退', 'Stuck: cast Finite Incantatem first, or wait'))}"` : '';
-      const wear = it.equipped ? `<button class="ghost" data-act="unequip" data-slot="${esc(it.slot)}"${stuck}>${L('卸下', 'Unequip')}</button>` : `<button class="ghost" data-act="equip" data-id="${esc(it.id)}">${L('穿上', 'Equip')}</button>`;
-      const del = it.unique === 'elder_wand' ? '' : destroyArmed === it.id
-        ? `<button data-act="destroy-yes" data-id="${esc(it.id)}">${L('确定销毁', 'Destroy it')}</button> <button class="ghost" data-act="destroy-no">${L('取消', 'Cancel')}</button>`
-        : `<button class="ghost" data-act="destroy" data-id="${esc(it.id)}"${stuck}>${L('销毁', 'Destroy')}</button>`;
-      return `<li class="${it.cursed ? 'cursed' : ''}"><span class="it-ic">${ic(itemIcon(it.slot))}</span><div class="ti-name"><b>${esc(it.name)}</b> <span class="hint">${esc(L(SLOT_ZH[it.slot] ?? it.slot, it.slot))}</span> ${badges}</div>
-        <div class="ti-mods">${modsText(it.mods)}${it.lore ? ` <i class="hint">“${esc(it.lore)}”</i>` : ''}</div><div class="ti-acts">${wear} ${del}</div></li>`;
-    }).join('') : `<li class="hint">${L('箱子是空的。在下面的商店买一件，或者让你的 Agent 用 forge_item 给你锻造。', 'Your trunk is empty. Buy something in the shop below, or ask your agent to forge you something (forge_item).')}</li>`;
-    $('#trunk-msg').textContent = trunkMsg;
-    $('#trunk-msg').className = trunkOk ? 'ok' : 'err';
-    renderShop();
-  } else if (shopSig !== `${me?.galleons}`) renderShop();
-  // live countdowns; once a binding wears off, ask for a fresh list
-  document.querySelectorAll<HTMLElement>('#trunk-list [data-bound]').forEach((b) => {
-    const it = trunkItems.find((x) => x.id === b.dataset.bound);
-    const left = it ? boundLeft(it) : 0;
-    b.textContent = String(left);
-    if (left <= 0 && performance.now() - trunkRefetch > 2000) { trunkRefetch = performance.now(); send({ t: 'book' }); }
-  });
-}
-function toggleTrunk(force?: boolean) {
-  const t = $('#trunk');
-  t.hidden = !(force ?? t.hidden);
-  if (!t.hidden) { solo(t); trunkMsg = ''; destroyArmed = null; send({ t: 'book' }); renderTrunk(true); }
-}
-function onTrunkError(text: string) {
-  if (!recent('trunk') || $('#trunk').hidden) return false;
-  trunkMsg = text;
-  send({ t: 'book' });
-  return true;
-}
-$('#trunk').addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-  if (!b || b.disabled) return;
-  const act = b.dataset.act;
-  trunkMsg = '';
-  mark('trunk');
-  if (act === 'close') { toggleTrunk(false); return; }
-  trunkOk = false;
-  if (act === 'finite') { ctl.castOnSelf('Finite Incantatem'); return; }
-  if (act === 'revelio') { ctl.castOnSelf('Revelio'); return; }
-  if (act === 'buy') { send({ t: 'buy', item: b.dataset.item, lang }); b.disabled = true; return; }
-  if (act === 'equip') send({ t: 'equip', item: b.dataset.id });
-  else if (act === 'unequip') send({ t: 'unequip', slot: b.dataset.slot });
-  else if (act === 'destroy') { destroyArmed = b.dataset.id ?? null; renderTrunk(true); return; }
-  else if (act === 'destroy-no') { destroyArmed = null; renderTrunk(true); return; }
-  else if (act === 'destroy-yes') { destroyArmed = null; send({ t: 'destroy', item: b.dataset.id }); }
-  else return;
-  send({ t: 'book' }); // the server does not answer equip / unequip / destroy: read the trunk again
-});
-
-// ------------------------------------------------------------------ the shop (in the trunk): fixed presets, forged for yourself (src/shared/shop.ts)
-let shopSig = '';
-function renderShop() {
-  const g = me?.galleons ?? 0;
-  shopSig = `${me?.galleons}`;
-  $('#shop').innerHTML = `<h3>${ic('coin')}${L('商店', 'Shop')} <small>${L(`你有 <span class="num">${g}</span> 加隆 · 买下自动穿上 · 打败魔物赚加隆`, `you have <span class="num">${g}</span> Galleons · worn at once · creatures drop Galleons`)}</small></h3><ul class="shop-list">` +
-    SHOP.map((s) => {
-      const price = shopPrice(s), can = g >= price;
-      return `<li><span class="it-ic">${ic(itemIcon(s.slot))}</span><div class="ti-name"><b>${esc(L(s.zh, s.en))}</b> <span class="hint">${esc(L(SLOT_ZH[s.slot] ?? s.slot, s.slot))}</span></div>
-        <div class="ti-mods">${modsText(s.mods)} <i class="hint">“${esc(L(s.lore.zh, s.lore.en))}”</i></div>
-        <div class="ti-acts"><button data-act="buy" data-item="${esc(s.key)}"${can ? '' : ' disabled'}>${L(`<span class="num">${price}</span> 加隆 · 购买`, `Buy · <span class="num">${price}</span> Galleons`)}</button>${can ? '' : ` <span class="hint">${L(`还差 ${price - g} 加隆`, `${price - g} more Galleons`)}</span>`}</div></li>`;
-    }).join('') + '</ul>';
-}
-function onBought(r: { item: string; equipped: boolean; notes: string[] }) {
-  trunkOk = true;
-  trunkMsg = `✓ ${L(`买下了「${r.item}」`, `Bought "${r.item}"`)}${r.equipped ? L('，已经穿上。', ', now wearing it.') : L('：在上面点「穿上」。', ': press Equip above.')} ${tr(r.notes[0] ?? '')}`;
-  renderTrunk(true);
-}
-
 /** The Owl Post parts of the 10 Hz HUD. */
 function linkHud() {
   renderAgentBox();
-  renderCurseBar();
   renderMenuLive();
   renderOwl();
-  renderTrunk();
 }
 
 // ------------------------------------------------------------------ spellbook (in-browser Runes editor)
@@ -1475,25 +1319,37 @@ $('#book-list').addEventListener('click', (e) => {
   else if (li.dataset.tpl) openTemplates();
   else loadSpell(li.dataset.id || null);
 });
+// drag a spell from the list onto a hotbar slot: a cell of the book's own strip, or a tile of the hotbar on
+// screen (lifted over the book while you drag), the same six slots either way
 $('#book-list').addEventListener('dragstart', (e) => {
   const li = (e.target as HTMLElement).closest('li[data-id]') as HTMLElement | null;
   if (!li?.dataset.id || !e.dataTransfer) return;
   e.dataTransfer.setData('text/plain', li.dataset.id);
   e.dataTransfer.effectAllowed = 'move';
-  $('#book-bar').classList.add('drag');
+  document.body.classList.add('spell-drag');
 });
-$('#book-list').addEventListener('dragend', () => $('#book-bar').classList.remove('drag'));
+const endDrag = () => { document.body.classList.remove('spell-drag'); $('#hotbar').querySelectorAll('.over').forEach((c) => c.classList.remove('over')); };
+$('#book-list').addEventListener('dragend', endDrag);
 const barCell = (e: Event) => (e.target as HTMLElement).closest('.bb-cell') as HTMLElement | null;
-$('#book-bar').addEventListener('dragover', (e) => { const c = barCell(e); if (!c) return; e.preventDefault(); c.classList.add('over'); });
-$('#book-bar').addEventListener('dragleave', (e) => barCell(e)?.classList.remove('over'));
-$('#book-bar').addEventListener('drop', (e) => {
+/** The slot (1–6) a drag is over, and its element: a book strip cell or an on-screen hotbar tile. */
+const dropSlot = (e: Event): [HTMLElement, number] | null => {
   const c = barCell(e);
-  $('#book-bar').classList.remove('drag');
-  if (!c) return;
-  e.preventDefault();
-  const id = e.dataTransfer?.getData('text/plain');
-  if (id && bookSpells.some((s) => s.id === id)) assignSlot(id, Number(c.dataset.cell));
-});
+  if (c) return [c, Number(c.dataset.cell)];
+  const tile = (e.target as HTMLElement).closest('#hotbar > div') as HTMLElement | null;
+  return tile ? [tile, Array.prototype.indexOf.call(tile.parentElement!.children, tile) + 1] : null;
+};
+for (const zone of [$('#book-bar'), $('#hotbar')]) {
+  zone.addEventListener('dragover', (e) => { const s = dropSlot(e); if (!s) return; e.preventDefault(); s[0].classList.add('over'); });
+  zone.addEventListener('dragleave', (e) => dropSlot(e)?.[0].classList.remove('over'));
+  zone.addEventListener('drop', (e) => {
+    const s = dropSlot(e);
+    endDrag();
+    if (!s) return;
+    e.preventDefault();
+    const id = e.dataTransfer?.getData('text/plain');
+    if (id && bookSpells.some((x) => x.id === id)) assignSlot(id, s[1]);
+  });
+}
 $('#book-bar').addEventListener('click', (e) => { const c = barCell(e); if (c && bookSel) assignSlot(bookSel, Number(c.dataset.cell)); });
 
 function loadSpell(id: string | null) {
@@ -1637,21 +1493,6 @@ $('#sp-agent-btn').onclick = () => {
   } else renderAgentBlock();
 };
 
-// ------------------------------------------------------------------ the Restricted Section (seals)
-let sealTier = 1;
-const sealState = (st: string) => lang !== 'zh' ? st : st === 'broken' ? '已破解' : st === 'open to you' ? '向你敞开' : st.startsWith('needs year') ? `需要 ${st.slice(-1)} 年级` : '先破解上一道封印';
-function toggleSeals() { const s = $('#seals'); s.hidden = !s.hidden; if (!s.hidden) { solo(s); send({ t: 'seals' }); } }
-type SealInfo = { tier: number; name: string; zh: string; rewardZh: string; requiresYear: number; inputWords: number; reward: string; state: string; pages: { page: number; where: string; collected: boolean }[] };
-function renderSeals(section: { progress: string; seals: SealInfo[]; codex: string[] }, current: { tier: number; name: string; zh: string; inputWords: number; pagesCollected: string; runes: string; broken: boolean }) {
-  sealTier = current.tier;
-  $('#seal-list').innerHTML = section.seals.map((x) => `<div class="${x.state === 'broken' ? 'broken' : ''}">${ic(x.state === 'broken' ? 'seal-broken' : 'seal')}<b>${esc(L(x.zh, x.name))}</b><br/>${esc(sealState(x.state))} · ${L(`${x.requiresYear} 年级`, `year ${x.requiresYear}`)} · ${L(`${x.inputWords} 个字`, `${x.inputWords} word(s)`)}<br/><i>${esc(L(x.rewardZh, x.reward))}</i><br/>${x.pages.map((p) => `<span class="pg${p.collected ? '' : ' no'}">${ic('scroll')} ${esc(placeName(p.where))}</span>`).join('<br/>')}</div>`).join('');
-  $('#seal-title').textContent = L(`${current.zh} —— 已收集 ${current.pagesCollected} 页${current.broken ? '（已破解）' : ''}`, `${current.name} — ${current.pagesCollected} pages${current.broken ? ' (broken)' : ''}`);
-  $('#seal-runes').textContent = current.runes;
-  $('#seal-codex').textContent = section.codex.join('\n');
-}
-$('#seal-read').onclick = () => send({ t: 'readpage', tier: sealTier });
-$('#seal-break').onclick = () => send({ t: 'breakseal', tier: sealTier, words: $<HTMLInputElement>('#seal-words').value.split(/[\s,]+/).filter(Boolean) });
-
 $('#sp-forget').onclick = () => { const n = $<HTMLInputElement>('#sp-name').value; if (n) send({ t: 'unlearn', spell: n }); };
 
 // ------------------------------------------------------------------ the next goal (下一步): one quiet line under your name, after the tutorial
@@ -1667,8 +1508,8 @@ function renderGoal() {
   goal = nextGoal({
     year: me.year, xp: me.xp, xpNext: me.xpNext, ui: me.ui, seals: me.seals, galleons: me.galleons, reputation: me.reputation, decree: me.decree, house: me.house,
     customSpells: bookSpells.length ? bookSpells.filter((x) => !x.builtin).length : null,
-    items: trunkKnown ? trunkItems.length : null,
     ...pn.goalState(),
+    ...Object.assign({}, ...feats.map((f) => f.goal?.() ?? {})), // the Dark Lord, the DA
   });
   if (!goal) { el.hidden = true; return; }
   if (goal.key !== goalKey) {
@@ -1693,12 +1534,10 @@ $('#goal').addEventListener('click', (e) => {
     if ('cast' in a) ctl.castOnSelf(a.cast);
     else if (a.open === 'book') toggleBook(true);
     else if (a.open === 'tpl') { toggleBook(true); openTemplates(); }
-    else if (a.open === 'seals') { if ($('#seals').hidden) toggleSeals(); }
-    else if (a.open === 'trunk') toggleTrunk(true);
     else if (a.open === 'board') { if ($('#board').hidden) void showBoard(); }
     else if (a.open === 'owl') toggleOwl(true);
     else if (a.open === 'exams') pn.openExams();
-    else if (a.open === 'da') pn.openDa();
+    else feats.some((f) => f.open?.(a.open)); // the Restricted Section, the DA, …
   }
   b.blur();
   renderGoal();
@@ -1728,17 +1567,19 @@ const ctl = createControls({
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
     get dist() { return camDist; }, set dist(v: number) { camDist = v; },
   },
-  panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => toggleTrunk() },
+  panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => { const t = $('#trunk'); if (!t.hidden) t.hidden = true; else feats.some((f) => f.open?.('trunk')); } },
   agent: agentNow,
   pair: pairNow,
-  // 隐藏宝箱: F at a closed chest opens it
+  // the features' (a page of a seal at its landmark, a fireplace, …: client/features.ts), then 隐藏宝箱: F at a closed chest opens it
   extraAction: () => {
+    for (const f of feats) { const a = f.action?.(); if (a) return a; }
     const p = wizards.get(myHandle)?.root.position;
     const c = p && snap?.cup ? funWorld.chestNear(p, snap.cup.ch) : null;
-    return c ? { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) } : null;
+    if (c) return { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) };
+    return null;
   },
 });
-// ------------------------------------------------------------------ the panels: 黑魔王, 邓布利多军, 偷师, O.W.L., 使魔, 专注力, 无规则区 (client/panels)
+// ------------------------------------------------------------------ the panels: O.W.L., 使魔, 专注力 (client/panels); the features (client/features.ts)
 /** Put a source in the spellbook's editor as a new draft (偷师's 看源码). */
 function loadDraft(name: string, source: string, note: string) {
   loadSpell(null);
@@ -1746,27 +1587,26 @@ function loadDraft(name: string, source: string, note: string) {
   $<HTMLTextAreaElement>('#sp-src').value = source;
   bookOut(note, 'good');
 }
-const pn = createPanels({
-  send, toast, me: () => me, snap: () => snap,
-  myPos: () => wizards.get(myHandle)?.root.position ?? null,
-  camYaw: () => camYaw,
-  wizardRoot: (h) => wizards.get(h)?.root ?? null,
-  agentConnected: () => !!agentNow()?.connected,
-  spells: () => bookSpells,
-  wantSpells: () => { if (!bookSpells.length) send({ t: 'book' }); },
-  openBook: () => { if ($('#book').hidden) toggleBook(true); },
-  loadDraft, solo,
-});
+const wantSpells = () => { if (!bookSpells.length) send({ t: 'book' }); };
+const pn = createPanels({ send, me: () => me, agentConnected: () => !!agentNow()?.connected, spells: () => bookSpells, wantSpells, solo });
 // ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 · 巧克力蛙画片 · 隐藏宝箱 (client/panels/fun.ts, client/funworld.ts)
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
-// the features (client/features.ts: the Duelling Club, Quidditch, …), all built from the same deps
-const feats = CLIENT_FEATURES.map((mk) => mk({
+// the features (client/features.ts: the Dark Lord, the DA, 偷师, the Restricted Section, the Duelling Club, Quidditch, …),
+// all built from the same deps
+const feats: ClientFeature[] = CLIENT_FEATURES.map((mk) => mk({
   send, toast,
   wire: <T,>(key: string) => (snap as Record<string, unknown> | null)?.[key] as T | undefined,
-  myHandle: () => myHandle, myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
+  me: () => me as Record<string, any> | null, now: () => snap?.t ?? 0,
+  myHandle: () => myHandle, observing: () => watch.observing(), myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
   nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?',
-  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0,
+  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? null,
+  solo, spells: () => bookSpells, wantSpells, openBook: () => { if ($('#book').hidden) toggleBook(true); }, loadDraft, features: () => feats, castOnSelf: (spell) => ctl.castOnSelf(spell),
 }));
+renderTop(feats);
+const observers = feats.filter((f) => f.observe);
+const badgers = feats.filter((f) => f.badge);
+/** The features' marks beside a wizard's name (☠ the Dark Lord): text for the name tag, markup for the parchment. */
+const badges = (h: string, html?: boolean) => { let s = ''; for (const f of badgers) s += f.badge!(h, html); return s; };
 const lifters = feats.filter((f) => f.lift);
 const funWorld = createFunWorld();
 scene.add(funWorld.group);
@@ -1837,25 +1677,22 @@ addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (pn.keydown(e)) return; // J 邓布利多军, K O.W.L. (client/panels)
+  if (pn.keydown(e)) return; // K O.W.L. (client/panels)
   if (fun.keydown(e)) return; // C 巧克力蛙画片 (client/panels/fun.ts)
-  if (!watch.observing() && feats.some((f) => f.keydown?.(e))) return; // G 决斗俱乐部, P / F 魁地奇, … (client/features.ts)
+  if (feats.some((f) => f.keydown?.(e))) return; // J 邓布利多军, R 禁书区, G 决斗俱乐部, P / F 魁地奇, … (client/features.ts)
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
-  if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
   if (e.key === 'v' || e.key === 'V') { watch.toggleObserving(); return; }
   if (e.key === 'o' || e.key === 'O') { if (!e.repeat) toggleOwl(); e.preventDefault(); return; }
-  if (e.key === 't' || e.key === 'T') { if (!e.repeat) toggleTrunk(); return; }
   if (e.key === 'Enter') { openChat(); e.preventDefault(); return; }
   if (e.key === 'Escape') {
     // close the topmost panel, then drop the target, then open the Owl Post
     if (!$('#atask').hidden) { $('#atask').hidden = true; atPending = null; return; }
     if (!$('#book').hidden) { $('#book').hidden = true; return; }
     if (pn.closeTop()) return;
+    if (feats.some((f) => f.close?.())) return; // the DA, the Restricted Section, …
     if (fun.closeTop()) return;
     if (!$('#owl').hidden) { toggleOwl(false); return; }
-    if (!$('#trunk').hidden) { toggleTrunk(false); return; }
-    if (!$('#seals').hidden) { $('#seals').hidden = true; return; }
     if (ctl.helpOpen()) { ctl.toggleHelp(false); return; }
     if (!$('#board').hidden) { $('#board').hidden = true; return; }
     if (!$('#menu').hidden) { $('#menu').hidden = true; return; }
@@ -1871,6 +1708,69 @@ let prev = performance.now();
 let frameNo = 0;
 const ORIGIN = new THREE.Vector3();
 const litPool: { x: number; y: number; z: number; color: number; d: number }[] = [], lit: typeof litPool = [];
+/**
+ * What this frame's entity visitors share (set by frame()). The visitors are made once and read it from here:
+ * closures made every frame, Map entries, Math.hypot and doubles passed around all allocate, and these run for
+ * every wizard, creature and bolt every frame (docs/PERF.md, "GC").
+ */
+const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null };
+function animWizard(w: WizardEntry, h: string) {
+  const px = w.root.position.x, pz = w.root.position.z;
+  w.root.position.x += (w.tx - w.root.position.x) * FR.k;
+  w.root.position.z += (w.tz - w.root.position.z) * FR.k;
+  let lift = 0;
+  for (const f of lifters) lift += f.lift!(h); // 魁地奇: riders fly
+  w.root.position.y = groundOf(w) + lift;
+  const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
+  w.body.rotation.y += turn * Math.min(1, FR.dt * 14);
+  const mx = w.root.position.x - px, mz = w.root.position.z - pz;
+  const speed = FR.dt > 0 ? Math.sqrt(mx * mx + mz * mz) / FR.dt : 0;
+  const d = w.root.position.distanceTo(camera.position);
+  const mine = h === myHandle, focused = h === FR.focus;
+  // (a stunned wizard lies down: only the full model does that)
+  w.far = !mine && !focused && d > FR.lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
+  w.body.visible = !w.far;
+  w.label.show(focused || (!w.far && d < FR.lod.label));
+  if (w.patronus.visible) {
+    w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
+    particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
+  }
+  if (w.far) {
+    // the crowd's walk: a bob twice per stride while moving
+    w.bob = ((w.bob ?? 0) + FR.dt * Math.min(speed, 9) * 1.3) % Math.PI;
+    const col = farColors(w);
+    crowd.put(w.root.position.x, w.root.position.y + w.body.position.y, w.root.position.z, w.body.rotation.y, speed > 0.3 ? Math.abs(Math.cos(w.bob)) * 0.06 : 0, col.robeC, col.trimC);
+    w.castPending = false;
+    return;
+  }
+  w.setMid(!mine && !focused && d > FR.lod.mid);
+  const fire = w.update(FR.dt, speed, w.castPending);
+  w.castPending = false;
+  w.root.updateMatrixWorld();
+  parts.add(w.root);
+  if (fire) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
+}
+function animCreature(c: CreatureEntry, i: string) {
+  c.root.position.x += (c.tx - c.root.position.x) * FR.k;
+  c.root.position.z += (c.tz - c.root.position.z) * FR.k;
+  c.root.position.y = groundOf(c);
+  c.root.rotation.y = -c.tf;
+  const d = c.root.position.distanceTo(camera.position);
+  const focused = i === FR.focus;
+  // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
+  c.root.visible = focused || d < FR.lod.anim;
+  c.label.show(focused || d < FR.lod.label);
+  if (c.root.visible) c.anim(clock);
+  else if (d < FR.lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
+}
+function animBolt(b: THREE.Object3D & { tx?: number; tz?: number }) {
+  b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, FR.k * 2);
+  b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, FR.k * 2);
+  b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
+  particles.trail(b, b.position, b.userData.color ?? 0xffffff);
+  const spin = b.children[0];
+  if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
+}
 function frame() {
   requestAnimationFrame(frame);
   probe.frameBegin();
@@ -1887,71 +1787,20 @@ function frame() {
       if (perf.time / perf.frames > 0.045 && quality === 'high') { applyQuality('low'); toast('Graphics quality lowered for smoother play (add ?q=high to force).'); }
     }
   }
-  const k = 1 - Math.exp(-dt * 12);
+  FR.k = 1 - Math.exp(-dt * 12);
+  FR.dt = dt;
   // level of detail from last frame's camera (it moves a fraction of a metre per frame)
-  const lod = LOD[quality], cam = camera.position, focusKey = ctl.targetKey();
+  FR.lod = LOD[quality];
+  FR.focus = ctl.targetKey();
   crowd.begin();
   parts.begin();
-  for (const [h, w] of wizards) {
-    const px = w.root.position.x, pz = w.root.position.z;
-    w.root.position.x += (w.tx - w.root.position.x) * k;
-    w.root.position.z += (w.tz - w.root.position.z) * k;
-    let lift = 0;
-    for (const f of lifters) lift += f.lift!(h); // 魁地奇: riders fly
-    w.root.position.y = heightAt(w.root.position.x, w.root.position.z) + lift;
-    const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
-    w.body.rotation.y += turn * Math.min(1, dt * 14);
-    const speed = dt > 0 ? Math.hypot(w.root.position.x - px, w.root.position.z - pz) / dt : 0;
-    const d = Math.hypot(w.root.position.x - cam.x, w.root.position.y - cam.y, w.root.position.z - cam.z);
-    const mine = h === myHandle, focused = h === focusKey;
-    // (a stunned wizard lies down: only the full model does that)
-    w.far = !mine && !focused && d > lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
-    w.body.visible = !w.far;
-    w.label.show(focused || (!w.far && d < lod.label));
-    if (w.patronus.visible) {
-      w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
-      particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
-    }
-    if (w.far) {
-      // the crowd's walk: a bob twice per stride while moving
-      w.bob = ((w.bob ?? 0) + dt * Math.min(speed, 9) * 1.3) % Math.PI;
-      const col = farColors(w);
-      crowd.put(w.root.position.x, w.root.position.y + w.body.position.y, w.root.position.z, w.body.rotation.y, speed > 0.3 ? Math.abs(Math.cos(w.bob)) * 0.06 : 0, col.robe, col.trim);
-      w.castPending = false;
-      continue;
-    }
-    w.setMid(!mine && !focused && d > lod.mid);
-    const fire = w.update(dt, speed, w.castPending);
-    w.castPending = false;
-    w.root.updateMatrixWorld();
-    parts.add(w.root);
-    if (fire) particles.flash(w.wandTip.getWorldPosition(tmpTip), 0xfff2c0);
-  }
+  wizards.forEach(animWizard);
   crowd.end(quality === 'high');
   parts.end();
   herd.begin();
-  for (const [i, c] of creatures) {
-    c.root.position.x += (c.tx - c.root.position.x) * k;
-    c.root.position.z += (c.tz - c.root.position.z) * k;
-    c.root.position.y = heightAt(c.root.position.x, c.root.position.z);
-    c.root.rotation.y = -c.tf;
-    const d = Math.hypot(c.root.position.x - cam.x, c.root.position.y - cam.y, c.root.position.z - cam.z);
-    const focused = i === focusKey;
-    // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
-    c.root.visible = focused || d < lod.anim;
-    c.label.show(focused || d < lod.label);
-    if (c.root.visible) c.anim(clock);
-    else if (d < lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
-  }
+  creatures.forEach(animCreature);
   herd.end();
-  for (const b of bolts.values()) {
-    b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, k * 2);
-    b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, k * 2);
-    b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
-    particles.trail(b, b.position, b.userData.color ?? 0xffffff);
-    const spin = b.children[0];
-    if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
-  }
+  bolts.forEach(animBolt);
   boltBatch.update(bolts.values());
   fxm.update(dt);
   elderGlint.rotation.y += dt * 2;
@@ -1988,7 +1837,7 @@ function frame() {
       (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
     }
     let nearWillow = false;
-    if (!snap.willowCalm) for (const w of wizards.values()) if (Math.hypot(w.root.position.x - 45, w.root.position.z) < 9) { nearWillow = true; break; }
+    if (!snap.willowCalm) for (const w of wizards.values()) { const x = w.root.position.x - 45, z = w.root.position.z; if (x * x + z * z < 81) { nearWillow = true; break; } }
     world.tick(clock, dt, nearWillow, R.sunDir,
       { hour: snap.hour, banner: look.banner, focus: my?.root.position });
   }
@@ -1998,19 +1847,20 @@ function frame() {
   particles.update(dt, camera, R.renderer, R.day);
   // spells light up their surroundings: the pool goes to the bolts nearest the camera
   // (the light budget, lights.ts, then picks among these and every other light)
-  let nl = 0;
-  for (const b of bolts.values()) {
-    const l = (litPool[nl++] ??= { x: 0, y: 0, z: 0, color: 0, d: 0 });
-    l.x = b.position.x; l.y = b.position.y + 0.2; l.z = b.position.z; l.color = (b.userData.color as number) ?? 0xffffff; l.d = b.position.distanceToSquared(camera.position);
-  }
   lit.length = 0;
-  for (let i = 0; i < nl; i++) lit.push(litPool[i]);
-  lit.sort((a, b) => a.d - b.d);
+  bolts.forEach((b) => {
+    const l = (litPool[lit.length] ??= { x: 0.5, y: 0.5, z: 0.5, color: 0, d: 0.5 });
+    l.x = b.position.x; l.y = b.position.y + 0.2; l.z = b.position.z; l.color = (b.userData.color as number) ?? 0xffffff; l.d = b.position.distanceToSquared(camera.position);
+    // nearest first: an insertion sort in place (a sort() comparator's results are boxed, every frame)
+    let i = lit.length;
+    lit.push(l);
+    while (i > 0 && lit[i - 1].d > l.d) { lit[i] = lit[i - 1]; i--; }
+    lit[i] = l;
+  });
   R.setBoltLights(lit);
   probe.end('fx', tp); tp = probe.begin();
 
   ctl.update(dt);
-  pn.frame(dt);
   funWorld.frame(dt, snap);
   for (const f of feats) f.frame?.(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
@@ -2056,7 +1906,7 @@ const warmed = (async () => {
     herd.put(k, g.position, 0);
   }
   herd.end();
-  crowd.begin(); crowd.put(0, -200, 0, 0, 0, 0x222222, 0xffffff); crowd.end(true);
+  crowd.begin(); crowd.put(0, -200, 0, 0, 0, new THREE.Color(0x222222), new THREE.Color(0xffffff)); crowd.end(true);
   const far = 3000;
   ring(far, far, 0xffffff, 1, 2, 0.1); puff(far, far, 0xffffff); column(far, far, 0xffffff, 0.1); floatText(far, far, '1', '#fff'); lightning([far, far, far + 1, far], 0xffffff);
   scene.add(g);

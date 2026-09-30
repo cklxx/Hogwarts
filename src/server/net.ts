@@ -40,9 +40,9 @@ export const LIMITS: Record<string, [number, number]> = {
   unlearn: [2, 5],
   book: [4, 8],
   hotbar: [4, 8],
+  // the Restricted Section (kernel/seals.ts): the panel, reading a page and breaking a seal share one budget (the
+  // kernel allows 3 failed attempts per seal every 10 minutes, and a page is read only at its landmark)
   seals: [4, 8],
-  readpage: [2, 5],
-  breakseal: [2, 5],
   equip: [4, 8],
   unequip: [4, 8],
   destroy: [2, 5],
@@ -59,6 +59,9 @@ export const LIMITS: Record<string, [number, number]> = {
   exams: [2, 5],
   sit: [0.2, 3],
   examboard: [2, 5],
+  // 今日课表 (kernel/quests.ts): the slip polls every 20 s; 飞路网 / broom (kernel/travel.ts) have kernel cooldowns too
+  quests: [0.5, 3],
+  travel: [2, 5],
   // 不公平，但好玩 (README): Dumbledore's Army status/join/leave/veto, and studying a spell that hit you
   da: [1, 5],
   study: [1, 3],

@@ -11,6 +11,7 @@ import { tr } from '../client/i18n.js';
 import { TITLES } from '../src/lore/titles.js';
 import { FIZZLE_QUIPS, FORGE_NAME_EGGS, GRINGOTTS } from '../src/lore/memes.js';
 import { FORBIDDEN_LOOKS } from '../src/shared/glamour.js';
+import { breakSeal, readSealPage } from '../src/kernel/seals.js';
 
 const CJK = /[一-鿿]/;
 function mk() {
@@ -260,8 +261,8 @@ describe('every English message a browser player meets has a Chinese translation
       errOf(() => w.forgeItem(a.id, a.id, { name: 'Big', slot: 'amulet', mods: { maxHp: 60 } })),
       errOf(() => w.forgeItem(a.id, a.id, { name: 'Odd', slot: 'hat', mods: {} })),
       errOf(() => w.forgeItem(a.id, a.id, { name: 'Odd', slot: 'amulet', mods: { luck: 3 } as never })),
-      errOf(() => w.readSealPage(a.id, 9)),
-      errOf(() => w.breakSeal(a.id, 2, [])),
+      errOf(() => readSealPage(w, a.id, 9)),
+      errOf(() => breakSeal(w, a.id, 2, [])),
       'bolt power 40 clamped to your cap 16',
       'The spell found nothing to act on (no target in range?). No mana spent.',
       ':silk is year-2 transfiguration (you are year 1) — 八眼巨蛛丝：绒光加一层清漆般的光泽是 2 年级的变形术',

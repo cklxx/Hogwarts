@@ -52,21 +52,21 @@ export function createHerd(scene: THREE.Scene, max = 512) {
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
   return {
-    begin() { for (const e of kinds.values()) e.n = 0; },
+    begin() { kinds.forEach((e) => { e.n = 0; }); },
     put(kind: CreatureKind, pos: THREE.Vector3, yaw: number) {
       const e = kinds.get(kind) ?? bake(kind);
       if (e.n >= max) return;
       e.mesh.setMatrixAt(e.n++, m.compose(p.copy(pos), q.setFromAxisAngle(up, yaw), one));
     },
     end() {
-      for (const e of kinds.values()) {
+      kinds.forEach((e) => {
         e.mesh.count = e.n;
         e.mesh.visible = e.n > 0;
-        if (!e.n) continue;
+        if (!e.n) return;
         e.mesh.instanceMatrix.clearUpdateRanges();
         e.mesh.instanceMatrix.addUpdateRange(0, e.n * 16);
         e.mesh.instanceMatrix.needsUpdate = true;
-      }
+      });
     },
   };
 }

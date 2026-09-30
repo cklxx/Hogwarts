@@ -20,9 +20,16 @@ export function createPartBatcher(scene: THREE.Scene) {
   const partsOf = new WeakMap<THREE.Object3D, THREE.Mesh[]>();
   const shown = (o: THREE.Object3D, root: THREE.Object3D) => { for (let x: THREE.Object3D | null = o; x && x !== root.parent; x = x.parent) if (!x.visible) return false; return true; };
 
+  /** Each part's group key, made once (not a new string per part per frame) and again only if the part changes. */
+  const keys = new WeakMap<THREE.Mesh, { geo: THREE.BufferGeometry; mat: THREE.Material; flags: number; key: string }>();
+  function keyOf(m: THREE.Mesh) {
+    const mat = m.material as THREE.Material, flags = (m.castShadow ? 2 : 0) | (m.receiveShadow ? 1 : 0);
+    let k = keys.get(m);
+    if (!k || k.geo !== m.geometry || k.mat !== mat || k.flags !== flags) keys.set(m, (k = { geo: m.geometry, mat, flags, key: `${m.geometry.uuid}|${mat.uuid}|${flags}` }));
+    return k.key;
+  }
   function group(m: THREE.Mesh): Group {
-    const mat = m.material as THREE.Material;
-    const key = `${m.geometry.uuid}|${mat.uuid}|${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0}`;
+    const key = keyOf(m);
     let g = groups.get(key);
     if (!g) {
       g = { mesh: make(m, 16), n: 0, idle: 0 };
@@ -50,7 +57,7 @@ export function createPartBatcher(scene: THREE.Scene) {
   }
 
   return {
-    begin() { for (const g of groups.values()) g.n = 0; },
+    begin() { groups.forEach((g) => { g.n = 0; }); },
     /** Draw this model's shared parts instanced this frame (instead of one by one). */
     add(root: THREE.Object3D) {
       let parts = partsOf.get(root);
@@ -59,24 +66,24 @@ export function createPartBatcher(scene: THREE.Scene) {
         root.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.userData.batch) { o.layers.set(LAYER); parts!.push(o as THREE.Mesh); } });
         partsOf.set(root, parts);
       }
-      for (const m of parts) {
+      for (let i = 0; i < parts.length; i++) {
+        const m = parts[i];
         if (!shown(m, root)) continue;
         const g = group(m);
         g.mesh.setMatrixAt(g.n++, m.matrixWorld);
       }
     },
     end() {
-      for (const [k, g] of groups) {
+      groups.forEach((g, k) => {
         const im = g.mesh;
         im.count = g.n;
         im.visible = g.n > 0;
         if (g.n) {
           g.idle = 0;
-          im.instanceMatrix.clearUpdateRanges();
-          im.instanceMatrix.addUpdateRange(0, g.n * 16);
+          // the whole (small: at most twice what is used) buffer, not a range: addUpdateRange allocates per call
           im.instanceMatrix.needsUpdate = true;
         } else if (++g.idle > 600) { scene.remove(im); im.dispose(); groups.delete(k); } // (a look nobody wears any more)
-      }
+      });
     },
   };
 }

@@ -25,6 +25,7 @@
 import { z } from 'zod';
 import type { House } from '../shared/constants.js';
 import type { Feature } from './feature.js';
+import { inMatch } from './duelclub.js';
 import type { Vec2, Wizard } from './types.js';
 import type { World } from './world.js';
 
@@ -111,7 +112,7 @@ export const qdPlaying = (world: World, wid: string) => { const m = world.qd.mat
 /** On this match's roster at all (called or playing). */
 export const qdOnTeam = (world: World, wid: string) => { const m = world.qd.match; return !!m && m.phase !== 'done' && !!m.roster[wid]; };
 /** In the Duelling Club (queued or in a match): not free for Quidditch. */
-const inDuel = (world: World, wid: string) => { const d = world.duel; return d.queue.some((q) => q.id === wid) || (!!d.match && (d.match.a === wid || d.match.b === wid)); };
+const inDuel = (world: World, wid: string) => { const d = world.duel; return d.queue.some((q) => q.id === wid) || d.queue2.some((q) => q.id === wid) || inMatch(d, wid); };
 
 function schedule(world: World) {
   const len = world.term.endsAt - world.term.startedAt;
@@ -208,7 +209,7 @@ function startPlay(world: World, m: QdMatch) {
   m.until = world.now + s.play;
   m.snitchAt = world.now + s.snitch;
   // NPCs fill each side: their own house first, then guests nobody else has taken
-  const npcs = [...world.wizards.values()].filter((w) => w.npc && world.isActive(w) && !m.roster[w.id] && !inDuel(world, w.id));
+  const npcs = [...world.wizards.values()].filter((w) => w.npc && !w.heldBy && world.isActive(w) && !m.roster[w.id] && !inDuel(world, w.id));
   for (const side of [0, 1] as const) {
     const have = () => Object.values(m.roster).filter((x) => x.side === side).length;
     for (const w of [...npcs.filter((x) => x.house === m.sides[side]), ...npcs.filter((x) => x.house !== m.sides[side])]) {

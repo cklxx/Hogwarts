@@ -1,4 +1,4 @@
-import { ELEMENTS, HP_FLOOR, HP_FLOOR_FRAC, MANAREGEN_FLOOR_FRAC, MANA_FLOOR, MANA_FLOOR_FRAC, POWER_FLOOR, SPEED_FLOOR, WARD_MAX, WARD_MIN } from '../shared/constants.js';
+import { WARD_CD_S, WARD_MANA, WARD_MAX_S, ELEMENTS, HP_FLOOR, HP_FLOOR_FRAC, MANAREGEN_FLOOR_FRAC, MANA_FLOOR, MANA_FLOOR_FRAC, POWER_FLOOR, SPEED_FLOOR, WARD_MAX, WARD_MIN } from '../shared/constants.js';
 import { CREATURES } from '../kernel/creatures.js';
 import { MOD_LIMITS, gasLimit, itemBudget, maxNodes, spellbookSize } from '../kernel/progression.js';
 import type { Rulebook } from '../kernel/rulebook.js';
@@ -38,6 +38,14 @@ HOW A CAST WORKS (the rules that keep custom magic fair)
   6. Cooldown after a cast = 0.3s + mana/60 seconds. Delayed (after ...) blocks are separate
      transactions: each pays its own overhead when it fires, and fizzles alone. simulate_spell
      plans them too, as lines "t+1.5s: ..." checked against the mana you will have left.
+
+IN FLIGHT
+  A spell with a target (bolt / disarm / root at \`target\`, a chain's leaps) strikes that target or a foe
+  in its path, and flies through a housemate who stands in the way. A bolt aimed at a point (\`aim\`) and
+  the area spells (nova, storm) hit whatever they may harm — housemates too while friendly fire is on.
+  A Protego raised <= 0.35 s before a bolt lands sends it back. Too slow over MCP? The \`ward\` tool arms
+  it for up to ${WARD_MAX_S}s: the first hostile bolt or disarm meets a Protego raised that instant
+  (${WARD_MANA} mana when armed, one every ${WARD_CD_S}s, no other spell while it is up).
 
 BINDINGS
   self    you              target  the entity you aimed at (or nil)

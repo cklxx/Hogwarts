@@ -212,6 +212,14 @@ export const PRIMS: Prim[] = [
 ];
 
 export const PRIM_BY_NAME = new Map(PRIMS.map((p) => [p.name, p]));
+/** A feature plugin's own primitives (kernel/features.ts registers them at load): checked, gated and documented like the rest. */
+export function registerPrims(ps: readonly Prim[]) {
+  for (const p of ps) {
+    if (PRIM_BY_NAME.has(p.name)) continue;
+    PRIMS.push(p);
+    PRIM_BY_NAME.set(p.name, p);
+  }
+}
 export const SPECIAL_FORMS = ['do', 'let', 'set!', 'if', 'when', 'unless', 'and', 'or', 'repeat', 'each', 'min-by', 'max-by', 'after'] as const;
 /**
  * The year a special form is learned (unlisted: year 1). min-by / max-by and set! come after the third-year exam
@@ -220,7 +228,7 @@ export const SPECIAL_FORMS = ['do', 'let', 'set!', 'if', 'when', 'unless', 'and'
 export const SPECIAL_YEAR: Partial<Record<(typeof SPECIAL_FORMS)[number], number>> = { after: 2, 'set!': 4, 'min-by': 4, 'max-by': 4 };
 export const CONSTANTS = ['self', 'target', 'aim', 'object', 'true', 'false', 'nil', 'pi'] as const;
 export const ELEMENT_SET = new Set<string>(ELEMENTS);
-export const isEffect = (name: string): name is EffectPrimitive => (EFFECT_PRIMITIVES as readonly string[]).includes(name);
+export const isEffect = (name: string): name is EffectPrimitive => (EFFECT_PRIMITIVES as readonly string[]).includes(name) || PRIM_BY_NAME.get(name)?.kind === 'effect';
 
 export const SPECIAL_DOCS: Record<string, string> = {
   do: '(do e1 e2 ...) evaluate in order, return last.',

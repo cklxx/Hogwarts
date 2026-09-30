@@ -23,8 +23,10 @@
 | 新入学的巫师有保护期；恶咒和诅咒包裹碰不到新人和 NPC | `NEWCOMER_WARD`、`src/kernel/hex.ts` | TLA+ `Hex`（`FreshAndNpcImmune`） |
 | 恶咒永远不能把人打到昏迷，也不能让人永远不能动、永远说不了话 | `hexDot`、沉默冷却 | Lean `hex_dot_never_stuns`、`always_moves`；TLA+ `Hex`（`MovableAlways`、`SilenceNeverPermanent`） |
 | 属性再怎么被削也有下限（生命、法力、速度、伤害） | `src/kernel/progression.ts` | Lean `hp_floor`、`mana_floor`、`speed_floor`、`power_pos` |
-| 决斗俱乐部里只有两名选手能互相伤害，外人不能打、不能治 | `World.canHarm` 的决斗分支 | TLA+ `Hostility`（`DuelMutual`、`DuelIsolated`） |
+| 决斗俱乐部里只有对手之间能互相伤害：2v2 的队友互相打不到，出局的人碰不到也不会被碰，外人不能打、不能治 | `World.canHarm` 的决斗分支（`duelFoes`） | TLA+ `Hostility`（`DuelMutual`、`DuelTeammates`、`DuelIsolated`） |
 | 人永远优先：你一操作，Agent 立刻让路；暂停 Agent 后它只能看、能说话 | `World.setInput`、Agent 控制 | TLA+ `Control` |
+| 黑魔法也要过伤害判定：夺魂咒永远不能用在巫师身上（谁的意志都不能被夺走），厉火只烧 `canHarm` 允许烧的 | `src/kernel/dark.ts` | `test/dark.test.ts` |
+| 插件带来的 Runes 原语和内核自带的一样：受年级和封印门槛、法力上限、法令禁用的约束 | `registerPrims`、`FEATURE_SPELLS`（`src/kernel/magic.ts`） | `test/dark.test.ts`，TLA+ `CastTxn` |
 
 ## 3. 奖励有上限：刷不爆
 
@@ -44,6 +46,7 @@
 |---|---|---|
 | 每学期最多一位部长、一道法令；只有部长能颁布法令 | `World.endTerm` / `World.decree` | TLA+ `TermDecree` |
 | NPC 永远当不了部长，也当不了黑魔王 | `World.endTerm`、`darkLordEligible` | TLA+ `TermDecree`（`NPCsNeverRule`） |
+| 被附身的 NPC 还是 NPC：照样当不了部长，打不到新生、残血和低好几个年级的人；附身的人拿不到任何奖励 | `src/kernel/possess.ts`（`hit` 钩子用 `npcMayFight`） | `test/agents.test.ts` |
 | 邓布利多军每学期最多否决一次，只能在窗口期内、只能在达到法定人数时否决 | `World.vetoDecree` | TLA+ `DAVeto` |
 | 被集市禁令禁掉的咒语谁都施放不了，物品上的咒语也一样；禁令被否决后恢复 | `bannedListing` | TLA+ `Market`（`BannedNeverCast`、`VetoRestoresBan`），`test/market.test.ts` |
 | 老魔杖全服只有一根 | `src/kernel/world.ts` | TLA+ `ElderWand` |

@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { heightAt } from '../client/terrain.js';
 import { CameraRig, HARD_ONLY, INDOOR_DIST, INDOOR_PITCH, LOOK_Y, MARGIN, MIN_ARM, PIVOT_Y, ViewWorld, WITH_SOFT, type RigInput } from '../client/view.js';
-import { INTERIORS, STATIC_COLLIDERS, colliderOf, interiorAt, signedDistance, viewSolids } from '../src/shared/layout.js';
+import { HALL_CANDLES, INTERIORS, STATIC_COLLIDERS, colliderOf, interiorAt, signedDistance, viewSolids } from '../src/shared/layout.js';
 import { OBSTACLES, mulberry32 } from '../src/shared/map.js';
 
 const world = new ViewWorld(viewSolids(heightAt));
@@ -91,6 +91,15 @@ describe('the camera\'s picture of the world', () => {
     expect(world.cast(tree.x - 8, y, tree.z, tree.x + 8, y, tree.z, 0, HARD_ONLY)).toBe(1);
     expect(world.cast(tree.x - 8, y, tree.z, tree.x + 8, y, tree.z, 0, WITH_SOFT)).toBeLessThan(0.5);
     expect(world.cast(tree.x - 8, g + 1, tree.z, tree.x + 8, g + 1, tree.z, 0, HARD_ONLY)).toBeLessThan(0.5);
+  });
+
+  it('the Great Hall\'s floating candles hide you (the fade comes on) but never stop the camera', () => {
+    const c = HALL_CANDLES[19];
+    // from 3 m up and 4 m south of a candle, down through it to a wizard's chest (the hall's roof hidden: inside)
+    const [ax, ay, az, bx, by, bz] = [c.x, c.y + 3, c.z + 4, c.x, 1.1, c.z - (4 * (c.y - 1.1)) / 3];
+    expect(world.cast(ax, ay, az, bx, by, bz, MARGIN, HARD_ONLY, 0)).toBe(1);
+    expect(world.cast(ax, ay, az, bx, by, bz, 0, WITH_SOFT, 0)).toBeLessThan(0.6);
+    expect(world.solids[world.hit].c.label).toBe('Candle');
   });
 
   it('a long house\'s roof overhangs its ends as drawn (a rhombus, not a box)', () => {
