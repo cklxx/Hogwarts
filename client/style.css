@@ -977,3 +977,13 @@ body:has(#tutorial:not([hidden])) #goal { display: none; }
 body.touch #banner { pointer-events: auto; }
 body.touch button.x { width: calc(46px * var(--u)); height: calc(46px * var(--u)); }
 body.touch button.x svg.ic { width: calc(28px * var(--u)); height: calc(28px * var(--u)); }
+/* the spellbook on a phone: a template first (above the list), the Runes source only behind 看代码 */
+.touch-only { display: none; }
+body.touch .touch-only { display: revert; }
+body.touch #book .sub.desk { display: none; }
+body.touch #book .cols:has(#sp-tpl:not([hidden])) .page.r { order: -1; border-radius: calc(6px * var(--u)) calc(6px * var(--u)) 0 0; }
+body.touch #book:not([data-code]) .editor:has(#sp-tpl:not([hidden])) :is(#sp-src, details, #sp-agent-btn, .fields label:has(#sp-inc)) { display: none; }
+body.touch #book .editor:not(:has(#sp-tpl:not([hidden]))) #sp-code { display: none; }
+#goal .g-go { flex: none; margin-left: calc(4px * var(--u)); padding: calc(2px * var(--u)) calc(12px * var(--u)); font-size: calc(14px * var(--t)); }
+/* an open sheet (the spellbook, the trunk, …) is the whole screen on a phone: today's lessons wait under it */
+body.touch:has(.sheet:not([hidden])) #quests { display: none; }

@@ -1073,6 +1073,8 @@ export function createControls(d: ControlsDeps) {
     targetKey: () => target ?? hovered,
     /** The locked target only (view.ts fades what hides it and x-rays it). */
     lockedTarget: () => target,
+    /** Walk there by the paths (a tap on an event slip). */
+    walkTo: (x: number, z: number) => { lastGoto = 0; walkTo(x, z); },
     keydown, update, hud, castSlot, castKey, castOnSelf, clearTarget, toggleHelp,
     helpOpen: () => !$('#helppanel').hidden,
     notify: (ev: 'book' | 'menu' | 'owl') => tutorial.notify(ev),

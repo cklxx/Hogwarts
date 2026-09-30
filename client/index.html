@@ -200,7 +200,8 @@
       <div class="cols">
         <section class="page l">
           <h2><span data-zh="咒语书 <small class='lat'>Liber Incantationum</small>">Spellbook <small class="lat">Liber Incantationum</small></span></h2>
-          <p class="sub" data-zh="咒语就是 Runes 程序：点一条来读、来改，或者从模板开始 · <kbd>B</kbd> 合上">Spells are Runes programs: pick one to read or change, or start from a template · <kbd>B</kbd> closes</p>
+          <p class="sub desk" data-zh="咒语就是 Runes 程序：点一条来读、来改，或者从模板开始 · <kbd>B</kbd> 合上">Spells are Runes programs: pick one to read or change, or start from a template · <kbd>B</kbd> closes</p>
+          <p class="sub touch-only" data-zh="选一个模板，拖一拖数字，点「铸造」：它就是你自己的咒语。想看背后的代码再点「看代码」。">Pick a template, slide the numbers, tap Forge: it is your own spell. Tap Code to see what is behind it.</p>
           <ul id="book-list"></ul>
           <div id="book-bar" aria-label="Hotbar"></div>
           <div class="folio" data-zh="— 三 —">— iii —</div>
@@ -219,6 +220,7 @@
             <button id="sp-forge" data-zh="铸造">Forge</button>
             <button id="sp-cast" class="ghost" title="Cast the selected spell at your aim" data-zh-title="对准瞄准点施放所选咒语" data-zh="施放">Cast</button>
             <button id="sp-forget" class="ghost quiet" data-zh="遗忘">Unlearn</button>
+            <button id="sp-code" class="ghost touch-only" data-zh="看代码">Code</button>
             <button id="sp-agent-btn" class="ghost" title="Open the owl to your agent with this draft and its error" data-zh-title="把这段草稿和报错写进给 Agent 的猫头鹰"><svg class="ic" aria-hidden="true"><use href="#i-owl"/></svg><span data-zh="让 Agent 帮我写">Ask my agent</span></button>
           </div>
           <pre id="sp-out" data-zh="在左边选一个咒语阅读它的源码，或者写一个新的。模拟是免费的。">Pick a spell on the left to read its source, or write a new one. Simulate is free.</pre>
