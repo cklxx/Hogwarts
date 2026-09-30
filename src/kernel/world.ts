@@ -1585,6 +1585,13 @@ export class World {
    * The reputation a Minister needs: the Rulebook's figure for a standard 15-minute term, scaled down with a shorter
    * one (a 5-minute LAN term needs a third), never above the rule and never below 10.
    */
+  /** Played this term: seen since it began, or online now (who may hold office, and whose reputation decays at its end). */
+  playedThisTerm(w: Wizard) { return w.lastSeenAt >= this.term.startedAt || this.online(w); }
+  /** Who would take office if the term ended now (progression.ts electMinister): a player seen this term, never an NPC. */
+  ministerElect(): Wizard | undefined {
+    const all = [...this.wizards.values()];
+    return all[electMinister(all.map((w) => ({ reputation: w.reputation, barred: w.npc || !this.playedThisTerm(w) })), this.ministerBar())];
+  }
   ministerBar(): number {
     const r = this.rules.terms;
     return Math.max(Math.min(r.ministerMinReputation, 10), Math.round(r.ministerMinReputation * Math.min(1, r.lengthSeconds / 900)));
@@ -2100,7 +2107,7 @@ export class World {
     const w = this.need(wid);
     if (w.decreeCharges < 1) {
       const m = this.flags.ministerId ? this.wizards.get(this.flags.ministerId) : undefined;
-      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the player with the highest reputation (min ${this.ministerBar()}; never an NPC).`);
+      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the player seen this term with the highest reputation (min ${this.ministerBar()}; never an NPC).`);
     }
     const full = { ...patch } as Record<string, unknown>;
     if (proclamation) full.proclamation = proclamation;
@@ -2187,7 +2194,7 @@ export class World {
       this.emit('term', l.en, { zh: l.zh });
     }
     for (const w of this.wizards.values()) w.decreeCharges = 0;
-    const all = [...this.wizards.values()], top = all[electMinister(all, this.ministerBar())]; // players only (NPCs never rule)
+    const top = this.ministerElect(); // players seen this term only (NPCs never rule)
     const cupZh = winner ? `${zhHouse(winner)}以 ${Math.round(points[winner])} 分赢得学院杯！城堡挂满了${zhHouse(winner)}的旗帜。` : '没有学院得分。';
     const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
     if (top) {
@@ -2205,7 +2212,7 @@ export class World {
     for (const w of this.wizards.values()) {
       const before = w.reputation;
       // only those who played this term: the absent keep what they had (a week away no longer means starting over)
-      if (w.npc || w.lastSeenAt >= this.term.startedAt || this.online(w)) w.reputation *= this.rules.terms.reputationDecay;
+      if (w.npc || this.playedThisTerm(w)) w.reputation *= this.rules.terms.reputationDecay;
       w.termReputation = 0;
       // say it: every playtester thought the halving was a bug
       if (!w.npc && before >= 1 && w.reputation < before) {
@@ -3246,8 +3253,8 @@ export class World {
       ...Object.assign({}, ...HOOKS.board.map((f) => f.view.board(this))), // e.g. the Dark Lord
       ministerMinReputation: this.ministerBar(),
       // who would take office if the term ended now (NPCs on the board never do)
-      ministerInLine: ((all) => all[electMinister(all, this.ministerBar())]?.name ?? null)([...this.wizards.values()]),
-      ministerRule: `At the end of each term the highest-reputation player (min ${this.ministerBar()}; NPCs never hold office) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
+      ministerInLine: this.ministerElect()?.name ?? null,
+      ministerRule: `At the end of each term the highest-reputation player who played that term (min ${this.ministerBar()}; NPCs and absentees never hold office) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
       houseCups: this.houseCups.slice(-5),
       loopholeFirstFoundBy: this.flags.loopholeFoundBy,
     };

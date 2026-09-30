@@ -248,9 +248,9 @@ describe('限考: only the first RANKED_SITS sittings of an exam each week are r
 
 describe('魔法部长: NPCs never hold office', () => {
   it('electMinister picks the top player, never an NPC however far ahead; ties go to the earlier', () => {
-    expect(electMinister([{ reputation: 500, npc: true }, { reputation: 40, npc: false }], 33)).toBe(1);
-    expect(electMinister([{ reputation: 500, npc: true }, { reputation: 20, npc: false }], 33)).toBe(-1);
-    expect(electMinister([{ reputation: 40, npc: false }, { reputation: 40, npc: false }], 33)).toBe(0);
+    expect(electMinister([{ reputation: 500, barred: true }, { reputation: 40, barred: false }], 33)).toBe(1);
+    expect(electMinister([{ reputation: 500, barred: true }, { reputation: 20, barred: false }], 33)).toBe(-1);
+    expect(electMinister([{ reputation: 40, barred: false }, { reputation: 40, barred: false }], 33)).toBe(0);
     expect(electMinister([], 0)).toBe(-1);
   });
 
@@ -262,7 +262,7 @@ describe('魔法部长: NPCs never hold office', () => {
     const p = join(w, 'Luna', 'Ravenclaw', 120, 100);
     p.reputation = w.ministerBar() + 5;
     expect(w.leaderboard().ministerInLine).toBe('Luna');
-    expect(w.leaderboard().ministerRule).toMatch(/NPCs never hold office/);
+    expect(w.leaderboard().ministerRule).toMatch(/NPCs and absentees never hold office/);
     w.term.endsAt = w.now + 0.01;
     run(w, 0.1);
     expect(w.flags.ministerId).toBe(p.id);

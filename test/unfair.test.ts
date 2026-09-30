@@ -12,7 +12,7 @@ import { XP_FOR_YEAR, derived, duelSteal, hexHpFloor, jointPct, spellbookSize, s
 import { applyPatch, defaultRulebook } from '../src/kernel/rulebook.js';
 import { AGENT_TOOL_COST } from '../src/kernel/features.js';
 import {
-  DA_JOINT_PCT, DA_QUORUM, DA_VETO_WINDOW_S, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP, DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT,
+  DA_JOINT_PCT, DA_JOINT_WINDOW_S, DA_QUORUM, DA_VETO_WINDOW_S, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP, DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT,
   SILENCE_COOLDOWN_S, STEAL_CAP_PCT, STUDY_DELAY_S, STUDY_MEMORY_S, VICTIM_HEX_PER_10MIN,
 } from '../src/shared/constants.js';
 import { LAWLESS_ZONE, SPAWN, ZONES, inZone, mulberry32 } from '../src/shared/map.js';
@@ -275,7 +275,7 @@ describe("Dumbledore's Army (邓布利多军)", () => {
     expect(w.rules.magic.manaRegen).toBe(defaultRulebook().magic.manaRegen);
   });
 
-  it('joint spell: 3 members on one target within 4 s deal ×1.25 — never more, and never for outsiders or stragglers', () => {
+  it('joint spell: 3 members on one target within DA_JOINT_WINDOW_S deal ×1.25 — never more, and never for outsiders or stragglers', () => {
     const w = mk();
     const ms = army(w, 4);
     for (const x of ms) joinDA(w, x.id);
@@ -300,8 +300,8 @@ describe("Dumbledore's Army (邓布利多军)", () => {
     for (const x of m2) joinDA(w2, x.id);
     const c2 = creature(w2, 70, 60);
     const b2 = w2.damage(m2[0].id, c2.id, 10, 'arcane');
-    w2.now += 2.5; w2.damage(m2[1].id, c2.id, 10, 'arcane');
-    w2.now += 2.5;
+    w2.now += DA_JOINT_WINDOW_S * 0.6; w2.damage(m2[1].id, c2.id, 10, 'arcane');
+    w2.now += DA_JOINT_WINDOW_S * 0.6;
     expect(w2.damage(m2[2].id, c2.id, 10, 'arcane')).toBeCloseTo(b2, 9);
   });
 });

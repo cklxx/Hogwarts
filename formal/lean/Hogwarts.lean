@@ -422,7 +422,7 @@ def DA_QUORUM : Nat := 3
 def DA_VETO_WINDOW_S : Nat := 180
 def DA_VETOES_PER_TERM : Nat := 1
 def DA_JOINT_MIN : Nat := 3
-def DA_JOINT_WINDOW_S : Nat := 4
+def DA_JOINT_WINDOW_S : Nat := 8
 def DA_JOINT_PCT : Nat := 125
 def STUDY_DELAY_S : Nat := 120
 def STUDY_MEMORY_S : Nat := 600
@@ -1258,8 +1258,9 @@ def agentLinkVectors : String :=
 
 /-! ## 魔法部长 — who takes office at the end of a term (src/kernel/progression.ts `electMinister`, World.endTerm)
 
-The highest-reputation *player* with at least the bar becomes Minister; ties go to the earlier wizard. NPCs stand on
-the leaderboard but never hold office (formal/tla/TermDecree.tla `NPCsNeverRule`, `MinisterIsPlayer`). Proved: the
+The highest-reputation candidate not barred with at least the bar becomes Minister; ties go to the earlier wizard.
+Barred (the Bool, `npc` below): an NPC, or a player not seen this term (World.ministerElect). NPCs stand on
+the leaderboard but never hold office, nor does an absentee (formal/tla/TermDecree.tla `NPCsNeverRule`, `MinisterIsPlayer`, `MinisterWasPresent`). Proved: the
 Minister is a player who reached the bar (`elect_never_npc`), has at least every player's reputation, NPCs not
 counted (`elect_top_player`), and the post stays vacant only when no player reaches the bar (`elect_vacant`). -/
 

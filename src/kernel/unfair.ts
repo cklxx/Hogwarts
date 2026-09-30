@@ -477,7 +477,7 @@ export const DA_FEATURE: Feature = {
   tools: [
     {
       name: 'dumbledores_army', title: "Dumbledore's Army", cost: 0, readOnly: true,
-      description: "邓布利多军: the underdogs' union. Whether you may join (reputation below 100 or below the median), its size and who is online (members see each other), the Minister's decree it may still veto (majority of ≥3 online members, within 180 s, once per term), and the joint-spell rule (3 members hitting one target within 4 s: ×1.25).",
+      description: `邓布利多军: the underdogs' union. Whether you may join (reputation below 100 or below the median), its size and who is online (members see each other), the Minister's decree it may still veto (majority of ≥3 online members, within 180 s, once per term), and the joint-spell rule (${DA_JOINT_MIN} members hitting one target within ${DA_JOINT_WINDOW_S} s: ×${DA_JOINT_PCT / 100}).`,
       input: {},
       run: (world, wid) => daState(world, wid),
     },

@@ -3,6 +3,7 @@ import { L, lang } from '../i18n';
 import { ic } from '../ink';
 import { daStanding, errHalf, esc, fmtClock, quorumMet, vetoPhase } from './logic';
 import type { DaView } from './types';
+import { DA_JOINT_WINDOW_S } from '../../src/shared/constants';
 
 /**
  * 邓布利多军 (key J): whether you may join, join / leave, how many are in and online against the quorum, the members
@@ -138,7 +139,7 @@ export const daFeature: ClientFeatureFactory = (d) => {
     hud() { if (!d.me()) return; da.render(); da.tick(document.getElementById('pn-top') ?? document); },
     top() {
       const joint = performance.now() < jointUntil || (live()?.jointBadge ?? 0) > 0;
-      return da.mini() + (joint ? `<div class="joint">${ic('patronus')}<span><b>${L('联合守护神', 'Joint Patronus')}</b> · ${L('伤害 ×1.25：三名以上成员 4 秒内打中同一个目标', 'damage ×1.25: three or more members hit one target within 4 s')}</span></div>` : '');
+      return da.mini() + (joint ? `<div class="joint">${ic('patronus')}<span><b>${L('联合守护神', 'Joint Patronus')}</b> · ${L(`伤害 ×1.25：三名以上成员 ${DA_JOINT_WINDOW_S} 秒内打中同一个目标`, `damage ×1.25: three or more members hit one target within ${DA_JOINT_WINDOW_S} s`)}</span></div>` : '');
     },
     keydown(e) {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.key.toLowerCase() !== 'j') return false;
