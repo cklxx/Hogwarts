@@ -40,4 +40,6 @@ NPCsNeverRule == \A n \in NPCs : charges[n] = 0
 RulesWithinConstitution == rule \in Lo..Hi
 OneDecreePerTerm == decreesThisTerm <= 1
 OnlyMinisterDecrees == \A w \in Wizards : charges[w] = 1 => w = minister
+\* progression.ts electMinister (Lean elect_never_npc): the office is a player's or vacant, whatever the NPCs' reputation
+MinisterIsPlayer == minister \in Players \cup {"none"}
 =============================================================================

@@ -40,7 +40,7 @@ import { EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
 import {
   MAX_ITEMS, derived, gasLimit, hexDotHp, hexPrice, hexTickDmg, moveSlow, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
-  darkLordTakes, duelSteal, focusAfter, jointPct, stealPct, vetoPasses,
+  darkLordTakes, duelSteal, electMinister, focusAfter, jointPct, stealPct, stunPaysRep, vetoPasses,
 } from './progression.js';
 import {
   AGENT_TOOL_COST, DA_JOINED, DA_JOINT, DA_LEFT, DA_MEMBER_JOINED, DA_OUTGROWN, DA_VETOED, DA_VOTE, DARK_LORD_FADES, DARK_LORD_FALLS, DARK_LORD_RISES,
@@ -51,6 +51,7 @@ import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './card
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
 import { inMatch } from './duelclub.js';
+import { spared, strikes } from './allies.js';
 import { FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
@@ -110,7 +111,7 @@ export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: numbe
   leviosa: { name: "It's Levi-O-sa", zh: '是羽加迪姆勒维奥萨', rep: 10, text: 'You knocked out a troll the way Ron did in 1991.', textZh: '你像 1991 年的罗恩一样打晕了一只巨怪。羽加迪姆勒维奥萨，yyds。' },
   elder_wand: { name: 'Master of the Elder Wand', zh: '老魔杖的主人', rep: 20, text: 'The wand chooses the wizard — and it chose whoever beat its last master.', textZh: '是魔杖选择巫师 —— 它选择了击败它上一任主人的人。' },
   seeker: { name: 'Seeker', zh: '找球手', rep: 10, text: 'Accio Firebolt! Fastest broom in the world.', textZh: '火弩箭飞来！世界上最快的扫帚。' },
-  first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned another wizard. Bow first next time.', textZh: '你击晕了另一个巫师。下次记得先鞠躬。' },
+  first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned a rival wizard. Bow first next time.', textZh: '你击晕了一位对手巫师。下次记得先鞠躬。' },
   // Granted privately (achievePrivately): a public announcement in the same tick would unmask the anonymous sender.
   dark_arts: { name: 'The Dark Arts', zh: '黑魔法', rep: 0, text: 'You posted a curse. The forge asked no questions. Nobody saw you do it — this time.', textZh: '你寄出了一个诅咒。锻造炉什么也没问。这一次，没有人看见。' },
   hello_world: { name: 'Hello, World', zh: '你好，世界', rep: 1, text: 'Your spell said hello to the world. Every great wizard starts here — even Hermione had a first program.', textZh: '你的咒语向世界问了好。每个伟大的巫师都从这里开始——赫敏也写过她的第一个程序。' },
@@ -1054,7 +1055,7 @@ export class World {
     if (!w) return [];
     const out: { from: string; kind: string; eta: number }[] = [];
     for (const p of this.projectiles.values()) {
-      if (p.owner === wid || !this.canHarm(p.owner, wid)) continue;
+      if (p.owner === wid || !strikes(this, p.owner, p.homing, wid)) continue;
       const rx = w.pos.x - p.pos.x, rz = w.pos.z - p.pos.z;
       const v2 = p.vel.x * p.vel.x + p.vel.z * p.vel.z;
       if (v2 < 1e-6) continue;
@@ -1098,7 +1099,8 @@ export class World {
   private tryReflect(p: Projectile, id: string): boolean {
     const w = this.wizards.get(id);
     if (!w || (p.kind !== 'bolt' && p.kind !== 'disarm') || p.owner === w.id || p.tags.includes('reflected')) return false;
-    if (!(w.st.shieldUntil > this.now && w.st.shield > 0 && this.now - (w.st.shieldAt ?? -1e9) <= PERFECT_PROTEGO_S)) return false;
+    const timed = w.st.shieldUntil > this.now && w.st.shield > 0 && this.now - (w.st.shieldAt ?? -1e9) <= PERFECT_PROTEGO_S;
+    if (!timed && !HOOKS.parry.some((f) => f.parry(this, w, p))) return false; // e.g. an armed ward (ward.ts)
     const from = this.entity(p.owner);
     const sp = Math.hypot(p.vel.x, p.vel.z) || this.rules.physics.projectileSpeed;
     const tx = from ? from.pos.x - w.pos.x : -p.vel.x, tz = from ? from.pos.z - w.pos.z : -p.vel.z;
@@ -1182,7 +1184,7 @@ export class World {
     this.emit('egg', `✨ A new sense settles into ${c.en}. (MCP: look.${c.look})`, { to: w.id, zh: `✨ 一种新的感知落在了${c.zh}。（MCP：look.${c.look}）` });
   }
 
-  /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last. */
+  /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last (no ally of the caster). */
   chain(w: Wizard, first: string, power: number, element: Element, jumps: number, tags: string[]) {
     const hit = new Set<string>();
     const pts: number[] = [w.pos.x, w.pos.z];
@@ -1196,7 +1198,7 @@ export class World {
       this.damage(w.id, cur, p, element, tags);
       p *= 0.7;
       const from = { ...e.pos };
-      cur = this.around(from, 8, (x) => !hit.has(x.id) && this.canHarm(w.id, x.id), w.id, 1)[0]?.id ?? '';
+      cur = this.around(from, 8, (x) => !hit.has(x.id) && strikes(this, w.id, first, x.id), w.id, 1)[0]?.id ?? ''; // never leaps to an ally (allies.ts)
     }
     this.fx({ k: 'chain', x: w.pos.x, z: w.pos.z, e: element, pts });
   }
@@ -1445,12 +1447,14 @@ export class World {
       const last = kw.lastDuel[w.id] ?? -1e9;
       let gain = 0;
       const fresh = this.now - w.createdAt < FRESH_SECONDS || w.npc;
+      // 以大欺小: a victim more than BULLY_YEAR_GAP years below you pays nobody anything (Lean stun_pays_rep)
+      const bully = !stunPaysRep(kw.year, w.year);
       // 输赢代价不对称: the share stolen grows with the victim's standing (5% … 20%, the Dark Lord 30%), and the
       // lawless zone doubles the duel (base and share, the share still ≤ 30%). Lean: duel_steal_cap, duel_conserves_curve.
       const dark = this.flags.darkLordId === w.id;
       const mult = this.inLawless(w.pos) ? LAWLESS_MULT : 1;
       let steal = 0, pct = 0;
-      if (this.now - last > 60 && !fresh) {
+      if (this.now - last > 60 && !fresh && !bully) {
         pct = stealPct(w.reputation, dark, this.rules.progression.duelRepStealPct, mult);
         steal = duelSteal(w.reputation, dark, this.rules.progression.duelRepStealPct, mult);
         w.reputation -= steal;
@@ -1458,15 +1462,16 @@ export class World {
         this.addRep(kw, gain, 'duels');
       }
       kw.lastDuel[w.id] = this.now;
-      const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
+      const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : bully ? ` (no reputation: they are ${kw.year - w.year} years below you)` : ' (no reputation: rematch too soon)';
       const q = this.stunQuip(w, kw, element);
       const extra = gain ? { en: `${pct ? `, ${pct}% of theirs` : ''}${mult > 1 ? ', doubled in the lawless forest' : ''}`, zh: `${pct ? `，夺走对方 ${pct}%` : ''}${mult > 1 ? '，无规则区翻倍' : ''}` } : { en: '', zh: '' };
-      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation${extra.en})` : why}.${q ? ` ${q.en}` : ''}`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}${extra.zh}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : '（重复击晕，不计声望）'}。${q ? q.zh : ''}` });
+      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation${extra.en})` : why}.${q ? ` ${q.en}` : ''}`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}${extra.zh}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : bully ? `（对方比你低 ${kw.year - w.year} 个年级，以大欺小不计声望）` : '（重复击晕，不计声望）'}。${q ? q.zh : ''}` });
       if (dark && gain) {
         const l = fill(this.quip(DARK_LORD_FALLS, w.handle, kw.handle), { name: w.name, k: kw.name, n: Math.round(steal) });
         this.emit('dark', l.en, { who: [kw.id, w.id], zh: l.zh });
       }
-      this.achieve(kw, 'first_blood');
+      // 决斗者 needs a real opponent: not an NPC, not a housemate caught by friendly fire (playtest round 2), not a much younger one
+      if (!w.npc && w.house !== kw.house && !bully) this.achieve(kw, 'first_blood');
       if (this.flags.elderWandHolder === w.id) this.transferElderWand(w, kw, 'defeated');
       this.runLaws('kill', kw, w.id);
     } else {
@@ -2092,7 +2097,7 @@ export class World {
     const w = this.need(wid);
     if (w.decreeCharges < 1) {
       const m = this.flags.ministerId ? this.wizards.get(this.flags.ministerId) : undefined;
-      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the wizard with the highest reputation (min ${this.ministerBar()}).`);
+      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the player with the highest reputation (min ${this.ministerBar()}; never an NPC).`);
     }
     const full = { ...patch } as Record<string, unknown>;
     if (proclamation) full.proclamation = proclamation;
@@ -2176,10 +2181,10 @@ export class World {
       this.emit('term', l.en, { zh: l.zh });
     }
     for (const w of this.wizards.values()) w.decreeCharges = 0;
-    const top = [...this.wizards.values()].filter((w) => !w.npc).sort((a, b) => b.reputation - a.reputation)[0];
+    const all = [...this.wizards.values()], top = all[electMinister(all, this.ministerBar())]; // players only (NPCs never rule)
     const cupZh = winner ? `${zhHouse(winner)}以 ${Math.round(points[winner])} 分赢得学院杯！城堡挂满了${zhHouse(winner)}的旗帜。` : '没有学院得分。';
     const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
-    if (top && top.reputation >= this.ministerBar()) {
+    if (top) {
       top.decreeCharges = 1;
       top.wasMinister = true;
       this.flags.ministerId = top.id;
@@ -2536,7 +2541,7 @@ export class World {
         for (const e of this.around(p.pos, 2.2, () => true, p.owner, 4)) {
           const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
           if (dist(e.pos, p.pos) > r + 0.45) continue;
-          if (!this.canHarm(p.owner, e.id)) continue;
+          if (!strikes(this, p.owner, p.homing, e.id)) continue; // a homing spell passes through the caster's allies (allies.ts)
           if (e.kind === 'wizard' && this.dodging(e.id)) continue; // 翻滚闪避: it flies past
           if (e.kind === 'wizard' && this.tryReflect(p, e.id)) break; // 完美格挡: back where it came from
           this.hit(p, e.id);
@@ -2643,7 +2648,7 @@ export class World {
     let t = c.target ? this.entity(c.target) : undefined;
     if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, o.pos) > 18)) { t = undefined; c.target = null; }
     if (!t) {
-      t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id) && !this.isBenign(e.id) && dist(e.pos, o.pos) < 16, c.id, 1)[0];
+      t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id) && !this.isBenign(e.id) && !spared(this, c.id, e.id) && dist(e.pos, o.pos) < 16, c.id, 1)[0];
       if (t) c.target = t.id;
     }
     if (t) {
@@ -3540,7 +3545,9 @@ export class World {
       darkLord: this.darkLordView(),
       darkLordRule: `The reputation #1 (min ${DARK_LORD_MIN_REP}, seen in the last ${DARK_LORD_SEEN_S / 60} minutes) is the Dark Lord: +${DARK_LORD_POWER_PCT - 100}% damage, whereabouts announced every ${DARK_LORD_BROADCAST_S}s, and a stun steals 30% of their reputation. A challenger needs 110% of theirs to take the mark.`,
       ministerMinReputation: this.ministerBar(),
-      ministerRule: `At the end of each term the highest-reputation wizard (min ${this.ministerBar()}) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
+      // who would take office if the term ended now (NPCs on the board never do)
+      ministerInLine: ((all) => all[electMinister(all, this.ministerBar())]?.name ?? null)([...this.wizards.values()]),
+      ministerRule: `At the end of each term the highest-reputation player (min ${this.ministerBar()}; NPCs never hold office) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
       houseCups: this.houseCups.slice(-5),
       loopholeFirstFoundBy: this.flags.loopholeFoundBy,
     };

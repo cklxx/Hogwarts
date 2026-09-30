@@ -1,5 +1,5 @@
-import type { House } from '../shared/constants.js';
-import { LANDMARKS } from '../shared/map.js';
+import { BULLY_YEAR_GAP, NEWCOMER_WARD_S, NPC_CALM_R, type House } from '../shared/constants.js';
+import { LANDMARKS, SPAWN } from '../shared/map.js';
 import { MEME, NPC_LINES, NPC_NIGHT, NPC_RIVAL, NPC_WEATHER, fill, houseLine, type Line } from '../lore/memes.js';
 import { CREATURES } from './creatures.js';
 import { dist } from './physics.js';
@@ -12,7 +12,8 @@ import { npcStock } from './market.js';
 /**
  * Non-player wizards. They are ordinary wizards in the kernel (same spells, same mana, same rules)
  * driven by a small brain that calls the same syscalls a player would. They never become Minister,
- * are worth no duel reputation, and only fight wizards who attack them first.
+ * are worth no duel reputation, and only fight wizards who attack them first — and then only a fair opponent
+ * (npcMayFight). Their spells and summons pass other players by (allies.ts `spared`).
  */
 interface Persona { name: string; house: House; favourite: string; patrol: string[]; lines: Line[] }
 
@@ -38,6 +39,18 @@ export function chatterPool(world: World, w: Wizard, p: Persona): Line[] {
     break;
   }
   return pool;
+}
+
+/**
+ * Whether an NPC answers an attack from `foe` (owner's playtest: a seventh-year NPC knocked out a hurt second-year
+ * by the spawn). A player more than BULLY_YEAR_GAP years below it, still under the newcomer ward, below 30% health,
+ * or either of them within NPC_CALM_R of the spawn: the NPC shields and walks on instead. NPCs fight NPCs freely.
+ */
+export function npcMayFight(world: World, npc: Wizard, foe: Wizard): boolean {
+  if (foe.npc) return true;
+  if (npc.year - foe.year > BULLY_YEAR_GAP || world.now - foe.createdAt < NEWCOMER_WARD_S) return false;
+  if (foe.hp < derived(foe, world.rules).maxHp * 0.3) return false;
+  return dist(foe.pos, SPAWN) > NPC_CALM_R && dist(npc.pos, SPAWN) > NPC_CALM_R;
 }
 
 const brains = new Map<string, { patrol: number; next: number; lastSay: number; grudge: string | null; grudgeUntil: number }>();
@@ -92,7 +105,7 @@ export function thinkNpcs(world: World) {
 
     // retaliate against a wizard who attacked us
     const foe = b.grudge ? world.wizards.get(b.grudge) : undefined;
-    if (foe && world.isActive(foe) && dist(foe.pos, w.pos) < 30 && world.canHarm(w.id, foe.id)) {
+    if (foe && world.isActive(foe) && dist(foe.pos, w.pos) < 30 && world.canHarm(w.id, foe.id) && npcMayFight(world, w, foe)) {
       world.setGoal(w.id, null);
       cast(world, w, w.year >= 2 && world.rand() < 0.25 ? 'Expelliarmus' : 'Stupefy', foe.id);
       return;

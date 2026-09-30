@@ -11,10 +11,11 @@ import { MARKET_FEATURE } from './market.js';
 import { QD_FEATURE } from './quidditch.js';
 import { QUESTS_FEATURE } from './quests.js';
 import { TRAVEL_FEATURE } from './travel.js';
+import { WARD_FEATURE } from './ward.js';
 import { WHEEL_FEATURE } from './wheel.js';
 
 // the Duelling Club before Quidditch: an NPC in a duel is the duel's, even if it is also on a team
-export const FEATURES: readonly Feature[] = [CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE];
+export const FEATURES: readonly Feature[] = [CHAT_FEATURE, MARKET_FEATURE, EXAMS_FEATURE, WHEEL_FEATURE, DUEL_FEATURE, QD_FEATURE, WARD_FEATURE, TRAVEL_FEATURE, QUESTS_FEATURE];
 export const FEATURE_BY_ID: ReadonlyMap<string, Feature> = new Map(FEATURES.map((f) => [f.id, f]));
 export const HOOKS = hookLists(FEATURES);
 

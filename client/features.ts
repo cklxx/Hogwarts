@@ -8,5 +8,6 @@ import { duelFeature } from './panels/duel';
 import { questsFeature } from './panels/quests';
 import { quidditchFeature } from './panels/quidditch';
 import { travelFeature } from './panels/travel';
+import { wardFeature } from './panels/ward';
 
-export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [chatFeature, duelFeature, quidditchFeature, travelFeature, questsFeature];
+export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [chatFeature, duelFeature, quidditchFeature, wardFeature, travelFeature, questsFeature];

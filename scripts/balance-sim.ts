@@ -10,7 +10,7 @@
  * Snare by the greenhouses, the Forbidden Forest (acromantulas), the troll's corner.
  */
 import { World, TICK } from '../src/kernel/world.js';
-import { rewardBase } from '../src/kernel/exams.js';
+import { GRADE_MULT, rewardBase } from '../src/kernel/exams.js';
 import { XP_FOR_YEAR } from '../src/kernel/progression.js';
 import type { Wizard } from '../src/kernel/types.js';
 
@@ -59,5 +59,11 @@ function run(spot: string, style: (typeof STYLES)[number]) {
 const rows = [];
 for (const spot of Object.keys(SPOTS)) for (const style of STYLES) rows.push(run(spot, style));
 console.table(rows);
-const r = rewardBase(YEAR);
-console.log(`O.W.L. exams, year ${YEAR}: an O pays ${r.xp} XP + ${r.reputation} reputation; 6 exams a week. At ~2 min per exam (the playtest): ${(r.xp / 2).toFixed(1)} XP/min while they last, then nothing until next week.`);
+// the exams a wizard of this year may sit (years 1 … YEAR), each an O at ~2 minutes (the playtests), first pass only
+const exams = Array.from({ length: YEAR }, (_, i) => (rewardBase(i + 1).xp * GRADE_MULT.O) / 2);
+const examMin = exams.reduce((a, b) => a + b, 0) / exams.length;
+// a typical hunter: the lower-risk styles (turret and kiter) on the pixie lawn, the snare and the forest; the troll is the gamble
+const typical = rows.filter((r) => r.spot !== 'troll' && r.style !== 'brawler').map((r) => Number(r.xpMin));
+const huntMin = typical.reduce((a, b) => a + b, 0) / typical.length;
+console.log(`O.W.L. exams for a year-${YEAR}: an O pays ${exams.map((x) => x * 2).join(' / ')} XP (exam years 1…${YEAR}); at ~2 min each ${examMin.toFixed(1)} XP/min while this week's first passes last, then nothing until next week.`);
+console.log(`Typical hunting (turret + kiter, pixies / snare / forest): ${huntMin.toFixed(1)} XP/min. Hunting ÷ exams = ${(huntMin / examMin).toFixed(2)} (target 0.7–1.3).`);
