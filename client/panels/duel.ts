@@ -15,6 +15,8 @@ interface DuelStatus { closed?: string | false | null; stage: { x: number; z: nu
 export interface DuelDeps {
   /** The feature's context (client/context.ts) takes the elements this makes: gone when the feature is reloaded. */
   own?: <T extends Element>(el: T) => T;
+  /** …and keeps its state across a hot update (FeatureContext.keep). */
+  keep?: <T>(name: string, save: () => T, load: (s: T) => void) => boolean;
   send: (o: unknown) => void;
   toast: (t: string) => void;
   du: () => DuSnap | undefined;
@@ -47,6 +49,7 @@ export function duelLine(du: DuSnap | undefined, st: DuelStatus | null, nameOf: 
 export function createDuel(d: DuelDeps) {
   let status: DuelStatus | null = null;
   let asked = 0;
+  d.keep?.('status', () => status, (s) => { status = s; });
   function slip(): HTMLElement | null {
     let el = document.getElementById('duelslip');
     if (el) return el;
@@ -107,7 +110,7 @@ export function createDuel(d: DuelDeps) {
 
 /** The Duelling Club as a client feature (client/features.ts). */
 export const duelFeature: ClientFeatureFactory = (d, ctx) => {
-  const ui = createDuel({ own: (el) => ctx.own(el), send: d.send, toast: d.toast, du: () => d.wire<DuSnap>('du'), nameOf: d.nameOf, myHandle: d.myHandle, myPos: d.myPos, camYaw: d.camYaw });
+  const ui = createDuel({ own: (el) => ctx.own(el), keep: (n, s, l) => ctx.keep(n, s, l), send: d.send, toast: d.toast, du: () => d.wire<DuSnap>('du'), nameOf: d.nameOf, myHandle: d.myHandle, myPos: d.myPos, camYaw: d.camYaw });
   // (G acts: not while you watch your agent play)
   return { id: 'duel', widgets: [{ id: 'duelslip', zh: '决斗俱乐部', en: 'Duelling Club' }], ...ui, keydown: (e) => !d.observing() && ui.keydown(e) };
 };

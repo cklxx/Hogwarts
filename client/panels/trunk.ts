@@ -71,6 +71,10 @@ export function trunkFeature(d: ClientDeps, ctx: FeatureContext): ClientFeature 
   let trunkMsg = '';
   let destroyArmed: string | null = null;
   let trunkRefetch = 0;
+  ctx.keep('trunk', () => ({ items: trunkItems, known: knownSpells && [...knownSpells], msg: trunkMsg, news: curseNews && { text: curseNews.text, left: curseNews.until - performance.now() } }), (s) => {
+    trunkItems = s.items; knownSpells = s.known && new Set(s.known); trunkMsg = s.msg;
+    curseNews = s.news && { text: s.news.text, until: performance.now() + s.news.left };
+  });
   /** The armory has arrived at least once (so an empty trunk really is empty). */
   let trunkKnown = false;
   let trunkOk = false;
