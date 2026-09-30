@@ -18,7 +18,7 @@ import { ELEMENT_ICON, ic, isLatin, spellIcon } from './ink';
 export interface MarketCard {
   id: string; v: number; name: string; incantation: string; author: string; handle: string; house: string; npc?: boolean;
   tags: string[]; effects: string[]; minYear: number; nodes: number; desc: { zh: string; en: string } | null;
-  versions: number; copies: number; forks: number; casts: number; casters: number; popularity: number;
+  versions: number; copies: number; forks: number; casts: number; casters: number; popularity: number; price?: number;
   parent?: { id: string; v: number; name: string; author: string };
   banned: boolean; promoted: boolean; yours: boolean; unpublished?: boolean;
 }
@@ -136,7 +136,7 @@ export function createMarket(book: HTMLElement, host: MarketHost) {
     $('.mk-list').innerHTML = r.listings.length ? r.listings.map((c) => `<li data-id="${esc(c.id)}" class="${c.id === sel ? 'sel' : ''}${c.banned ? ' banned' : ''}" tabindex="0">`
       + `<span class="sp-ic">${ic(cardIcon(c))}</span><span class="sp-tx"><b>${nameHtml(c.name)} <small class="mk-v">v${c.v}</small></b>`
       + `<small>${esc(c.author)}${c.npc ? ' 🤖' : ''} · ${yearText(c.minYear)} · ${c.tags.map((t) => esc(tagText(t))).join(' · ') || '—'}</small>`
-      + `<small class="mk-stats">${L(`抄 ${c.copies} · 改编 ${c.forks} · 施放 ${c.casters}`, `${c.copies} copies · ${c.forks} forks · ${c.casters} casters`)}</small></span>`
+      + `<small class="mk-stats">${c.price ? L(`${c.price} 加隆 · `, `${c.price} Galleons · `) : ''}${L(`抄 ${c.copies} · 改编 ${c.forks} · 施放 ${c.casters}`, `${c.copies} copies · ${c.forks} forks · ${c.casters} casters`)}</small></span>`
       + `<span class="mk-bs">${badges(c)}</span></li>`).join('')
       : `<li class="mk-empty">${L('这里还空着。发布第一个咒语吧：在右页选一个你自己写的咒语。', 'Nothing here yet. Publish the first: pick one of your own spells on the right.')}</li>`;
     const pages = Math.max(1, Math.ceil(r.total / PAGE));
@@ -180,7 +180,7 @@ export function createMarket(book: HTMLElement, host: MarketHost) {
       + `<p class="mk-meta">${vs} <span class="lat mk-inc">${esc(d.incantationOf)}</span> · ${d.tags.map((t) => `<span class="tb">${esc(tagText(t))}</span>`).join('')}</p>`
       + (d.banned ? `<p class="mk-banned">${ic('seal')}${L('这个咒语被魔法部法令禁用了：任何人施放它（包括抄本和一字不差的同款）都会失效。邓布利多军否决那道法令就能解禁。', 'Banned by Ministry decree: casting it (any copy, or the same words) fizzles for everyone. A Dumbledore\'s Army veto of that decree lifts the ban.')}</p>` : '')
       + (d.source !== null ? `<pre class="mk-src">${esc(d.source)}</pre>` : `<p class="hint">${L('作者已下架：现在只有作者能读源码；已有的抄本仍署作者的名字。', 'Unpublished: only its author can read the source now; copies keep their attribution.')}</p>`)
-      + `<p class="mk-stats hint">${L(`被抄 ${d.copies} 次 · 改编 ${d.forks} 个 · 别人施放 ${d.casts} 次（${d.casters} 人次）`, `${d.copies} copies · ${d.forks} forks · cast ${d.casts} times by others (${d.casters} caster-days)`)}</p>`
+      + `<p class="mk-stats hint">${d.price ? L(`价格 ${d.price} 加隆（抄或改编时付给作者，每人一次） · `, `price ${d.price} Galleons (paid to the author once, on copy or fork) · `) : ''}${L(`被抄 ${d.copies} 次 · 改编 ${d.forks} 个 · 别人施放 ${d.casts} 次（${d.casters} 人次）`, `${d.copies} copies · ${d.forks} forks · cast ${d.casts} times by others (${d.casters} caster-days)`)}</p>`
       + lineage + forks + acts + fork
       + `<p class="row"><button type="button" class="quiet mk-new">${ic('plus')}${L('发布我自己的咒语', 'Publish one of mine')}</button></p>`;
   }

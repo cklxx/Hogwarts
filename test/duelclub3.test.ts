@@ -177,7 +177,7 @@ describe('club NPCs fight', () => {
     for (const id of npcs) expect(m.stats[id]?.dealt ?? 0).toBeGreaterThan(0);
   });
 
-  it('never drafts an NPC more than BULLY_YEAR_GAP years above the player', () => {
+  it('an NPC far above the player is still drafted (round 5: none ever came), and fights at the player\'s level', () => {
     const w = mk();
     ensureNpcs(w, 1);
     const npc = [...w.wizards.values()].find((x) => x.npc)!;
@@ -185,10 +185,16 @@ describe('club NPCs fight', () => {
     const a = join(w, 'Firstie');
     duelJoin(w, a.id);
     run(w, DUEL_NPC_AFTER_S + 1);
-    expect(w.duel.match).toBeNull();
-    npc.year = 3;
-    run(w, 0.2);
     expect(w.duel.match).toMatchObject({ a: a.id, b: npc.id, npc: true });
+    run(w, DUEL_BOW_S + DUEL_COUNT_S + 0.5);
+    expect(w.duel.match?.phase).toBe('fight');
+    // its blow on a first-year: scaled by the bolt caps; the first-year's on it: by the health pools
+    const hpA = a.hp;
+    w.damage(npc.id, a.id, 20, 'arcane');
+    expect(hpA - a.hp).toBeLessThan(20 * 0.8);
+    const hpN = npc.hp;
+    w.damage(a.id, npc.id, 10, 'arcane');
+    expect(hpN - npc.hp).toBeGreaterThan(10);
   });
 });
 

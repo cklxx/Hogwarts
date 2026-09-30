@@ -2,6 +2,7 @@ import { CARD_DUP_GALLEONS, CARD_RARITIES, type CardRarity } from '../shared/con
 import { CARDS, CARD_BY_ID, CARD_SETS, cardsOfSet, type Card, type CardSetId } from '../lore/cards.js';
 import { CHESTS, type ChestSpot } from '../shared/chests.js';
 import { dist } from './physics.js';
+import { compass } from '../shared/reveal.js';
 import type { Wizard } from './types.js';
 import type { World } from './world.js';
 
@@ -134,7 +135,8 @@ export function chestClues(world: World, w?: Wizard) {
   return {
     left: left.length, total: CHESTS.length,
     where: left.map((c) => ({ en: c.en, zh: c.zh })),
-    ...(near ? { nearest: { en: near.c.en, zh: near.c.zh, distance: warm(near.d).en, distanceZh: warm(near.d).zh } } : {}),
+    // and which way (round 5: one found by warmth alone, the second never): a compass point, north = −z
+    ...(near ? { nearest: { en: near.c.en, zh: near.c.zh, distance: warm(near.d).en, distanceZh: warm(near.d).zh, ...(w ? { bearing: compass(Math.atan2(near.c.x - w.pos.x, -(near.c.z - w.pos.z))) } : {}) } } : {}),
   };
 }
 export { CHESTS, CARD_BY_ID };

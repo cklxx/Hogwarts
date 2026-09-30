@@ -114,7 +114,10 @@ export function analyze(source: string, limits?: CheckLimits): Analysis {
     const required = p.args.filter((x) => !x.optional).length;
     if (rest.length < required || (!p.variadic && rest.length > p.args.length)) {
       const sig = p.args.map((x) => (x.optional ? `${x.name}?` : x.name)).join(' ') + (p.variadic ? ' ...' : '');
-      throw new RuneError(`(${name} ${sig}) takes ${p.variadic ? 'at least ' : ''}${required}${p.args.length !== required ? '-' + p.args.length : ''} argument(s), got ${rest.length}`, n.line, n.col);
+      // point at the first argument too many, or say which is missing (round 5: "every error is at column 1")
+      const extra = !p.variadic && rest.length > p.args.length ? rest[p.args.length] : undefined;
+      const missing = rest.length < required ? p.args.filter((x) => !x.optional)[rest.length]?.name : undefined;
+      throw new RuneError(`(${name} ${sig}) takes ${p.variadic ? 'at least ' : ''}${required}${p.args.length !== required ? '-' + p.args.length : ''} argument(s), got ${rest.length}${missing ? ` — missing ${missing}` : extra ? ' — this one is extra' : ''}`, extra?.line ?? n.line, extra?.col ?? n.col);
     }
     prims.add(name);
     minYear = Math.max(minYear, p.year);

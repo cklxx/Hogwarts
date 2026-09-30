@@ -408,6 +408,8 @@ function jointBonus(world: World, by: string, dstId: string): number {
     if (e) world.fx({ k: 'patronus', x: e.pos.x, z: e.pos.z, r: 6 });
     const l = world.quip(DA_JOINT, dstId);
     world.emit('da', l.en, { zh: l.zh });
+    // and to each member in on it, privately (inbox): round 5 could not tell whether a joint strike had happened
+    for (const id of m.keys()) { const x = world.wizards.get(id); if (x && !x.npc) world.tell(x, { en: `🦌 Joint strike on ${e?.name ?? 'your target'}: ${n} members, your hits deal ×${DA_JOINT_PCT / 100} while you keep it up.`, zh: `🦌 联合一击成功：${n} 名成员一起打 ${e?.name ?? '目标'}，你们的伤害 ×${DA_JOINT_PCT / 100}。` }, 'da'); }
   }
   return pct / 100;
 }
