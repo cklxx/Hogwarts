@@ -21,7 +21,7 @@ import { createDynRes } from './dynres';
 import { instanceAlike } from './instancer';
 import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
-import { PANELS, agentView, agoText, createControls, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
+import { PANELS, agentView, isSubmitEnter, pageKey, agoText, createControls, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
 import { PAIR_TTL_S, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
 import { TIPS } from '../src/lore/memes';
@@ -122,8 +122,8 @@ async function gate(): Promise<string> {
       await readAccount(r);
       done(t);
     };
-    $<HTMLInputElement>('#gate-name').onkeydown = (e) => { if (e.key === 'Enter') $('#gate-go').click(); };
-    $<HTMLInputElement>('#gate-token').onkeydown = (e) => { if (e.key === 'Enter') $('#gate-login').click(); };
+    $<HTMLInputElement>('#gate-name').onkeydown = (e) => { if (isSubmitEnter(e)) $('#gate-go').click(); };
+    $<HTMLInputElement>('#gate-token').onkeydown = (e) => { if (isSubmitEnter(e)) $('#gate-login').click(); };
     setTimeout(() => $<HTMLInputElement>('#gate-name').focus(), 50);
   }).finally(stopTips);
 }
@@ -870,7 +870,8 @@ function menuInfo(url?: string) {
   else if (!mcpUrl) mcpUrl = account.mcpUrl || `${location.origin}/mcp`;
   // "$PWD" is expanded by the shell when the command is added, so the saved entry holds an absolute path and works from any directory
   // inside the desktop client (desktop/), its own --mcp-stdio mode is the bridge: nothing to check out, key from the keychain
-  const shell = (window as unknown as { __HOGWARTS_SHELL__?: { claudeCode?: string } }).__HOGWARTS_SHELL__;
+  const shell = (window as unknown as { __HOGWARTS_SHELL__?: { claudeCode?: string; keys?: { full: string; switch: string } } }).__HOGWARTS_SHELL__;
+  const switchKey = esc(shell?.keys?.switch ?? 'Ctrl+Shift+S');
   const bridge = shell?.claudeCode ?? `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
   const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
   $('#menu').innerHTML = `<h2>${ic('letter')}<span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button class="x" data-close="menu" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
@@ -882,7 +883,7 @@ function menuInfo(url?: string) {
     </section>
     ${pn.menuLinks(feats.map((f) => f.menu?.() ?? '').join(''))}
     <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
-    <p>${shell?.claudeCode ? L('<b>推荐：桌面客户端当桥</b>（在终端里运行一次；Agent 连的是这台服务器，密钥从系统钥匙串读，不写进任何配置。想接 Claude Desktop：按 <kbd>Ctrl+Shift+S</kbd> 回到启动器，点「写入 Claude Desktop」）：', '<b>Recommended: the desktop client as the bridge</b> (run it once in a terminal; the agent reaches this server and reads the key from the system keychain, never from a config file. For Claude Desktop: <kbd>Ctrl+Shift+S</kbd> back to the launcher, then "写入 Claude Desktop"):') : L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
+    <p>${shell?.claudeCode ? L(`<b>推荐：桌面客户端当桥</b>（在终端里运行一次；Agent 连的是这台服务器，密钥从系统钥匙串读，不写进任何配置。想接 Claude Desktop：按 <kbd>${switchKey}</kbd> 回到启动器，点「写入 Claude Desktop」）：`, `<b>Recommended: the desktop client as the bridge</b> (run it once in a terminal; the agent reaches this server and reads the key from the system keychain, never from a config file. For Claude Desktop: <kbd>${switchKey}</kbd> back to the launcher, then "写入 Claude Desktop"):`) : L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
     <p>${L('<b>HTTP 直连 + 配置头</b>（命令里是字面的 <code>${HOGWARTS_TOKEN}</code>，要用单引号；再在 shell profile 里 <code>export HOGWARTS_TOKEN=你的密钥</code>）：', '<b>Direct HTTP with a header</b> (the command holds a literal <code>${HOGWARTS_TOKEN}</code> in single quotes; put <code>export HOGWARTS_TOKEN=&lt;your key&gt;</code> in your shell profile):')}</p>
     <div class="op-cmd"><pre id="op-header">${esc(header)}</pre><button class="ghost" data-copy="op-header">${L('复制', 'Copy')}</button></div>
@@ -1123,7 +1124,7 @@ document.addEventListener('click', (e) => {
   else if ((e.target as HTMLElement).closest('#owlpop')) toggleOwl(true);
 });
 $<HTMLInputElement>('#owl-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { const i = e.target as HTMLInputElement; sendOwl(i.value); i.value = ''; }
+  if (isSubmitEnter(e)) { const i = e.target as HTMLInputElement; sendOwl(i.value); i.value = ''; }
 });
 $('#owl-send').onclick = () => { const i = $<HTMLInputElement>('#owl-input'); sendOwl(i.value); i.value = ''; i.focus(); };
 $('#owl-close').onclick = () => toggleOwl(false);
@@ -1649,13 +1650,14 @@ setInterval(() => {
 addEventListener('keydown', (e) => {
   const chat = chatBox;
   if (document.activeElement === chat) {
+    if (!pageKey(e)) return; // Enter / Escape for the input method (拼音 candidates), not for the chat line
     if (e.key === 'Enter') { sendChat(chat.value); chat.value = ''; chat.blur(); }
     if (e.key === 'Escape') chat.blur();
     return;
   }
   // typing never triggers game keys (O and T included)
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName ?? '')) {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && pageKey(e)) {
       const a = document.activeElement as HTMLElement;
       if (a === $('#owl-input')) toggleOwl(false);
       // the spellbook keeps your draft: Esc closes it straight from a field
@@ -1664,6 +1666,9 @@ addEventListener('keydown', (e) => {
     }
     return;
   }
+  // ⌘ / Ctrl / Alt combinations belong to the browser or the desktop shell (⌘V, ⌘T, ⇧⌘S, Ctrl+Shift+S…), not to
+  // the game's letter keys: ⌘V used to toggle watching, ⇧⌘S to walk backwards
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (pn.keydown(e)) return; // K O.W.L. (client/panels)
   if (fun.keydown(e)) return; // C 巧克力蛙画片 (client/panels/fun.ts)
   if (feats.some((f) => f.keydown?.(e))) return; // J 邓布利多军, R 禁书区, G 决斗俱乐部, P / F 魁地奇, … (client/features.ts)
