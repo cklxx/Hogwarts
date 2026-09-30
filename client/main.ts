@@ -845,7 +845,7 @@ async function showBoard() {
   b.innerHTML = `<h2>${ic('cup')}<span>${L('排行榜', 'Leaderboard')} <small>${L(`第 ${lb.term.n} 学期 · 剩余 <span class="num">${fmtT(lb.term.secondsLeft)}</span>`, `term ${lb.term.n} · <span class="num">${fmtT(lb.term.secondsLeft)}</span> left`)} · <kbd>L</kbd></small></span> <button class="x" data-close="board" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
     <p class="hp-line"><b>${L('学院分', 'House points')}:</b> ${Object.entries(lb.housePoints).map(([h, p]) => `<span>${ic(houseIcon(h))}${houseName(h)} <span class="num">${p}</span></span>`).join('')}</p>
     ${feats.map((f) => f.board?.(lb) ?? '').join('')}
-    <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : ((need: number) => L(`空缺${me ? `——你现在 ${Math.round(me.reputation)} 声望${me.reputation >= need ? '，学期结束时若你最高就当选' : `，还差 ${Math.ceil(need - me.reputation)}`}` : ''}`, `vacant${me ? ` — you have ${Math.round(me.reputation)} reputation${me.reputation >= need ? ': top the board at term end to take office' : `, ${Math.ceil(need - me.reputation)} to go`}` : ''}`))(Number(lb.ministerMinReputation ?? 100))}<br/><small>${L(`每学期结束时，声望最高（至少 ${Number(lb.ministerMinReputation ?? 100)}）的玩家成为魔法部长，可以颁布一道法令改写世界规则；学期结束时每人的声望减半。`, esc(lb.ministerRule))}</small></p>
+    <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : ((need: number) => L(`空缺${me ? `——你现在 ${Math.round(me.reputation)} 声望${me.reputation >= need ? '，学期结束时若你最高就当选' : `，还差 ${Math.ceil(need - me.reputation)}`}` : ''}`, `vacant${me ? ` — you have ${Math.round(me.reputation)} reputation${me.reputation >= need ? ': top the board at term end to take office' : `, ${Math.ceil(need - me.reputation)} to go`}` : ''}`))(Number(lb.ministerMinReputation ?? 100))}<br/><small>${L(`每学期结束时，这学期来过的玩家里声望最高（至少 ${Number(lb.ministerMinReputation ?? 100)}）的成为魔法部长，可以颁布一道法令改写世界规则；这学期来过的人声望按比例带进下学期（没来的人不变）。`, esc(lb.ministerRule))}</small></p>
     <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th></tr>
     ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${badges(w.handle, true)}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
     ${lb.loopholeFirstFoundBy ? `<p>${ic('star')} ${L('第一个发现韦斯莱漏洞的人', 'First to find the Weasley Loophole')}: <b>${esc(lb.loopholeFirstFoundBy)}</b></p>` : ''}`;
@@ -1800,7 +1800,7 @@ function frame() {
     perf.frames++; perf.time += dt;
     if (perf.time > 3) {
       perf.done = true;
-      if (perf.time / perf.frames > 0.045 && quality === 'high') { applyQuality('low'); toast('Graphics quality lowered for smoother play (add ?q=high to force).'); }
+      if (perf.time / perf.frames > 0.045 && quality === 'high') { applyQuality('low'); toast(L('画质已自动调低，画面更流畅（地址后加 ?q=high 可强制高画质）。', 'Graphics quality lowered for smoother play (add ?q=high to force).')); }
     }
   }
   FR.k = 1 - Math.exp(-dt * 12);

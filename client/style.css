@@ -903,3 +903,14 @@ body:has(#tutorial[data-over]:not([hidden])) #seals { top: calc(var(--tut-over, 
 /* a toast never hides behind (or under) the coach mark at the bottom: it rises above it (--tut-b, main.ts trackBars) */
 body:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #toast { bottom: calc(var(--bars-h, calc(150px * var(--u))) + var(--tut-b, calc(56px * var(--u))) + calc(34px * var(--u))); }
 @media (max-width: 520px) { body:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #hotbar > div.sel > span { display: none; } }
+/* a portrait phone (the 2026-09-30 walk-through): the centre banner, today's lessons and the chat tabs piled onto the
+   wizard. The banner is smaller and higher; the chat tabs step aside while the coach mark sits at the bottom
+   (the quill on the right still opens chat); today's lessons start folded (panels/quests.ts). */
+@media (max-width: 520px) {
+  #banner { top: 18%; padding: calc(6px * var(--u)) calc(16px * var(--u)) calc(8px * var(--u)); font-size: calc(15px * var(--t)); max-width: calc(100vw - calc(48px * var(--u))); }
+  #banner::before, #banner::after { height: calc(8px * var(--u)); }
+  body:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #chatlog { display: none; }
+  /* the feed: only its newest line, smaller (two NPC scuffles filled the screen) */
+  #feed > div:not(:last-child) { display: none; }
+  #feed > div { font-size: calc(13.5px * var(--t)); line-height: 1.45; }
+}

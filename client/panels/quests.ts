@@ -15,7 +15,8 @@ export function questLines(lessons: readonly Lesson[], zh: boolean) {
 }
 
 export const questsFeature: ClientFeatureFactory = (d): ClientFeature => {
-  let lessons: Lesson[] = [], askedAt = -1e9, open = true, dirty = false;
+  // folded on a portrait phone: open, it sat on top of the wizard (tap to unfold)
+  let lessons: Lesson[] = [], askedAt = -1e9, open = !(typeof matchMedia === 'function' && matchMedia('(max-width: 520px)').matches), dirty = false;
   const el = document.createElement('div');
   el.id = 'quests';
   el.hidden = true;
