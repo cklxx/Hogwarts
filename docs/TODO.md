@@ -74,7 +74,7 @@
 
 | 内容 | 提交 |
 |---|---|
-| owner 问题清单（第 5 轮）：考试统一效果校验（`EFFECT_MIN`，伤害 / 治疗 / 护盾 ≥ 5，反馈说哪些太弱）；指定目标的咒语只打目标；宝箱线索（`school_events` 列地点、`look.chestHint` 冷热、Point Me 雷达 `$`、画片册里列出）；巨怪按出力分账（伤害按本人年级魔弹上限折算）；分工与功能冻结写进 PLAN | 见下一行合并 |
+| owner 问题清单（第 5 轮）：考试统一效果校验（`EFFECT_MIN`，伤害 / 治疗 / 护盾 ≥ 5，反馈说哪些太弱）；指定目标的咒语只打目标；宝箱线索（`school_events` 列地点、`look.chestHint` 冷热、Point Me 雷达 `$`、画片册里列出）；巨怪按出力分账（伤害按本人年级魔弹上限折算）；分工与功能冻结写进 PLAN | `acd7bc1` |
 | 试玩第 3 轮（claude-db）：打已消失 / 隔墙的目标拒绝且不扣法力，`look` 标 `blocked` 和 `incoming`；时刻锚定，法令改一天长度不再跳变；野生魔物一击最多 40 % 最大生命（Lean `creature_hit_capped`）；魔物不在你仇恨范围内刷出，八眼巨蛛往禁林深处收；反射：四套预设、每条触发次数与未触发原因、`explain`、`reflex` 私人事件、随存档保存 | `ecc062f` |
 | 删除式重构：浏览器只走二进制增量快照 + 视野裁剪（删掉 JSON 快照、整份快照、`?v=` / `?aoi=`、`AOI_ALL`、单条事件消息）；调参环境变量改成实测过的常量；删掉 `?lod=0` / `?dyn=0`、`DISCOVERY=0`、`HOGWARTS_CHANNEL=0`、`bench.ts churn`；16 个没人用的导出；tsconfig 开 `noUnusedLocals`。视野的保证改在二进制帧上测（`test/snapwire.test.ts`）；压测与 main 持平（`docs/PERF.md`） | `ec7f6fa`、`8ab9831` |
 | 服务端性能（`wf/perf-server`）：内核 tick 500 / 1000 / 2000 人 −50 / −30 / −27 %，法术碰撞不再建视图、法术对撞改扫描线、`near()` 更便宜、AOI 编码与输入快路径；行为指纹不变 | `e84488a` |
