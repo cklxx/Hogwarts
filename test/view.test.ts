@@ -13,8 +13,8 @@ const world = new ViewWorld(viewSolids(heightAt));
 const flat = () => 0;
 
 /** Run the rig for `secs` at 60 fps and return it. */
-function settle(rig: CameraRig, i: Omit<RigInput, 'dt' | 'ground'>, secs = 3, ground: RigInput['ground'] = heightAt) {
-  for (let t = 0; t < secs; t += 1 / 60) rig.update({ ...i, dt: 1 / 60, ground });
+function settle(rig: CameraRig, i: Omit<RigInput, 'dt' | 'ground'>, secs = 3, ground: RigInput['ground'] = heightAt, overhead = false) {
+  for (let t = 0; t < secs; t += 1 / 60) rig.update({ ...i, dt: 1 / 60, ground, overhead });
   return rig;
 }
 /** The old camera (main.ts before view.ts). */
@@ -188,6 +188,20 @@ describe('the spring arm', () => {
     }
   });
 
+  it('on a phone (overhead), backed against a tall wall it rises over you instead: no hat filling the screen', () => {
+    // the 2026-09-30 phone playtest: backing into the Great Hall's front wall, top-down and follow alike
+    for (const [x, z, yaw, pitch, dist] of [[11, -39.5, Math.PI, 1.15, 16], [11, -39.5, Math.PI, 0.5, 13], [13.5, -59, -Math.PI / 2, 0.5, 13], [-40, -63.5, Math.PI, 0.5, 13]]) {
+      const rig = settle(new CameraRig(world), { x, y: 0, z, yaw, pitch, dist }, 3, heightAt, true);
+      expect(rig.arm, `${x},${z} pitch ${pitch}`).toBeGreaterThan(5);
+      expect(rig.pos.y).toBeGreaterThan(6);
+      expect(rig.shoulder).toBeLessThan(0.01);
+      expect(insideHard(world, rig.pos.x, rig.pos.y, rig.pos.z, rig.room)).toEqual([]);
+      // and settles back down on open ground
+      settle(rig, { x: 0, y: heightAt(0, -10), z: -10, yaw, pitch, dist }, 8, heightAt, true);
+      expect(rig.lift).toBeLessThan(0.02);
+    }
+  });
+
   it('a tree trunk behind you: the arm stops in front of it, never in it', () => {
     // the outermost tree of the forest, the player 1.5 m inside of it, the camera outward past it
     const trees = OBSTACLES.filter((o) => o.style === 'tree' && o.kind === 'disc') as { x: number; z: number; r: number; h: number }[];
@@ -230,7 +244,7 @@ describe('the spring arm', () => {
       if (inForest) forest++;
       const rig = new CameraRig(world);
       const i = { x, y: heightAt(x, z), z, yaw: rnd() * 6.3, pitch: 0.1 + rnd() * 1.2, dist: 3.5 + rnd() * 36.5 };
-      settle(rig, i, 0.5);
+      settle(rig, i, 0.5, heightAt, n % 2 === 0); // every other one a phone (overhead)
       expect(insideHard(world, rig.pos.x, rig.pos.y, rig.pos.z, rig.room), `${JSON.stringify(i)} -> ${JSON.stringify(rig.pos)}`).toEqual([]);
       worst = Math.max(worst, headAngle(rig, x, i.y, z));
       // and it does not look through a hard wall at the player's head

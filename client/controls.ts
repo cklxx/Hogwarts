@@ -135,11 +135,14 @@ export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+拖动' : '右键拖动';
 export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
 /** 俯视: the camera's pitch and distance in the top-down view, and where the choice is remembered. */
 const TOP_PITCH = 1.15, TOP_DIST = 16, VIEW_KEY = 'hogwarts.view';
-/** The first view: `?view=top|follow` (a playtest group), else what was chosen last, else follow. */
-function firstView(): boolean {
+/** The first view: `?view=top|follow` (a playtest group), else what was chosen last, else top-down on a phone
+ *  (the 2026-09-30 Sonnet phone round, docs/PLAYTEST.md round 6: everyone who tried both, or guessed, preferred it;
+ *  one follow player switched to it mid-game), follow elsewhere. */
+function firstView(touch: boolean): boolean {
   const q = new URLSearchParams(location.search).get('view');
   if (q === 'top' || q === 'follow') return q === 'top';
-  try { return localStorage.getItem(VIEW_KEY) === 'top'; } catch { return false; }
+  try { const v = localStorage.getItem(VIEW_KEY); if (v) return v === 'top'; } catch { /* private mode */ }
+  return touch;
 }
 /** Where a thumb starts the stick: left of this share of the width, below this share of the height. */
 const STICK_ZONE_X = 0.45, STICK_ZONE_Y = 0.55;
@@ -427,7 +430,7 @@ export function createControls(d: ControlsDeps) {
     lastTab = t;
     const p = myPos();
     // wild creatures first: a newcomer's Tab should find the pixie, not a rival player
-    const list = hostilesAhead(45, 42, true);
+    const list = topView ? hostilesAhead(30, 180, true) : hostilesAhead(45, 42, true); // 俯视: all round you is on screen
     if (!list.length || !p) { d.toast(L(`前方没有可以攻击的目标。转动镜头（${LOOK_ZH} / Q E）再试试。`, `No foe ahead. Turn the camera (${LOOK_EN} / Q E) and try again.`)); return; }
     let next = list.find((k) => !tabbed.has(k) && k !== target);
     if (!next) { tabbed = new Set(); next = list.find((k) => k !== target) ?? list[0]; }
@@ -1060,7 +1063,7 @@ export function createControls(d: ControlsDeps) {
   }
 
   setupTouch();
-  if (firstView()) setView(true, false); // reported with the tutorial's first step (metrics)
+  if (firstView(touch)) setView(true, false); // reported with the tutorial's first step (metrics)
   $('#prompt').onclick = () => doAction();
 
   return {
@@ -1207,7 +1210,9 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'bottom',
-      line: () => L(`按 ${key('B')} 打开<b>咒语书</b>：咒语就是 Runes 程序（也能用模板拼）`, `${key('B')} opens the <b>spellbook</b>: every spell is a Runes program (or start from a template)`),
+      line: () => t.touch
+        ? L('打开<b>咒语书</b>：每个咒语都能改，从模板开始改个数字就是你自己的', 'Open the <b>spellbook</b>: every spell can be changed; start from a template and tweak a number')
+        : L(`按 ${key('B')} 打开<b>咒语书</b>：咒语就是 Runes 程序（也能用模板拼）`, `${key('B')} opens the <b>spellbook</b>: every spell is a Runes program (or start from a template)`),
       acts: () => `<button data-act="book">${L('打开', 'Open')}</button>`,
     },
     {
@@ -1215,7 +1220,7 @@ function createTutorial(t: TutorialDeps) {
       line: () => {
         const s = t.slotOf('Tempus');
         return s >= 0
-          ? L(`右上角还暗着 —— 按 ${key(String(s + 1))} 施放<b>时间显现</b>点亮它`, `The top-right corner is dark: ${key(String(s + 1))} casts <b>Tempus</b> to light it`)
+          ? L(`右上角还暗着 —— ${t.touch ? `点快捷栏第 ${s + 1} 格` : `按 ${key(String(s + 1))}`}施放<b>时间显现</b>点亮它`, `The top-right corner is dark: ${t.touch ? `tap hotbar slot ${s + 1}` : key(String(s + 1))} casts <b>Tempus</b> to light it`)
           : L('右上角还暗着 —— 在咒语书里施放<b>时间显现</b>点亮它', 'The top-right corner is dark: cast <b>Tempus</b> from the spellbook');
       },
     },
@@ -1227,7 +1232,7 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'topleft',
-      line: () => L(`按 ${key('O')} 给你的 Agent 写一句话（只有你们俩看得见）`, `${key('O')} to write your agent a line (only the two of you see it)`),
+      line: () => L(`${t.touch ? '点<b>写信</b>' : `按 ${key('O')}`} 给你的 Agent 写一句话（只有你们俩看得见）`, `${t.touch ? 'Tap <b>Write</b>' : key('O')} to write your agent a line (only the two of you see it)`),
       acts: () => `<button data-act="owl">${L('写信', 'Write')}</button> <button data-act="later" class="ghost">${L('跳过', 'Skip')}</button>`,
     },
   ];
@@ -1236,7 +1241,7 @@ function createTutorial(t: TutorialDeps) {
   function render() {
     if (step < 0) {
       if (doneUntil > now()) {
-        const html = `<span class="tut-n">✦</span><span class="tut-line">${L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
+        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成。「⋯」里的「帮助」有全部操作，祝你玩得开心！', 'You know the basics. Help (under ⋯) shows every control. Enjoy Hogwarts!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
         el.dataset.at = 'bottom';
         if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;

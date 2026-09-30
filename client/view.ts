@@ -249,6 +249,8 @@ const HEAD_ANGLE = (14 * Math.PI) / 180;
 /** Indoors: the arm is at most this long and the pitch range moves up to [INDOOR_PITCH[0], INDOOR_PITCH[1]]. */
 export const INDOOR_DIST = 11, INDOOR_PITCH = [0.62, 1.42] as const;
 const MAX_PITCH = 1.45;
+/** How high an `overhead` arm may climb: all but straight down (lookAt keeps its yaw). */
+export const OVERHEAD = 1.55;
 /** Easing rates (1/s): the arm eases back out slowly after a wall let go of it; everything else is quick. */
 const OUT_RATE = 2.2, FOLLOW_RATE = 40, LIFT_UP = 5, LIFT_DOWN = 1.4, INDOOR_RATE = 2.5;
 
@@ -259,6 +261,9 @@ export interface RigInput {
   yaw: number; pitch: number; dist: number;
   dt: number;
   ground: (x: number, z: number) => number;
+  /** A phone: pressed short, rise over the player (up to looking straight down) rather than go over the shoulder,
+   *  whose close-up is a hat filling a portrait screen (the 2026-09-30 phone playtest). */
+  overhead?: boolean;
 }
 
 const ease = (dt: number, rate: number) => 1 - Math.exp(-dt * rate);
@@ -321,11 +326,13 @@ export class CameraRig {
     let la = this.free(px, py, pz, yaw, pitch, want, i.ground);
     this.liftT = 0;
     if (la < clear - 1e-6) {
-      const top = Math.min(MAX_PITCH, pitch + MAX_CLIMB);
+      const top = i.overhead ? OVERHEAD : Math.min(MAX_PITCH, pitch + MAX_CLIMB);
+      let best = la;
       for (let s = 1; s <= 5; s++) {
         const p = pitch + ((top - pitch) * s) / 5;
         const l = this.free(px, py, pz, yaw, p, want, i.ground);
-        if (l >= clear - 1e-6) { this.liftT = p - pitch; la = l; break; }
+        // (overhead: the longest arm on the way up counts too, even short of `clear`)
+        if (l >= clear - 1e-6 || (i.overhead && l > best + 0.5)) { this.liftT = p - pitch; la = best = l; if (l >= clear - 1e-6) break; }
       }
     }
     // (only when pressed: zoomed right in on open ground stays as it is)
@@ -346,7 +353,7 @@ export class CameraRig {
       const t = this.w.cast(px, py, pz, ox, oy, oz, MARGIN, HARD_ONLY, this.room);
       qx = px + (ox - px) * t; qy = py + (oy - py) * t; qz = pz + (oz - pz) * t;
     }
-    const pe = Math.min(MAX_PITCH, pitch + this.lift);
+    const pe = Math.min(i.overhead ? OVERHEAD : MAX_PITCH, pitch + this.lift);
     const l = this.free(qx, qy, qz, yaw, pe, want, i.ground);
     // snap in at once, ease back out (slowly just after a wall let go, else follow the zoom)
     if (this.arm < 0 || l < this.arm) this.arm = l;
@@ -567,6 +574,8 @@ export interface ViewDeps {
   target: () => string | null;
   /** The orbit the controls hold (read here; set by the ?debug=view hook). */
   cam: { yaw: number; pitch: number; dist: number };
+  /** A phone (CameraRig `overhead`). */
+  overhead?: boolean;
 }
 
 const ALLY_RANGE = 12, MAX_ALLIES = 4;
@@ -686,7 +695,7 @@ export function createView(d: ViewDeps) {
     tick++;
     const s = d.snap();
     world.setStatues(s?.look?.statues.length ?? 0);
-    rin.x = feet.x; rin.y = feet.y; rin.z = feet.z; rin.yaw = d.cam.yaw; rin.pitch = d.cam.pitch; rin.dist = d.cam.dist; rin.dt = dt;
+    rin.overhead = d.overhead; rin.x = feet.x; rin.y = feet.y; rin.z = feet.z; rin.yaw = d.cam.yaw; rin.pitch = d.cam.pitch; rin.dist = d.cam.dist; rin.dt = dt;
     rig.update(rin);
     c.position.set(rig.pos.x, rig.pos.y, rig.pos.z);
     // your own name plate would fill the screen from close up: it fades out under 5 m

@@ -412,7 +412,9 @@ const watch = createWatch({ send: rawSend, toast: (s) => toast(s) });
 /** Where an entity last stood (gx, gz) and the ground's height there: see groundOf. */
 type Grounded = { root: THREE.Object3D; gx?: number; gz?: number; gy?: number };
 type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
-type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number };
+type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number; /** hp / max at the last snapshot */ hpr?: number };
+/** A creature that vanishes at or under this share of its hp was brought down, not out of sight. */
+const KILL_HPR = 0.35;
 /** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame). */
 const groundOf = (e: Grounded) => {
   const p = e.root.position;
@@ -497,7 +499,7 @@ function apply(s: Snap) {
       m.root.scale.setScalar(c.b ? 1.35 : 1); // 地下教室有巨怪: the event's troll is a head taller (and pooled models reset)
     }
     m.seen = g;
-    m.tx = c.x; m.tz = c.z; m.tf = c.f;
+    m.tx = c.x; m.tz = c.z; m.tf = c.f; m.hpr = c.hp / c.m;
     const mine = c.o === myHandle;
     const benign = c.k === 'unicorn' || c.k === 'phoenix';
     m.label.draw(c.o ? `${creatureName(c.k, NAMES[c.k])} (${mine ? L('你的', 'yours') : L('召唤物', 'conjured')})` : creatureName(c.k, NAMES[c.k]), mine ? '#b8ffb8' : c.o ? '#ffd9a0' : benign ? '#ffffff' : '#ffdddd', c.hp / c.m);
@@ -506,6 +508,8 @@ function apply(s: Snap) {
   for (const [i, m] of creatures) if (m.seen !== g) {
     const p = m.root.position;
     if (nearMe(p.x, p.z)) {
+      // brought down (it was nearly out, not just wandering off): say so (the 2026-09-30 phone playtest: nobody knew)
+      if ((m.hpr ?? 1) <= KILL_HPR) floatText(p.x, p.z, L('打倒！', 'Down!'), '#ffd54a');
       puff(p.x, p.z, 0x333333);
       particles.puff(p.x, p.y + 1, p.z, { count: 14, color: 0x2a282c, speed: 2, up: 0.8, size: 1, life: 1.4, drag: 2.5, grow: 2.5, radius: 0.6 });
     }
@@ -631,6 +635,7 @@ function feedLine(text: string, cls: string) {
   setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 1300); }, FEED_S * 1000 + Math.min(4000, text.length * 40));
 }
 let bannerT = 0;
+$('#banner').addEventListener('click', () => { bannerT = Math.min(bannerT, 0.01); });
 function banner(text: string, type = 'system') {
   // one big thing in the centre at a time: while the House Cup ceremony or a card reveal holds it, news goes to the feed
   if (fun.claimsCentre()) { feedLine(text, type); return; }
@@ -638,7 +643,7 @@ function banner(text: string, type = 'system') {
   b.textContent = text;
   b.classList.remove('out');
   b.hidden = false;
-  bannerT = 7;
+  bannerT = phone ? 4 : 7; // a phone: shorter, and a tap puts it away (the 2026-09-30 phone playtest: news piled up)
 }
 /** A line for you alone (an error, a note from a cast): one at a time, above the hotbar, then gone. */
 let toastTimer = 0;
@@ -1665,7 +1670,7 @@ function onChest(r: { whereZh?: string; where?: string; housePoints?: number; ga
   if (r.fragment) loadDraft(L('宝箱里的残页', 'Page from a chest'), r.fragment.source, L(r.fragment.zh, r.fragment.en));
 }
 // the camera keeps out of walls, fades what hides you, x-rays you and your allies (view.ts)
-const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), cam: {
+const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), overhead: phone, cam: {
   get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; }, get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; }, get dist() { return camDist; }, set dist(v: number) { camDist = v; } } });
 // ------------------------------------------------------------------ chat: the line appears on Enter and goes away when it is empty
 const chatBox = $<HTMLInputElement>('#chat');
