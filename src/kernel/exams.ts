@@ -35,8 +35,8 @@ import { TICK, World } from './world.js';
 
 // ------------------------------------------------------------------ persisted state (world.owls)
 
-/** One wizard's best sitting of one exam in one week. `paid` is the reward multiplier already paid out. */
-export interface OwlBest { grade: Grade; points: number | null; nodes: number; gas: number; mana: number; passed: number; cases: number; paid: number; at: number }
+/** One wizard's best sitting of one exam in one week. `paid` is the reward multiplier already paid out; `sits` counts the week's sittings. */
+export interface OwlBest { grade: Grade; points: number | null; nodes: number; gas: number; mana: number; passed: number; cases: number; paid: number; at: number; sits?: number }
 /** A leaderboard row. `wid` never leaves the server (views show name and house). */
 export interface OwlEntry { wid: string; name: string; house: House; points: number; grade: Grade; nodes: number; gas: number; mana: number; week: string; at: number }
 export interface OwlBook {
@@ -51,6 +51,12 @@ export const BOARD_SIZE = 10;
 export const EXAMS_PER_WEEK = 6;
 /** Sittings per wizard per minute (real time). */
 export const SITS_PER_MIN = 10;
+/**
+ * 限考 (playtest round 2: agents brute-forced parameters to climb the boards): only your first RANKED_SITS sittings
+ * of each exam each week can put you on its leaderboard. Later ones are graded as ever, still pay a first pass (or a
+ * better grade) and still count for your own best: only the ranking is closed — which is all brute force bought.
+ */
+export const RANKED_SITS = 10;
 /** Wall-clock budget of one sitting (all its cases). */
 export const SIT_BUDGET_MS = 4000;
 /** Where the exam hall stands in the sandbox: open Highlands, off the grounds (Apparition works), nothing solid within 45 m. */
@@ -819,10 +825,13 @@ export function weeklyExams(secret: string, ms: number): ExamDef[] {
 }
 
 // ------------------------------------------------------------------ sitting an exam in the live world
-
 /** Rewards for the first pass of an exam in a week, by exam year, times the grade's multiplier. */
-/** What a first pass this week pays (×1.5 for an O). XP was 10 + 10×year: less than two pixies, while a minute of pixies paid 360 (scripts/balance-sim.ts). */
-export const rewardBase = (year: number) => ({ xp: 30 + 30 * year, galleons: 2 + 2 * year, reputation: 1 + year });
+/**
+ * What a first pass this week pays (×1.5 for an O). History (scripts/balance-sim.ts, docs/PLAYTEST.md): 10 + 10×year paid less
+ * than two pixies while a minute of pixies paid 360; after 熟能生厌, 30 + 30×year made a year-two wizard's exams 1.8× a minute
+ * of typical hunting (0.56); 20 + 20×year puts hunting ÷ exams at 0.84 (year 2) and 0.97 (year 1), exams still ahead and risk-free.
+ */
+export const rewardBase = (year: number) => ({ xp: 20 + 20 * year, galleons: 2 + 2 * year, reputation: 1 + year });
 export const GRADE_MULT: Record<Grade, number> = { O: 1.5, E: 1.25, A: 1, P: 0, D: 0, T: 0 };
 
 const sitTimes = new WeakMap<World, Map<string, number[]>>();
@@ -854,8 +863,8 @@ function viewBoard(world: World, examId: string, wid?: string) {
 }
 
 const GRADING_TEXT = L(
-  '每题若干隐藏测试用例，全部通过才算及格。分数 = 100 × (节点/标准 + gas/标准 + 法力/标准) / 3，100 为标准线，越低越好。O ≤ 100，E ≤ 130，其余及格为 A；不及格：过半用例通过为 P，至少一个为 D，一个都没过（或编译失败）为 T（巨怪）。每周每题第一次及格发奖励，之后成绩提高补发差额。',
-  'Each exam has hidden test cases; all must pass. Score = 100 × mean(nodes/par, gas/par, mana/par): 100 is par, lower is better. O ≤ 100, E ≤ 130, any other pass A. Failing: P if at least half the cases pass, D if one does, T (Troll) if none do or it does not compile. The first pass of an exam each week pays a reward; a better grade later pays the difference.',
+  `每题若干隐藏测试用例，全部通过才算及格。分数 = 100 × (节点/标准 + gas/标准 + 法力/标准) / 3，100 为标准线，越低越好。O ≤ 100，E ≤ 130，其余及格为 A；不及格：过半用例通过为 P，至少一个为 D，一个都没过（或编译失败）为 T（巨怪）。每周每题第一次及格发奖励，之后成绩提高补发差额。每题每周只有前 ${RANKED_SITS} 次交卷计入排行榜。`,
+  `Each exam has hidden test cases; all must pass. Score = 100 × mean(nodes/par, gas/par, mana/par): 100 is par, lower is better. O ≤ 100, E ≤ 130, any other pass A. Failing: P if at least half the cases pass, D if one does, T (Troll) if none do or it does not compile. The first pass of an exam each week pays a reward; a better grade later pays the difference. Only your first ${RANKED_SITS} sittings of each exam each week count for its leaderboard.`,
 );
 
 /** This week's exams as a candidate sees them. */
@@ -879,6 +888,7 @@ export function listExams(world: World, wid: string, ms = Date.now()) {
       reward: { ...rewardBase(e.year), note: 'first pass this week; ×1.5 for an O, ×1.25 for an E' },
       ...(w.year < e.year ? { locked: `year ${e.year} 需 ${e.year} 年级` } : {}),
       yourBest: viewBest(mineNow[e.id]),
+      sittings: { used: mineNow[e.id]?.sits ?? 0, ranked: RANKED_SITS },
       top: viewBoard(world, e.id, wid).slice(0, 3),
     })),
   };
@@ -917,10 +927,12 @@ export function sitExam(world: World, wid: string, examId: string, source: strin
   for (const k of Object.keys(mineAll)) if (k !== wk.key && k !== isoWeek(ms - 7 * 86400e3).key) delete mineAll[k];
   const bests = (mineAll[wk.key] ??= {});
   const prev = bests[exam.id];
-  const cur: OwlBest = { grade: g.grade, points: g.points, nodes: g.nodes, gas: g.gas, mana: g.mana, passed: g.passed, cases: exam.cases.length, paid: prev?.paid ?? 0, at: ms };
+  const sits = (prev?.sits ?? 0) + 1, ranked = sits <= RANKED_SITS;
+  const cur: OwlBest = { grade: g.grade, points: g.points, nodes: g.nodes, gas: g.gas, mana: g.mana, passed: g.passed, cases: exam.cases.length, paid: prev?.paid ?? 0, at: ms, sits };
   const improved = better(cur, prev);
   if (improved) bests[exam.id] = cur;
   const best = bests[exam.id];
+  best.sits = sits;
 
   let rewards: { xp: number; galleons: number; reputation: number } | null = null;
   const owed = GRADE_MULT[g.grade] - best.paid;
@@ -933,8 +945,7 @@ export function sitExam(world: World, wid: string, examId: string, source: strin
     world.addRep(w, rewards.reputation, 'owls');
   }
 
-  let rank: number | null = null;
-  if (g.ok && g.points !== null) {
+  if (ranked && g.ok && g.points !== null) {
     const board = (book.boards[exam.id] ?? []).slice();
     const i = board.findIndex((e) => e.wid === wid);
     if (i < 0 || g.points < board[i].points) {
@@ -943,9 +954,9 @@ export function sitExam(world: World, wid: string, examId: string, source: strin
       board.sort((a, b) => a.points - b.points || a.at - b.at);
       book.boards[exam.id] = board.slice(0, BOARD_SIZE);
     } else book.boards[exam.id] = board;
-    const at = book.boards[exam.id].findIndex((e) => e.wid === wid);
-    rank = at >= 0 ? at + 1 : null;
   }
+  const at = g.ok ? (book.boards[exam.id] ?? []).findIndex((e) => e.wid === wid) : -1;
+  const rank = at >= 0 ? at + 1 : null;
 
   const achievements: string[] = [];
   if (week.every((e) => bests[e.id] && PASSING.has(bests[e.id].grade)) && world.achieve(w, 'owl_full_marks')) achievements.push('owl_full_marks');
@@ -969,6 +980,12 @@ export function sitExam(world: World, wid: string, examId: string, source: strin
     ...(g.ok ? {} : { hint: `${exam.hint.zh} ${exam.hint.en}` }),
     ...(g.ok && g.grade !== 'O' ? { toReachO: `Par is ${exam.par.nodes} nodes, ${exam.par.gas} gas, ${exam.par.mana} mana: get your score to 100 or below. 达到标准线（分数 ≤ 100）即为 O。` } : {}),
     best: viewBest(best), improved, rank, rewards, achievements,
+    sitting: {
+      n: sits, ranked: RANKED_SITS, counted: ranked,
+      note: ranked
+        ? `本周这门还有 ${RANKED_SITS - sits} 次交卷计入排行榜。 ${RANKED_SITS - sits} more sitting(s) of this exam count for the leaderboard this week.`
+        : `练习：本周这门的前 ${RANKED_SITS} 次已用完，这次不进排行榜（奖励和个人最佳照常）。 Practice: your first ${RANKED_SITS} sittings of this exam this week are used, so this one leaves the leaderboard alone (rewards and your own best still count).`,
+    },
     ...(line ? { meme: `${line.zh} ${line.en}` } : {}),
   };
 }

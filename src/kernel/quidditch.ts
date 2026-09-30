@@ -25,6 +25,7 @@
 import { z } from 'zod';
 import type { House } from '../shared/constants.js';
 import type { Feature } from './feature.js';
+import { inMatch } from './duelclub.js';
 import type { Vec2, Wizard } from './types.js';
 import type { World } from './world.js';
 
@@ -111,7 +112,7 @@ export const qdPlaying = (world: World, wid: string) => { const m = world.qd.mat
 /** On this match's roster at all (called or playing). */
 export const qdOnTeam = (world: World, wid: string) => { const m = world.qd.match; return !!m && m.phase !== 'done' && !!m.roster[wid]; };
 /** In the Duelling Club (queued or in a match): not free for Quidditch. */
-const inDuel = (world: World, wid: string) => { const d = world.duel; return d.queue.some((q) => q.id === wid) || (!!d.match && (d.match.a === wid || d.match.b === wid)); };
+const inDuel = (world: World, wid: string) => { const d = world.duel; return d.queue.some((q) => q.id === wid) || d.queue2.some((q) => q.id === wid) || inMatch(d, wid); };
 
 function schedule(world: World) {
   const len = world.term.endsAt - world.term.startedAt;

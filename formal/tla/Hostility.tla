@@ -11,8 +11,8 @@ Invuln    == {"phoenix"}
 Entities  == Wizards \cup Summons \cup Wild \cup Benign \cup Invuln
 Owner(s)  == IF s = "sa" THEN "a" ELSE "b"
 
-VARIABLES house, active, safe, alive, pvp, ff, duel
-vars == <<house, active, safe, alive, pvp, ff, duel>>
+VARIABLES house, active, safe, alive, pvp, ff, duel, side
+vars == <<house, active, safe, alive, pvp, ff, duel, side>>
 
 Init ==
   /\ house  \in [Wizards -> {"G", "S"}]
@@ -22,6 +22,9 @@ Init ==
   /\ pvp    \in BOOLEAN
   /\ ff     \in BOOLEAN
   /\ duel   \in BOOLEAN                         \* 决斗俱乐部: a and b are fighting a match (duelclub.ts)
+  \* … on these sides: different = opponents, the same = 2v2 partners. The labels are symmetric, so a is on side 1;
+  \* outside a match the sides mean nothing, so they are fixed (no duplicate states)
+  /\ side   \in {[w \in Wizards |-> IF w = "a" THEN 1 ELSE s] : s \in (IF duel THEN {1, 2} ELSE {2})}
   /\ duel => pvp                                \* a match only opens while PvP is on (duelClosed)
 Next == UNCHANGED vars                          \* a static relation: TLC checks every initial state
 
@@ -29,7 +32,8 @@ PvP(x, y) == pvp /\ (house[x] # house[y] \/ ff)
 \* The wizard behind an entity: a summon's owner, else the entity itself.
 Behind(e) == IF e \in Summons THEN Owner(e) ELSE e
 InDuel(e) == duel /\ Behind(e) \in Wizards
-DuelOrPvP(x, y) == (duel /\ x # y) \/ PvP(x, y)
+Foes(x, y) == duel /\ x # y /\ side[x] # side[y]
+DuelOrPvP(x, y) == IF duel THEN Foes(x, y) ELSE PvP(x, y)
 
 RECURSIVE CanHarm(_, _)
 CanHarm(src, dst) ==
@@ -38,9 +42,9 @@ CanHarm(src, dst) ==
   ELSE IF dst \in Wizards /\ ~active[dst] THEN FALSE
   ELSE IF dst \in Invuln THEN FALSE
   ELSE IF safe[dst] THEN FALSE
-  \* during a match only the two duelists (and their summons) touch each other, and nobody else touches them
+  \* during a match only opponents (and their summons) touch each other, partners never, and nobody else touches them
   ELSE IF InDuel(src) \/ InDuel(dst) THEN
-         InDuel(src) /\ InDuel(dst) /\ Behind(src) # Behind(dst) /\ ~safe[Behind(src)]
+         InDuel(src) /\ InDuel(dst) /\ Foes(Behind(src), Behind(dst)) /\ ~safe[Behind(src)]
   ELSE IF src \in Summons THEN
          IF dst = Owner(src) \/ (dst \in Summons /\ Owner(dst) = Owner(src)) THEN FALSE
          ELSE CanHarm(Owner(src), dst)
@@ -51,6 +55,13 @@ CanHarm(src, dst) ==
          IF Owner(dst) = src THEN FALSE ELSE PvP(src, Owner(dst))
   ELSE IF dst \in Wizards THEN PvP(src, dst)
   ELSE TRUE
+
+\* 误伤 (src/kernel/allies.ts): a spell with a target t — a homing bolt, a disarm, a root, a chain's leaps — strikes t
+\* or anyone its caster could have picked as a foe, and passes through an ally merely in the way. Allies: the wizards
+\* behind two entities are of one house and not the two sides of a match. t = "none" is a straight shot (canHarm alone).
+Allied(x, y) == Behind(x) \in Wizards /\ Behind(y) \in Wizards /\ house[Behind(x)] = house[Behind(y)]
+                /\ ~(InDuel(x) /\ InDuel(y) /\ Foes(Behind(x), Behind(y)))
+Strikes(src, t, e) == (t = "none" \/ e = t \/ ~Allied(src, e)) /\ CanHarm(src, e)
 
 \* ---- invariants
 NoSelfHarm          == \A e \in Entities : ~CanHarm(e, e)
@@ -66,10 +77,19 @@ WildOnlyHuntsWizardsAndSummons == \A w \in Wild, d \in Entities : CanHarm(w, d) 
 NoPvPMeansNoPvP     == ~pvp => \A x, y \in Wizards : ~CanHarm(x, y)
 AttackSummonIsAttackOwner == \A w \in Wizards, s \in Summons :
                          (Owner(s) # w /\ alive[s] /\ ~safe[s] /\ ~safe[w]) => (CanHarm(w, s) = DuelOrPvP(w, Owner(s)))
-\* 决斗俱乐部: the two duelists can always reach each other (in play, outside safe zones), whatever their houses …
+\* 决斗俱乐部: opponents can always reach each other (in play, outside safe zones), whatever their houses …
 DuelMutual          == duel => \A x, y \in Wizards :
-                         (x # y /\ alive[x] /\ alive[y] /\ active[x] /\ active[y] /\ ~safe[x] /\ ~safe[y]) => CanHarm(x, y)
+                         (Foes(x, y) /\ alive[x] /\ alive[y] /\ active[x] /\ active[y] /\ ~safe[x] /\ ~safe[y]) => CanHarm(x, y)
+\* … 2v2 partners never harm each other (nor each other's summons), whatever the friendly-fire rule …
+DuelTeammates       == duel => \A x, y \in Wizards \cup Summons : (Behind(x) # Behind(y) /\ side[Behind(x)] = side[Behind(y)]) => ~CanHarm(x, y)
 \* … and nothing outside the match touches them or is touched by them
 DuelIsolated        == duel => \A c \in Wild \cup Benign \cup Invuln, e \in Wizards \cup Summons :
                          ~CanHarm(c, e) /\ ~CanHarm(e, c)
+\* 误伤: an ally in the way is never struck by a spell meant for someone else (the target, a foe in the way and a
+\* straight shot are struck exactly when canHarm says so: that is Strikes' own definition) …
+NoAllyStray         == \A s, e \in Entities : Allied(s, e) => \A t \in Entities \ {e} : ~Strikes(s, t, e)
+\* … so without friendly fire the rule changes nothing (allies could not harm each other anyway) …
+FriendlyFireOffUnchanged == ~ff => \A s, e \in Entities : Allied(s, e) => ~CanHarm(s, e)
+\* … and two opponents of one house are opponents, not allies (their summons too)
+DuellistsNotAllied  == duel => \A x, y \in Wizards \cup Summons : Foes(Behind(x), Behind(y)) => ~Allied(x, y)
 ============================================================================

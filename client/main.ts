@@ -28,9 +28,9 @@ import { TIPS } from '../src/lore/memes';
 import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, itemIcon, spellIcon } from './ink';
 import * as probe from './perf';
 import { createMarket } from './market';
-import { createPanels, type FamiliarState, type UnfairState } from './panels';
+import { createPanels, type FamiliarState, type FocusView } from './panels';
 import { createFun } from './panels/fun';
-import { CLIENT_FEATURES } from './features';
+import { CLIENT_FEATURES, renderTop } from './features';
 import { createFunWorld } from './funworld';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
@@ -49,8 +49,9 @@ interface Me {
   /** Your agent (World.agentState, plus the MCP session count the server may add). */
   agent?: (AgentInfo & { familiar?: FamiliarState | null }) | null;
   agents?: { sessions?: number } | null;
-  /** 不公平，但好玩 (World.unfairState): the Dark Lord, the DA, 偷师, concentration, the lawless zone (client/panels). */
-  unfair?: UnfairState | null;
+  /** 专注力 and 无规则区 (README 不公平，但好玩); the features' own fields (darkLord, da, studyable, …) are theirs to read. */
+  focus?: FocusView | null;
+  lawless?: boolean;
   /** While stunned: what put you down (World.knockedOutBy). */
   down?: Down | null;
   /** 学院杯 / 巧克力蛙画片 (World.funState): your house points this term, your album, the curfew grace. */
@@ -338,6 +339,7 @@ function connect() {
       if (Array.isArray(msg.owls)) for (const o of msg.owls) owlFromMsg(o);
       const hist: Ev[] = msg.events ?? [];
       for (const e of hist) if (e.type === 'owl' || e.type === 'ask') feed(e, false);
+      for (const e of hist) for (const f of feats) f.onEvent?.(e, false);
       for (const e of hist.filter((x) => x.type !== 'owl' && x.type !== 'ask' && !x.to).slice(-2)) feed(e, false);
       menuInfo(msg.mcpUrl);
       onBuild(msg.build);
@@ -345,7 +347,7 @@ function connect() {
     }
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') me = msg.s;
-    else if (msg.t === 'event') { pn.onEvent(msg.e); fun.onEvent(msg.e); feed(msg.e, true); }
+    else if (msg.t === 'event') { fun.onEvent(msg.e); for (const f of feats) f.onEvent?.(msg.e, true); feed(msg.e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
@@ -360,9 +362,7 @@ function connect() {
     else if (msg.t === 'paircode') onPairCode(msg.r ?? msg);
     else if (msg.t === 'token') onToken(String(msg.token ?? ''));
     else if (msg.t === 'owls' && Array.isArray(msg.owls)) { for (const o of msg.owls) owlFromMsg(o); renderOwl(); }
-    else if (msg.t === 'seals') { ctl.onSeals(msg.section); renderSeals(msg.section, msg.current); }
     else if (msg.t === 'goto') ctl.onGoto(msg.goal);
-    else if (msg.t === 'sealmsg') { const r = msg.r; toast(r.runes ? L(`📜 第 ${r.tier} 道封印的第 ${r.page}/${r.of} 页已抄进你的笔记。`, `📜 Page ${r.page}/${r.of} of seal ${r.tier} copied into your notes.`) : r.opened ? L(`📕 封印打开了！`, `📕 The seal opens! ${r.reward}`) : `✗ ${L('ALGIZ 没有出现。封印纹丝不动，还反咬了你一口（-15 生命）。', r.message)}`); }
     else if (msg.t === 'sim') showSim(msg.r);
     else if (msg.t === 'forged') { bookOut(`✓ ${L('已铸造', 'Forged')} ${msg.name}${L('。', '.')}${msg.notes.length ? '\n' + msg.notes.map(tr).join('\n') : ''}`, 'good'); }
     else if (msg.t === 'bought') onBought(msg.r);
@@ -371,7 +371,7 @@ function connect() {
       const text = `✗ ${tr(String(msg.error ?? ''))}`;
       if (market.onError(text)) { /* shown on the market page */ }
       else if (!$('#book').hidden) bookOut(text, 'bad');
-      else if (pn.onError(text) || onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
+      else if (pn.onError(text) || feats.some((f) => f.onError?.(text)) || onOwlError(text) || onTrunkError(text) || onMenuError(text)) { /* shown in the open panel */ }
       else toast(text);
     }
   };
@@ -449,7 +449,7 @@ function apply(s: Snap) {
     }
     m.seen = g;
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
-    const extra = (w.s.includes('V') ? '☠' : '') + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
+    const extra = badges(w.h) + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
     setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
@@ -762,6 +762,7 @@ function hud() {
   renderGoal();
   pn.hud();
   fun.hud();
+  renderTop(feats); // the Dark Lord's ribbon, the lawless zone, the veto card, the joint Patronus (client/features.ts)
   for (const f of feats) f.hud?.();
   trackBars();
 }
@@ -842,10 +843,10 @@ async function showBoard() {
   solo(b);
   b.innerHTML = `<h2>${ic('cup')}<span>${L('排行榜', 'Leaderboard')} <small>${L(`第 ${lb.term.n} 学期 · 剩余 <span class="num">${fmtT(lb.term.secondsLeft)}</span>`, `term ${lb.term.n} · <span class="num">${fmtT(lb.term.secondsLeft)}</span> left`)} · <kbd>L</kbd></small></span> <button class="x" data-close="board" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
     <p class="hp-line"><b>${L('学院分', 'House points')}:</b> ${Object.entries(lb.housePoints).map(([h, p]) => `<span>${ic(houseIcon(h))}${houseName(h)} <span class="num">${p}</span></span>`).join('')}</p>
-    ${pn.boardHtml(lb)}
+    ${feats.map((f) => f.board?.(lb) ?? '').join('')}
     <p><b>${L('魔法部长', 'Minister for Magic')}:</b> ${lb.minister ? esc(lb.minister.name) + (lb.minister.decreeUnspent ? L('（法令未颁布）', ' (decree unspent)') : L('（法令已颁布）', ' (decree spent)')) : ((need: number) => L(`空缺${me ? `——你现在 ${Math.round(me.reputation)} 声望${me.reputation >= need ? '，学期结束时若你最高就当选' : `，还差 ${Math.ceil(need - me.reputation)}`}` : ''}`, `vacant${me ? ` — you have ${Math.round(me.reputation)} reputation${me.reputation >= need ? ': top the board at term end to take office' : `, ${Math.ceil(need - me.reputation)} to go`}` : ''}`))(Number(lb.ministerMinReputation ?? 100))}<br/><small>${L(`每学期结束时，声望最高（至少 ${Number(lb.ministerMinReputation ?? 100)}）的玩家成为魔法部长，可以颁布一道法令改写世界规则；学期结束时每人的声望减半。`, esc(lb.ministerRule))}</small></p>
     <table><tr><th>#</th><th>${L('巫师', 'Wizard')}</th><th>${L('称号', 'Title')}</th><th>${L('学院', 'House')}</th><th>${L('年级', 'Year')}</th><th>${L('声望', 'Reputation')}</th></tr>
-    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${lb.darkLord?.name === w.name ? `${ic('darkmark')} ` : ''}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
+    ${lb.top.map((w: any) => `<tr><td>${w.rank}</td><td>${badges(w.handle, true)}${esc(w.name)}${w.npc ? ' 🤖' : ''}${w.online ? ' •' : ''}</td><td>${esc(w.title ?? '')}</td><td>${houseName(w.house)}</td><td>${w.year}</td><td>${w.reputation}</td></tr>`).join('')}</table>
     ${lb.loopholeFirstFoundBy ? `<p>${ic('star')} ${L('第一个发现韦斯莱漏洞的人', 'First to find the Weasley Loophole')}: <b>${esc(lb.loopholeFirstFoundBy)}</b></p>` : ''}`;
   b.hidden = false;
 }
@@ -888,7 +889,7 @@ function menuInfo(url?: string) {
       <div id="op-agent" class="hint"></div>
       ${pn.menuHtml()}
     </section>
-    ${pn.menuLinks()}
+    ${pn.menuLinks(feats.map((f) => f.menu?.() ?? '').join(''))}
     <h3>${L('或者用命令行接入', 'Or connect from a terminal')}</h3>
     <p>${shell?.claudeCode ? L('<b>推荐：桌面客户端当桥</b>（在终端里运行一次；Agent 连的是这台服务器，密钥从系统钥匙串读，不写进任何配置。想接 Claude Desktop：按 <kbd>Ctrl+Shift+S</kbd> 回到启动器，点「写入 Claude Desktop」）：', '<b>Recommended: the desktop client as the bridge</b> (run it once in a terminal; the agent reaches this server and reads the key from the system keychain, never from a config file. For Claude Desktop: <kbd>Ctrl+Shift+S</kbd> back to the launcher, then "写入 Claude Desktop"):') : L('<b>推荐：stdio 桥</b>（先 <code>cd</code> 到你的霍格沃茨仓库目录，在那里运行一次；命令会记下仓库的完整路径，之后在任何目录启动 Claude Code 都能用。第一次配对后密钥存进 <code>~/.hogwarts/credentials.json</code>，以后每个新会话自动回来）：', '<b>Recommended: the stdio bridge</b> (<code>cd</code> into your Hogwarts checkout and run it there once; it records the checkout\'s full path, so Claude Code finds it from any directory. After the first pairing it keeps the key in <code>~/.hogwarts/credentials.json</code> and every new session comes back on its own):')}</p>
     <div class="op-cmd"><pre id="op-bridge">${esc(bridge)}</pre><button class="ghost" data-copy="op-bridge">${L('复制', 'Copy')}</button></div>
@@ -1157,7 +1158,7 @@ $('#atask').addEventListener('click', (e) => {
 function sendChat(raw: string) {
   const r = routeChat(raw);
   if (!r) return;
-  if (r.to === 'public') send({ t: 'chat', text: r.text });
+  if (r.to === 'public') send({ t: 'chat', text: r.text, ...(r.ch ? { ch: r.ch } : {}), ...(r.dm ? { to: r.dm } : {}) });
   else if (r.to === 'agent') sendOwl(r.text);
   else askWhere(r.word, r.text, r.rest);
 }
@@ -1644,21 +1645,6 @@ $('#sp-agent-btn').onclick = () => {
   } else renderAgentBlock();
 };
 
-// ------------------------------------------------------------------ the Restricted Section (seals)
-let sealTier = 1;
-const sealState = (st: string) => lang !== 'zh' ? st : st === 'broken' ? '已破解' : st === 'open to you' ? '向你敞开' : st.startsWith('needs year') ? `需要 ${st.slice(-1)} 年级` : '先破解上一道封印';
-function toggleSeals() { const s = $('#seals'); s.hidden = !s.hidden; if (!s.hidden) { solo(s); send({ t: 'seals' }); } }
-type SealInfo = { tier: number; name: string; zh: string; rewardZh: string; requiresYear: number; inputWords: number; reward: string; state: string; pages: { page: number; where: string; collected: boolean }[] };
-function renderSeals(section: { progress: string; seals: SealInfo[]; codex: string[] }, current: { tier: number; name: string; zh: string; inputWords: number; pagesCollected: string; runes: string; broken: boolean }) {
-  sealTier = current.tier;
-  $('#seal-list').innerHTML = section.seals.map((x) => `<div class="${x.state === 'broken' ? 'broken' : ''}">${ic(x.state === 'broken' ? 'seal-broken' : 'seal')}<b>${esc(L(x.zh, x.name))}</b><br/>${esc(sealState(x.state))} · ${L(`${x.requiresYear} 年级`, `year ${x.requiresYear}`)} · ${L(`${x.inputWords} 个字`, `${x.inputWords} word(s)`)}<br/><i>${esc(L(x.rewardZh, x.reward))}</i><br/>${x.pages.map((p) => `<span class="pg${p.collected ? '' : ' no'}">${ic('scroll')} ${esc(placeName(p.where))}</span>`).join('<br/>')}</div>`).join('');
-  $('#seal-title').textContent = L(`${current.zh} —— 已收集 ${current.pagesCollected} 页${current.broken ? '（已破解）' : ''}`, `${current.name} — ${current.pagesCollected} pages${current.broken ? ' (broken)' : ''}`);
-  $('#seal-runes').textContent = current.runes;
-  $('#seal-codex').textContent = section.codex.join('\n');
-}
-$('#seal-read').onclick = () => send({ t: 'readpage', tier: sealTier });
-$('#seal-break').onclick = () => send({ t: 'breakseal', tier: sealTier, words: $<HTMLInputElement>('#seal-words').value.split(/[\s,]+/).filter(Boolean) });
-
 $('#sp-forget').onclick = () => { const n = $<HTMLInputElement>('#sp-name').value; if (n) send({ t: 'unlearn', spell: n }); };
 
 // ------------------------------------------------------------------ the next goal (下一步): one quiet line under your name, after the tutorial
@@ -1676,6 +1662,7 @@ function renderGoal() {
     customSpells: bookSpells.length ? bookSpells.filter((x) => !x.builtin).length : null,
     items: trunkKnown ? trunkItems.length : null,
     ...pn.goalState(),
+    ...Object.assign({}, ...feats.map((f) => f.goal?.() ?? {})), // the Dark Lord, the DA
   });
   if (!goal) { el.hidden = true; return; }
   if (goal.key !== goalKey) {
@@ -1700,12 +1687,11 @@ $('#goal').addEventListener('click', (e) => {
     if ('cast' in a) ctl.castOnSelf(a.cast);
     else if (a.open === 'book') toggleBook(true);
     else if (a.open === 'tpl') { toggleBook(true); openTemplates(); }
-    else if (a.open === 'seals') { if ($('#seals').hidden) toggleSeals(); }
     else if (a.open === 'trunk') toggleTrunk(true);
     else if (a.open === 'board') { if ($('#board').hidden) void showBoard(); }
     else if (a.open === 'owl') toggleOwl(true);
     else if (a.open === 'exams') pn.openExams();
-    else if (a.open === 'da') pn.openDa();
+    else feats.some((f) => f.open?.(a.open)); // the Restricted Section, the DA, …
   }
   b.blur();
   renderGoal();
@@ -1738,14 +1724,16 @@ const ctl = createControls({
   panels: { book: toggleBook, menu: toggleMenu, owl: (force?: boolean) => toggleOwl(force), trunk: () => toggleTrunk() },
   agent: agentNow,
   pair: pairNow,
-  // 隐藏宝箱: F at a closed chest opens it
+  // the features' (a page of a seal at its landmark, a fireplace, …: client/features.ts), then 隐藏宝箱: F at a closed chest opens it
   extraAction: () => {
+    for (const f of feats) { const a = f.action?.(); if (a) return a; }
     const p = wizards.get(myHandle)?.root.position;
     const c = p && snap?.cup ? funWorld.chestNear(p, snap.cup.ch) : null;
-    return c ? { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) } : null;
+    if (c) return { label: L(`按 F 打开宝箱 ·「${c.zh}」`, `F — open the chest (${c.en})`), x: c.x, z: c.z, y: heightAt(c.x, c.z) + 1.6, act: () => send({ t: 'chest' }) };
+    return null;
   },
 });
-// ------------------------------------------------------------------ the panels: 黑魔王, 邓布利多军, 偷师, O.W.L., 使魔, 专注力, 无规则区 (client/panels)
+// ------------------------------------------------------------------ the panels: O.W.L., 使魔, 专注力 (client/panels); the features (client/features.ts)
 /** Put a source in the spellbook's editor as a new draft (偷师's 看源码). */
 function loadDraft(name: string, source: string, note: string) {
   loadSpell(null);
@@ -1753,27 +1741,25 @@ function loadDraft(name: string, source: string, note: string) {
   $<HTMLTextAreaElement>('#sp-src').value = source;
   bookOut(note, 'good');
 }
-const pn = createPanels({
-  send, toast, me: () => me, snap: () => snap,
-  myPos: () => wizards.get(myHandle)?.root.position ?? null,
-  camYaw: () => camYaw,
-  wizardRoot: (h) => wizards.get(h)?.root ?? null,
-  agentConnected: () => !!agentNow()?.connected,
-  spells: () => bookSpells,
-  wantSpells: () => { if (!bookSpells.length) send({ t: 'book' }); },
-  openBook: () => { if ($('#book').hidden) toggleBook(true); },
-  loadDraft, solo,
-});
+const wantSpells = () => { if (!bookSpells.length) send({ t: 'book' }); };
+const pn = createPanels({ send, me: () => me, agentConnected: () => !!agentNow()?.connected, spells: () => bookSpells, wantSpells, solo });
 // ------------------------------------------------------------------ 学院杯 · 校园事件轮盘 · 巧克力蛙画片 · 隐藏宝箱 (client/panels/fun.ts, client/funworld.ts)
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo });
-// the features (client/features.ts: the Duelling Club, Quidditch, …), all built from the same deps
+// the features (client/features.ts: the Dark Lord, the DA, 偷师, the Restricted Section, the Duelling Club, Quidditch, …),
+// all built from the same deps
 const feats = CLIENT_FEATURES.map((mk) => mk({
   send, toast,
   wire: <T,>(key: string) => (snap as Record<string, unknown> | null)?.[key] as T | undefined,
-  myHandle: () => myHandle, myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
+  me: () => me as Record<string, any> | null, now: () => snap?.t ?? 0,
+  myHandle: () => myHandle, observing: () => watch.observing(), myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
   nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?',
-  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0,
+  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? null,
+  solo, spells: () => bookSpells, wantSpells, openBook: () => { if ($('#book').hidden) toggleBook(true); }, loadDraft,
 }));
+renderTop(feats);
+const badgers = feats.filter((f) => f.badge);
+/** The features' marks beside a wizard's name (☠ the Dark Lord): text for the name tag, markup for the parchment. */
+const badges = (h: string, html?: boolean) => { let s = ''; for (const f of badgers) s += f.badge!(h, html); return s; };
 const lifters = feats.filter((f) => f.lift);
 const funWorld = createFunWorld();
 scene.add(funWorld.group);
@@ -1844,11 +1830,10 @@ addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (pn.keydown(e)) return; // J 邓布利多军, K O.W.L. (client/panels)
+  if (pn.keydown(e)) return; // K O.W.L. (client/panels)
   if (fun.keydown(e)) return; // C 巧克力蛙画片 (client/panels/fun.ts)
-  if (!watch.observing() && feats.some((f) => f.keydown?.(e))) return; // G 决斗俱乐部, P / F 魁地奇, … (client/features.ts)
+  if (feats.some((f) => f.keydown?.(e))) return; // J 邓布利多军, R 禁书区, G 决斗俱乐部, P / F 魁地奇, … (client/features.ts)
   if (e.key === 'b' || e.key === 'B') { toggleBook(); return; }
-  if (e.key === 'r' || e.key === 'R') { toggleSeals(); return; }
   if (e.key === 'l' || e.key === 'L') { showBoard(); return; }
   if (e.key === 'v' || e.key === 'V') { watch.toggleObserving(); return; }
   if (e.key === 'o' || e.key === 'O') { if (!e.repeat) toggleOwl(); e.preventDefault(); return; }
@@ -1859,10 +1844,10 @@ addEventListener('keydown', (e) => {
     if (!$('#atask').hidden) { $('#atask').hidden = true; atPending = null; return; }
     if (!$('#book').hidden) { $('#book').hidden = true; return; }
     if (pn.closeTop()) return;
+    if (feats.some((f) => f.close?.())) return; // the DA, the Restricted Section, …
     if (fun.closeTop()) return;
     if (!$('#owl').hidden) { toggleOwl(false); return; }
     if (!$('#trunk').hidden) { toggleTrunk(false); return; }
-    if (!$('#seals').hidden) { $('#seals').hidden = true; return; }
     if (ctl.helpOpen()) { ctl.toggleHelp(false); return; }
     if (!$('#board').hidden) { $('#board').hidden = true; return; }
     if (!$('#menu').hidden) { $('#menu').hidden = true; return; }
@@ -2031,7 +2016,6 @@ function frame() {
   probe.end('fx', tp); tp = probe.begin();
 
   ctl.update(dt);
-  pn.frame(dt);
   funWorld.frame(dt, snap);
   for (const f of feats) f.frame?.(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }

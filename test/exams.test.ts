@@ -261,14 +261,14 @@ describe('O.W.L. exams: sitting, rewards, leaderboards, persistence', () => {
     expect(a.xp).toBe(xp0);
     const okA = sitExam(w, a.id, 'counting-door', '(say (count (creatures 15))) (say (count (creatures 15)))', ms);
     expect(okA.grade).toBe('A');
-    expect(okA.rewards).toEqual({ xp: 60, galleons: 4, reputation: 2 });
-    expect(a.xp).toBe(xp0 + 60);
+    expect(okA.rewards).toEqual({ xp: 40, galleons: 4, reputation: 2 });
+    expect(a.xp).toBe(xp0 + 40);
     expect(a.galleons).toBe(g0 + 4);
     expect(a.reputation).toBe(r0 + 2);
     expect(sitExam(w, a.id, 'counting-door', '(say (count (creatures 15))) (say (count (creatures 15)))', ms).rewards).toBeNull();
     const okO = sitExam(w, a.id, 'counting-door', KEY['counting-door'].ref, ms);
     expect(okO.grade).toBe('O');
-    expect(okO.rewards).toEqual({ xp: 30, galleons: 2, reputation: 1 }); // the difference: ×1.5 − ×1
+    expect(okO.rewards).toEqual({ xp: 20, galleons: 2, reputation: 1 }); // the difference: ×1.5 − ×1
     expect(okO.meme).toBeTruthy();
     expect(sitExam(w, a.id, 'counting-door', KEY['counting-door'].ref, ms).rewards).toBeNull();
     // a worse sitting later does not lower the best
@@ -276,7 +276,7 @@ describe('O.W.L. exams: sitting, rewards, leaderboards, persistence', () => {
     expect(worse.improved).toBe(false);
     expect(worse.best?.grade).toBe('O');
     // next week it pays again
-    expect(sitExam(w, a.id, 'counting-door', KEY['counting-door'].ref, weekWith('counting-door', ms + 7 * 86400e3)).rewards).toEqual({ xp: 90, galleons: 6, reputation: 3 });
+    expect(sitExam(w, a.id, 'counting-door', KEY['counting-door'].ref, weekWith('counting-door', ms + 7 * 86400e3)).rewards).toEqual({ xp: 60, galleons: 6, reputation: 3 });
   });
 
   it('a Troll gets a joke and an achievement; refusals for the wrong week, a low year and too many sittings', () => {

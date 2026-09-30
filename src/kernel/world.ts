@@ -2,9 +2,7 @@ import { randomBytes } from 'node:crypto';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
   ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S,
-  SILENCE_COOLDOWN_S, SILENCE_MAX_S,
-  DA_JOINT_MIN, DA_JOINT_PCT, DA_JOINT_WINDOW_S, DA_MAX_MEMBERS, DA_QUORUM, DA_REP_CEILING, DA_VETO_WINDOW_S, DA_VETOES_PER_TERM, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP,
-  DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT, STUDIED_KEEP, STUDY_DELAY_S, STUDY_KEEP, STUDY_MEMORY_S,
+  SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource, type EventId,
   type CreatureKind, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
@@ -18,8 +16,7 @@ import type { Node } from '../runes/parser.js';
 import { CREATURES } from './creatures.js';
 import { AURA_DEFS, type AuraKind, addAura, auraMag, hasAura, isDebuff, live, withoutDebuffs } from './auras.js';
 import { BOUND_REFUSAL, CURSE_BLESS, FORGE_REFUSAL, HEX_FRESH_SENDER, HEX_YEAR, JINX_NAMES, SILENCED, danceJitter, parseJinx } from './hex.js';
-import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
-import { SEAL_REWARDS, SEAL_REWARDS_ZH, SEAL_TIERS, CODEX, disassemble, generateSeal, parseWord, runSeal, type Seal } from './seals.js';
+import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, nameKey, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
 import { TITLES, titleIndex } from '../lore/titles.js';
 import {
   AFK_BUBBLES, CREATURE_STUN, Cooldowns, DOBBY_SOCK, ERROL, FIZZLE_QUIPS, FORGE_NAME_EGGS, GRIND_LINES, GRINGOTTS, HAGRID_HINTS, LEGACY_CODE,
@@ -40,24 +37,22 @@ import { EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
 import {
   MAX_ITEMS, derived, gasLimit, hexDotHp, hexPrice, hexTickDmg, moveSlow, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
-  darkLordTakes, duelSteal, focusAfter, jointPct, stealPct, vetoPasses,
+  duelSteal, electMinister, focusAfter, stealPct, stunPaysRep,
 } from './progression.js';
-import {
-  AGENT_TOOL_COST, DA_JOINED, DA_JOINT, DA_LEFT, DA_MEMBER_JOINED, DA_OUTGROWN, DA_VETOED, DA_VOTE, DARK_LORD_FADES, DARK_LORD_FALLS, DARK_LORD_RISES,
-  DARK_LORD_YOU, DARK_MARK_SEEN, LAWLESS_ENTER, LAWLESS_LEAVE, STUDIED_YOU, STUDY_READY, STUDY_WAIT, tiredText,
-} from './unfair.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
 import { chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
-import { inMatch } from './duelclub.js';
-import { FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
+import { duelFoes, inFight, inMatch, sideOf } from './duelclub.js';
+import { spared, strikes } from './allies.js';
+import { AGENT_TOOL_COST, FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
-import { bannedCastText, bannedListing, marketDecreeErrors, marketDecreeNews, payRoyalty, rollDay, sanitizeMarket } from './market.js';
+import { bannedCastText, bannedListing, marketDecreeErrors, payRoyalty } from './market.js';
 import type {
   Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
 } from './types.js';
+import { visibleTo } from './types.js';
 
 export { FORGE_REFUSAL, SILENCED, BOUND_REFUSAL, CURSE_BLESS } from './hex.js';
 export { PAIR_REFUSAL, PAIR_THROTTLED, parsePairCode } from './identity.js';
@@ -109,7 +104,7 @@ export const ACHIEVEMENTS: Record<string, { name: string; zh: string; rep: numbe
   leviosa: { name: "It's Levi-O-sa", zh: '是羽加迪姆勒维奥萨', rep: 10, text: 'You knocked out a troll the way Ron did in 1991.', textZh: '你像 1991 年的罗恩一样打晕了一只巨怪。羽加迪姆勒维奥萨，yyds。' },
   elder_wand: { name: 'Master of the Elder Wand', zh: '老魔杖的主人', rep: 20, text: 'The wand chooses the wizard — and it chose whoever beat its last master.', textZh: '是魔杖选择巫师 —— 它选择了击败它上一任主人的人。' },
   seeker: { name: 'Seeker', zh: '找球手', rep: 10, text: 'Accio Firebolt! Fastest broom in the world.', textZh: '火弩箭飞来！世界上最快的扫帚。' },
-  first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned another wizard. Bow first next time.', textZh: '你击晕了另一个巫师。下次记得先鞠躬。' },
+  first_blood: { name: 'Duellist', zh: '决斗者', rep: 0, text: 'You stunned a rival wizard. Bow first next time.', textZh: '你击晕了一位对手巫师。下次记得先鞠躬。' },
   // Granted privately (achievePrivately): a public announcement in the same tick would unmask the anonymous sender.
   dark_arts: { name: 'The Dark Arts', zh: '黑魔法', rep: 0, text: 'You posted a curse. The forge asked no questions. Nobody saw you do it — this time.', textZh: '你寄出了一个诅咒。锻造炉什么也没问。这一次，没有人看见。' },
   hello_world: { name: 'Hello, World', zh: '你好，世界', rep: 1, text: 'Your spell said hello to the world. Every great wizard starts here — even Hermione had a first program.', textZh: '你的咒语向世界问了好。每个伟大的巫师都从这里开始——赫敏也写过她的第一个程序。' },
@@ -129,9 +124,6 @@ export interface Ceremony {
   hero: { name: string; house: House; pts: number } | null;
   minister: string | null;
 }
-
-/** The Minister's last decree while the DA may still veto it: the rulebook before it, and the DA members who voted. */
-export interface VetoWindow { term: number; at: number; minister: string; ministerId: string; before: Rulebook; votes: string[]; statue: boolean; decree: number }
 
 export interface EntityView { id: string; name: string; pos: Vec2; hp: number; maxHp: number; kind: 'wizard' | 'creature' }
 
@@ -181,13 +173,6 @@ export class World {
     curseFoundBy: null as string | null,
     /** House points awarded by wizards themselves this term ("Ten points to Ravenclaw!"): added to the House Cup. */
     housePoints: { term: 0, pts: {} } as { term: number; pts: Partial<Record<House, number>> },
-    /** 黑魔王: who holds the Dark Mark (reputation #1 with hysteresis) and since when. */
-    darkLordId: null as string | null, darkLordSince: 0,
-    /** 邓布利多军: its members (registry ids, never shown to anyone but members). */
-    da: { members: [] as string[] },
-    /** The term in which the DA last used its veto (DA_VETOES_PER_TERM = 1), and the decree it may still veto. */
-    vetoTerm: 0,
-    veto: null as VetoWindow | null,
     /** 隐藏宝箱: which chests were opened this term, and by whom (names). */
     chests: { term: 0, opened: {} } as { term: number; opened: Record<string, string> },
   };
@@ -223,16 +208,10 @@ export class World {
   /** Server secret that seeds every seal. Never leaves the server (it is in the save file, so keep that private). */
   secret: string;
   private storms: { at: number; x: number; z: number; r: number; power: number; element: Element; owner: string; tags: string[] }[] = [];
-  private sealCache = new Map<string, Seal>();
   /** Flavour rate limits (lore/memes.ts MEME) and per-wizard meme bookkeeping. Neither is persisted. */
   private memeCd = new Cooldowns();
   private memeOf = new Map<string, { place: string | null; x: number; z: number; casts: number; still: number; kills: number[]; hagrid: number }>();
-  /** Not persisted: 黑魔王 broadcast clock; wizards standing in the lawless zone; DA hits per target; agent concentration. */
-  private darkCd = 0;
-  private lawlessIn = new Set<string>();
-  private jointHits = new Map<string, Map<string, number>>();
-  /** When each DA member last landed a joint-Patronus hit (transient; privateState().unfair.joint). */
-  private jointAt = new Map<string, number>();
+  /** 专注力: each agent's concentration as of when it last spent some (persisted). */
   private focus = new Map<string, { pts: number; at: number }>();
 
   constructor(opts: WorldOptions = {}) {
@@ -242,7 +221,7 @@ export class World {
     this.secret = opts.secret ?? process.env.HOGWARTS_SECRET ?? randomBytes(32).toString('hex');
     this.term = { n: 1, startedAt: 0, endsAt: this.rules.terms.lengthSeconds };
     if (opts.tokenPrefix) this.tokenPrefix = opts.tokenPrefix;
-    // the features' own state (kernel/features.ts: the event wheel, the Duelling Club, Quidditch, …)
+    // the features' own state (kernel/features.ts: the Dark Mark, the DA, the event wheel, the Duelling Club, …)
     for (const f of FEATURES) f.init?.(this);
   }
 
@@ -267,13 +246,13 @@ export class World {
     return m;
   }
   /** A private flavour line to one wizard ('system' shows in the feed; 'egg' also raises the banner). */
-  private tell(w: Wizard, l: Line, type: EventType = 'system') { this.emit(type, l.en, { to: w.id, zh: l.zh }); }
+  tell(w: Wizard, l: Line, type: EventType = 'system') { this.emit(type, l.en, { to: w.id, zh: l.zh }); }
   /** A speech bubble over a wizard's head, without a feed line (never over their own chat). */
   private bubble(w: Wizard, l: Line, secs = 4) { if (!w.say || w.say.until < this.now) w.say = { text: l.zh, until: this.now + secs }; }
   private nid(prefix: string) { return `${prefix}${(++this.seq).toString(36)}${Math.floor(this.rng() * 1296).toString(36)}`; }
   onEvent(fn: (e: WorldEvent) => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string } = {}) {
+  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string; ch?: WorldEvent['ch']; aud?: string[] } = {}) {
     const e: WorldEvent = { id: ++this.eventSeq, t: round(this.now), type, text, ...opts };
     this.events.push(e);
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
@@ -286,7 +265,7 @@ export class World {
    * which would hand every player everyone's registry number). Send `wireEvent(e)`, never `e`.
    */
   wireEvent(e: WorldEvent): WireEvent {
-    const { who: _who, ...rest } = e;
+    const { who: _who, aud: _aud, ...rest } = e;
     return rest;
   }
 
@@ -299,7 +278,7 @@ export class World {
     const out: WorldEvent[] = [];
     for (const e of this.events) {
       if (e.id <= sinceId) continue;
-      if (e.to && e.to !== wid) continue;
+      if (!visibleTo(e, wid)) continue;
       if (e.from === 'agent') continue;
       if (e.type === 'chat' && e.who?.[0] === wid) continue;
       out.push(e);
@@ -533,15 +512,15 @@ export class World {
     if (dc && CREATURES[dc.kind].invulnerable) return false;
     if (this.inSafe(dst.pos)) return false;
     const sc = srcId ? this.creatures.get(srcId) : undefined;
-    // 决斗俱乐部 (duelclub.ts, formal/tla/Hostility.tla DuelMutual / DuelIsolated): while two wizards fight on the
-    // stage, only they (and their summons) touch each other — whatever their houses — and nobody else touches them
+    // 决斗俱乐部 (duelclub.ts, formal/tla/Hostility.tla DuelMutual / DuelTeammates / DuelIsolated): while a match
+    // fights on the stage, only opponents (and their summons) touch each other — whatever their houses — partners
+    // never do, a duelist who is out touches nothing, and nobody from outside touches them
     const m = this.duel.match;
     if (srcId && m && m.phase === 'fight') { // (canHarm(null, x) keeps meaning "x is in play": see jinxBites)
-      const inD = (id: string | null | undefined) => id === m.a || id === m.b;
       const so = sc?.owner ?? srcId, dso = dc?.owner ?? dstId;
-      if (inD(so) || inD(dso)) {
+      if (sideOf(m, so) >= 0 || sideOf(m, dso) >= 0) {
         const sw0 = so ? this.wizards.get(so) : undefined;
-        return inD(so) && inD(dso) && so !== dso && !(sw0 && this.inSafe(sw0.pos));
+        return duelFoes(this.duel, so, dso) && !(sw0 && this.inSafe(sw0.pos));
       }
     }
     if (!srcId) return true;
@@ -583,16 +562,11 @@ export class World {
     if (!this.canHarm(null, dstId)) return false;
     const dw = this.wizards.get(dstId);
     if (!dw) return true;
-    const duelSide = this.duelOpponent(dw.id);
-    if (duelSide !== undefined) return !src || src === duelSide; // 决斗俱乐部: only the opponent's (or the world's)
+    if (inFight(this.duel, dw.id)) return !src || duelFoes(this.duel, this.credit(src) ?? src, dw.id); // 决斗俱乐部: only an opponent's (or the world's)
     return this.rulesLetHarm(src, dw);
   }
-  /** The opponent of a wizard fighting a Duelling-Club match right now, else undefined. */
-  duelOpponent(wid: string): string | undefined {
-    const m = this.duel.match;
-    if (!m || m.phase !== 'fight') return undefined;
-    return m.a === wid ? m.b : m.b === wid ? m.a : undefined;
-  }
+  /** Two wizards fighting each other in a Duelling-Club match right now (opponents, not partners). */
+  duelFoes(x: string, y: string): boolean { return duelFoes(this.duel, x, y); }
 
   /** Stunned wizards within r (they are not "in play", so `around` never returns them). */
   fallen(p: Vec2, r: number, exclude?: string) {
@@ -730,7 +704,9 @@ export class World {
   enroll(name: string, preference?: string): { wizard: Wizard; sorting: string } {
     const clean = name.trim().replace(/\s+/g, ' ');
     if (!/^[\p{L}\p{N} _'.-]{2,24}$/u.test(clean)) throw new Error('A name must be 2-24 letters, digits, spaces, _ \' . or -');
-    for (const w of this.wizards.values()) if (w.name.toLowerCase() === clean.toLowerCase()) throw new Error(`There is already a ${w.house} called ${w.name}.`);
+    // one name, one wizard: lookalikes (case, spacing, accents, Cyrillic letters) count as the same name
+    const key = nameKey(clean);
+    for (const w of this.wizards.values()) if (nameKey(w.name) === key) throw new Error(`There is already a ${w.house} called ${w.name}: that name is taken (so is anything that looks like it). Pick another. 已经有一位${zhHouse(w.house)}的巫师叫 ${w.name}：这个名字（以及看起来一样的名字）已被占用，换一个吧。`);
     const canon = canonFor(clean);
     let house: House;
     let sorting: string;
@@ -761,7 +737,7 @@ export class World {
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
-      ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false, auras: [], tearsAt: 0,
+      ui: [], seals: 0, wasMinister: false, npc: false, auras: [], tearsAt: 0,
       hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, agentPaused: false, agentSeen: null, goalBy: null,
       look: null, jinxLook: null,
     };
@@ -894,8 +870,8 @@ export class World {
     // an attack aimed at someone you may not harm: say so, spend nothing (it used to fly, fizzle on arrival, and cost mana)
     if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.canHarm(wid, target)) {
       const t = this.entity(target)!;
-      const why = this.duelOpponent(target) !== undefined ? 'they are in a Duelling Club match' : this.duelOpponent(wid) !== undefined ? 'only your duel opponent can be hit now' : this.inSafe(t.pos) || this.inSafe(w.pos) ? 'a safe zone' : 'the rules (house, PvP, or they are down)';
-      const whyZh = this.duelOpponent(target) !== undefined ? '对方正在决斗' : this.duelOpponent(wid) !== undefined ? '决斗中只能打你的对手' : this.inSafe(t.pos) || this.inSafe(w.pos) ? '安全区' : '规则（学院、PvP，或对方已倒下）';
+      const why = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? 'they are in a Duelling Club match' : inMatch(this.duel, wid) ? 'in a duel only your opponents can be hit' : this.inSafe(t.pos) || this.inSafe(w.pos) ? 'a safe zone' : 'the rules (house, PvP, or they are down)';
+      const whyZh = inMatch(this.duel, target) && !inMatch(this.duel, wid) ? '对方正在决斗' : inMatch(this.duel, wid) ? '决斗中只能打你的对手' : this.inSafe(t.pos) || this.inSafe(w.pos) ? '安全区' : '规则（学院、PvP，或对方已倒下）';
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
     }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
@@ -1051,7 +1027,7 @@ export class World {
     if (!w) return [];
     const out: { from: string; kind: string; eta: number }[] = [];
     for (const p of this.projectiles.values()) {
-      if (p.owner === wid || !this.canHarm(p.owner, wid)) continue;
+      if (p.owner === wid || !strikes(this, p.owner, p.homing, wid)) continue;
       const rx = w.pos.x - p.pos.x, rz = w.pos.z - p.pos.z;
       const v2 = p.vel.x * p.vel.x + p.vel.z * p.vel.z;
       if (v2 < 1e-6) continue;
@@ -1095,7 +1071,8 @@ export class World {
   private tryReflect(p: Projectile, id: string): boolean {
     const w = this.wizards.get(id);
     if (!w || (p.kind !== 'bolt' && p.kind !== 'disarm') || p.owner === w.id || p.tags.includes('reflected')) return false;
-    if (!(w.st.shieldUntil > this.now && w.st.shield > 0 && this.now - (w.st.shieldAt ?? -1e9) <= PERFECT_PROTEGO_S)) return false;
+    const timed = w.st.shieldUntil > this.now && w.st.shield > 0 && this.now - (w.st.shieldAt ?? -1e9) <= PERFECT_PROTEGO_S;
+    if (!timed && !HOOKS.parry.some((f) => f.parry(this, w, p))) return false; // e.g. an armed ward (ward.ts)
     const from = this.entity(p.owner);
     const sp = Math.hypot(p.vel.x, p.vel.z) || this.rules.physics.projectileSpeed;
     const tx = from ? from.pos.x - w.pos.x : -p.vel.x, tz = from ? from.pos.z - w.pos.z : -p.vel.z;
@@ -1172,14 +1149,15 @@ export class World {
 
   reveal(w: Wizard, key: UiCharm) {
     this.fx({ k: 'reveal', x: w.pos.x, z: w.pos.z, h: w.handle });
-    if (key === 'revelio') { this.revealSenders(w); this.revealStudies(w); } // Revelio also unmasks who posted you a curse (§B.1), and how their spells work (偷师)
+    if (key === 'revelio') this.revealSenders(w); // Revelio also unmasks who posted you a curse (§B.1)
+    for (const f of HOOKS.reveal) f.reveal(this, w, key); // … and how their spells work (偷师)
     if (w.ui.includes(key)) return;
     w.ui.push(key);
     const c = UI_CHARM_INFO[key];
     this.emit('egg', `✨ A new sense settles into ${c.en}. (MCP: look.${c.look})`, { to: w.id, zh: `✨ 一种新的感知落在了${c.zh}。（MCP：look.${c.look}）` });
   }
 
-  /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last. */
+  /** Lightning that leaps: each jump picks the nearest un-struck harmable thing within 8m of the last (no ally of the caster). */
   chain(w: Wizard, first: string, power: number, element: Element, jumps: number, tags: string[]) {
     const hit = new Set<string>();
     const pts: number[] = [w.pos.x, w.pos.z];
@@ -1193,7 +1171,7 @@ export class World {
       this.damage(w.id, cur, p, element, tags);
       p *= 0.7;
       const from = { ...e.pos };
-      cur = this.around(from, 8, (x) => !hit.has(x.id) && this.canHarm(w.id, x.id), w.id, 1)[0]?.id ?? '';
+      cur = this.around(from, 8, (x) => !hit.has(x.id) && strikes(this, w.id, first, x.id), w.id, 1)[0]?.id ?? ''; // never leaps to an ally (allies.ts)
     }
     this.fx({ k: 'chain', x: w.pos.x, z: w.pos.z, e: element, pts });
   }
@@ -1206,91 +1184,6 @@ export class World {
   title(w: Wizard) {
     const i = titleIndex({ year: w.year, xp: w.xp, seals: w.seals, wasMinister: w.wasMinister });
     return { index: i, ...TITLES[i], next: TITLES[i + 1] ? { zh: TITLES[i + 1].zh, en: TITLES[i + 1].en, how: TITLES[i + 1].how } : null };
-  }
-
-  // ------------------------------------------------------------------ the Restricted Section
-  private seal(w: Wizard, tier: number): Seal {
-    const k = `${w.id}|${tier}`;
-    let s = this.sealCache.get(k);
-    if (!s) { s = generateSeal(this.secret, w.id, tier); this.sealCache.set(k, s); }
-    return s;
-  }
-
-  restrictedSection(wid: string) {
-    const w = this.need(wid);
-    return {
-      warning: 'The Restricted Section lies. Margin notes may be false; not every block of runes can be reached. Only running the runes tells the truth.',
-      progress: `${w.seals}/4 seals broken`,
-      seals: SEAL_TIERS.map((t) => {
-        const have = w.sealPages[t.tier] ?? [];
-        return {
-          tier: t.tier, name: t.name, zh: t.zh, rewardZh: SEAL_REWARDS_ZH[t.tier], requiresYear: t.year, inputWords: t.words, reward: SEAL_REWARDS[t.tier],
-          state: w.seals >= t.tier ? 'broken' : w.seals === t.tier - 1 ? (w.year >= t.year ? 'open to you' : `needs year ${t.year}`) : 'break the previous seal first',
-          pages: t.pages.map((lm, i) => ({ page: i + 1, where: LANDMARKS.find((l) => l.id === lm)?.name ?? lm, collected: have.includes(i) })),
-        };
-      }),
-      codex: Object.values(CODEX),
-      howTo: 'Stand within 10m of the landmark where a page rests and read it (read_seal_page). With every page, study the runes (inspect_seal), then speak the input words (break_seal). The seal accepts exactly one answer. Three failed attempts per seal every 10 minutes; each failure bites.',
-    };
-  }
-
-  readSealPage(wid: string, tier: number) {
-    const w = this.need(wid);
-    const t = SEAL_TIERS[tier - 1];
-    if (!t) throw new Error('There are four seals.');
-    if (w.seals >= tier) throw new Error('That seal is already broken.');
-    const have = (w.sealPages[tier] ??= []);
-    const idx = t.pages.findIndex((lm, i) => {
-      const l = LANDMARKS.find((x) => x.id === lm)!;
-      return !have.includes(i) && dist(l, w.pos) <= 10;
-    });
-    if (idx < 0) {
-      const missing = t.pages.map((lm, i) => (have.includes(i) ? null : LANDMARKS.find((x) => x.id === lm)?.name)).filter(Boolean);
-      throw new Error(missing.length ? `No page of this seal is here. Missing pages rest at: ${missing.join(', ')}.` : 'You already hold every page of this seal.');
-    }
-    have.push(idx);
-    have.sort((a, b) => a - b);
-    this.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
-    const s = this.seal(w, tier);
-    const [from, to] = s.pages[idx];
-    return { tier, page: idx + 1, of: t.pages.length, runes: disassemble(s.code, from, to) };
-  }
-
-  inspectSeal(wid: string, tier: number) {
-    const w = this.need(wid);
-    const t = SEAL_TIERS[tier - 1];
-    if (!t) throw new Error('There are four seals.');
-    const s = this.seal(w, tier);
-    const have = w.sealPages[tier] ?? [];
-    const text = s.pages.map(([from, to], i) => (have.includes(i) ? disassemble(s.code, from, to) : `      [page ${i + 1} missing — it rests at ${LANDMARKS.find((l) => l.id === t.pages[i])?.name}]`)).join('\n');
-    return { tier, name: t.name, zh: t.zh, inputWords: t.words, pagesCollected: `${have.length}/${t.pages.length}`, runes: text, broken: w.seals >= tier };
-  }
-
-  breakSeal(wid: string, tier: number, input: (string | number)[]) {
-    const w = this.need(wid);
-    const t = SEAL_TIERS[tier - 1];
-    if (!t) throw new Error('There are four seals.');
-    if (w.seals >= tier) throw new Error('That seal is already broken.');
-    if (w.seals !== tier - 1) throw new Error('The seals must be broken in order.');
-    if (w.year < t.year) throw new Error(`The ${t.name} will not even speak to a wizard below year ${t.year}.`);
-    if ((w.sealPages[tier] ?? []).length < t.pages.length) throw new Error('You have not read every page of this seal.');
-    const tries = (w.sealTries[tier] ?? []).filter((x) => this.now - x < 600);
-    if (tries.length >= 3) throw new Error(`The seal is still smouldering from your last attempts. Wait ${Math.ceil(600 - (this.now - tries[0]))}s.`);
-    const words = input.map(parseWord);
-    if (words.length !== t.words || words.some((x) => x === null)) throw new Error(`This seal takes exactly ${t.words} 32-bit word(s), e.g. "0x1a2b3c4d".`);
-    if (runSeal(this.seal(w, tier).code, words as number[])) {
-      const title0 = this.title(w).key;
-      w.seals = tier;
-      w.sealTries[tier] = [];
-      this.fx({ k: 'seal', x: w.pos.x, z: w.pos.z, h: w.handle });
-      this.emit('achievement', `📕 ${w.name} broke ${t.name}! (${SEAL_REWARDS[tier]})`, { who: [w.id], zh: `📕 ${w.name} 破解了${t.zh}！（${SEAL_REWARDS_ZH[tier]}）` });
-      this.addRep(w, 25 * tier);
-      this.titleQuip(w, title0);
-      return { opened: true, reward: SEAL_REWARDS[tier], title: this.title(w).zh };
-    }
-    w.sealTries[tier] = [...tries, this.now];
-    this.damage(null, w.id, 15, 'arcane');
-    return { opened: false, message: 'SOWILO. The seal holds, and bites (-15 HP).', attemptsLeft: 2 - tries.length };
   }
 
   apparate(w: Wizard, to: Vec2) {
@@ -1357,9 +1250,12 @@ export class World {
     let a = amount * rb.combat.damageMultiplier * (rb.combat.elementMultipliers[element] ?? 1);
     const by = this.credit(srcId);
     const sw = srcId ? this.wizards.get(srcId) : undefined;
-    if (sw && !opts.dot) a *= derived(sw, rb).power * this.darkPower(sw);
-    // 邓布利多军: DA_JOINT_MIN members hitting the same target within DA_JOINT_WINDOW_S (a summon counts for its owner)
-    if (by && !opts.dot && !opts.hex) a *= this.jointBonus(by, dstId);
+    if (!opts.dot) {
+      // the features' say on a direct hit (the Dark Lord's ×1.15, the DA's joint Patronus, 偷师 remembering the spell)
+      let m = 1;
+      for (const f of HOOKS.hit) m *= f.hit(this, by, sw, dstId, tags, true);
+      a *= (sw ? derived(sw, rb).power : 1) * m;
+    }
     // elemental side effects (not from damage-over-time itself, so they never chain)
     if (rb.combat.elementStatuses && !opts.dot && a > 0) {
       if (element === 'fire') this.applyAura(dstId, 'burn', 3, Math.min(6, 1 + amount * 0.1), by);
@@ -1394,7 +1290,6 @@ export class World {
     }
     const w = this.wizards.get(dstId);
     if (!w) return 0;
-    if (sw && !opts.dot) this.noteSpellHit(sw, w, tags);
     a *= 1 - derived(w, rb).ward;
     if (srcId && this.creatures.has(srcId) && !w.npc && this.now - w.createdAt < NEWCOMER_WARD_S) a *= 1 - NEWCOMER_WARD;
     if (opts.hex) a = hexTickDmg(amount, a);
@@ -1411,13 +1306,13 @@ export class World {
       return before - w.hp;
     }
     const dm = this.duel.match;
-    if (dm && dm.phase === 'fight' && (dm.a === w.id || dm.b === w.id)) {
+    if (dm && inFight(this.duel, w.id)) {
       // 决斗俱乐部: count the hit for the summary; a knock-out ends the match instead of stunning (duelclub.ts)
       const st = by ? dm.stats[by] : undefined;
       if (st) { st.dealt += Math.min(a, Math.max(0, w.hp)); if (!opts.dot) st.hits++; }
       if (w.hp - a <= 0) {
         w.hp = 1;
-        dm.loser = w.id;
+        dm.out[w.id] = 'ko'; // out of the fight (a 1v1 ends at once; a 2v2 when the whole side is out)
         this.fx({ k: 'stun', x: w.pos.x, z: w.pos.z, h: w.handle });
         return a;
       }
@@ -1442,12 +1337,16 @@ export class World {
       const last = kw.lastDuel[w.id] ?? -1e9;
       let gain = 0;
       const fresh = this.now - w.createdAt < FRESH_SECONDS || w.npc;
-      // 输赢代价不对称: the share stolen grows with the victim's standing (5% … 20%, the Dark Lord 30%), and the
-      // lawless zone doubles the duel (base and share, the share still ≤ 30%). Lean: duel_steal_cap, duel_conserves_curve.
-      const dark = this.flags.darkLordId === w.id;
+      // 以大欺小: a victim more than BULLY_YEAR_GAP years below you pays nobody anything (Lean stun_pays_rep)
+      const bully = !stunPaysRep(kw.year, w.year);
+      // 输赢代价不对称: the share stolen grows with the victim's standing (5% … 20%, a bounty — the Dark Lord — 30%),
+      // and the lawless zone doubles the duel (base and share, the share still ≤ 30%). Lean: duel_steal_cap, duel_conserves_curve.
+      let bounty: readonly Line[] | null = null;
+      for (const f of HOOKS.bounty) if ((bounty = f.bounty(this, w))) break;
+      const dark = !!bounty;
       const mult = this.inLawless(w.pos) ? LAWLESS_MULT : 1;
       let steal = 0, pct = 0;
-      if (this.now - last > 60 && !fresh) {
+      if (this.now - last > 60 && !fresh && !bully) {
         pct = stealPct(w.reputation, dark, this.rules.progression.duelRepStealPct, mult);
         steal = duelSteal(w.reputation, dark, this.rules.progression.duelRepStealPct, mult);
         w.reputation -= steal;
@@ -1455,15 +1354,16 @@ export class World {
         this.addRep(kw, gain, 'duels');
       }
       kw.lastDuel[w.id] = this.now;
-      const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : ' (no reputation: rematch too soon)';
+      const why = w.npc ? ' (no reputation for NPCs)' : fresh ? ' (no reputation: they enrolled less than 10 minutes ago)' : bully ? ` (no reputation: they are ${kw.year - w.year} years below you)` : ' (no reputation: rematch too soon)';
       const q = this.stunQuip(w, kw, element);
       const extra = gain ? { en: `${pct ? `, ${pct}% of theirs` : ''}${mult > 1 ? ', doubled in the lawless forest' : ''}`, zh: `${pct ? `，夺走对方 ${pct}%` : ''}${mult > 1 ? '，无规则区翻倍' : ''}` } : { en: '', zh: '' };
-      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation${extra.en})` : why}.${q ? ` ${q.en}` : ''}`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}${extra.zh}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : '（重复击晕，不计声望）'}。${q ? q.zh : ''}` });
-      if (dark && gain) {
-        const l = fill(this.quip(DARK_LORD_FALLS, w.handle, kw.handle), { name: w.name, k: kw.name, n: Math.round(steal) });
+      this.emit('combat', `${kw.name} stunned ${w.name}${gain ? ` (+${Math.round(gain)} reputation${extra.en})` : why}.${q ? ` ${q.en}` : ''}`, { who: [kw.id, w.id], zh: `${kw.name} 击晕了 ${w.name}${gain ? `（声望 +${Math.round(gain)}${extra.zh}）` : w.npc ? '（NPC 不计声望）' : fresh ? '（对方入学不足 10 分钟，不计声望）' : bully ? `（对方比你低 ${kw.year - w.year} 个年级，以大欺小不计声望）` : '（重复击晕，不计声望）'}。${q ? q.zh : ''}` });
+      if (bounty && gain) {
+        const l = fill(this.quip(bounty, w.handle, kw.handle), { name: w.name, k: kw.name, n: Math.round(steal) });
         this.emit('dark', l.en, { who: [kw.id, w.id], zh: l.zh });
       }
-      this.achieve(kw, 'first_blood');
+      // 决斗者 needs a real opponent: not an NPC, not a housemate caught by friendly fire (playtest round 2), not a much younger one
+      if (!w.npc && w.house !== kw.house && !bully) this.achieve(kw, 'first_blood');
       if (this.flags.elderWandHolder === w.id) this.transferElderWand(w, kw, 'defeated');
       this.runLaws('kill', kw, w.id);
     } else {
@@ -1676,7 +1576,7 @@ export class World {
   }
 
   /** A private line when a wizard's title changes (lore/titles.ts), from TITLE_QUIPS. */
-  private titleQuip(w: Wizard, before: string) {
+  titleQuip(w: Wizard, before: string) {
     const t = this.title(w);
     if (t.key === before || w.npc) return;
     const pool = TITLE_QUIPS[t.key];
@@ -1803,8 +1703,8 @@ export class World {
    */
   silenced(w: Wizard) {
     if (!(w.st.silencedUntil > this.now && !this.inSafe(w.pos))) return false;
-    const src = w.st.silenceSrc ?? null, opp = this.duelOpponent(w.id);
-    return opp !== undefined ? !src || src === opp : this.rulesLetHarm(src, w); // 决斗俱乐部: only the opponent's silence holds
+    const src = w.st.silenceSrc ?? null;
+    return inFight(this.duel, w.id) ? !src || duelFoes(this.duel, src, w.id) : this.rulesLetHarm(src, w); // 决斗俱乐部: only an opponent's silence holds
   }
 
   /**
@@ -2026,7 +1926,7 @@ export class World {
     this.achieve(to, 'elder_wand');
   }
 
-  private clampVitals(w: Wizard) {
+  clampVitals(w: Wizard) {
     const d = derived(w, this.rules);
     w.hp = Math.min(w.hp, d.maxHp);
     w.mana = Math.min(w.mana, d.maxMana);
@@ -2089,7 +1989,7 @@ export class World {
     const w = this.need(wid);
     if (w.decreeCharges < 1) {
       const m = this.flags.ministerId ? this.wizards.get(this.flags.ministerId) : undefined;
-      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the wizard with the highest reputation (min ${this.ministerBar()}).`);
+      throw new Error(`Only the Minister for Magic holding an unspent decree may rewrite the rules. Current Minister: ${m ? m.name : 'none'}. A Minister is appointed at the end of each term: the player with the highest reputation (min ${this.ministerBar()}; never an NPC).`);
     }
     const full = { ...patch } as Record<string, unknown>;
     if (proclamation) full.proclamation = proclamation;
@@ -2110,24 +2010,24 @@ export class World {
     if (dryRun) return { ok: true as const, dryRun: true, changes: res.changes };
     const before = this.rules;
     this.rules = res.rulebook;
-    sanitizeMarket(this);
     w.decreeCharges = 0;
     const rec: DecreeRecord = { at: this.now, term: this.term.n, minister: w.name, changes: res.changes, proclamation: this.rules.proclamation };
     this.decrees.push(rec);
-    // 邓布利多军 may veto it within DA_VETO_WINDOW_S (formal/tla/DAVeto.tla): keep what it replaced
-    this.flags.veto = { term: this.term.n, at: this.now, minister: w.name, ministerId: w.id, before, votes: [], statue: true, decree: this.decrees.length - 1 };
     this.emit('decree', `📜 EDUCATIONAL DECREE by Minister ${w.name}: "${this.rules.proclamation}" — ${res.changes.length} rule(s) changed: ${res.changes.slice(0, 6).join('; ')}${res.changes.length > 6 ? '; ...' : ''}`, { who: [w.id], zh: `📜 部长 ${w.name} 颁布教育令：「${this.rules.proclamation}」—— 改动了 ${res.changes.length} 条规则：${res.changes.slice(0, 6).join('；')}${res.changes.length > 6 ? '；……' : ''}` });
     if (before.magic.unforgivablesBanned && !this.rules.magic.unforgivablesBanned)
       this.emit('decree', 'The Ministry has fallen. Scrimgeour is dead. They are coming. (Unforgivable Curses are no longer punished; the name "Voldemort" is now Taboo.)', { zh: '魔法部倒台了。斯克林杰死了。他们来了。（不可饶恕咒不再受罚；「伏地魔」这个名字成了禁忌。）' });
     if (!before.magic.apparitionOnGrounds && this.rules.magic.apparitionOnGrounds)
       this.emit('decree', 'The anti-Apparition jinx over Hogwarts has been lifted — as Dumbledore did for lessons, once.', { zh: '霍格沃茨上空的反幻影显形魔咒被解除了 —— 就像邓布利多为上课破例的那一次。' });
-    marketDecreeNews(this, before, this.rules, [w.id]);
+    this.rulesChanged(before, w); // 咒语集市's news; 邓布利多军 may veto it (formal/tla/DAVeto.tla)
     for (const w2 of this.wizards.values()) this.clampVitals(w2);
     // The Minister leaves a mark on the world itself: a statue in the courtyard.
     this.flags.statues = [...this.flags.statues, { name: w.name, house: w.house, term: this.term.n, inscription: this.rules.proclamation.slice(0, 80) }].slice(-8);
     this.emit('decree', `A statue of Minister ${w.name} rises in the Courtyard.`, { who: [w.id], zh: `部长 ${w.name} 的雕像在城堡大道旁立了起来。` });
     return { ok: true as const, dryRun: false, changes: res.changes };
   }
+
+  /** A decree (by `minister`) or a veto (null) replaced the Rulebook: the features react (kernel/feature.ts `rules`). */
+  rulesChanged(before: Rulebook, minister: Wizard | null) { for (const f of HOOKS.rules) f.rules(this, before, minister); }
 
   private lawCache = new Map<string, Node[]>();
   runLaws(on: Law['on'], subject: Wizard, object: string | null = null) {
@@ -2173,10 +2073,10 @@ export class World {
       this.emit('term', l.en, { zh: l.zh });
     }
     for (const w of this.wizards.values()) w.decreeCharges = 0;
-    const top = [...this.wizards.values()].filter((w) => !w.npc).sort((a, b) => b.reputation - a.reputation)[0];
+    const all = [...this.wizards.values()], top = all[electMinister(all, this.ministerBar())]; // players only (NPCs never rule)
     const cupZh = winner ? `${zhHouse(winner)}以 ${Math.round(points[winner])} 分赢得学院杯！城堡挂满了${zhHouse(winner)}的旗帜。` : '没有学院得分。';
     const cup = winner ? `${winner} wins the House Cup with ${Math.round(points[winner])} points! The castle is hung with ${winner} banners.` : 'No house earned any points.';
-    if (top && top.reputation >= this.ministerBar()) {
+    if (top) {
       top.decreeCharges = 1;
       top.wasMinister = true;
       this.flags.ministerId = top.id;
@@ -2346,9 +2246,8 @@ export class World {
     if (this.pairFails.length) this.pairFails = this.pairFails.filter((t) => this.now - t < 60);
     for (const [k, times] of this.pairFailsBy) if (!times.length || this.now - times[times.length - 1] >= 60) this.pairFailsBy.delete(k);
     for (const [k, times] of this.owlTimes) if (!times.length || this.now - times[times.length - 1] >= 60) this.owlTimes.delete(k);
-    this.unfairSweep();
+    for (const f of HOOKS.sweep) f.sweep(this); // the features' (the Dark Mark, the lawless zone, the DA, the market's day)
     this.memeSweep();
-    rollDay(this); // 咒语集市: the day's royalty summary
   }
 
   /**
@@ -2533,7 +2432,7 @@ export class World {
         for (const e of this.around(p.pos, 2.2, () => true, p.owner, 4)) {
           const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
           if (dist(e.pos, p.pos) > r + 0.45) continue;
-          if (!this.canHarm(p.owner, e.id)) continue;
+          if (!strikes(this, p.owner, p.homing, e.id)) continue; // a homing spell passes through the caster's allies (allies.ts)
           if (e.kind === 'wizard' && this.dodging(e.id)) continue; // 翻滚闪避: it flies past
           if (e.kind === 'wizard' && this.tryReflect(p, e.id)) break; // 完美格挡: back where it came from
           this.hit(p, e.id);
@@ -2551,7 +2450,7 @@ export class World {
     const w = this.wizards.get(id);
     const c = this.creatures.get(id);
     const caster = this.wizards.get(p.owner);
-    if (caster && w) this.noteSpellHit(caster, w, p.tags); // 偷师: a root or a disarm is a hit too
+    for (const f of HOOKS.hit) f.hit(this, p.owner, caster, id, p.tags, false); // (偷师: a root or a disarm is a hit too)
     if (p.kind === 'root') {
       if (w) w.st.rootedUntil = this.now + p.secs;
       if (c) c.rootedUntil = this.now + p.secs * (c.kind === 'troll' ? 0.5 : 1);
@@ -2640,7 +2539,7 @@ export class World {
     let t = c.target ? this.entity(c.target) : undefined;
     if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, o.pos) > 18)) { t = undefined; c.target = null; }
     if (!t) {
-      t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id) && !this.isBenign(e.id) && dist(e.pos, o.pos) < 16, c.id, 1)[0];
+      t = this.around(c.pos, def.aggro, (e) => this.canHarm(c.id, e.id) && !this.isBenign(e.id) && !spared(this, c.id, e.id) && dist(e.pos, o.pos) < 16, c.id, 1)[0];
       if (t) c.target = t.id;
     }
     if (t) {
@@ -3124,332 +3023,9 @@ export class World {
     return !w || !w.agentPaused || AGENT_PAUSE_ALLOWED.has(tool);
   }
 
-  // ------------------------------------------------------------------ 不公平，但好玩 (README; src/kernel/unfair.ts)
+  // ------------------------------------------------------------------ 无规则区 and 专注力 (README 不公平，但好玩; the rest is kernel/unfair.ts)
   /** Is p in the opt-in lawless zone (shared/map.ts LAWLESS_ZONE, deep in the Forbidden Forest)? */
   inLawless(p: Vec2) { return this.within(p, LAWLESS_ZONE); }
-
-  /** Counts for the Dark Lord and the DA's median: online, or present within the last DARK_LORD_SEEN_S. */
-  private seenRecently(w: Wizard) { return this.online(w) || this.now - w.lastSeenAt <= DARK_LORD_SEEN_S; }
-
-  /** May this wizard hold the Dark Mark? A player, seen recently, with at least DARK_LORD_MIN_REP reputation. */
-  darkLordEligible(w: Wizard) { return !w.npc && w.reputation >= DARK_LORD_MIN_REP && this.seenRecently(w); }
-
-  /** The current Dark Lord, if any. */
-  darkLord(): Wizard | null { const id = this.flags.darkLordId; return (id && this.wizards.get(id)) || null; }
-
-  /** The Dark Lord's direct damage bonus (×1.15); 1 for everyone else. */
-  private darkPower(w: Wizard) { return this.flags.darkLordId === w.id ? DARK_LORD_POWER_PCT / 100 : 1; }
-
-  /**
-   * 黑魔王: the reputation #1 among the eligible holds the Dark Mark. A holder who is still eligible keeps it
-   * until a challenger has ≥ 110% of their reputation (darkLordTakes; Lean dark_lord_no_flap: two close
-   * rivals never trade it back and forth). Runs in the 1 Hz sweep. Returns the holder's id.
-   */
-  updateDarkLord(): string | null {
-    const cur = this.darkLord();
-    const holder = cur && this.darkLordEligible(cur) ? cur : null;
-    let top: Wizard | null = null;
-    for (const w of this.wizards.values()) if (this.darkLordEligible(w) && (!top || w.reputation > top.reputation)) top = w;
-    let next: Wizard | null;
-    if (!holder) next = top;
-    else if (!top || top === holder) next = holder;
-    else next = darkLordTakes(holder.reputation, top.reputation) ? top : holder;
-    if ((next?.id ?? null) !== this.flags.darkLordId) this.passDarkMark(cur, next);
-    return this.flags.darkLordId;
-  }
-
-  private passDarkMark(from: Wizard | null, to: Wizard | null) {
-    this.flags.darkLordId = to?.id ?? null;
-    this.flags.darkLordSince = this.now;
-    if (!to) {
-      if (from) { const l = fill(DARK_LORD_FADES, { name: from.name }); this.emit('dark', l.en, { who: [from.id], zh: l.zh }); }
-      return;
-    }
-    const l = fill(this.quip(DARK_LORD_RISES, to.handle), { name: to.name });
-    this.emit('dark', l.en, { who: from ? [to.id, from.id] : [to.id], zh: l.zh });
-    this.tell(to, DARK_LORD_YOU, 'egg');
-    this.leaveDaQuietly(to, { zh: '黑魔王', en: 'the Dark Lord' });
-    this.darkCd = 0; // the Dark Mark shows where they are at once
-  }
-
-  /** The Dark Mark names the Dark Lord's whereabouts to everyone, every DARK_LORD_BROADCAST_S while they are online. */
-  private broadcastDarkMark() {
-    const d = this.darkLord();
-    if (!d || !this.online(d) || d.st.jailedUntil) return;
-    if (--this.darkCd > 0) return;
-    this.darkCd = DARK_LORD_BROADCAST_S;
-    const place = this.placeName(d.pos);
-    const l = fill(this.quip(DARK_MARK_SEEN, d.handle), { name: d.name, place: { en: place, zh: zhPlace(place) }, x: Math.round(d.pos.x), z: Math.round(d.pos.z) });
-    this.emit('dark', l.en, { who: [d.id], zh: l.zh });
-  }
-
-  /** Entering the lawless zone warns you (once per visit); leaving says so. */
-  private lawlessSweep() {
-    for (const w of this.wizards.values()) {
-      if (w.npc) continue;
-      const inside = this.online(w) && this.inLawless(w.pos);
-      if (inside === this.lawlessIn.has(w.id)) continue;
-      if (inside) { this.lawlessIn.add(w.id); this.tell(w, LAWLESS_ENTER, 'dark'); }
-      else { this.lawlessIn.delete(w.id); if (this.online(w)) this.tell(w, LAWLESS_LEAVE); }
-    }
-    for (const id of this.lawlessIn) if (!this.wizards.has(id)) this.lawlessIn.delete(id);
-  }
-
-  /** 1 Hz: the Dark Mark, the lawless zone's warnings, the DA's roll and joint-hit memory, the veto window closing. */
-  private unfairSweep() {
-    this.updateDarkLord();
-    this.broadcastDarkMark();
-    this.lawlessSweep();
-    const mid = this.flags.ministerId;
-    const minister = mid ? this.wizards.get(mid) : undefined;
-    if (minister && this.isDaMember(minister.id)) this.leaveDaQuietly(minister, { zh: '魔法部长', en: 'Minister for Magic' });
-    if (this.flags.da.members.some((id) => !this.wizards.has(id))) this.flags.da.members = this.flags.da.members.filter((id) => this.wizards.has(id));
-    for (const [id, at] of this.jointAt) if (this.now - at > DA_JOINT_BADGE_S) this.jointAt.delete(id);
-    for (const [t, m] of this.jointHits) {
-      for (const [id, at] of m) if (this.now - at > DA_JOINT_WINDOW_S) m.delete(id);
-      if (!m.size) this.jointHits.delete(t);
-    }
-    const v = this.flags.veto;
-    if (v && (v.term !== this.term.n || this.now - v.at > DA_VETO_WINDOW_S)) this.flags.veto = null;
-  }
-
-  // ---- 邓布利多军 Dumbledore's Army (formal/tla/DAVeto.tla)
-  isDaMember(id: string) { return this.flags.da.members.includes(id); }
-
-  /** The median reputation of the players seen recently (the DA admits anyone below it, or below DA_REP_CEILING). */
-  reputationMedian(): number {
-    const reps = [...this.wizards.values()].filter((w) => !w.npc && this.seenRecently(w)).map((w) => w.reputation).sort((a, b) => a - b);
-    const m = reps.length >> 1;
-    return !reps.length ? 0 : reps.length % 2 ? reps[m] : (reps[m - 1] + reps[m]) / 2;
-  }
-  /** The same, computed at most once per world time: privateState shows it on every socket's update (join/veto use the fresh one). */
-  private medianNow(): number {
-    if (this.medianAt !== this.now) { this.medianAt = this.now; this.medianVal = this.reputationMedian(); }
-    return this.medianVal;
-  }
-  private medianAt = -1;
-  private medianVal = 0;
-
-  /** Why this wizard may not join the DA (null: they may). */
-  private daRefusal(w: Wizard, med = this.reputationMedian()): Line | null {
-    if (w.npc) return { en: 'NPCs keep out of the Room of Requirement.', zh: 'NPC 进不了有求必应屋。' };
-    if (this.flags.ministerId === w.id) return { en: 'The Minister for Magic cannot join the army raised against the Ministry.', zh: '魔法部长不能加入反对魔法部的队伍。' };
-    if (this.flags.darkLordId === w.id) return { en: "The Dark Lord is not welcome in Dumbledore's Army.", zh: '邓布利多军不欢迎黑魔王。' };
-    if (w.reputation >= DA_REP_CEILING && w.reputation >= med) {
-      return {
-        en: `Dumbledore's Army is for the underdogs: your reputation (${Math.round(w.reputation)}) must be below ${DA_REP_CEILING} or below the median (${Math.round(med)}).`,
-        zh: `邓布利多军是弱者的联盟：你的声望（${Math.round(w.reputation)}）需低于 ${DA_REP_CEILING}，或低于中位数（${Math.round(med)}）。`,
-      };
-    }
-    return null;
-  }
-
-  /** The DA members in play right now: online and not in Azkaban (they make the quorum and the majority). */
-  daActive(): Wizard[] {
-    const out: Wizard[] = [];
-    for (const id of this.flags.da.members) { const w = this.wizards.get(id); if (w && this.online(w) && !w.st.jailedUntil) out.push(w); }
-    return out;
-  }
-
-  joinDA(wid: string) {
-    const w = this.need(wid);
-    if (this.isDaMember(w.id)) throw new Error("You are already in Dumbledore's Army. 你已经是邓布利多军的一员了。");
-    const no = this.daRefusal(w);
-    if (no) throw new Error(`${no.en} ${no.zh}`);
-    if (this.flags.da.members.length >= DA_MAX_MEMBERS) throw new Error(`The Room of Requirement is full (${DA_MAX_MEMBERS} members). 有求必应屋已经挤满了（${DA_MAX_MEMBERS} 人）。`);
-    for (const id of this.flags.da.members) { const m = this.wizards.get(id); if (m) this.tell(m, fill(DA_MEMBER_JOINED, { name: w.name }), 'da'); }
-    this.flags.da.members = [...this.flags.da.members, w.id];
-    this.tell(w, fill(DA_JOINED, { name: w.name }), 'da');
-    return this.daState(wid);
-  }
-
-  leaveDA(wid: string) {
-    const w = this.need(wid);
-    if (!this.isDaMember(w.id)) throw new Error("You are not in Dumbledore's Army. 你不是邓布利多军的成员。");
-    this.flags.da.members = this.flags.da.members.filter((id) => id !== w.id);
-    this.tell(w, DA_LEFT, 'da');
-    return this.daState(wid);
-  }
-
-  /** A member who became Minister or Dark Lord leaves the DA (the others are told). */
-  private leaveDaQuietly(w: Wizard, role: Line) {
-    if (!this.isDaMember(w.id)) return;
-    this.flags.da.members = this.flags.da.members.filter((id) => id !== w.id);
-    const l = fill(DA_OUTGROWN, { name: w.name, role });
-    this.tell(w, l, 'da');
-    for (const id of this.flags.da.members) { const m = this.wizards.get(id); if (m) this.tell(m, l, 'da'); }
-  }
-
-  /** The decree the DA may still veto (this term's, within DA_VETO_WINDOW_S, veto unspent), or null. */
-  private vetoable() {
-    const v = this.flags.veto;
-    if (!v || v.term !== this.term.n || this.now - v.at > DA_VETO_WINDOW_S || this.flags.vetoTerm === this.term.n) return null;
-    return v;
-  }
-
-  /** What the DA looks like to `wid`. Only members see who the members are. */
-  daState(wid: string, med = this.reputationMedian()) {
-    const w = this.need(wid);
-    const member = this.isDaMember(w.id);
-    const no = member ? null : this.daRefusal(w, med);
-    const active = this.daActive();
-    const v = this.vetoable();
-    const votes = v ? v.votes.filter((id) => active.some((a) => a.id === id)).length : 0;
-    return {
-      member, eligible: !member && !no, ...(no ? { why: no.en, whyZh: no.zh } : {}),
-      size: this.flags.da.members.length, max: DA_MAX_MEMBERS, online: active.length, quorum: DA_QUORUM,
-      ...(member ? { members: this.flags.da.members.map((id) => this.wizards.get(id)).filter((x): x is Wizard => !!x).map((x) => ({ handle: x.handle, name: x.name, online: this.online(x) })) } : {}),
-      admits: { belowReputation: DA_REP_CEILING, orBelowMedian: Math.round(med) },
-      veto: {
-        perTerm: DA_VETOES_PER_TERM, usedThisTerm: this.flags.vetoTerm === this.term.n, windowSeconds: DA_VETO_WINDOW_S,
-        decree: v ? { minister: v.minister, changes: this.decrees[v.decree]?.changes ?? [], secondsLeft: Math.max(0, Math.ceil(DA_VETO_WINDOW_S - (this.now - v.at))) } : null,
-        votes, needed: Math.floor(active.length / 2) + 1, voted: !!v && v.votes.includes(w.id),
-      },
-      joint: { members: DA_JOINT_MIN, withinSeconds: DA_JOINT_WINDOW_S, damagePct: DA_JOINT_PCT },
-    };
-  }
-
-  /**
-   * A DA member votes to veto the Minister's last decree (formal/tla/DAVeto.tla Vote/Veto). It passes when at
-   * least DA_QUORUM members are in play and a strict majority of them has voted, within DA_VETO_WINDOW_S of
-   * the decree, once per term: the Rulebook goes back to what it was before the decree and its statue falls.
-   */
-  vetoDecree(wid: string) {
-    const w = this.need(wid);
-    if (!this.isDaMember(w.id)) throw new Error("Only members of Dumbledore's Army may vote to veto a decree. 只有邓布利多军的成员能投票否决法令。");
-    if (!this.online(w) || w.st.jailedUntil) throw new Error('You must be in the world to vote. 你得在场才能投票。');
-    if (this.flags.vetoTerm === this.term.n) throw new Error(`The DA has already used its veto this term (${DA_VETOES_PER_TERM} per term). 邓布利多军本学期的否决权已经用过了（每学期 ${DA_VETOES_PER_TERM} 次）。`);
-    const v = this.flags.veto;
-    if (!v || v.term !== this.term.n) throw new Error('There is no decree this term to veto. 本学期还没有可以否决的法令。');
-    if (this.now - v.at > DA_VETO_WINDOW_S) throw new Error(`Too late: a decree can only be vetoed within ${DA_VETO_WINDOW_S}s of being enacted. 太晚了：法令颁布 ${DA_VETO_WINDOW_S} 秒内才能否决。`);
-    if (!v.votes.includes(w.id)) v.votes = [...v.votes, w.id];
-    const active = this.daActive();
-    const votes = v.votes.filter((id) => active.some((a) => a.id === id)).length;
-    const needed = Math.floor(active.length / 2) + 1;
-    if (vetoPasses(active.length, votes)) {
-      this.enactVeto(v);
-      return { vetoed: true, votes, needed, online: active.length, quorum: DA_QUORUM };
-    }
-    const mine = fill(DA_VOTE, { v: votes, need: needed, online: active.length, q: DA_QUORUM });
-    const theirs = { en: `🗳 ${w.name} voted to veto the Minister's decree (${votes}/${needed}).`, zh: `🗳 ${w.name} 投票否决部长的法令（${votes}/${needed}）。` };
-    for (const m of active) this.tell(m, m === w ? mine : theirs, 'da');
-    return { vetoed: false, votes, needed, online: active.length, quorum: DA_QUORUM, secondsLeft: Math.max(0, Math.ceil(DA_VETO_WINDOW_S - (this.now - v.at))) };
-  }
-
-  private enactVeto(v: VetoWindow) {
-    const res = applyPatch(defaultRulebook(), v.before as unknown); // re-validated: it may have come from disk
-    const was = this.rules;
-    this.rules = res.ok ? res.rulebook : defaultRulebook();
-    sanitizeMarket(this); // a listing unpublished since the decree leaves the 推荐 shelf (Market.tla PromotedPublished)
-    this.flags.vetoTerm = v.term;
-    this.flags.veto = null;
-    const rec = this.decrees[v.decree];
-    if (rec) rec.vetoed = true;
-    if (v.statue) {
-      let i = this.flags.statues.length - 1;
-      while (i >= 0 && !(this.flags.statues[i].name === v.minister && this.flags.statues[i].term === v.term)) i--;
-      if (i >= 0) this.flags.statues = this.flags.statues.filter((_, j) => j !== i);
-    }
-    for (const x of this.wizards.values()) this.clampVitals(x);
-    const l = fill(DA_VETOED, { minister: v.minister });
-    this.emit('decree', l.en, { who: [v.ministerId], zh: l.zh });
-    marketDecreeNews(this, was, this.rules);
-  }
-
-  /**
-   * The joint spell: a DA member's hit on `dstId` is remembered for DA_JOINT_WINDOW_S; while at least
-   * DA_JOINT_MIN distinct members have hit it in that window, their hits deal ×DA_JOINT_PCT% (jointPct: never
-   * more, however many join in; the Dark Lord is never a member, so it never stacks with the Dark Mark).
-   */
-  private jointBonus(by: string, dstId: string): number {
-    if (!this.isDaMember(by)) return 1;
-    let m = this.jointHits.get(dstId);
-    if (!m) { m = new Map(); this.jointHits.set(dstId, m); }
-    m.set(by, this.now);
-    let n = 0;
-    for (const [id, at] of m) { if (this.now - at > DA_JOINT_WINDOW_S || !this.isDaMember(id)) m.delete(id); else n++; }
-    const pct = jointPct(n);
-    if (pct > 100) for (const id of m.keys()) this.jointAt.set(id, this.now); // me.unfair.joint: every member in on it, every time (the public line below is rate-limited)
-    if (pct > 100 && this.banter([`joint:${dstId}`, 10])) {
-      const e = this.entity(dstId);
-      if (e) this.fx({ k: 'patronus', x: e.pos.x, z: e.pos.z, r: 6 });
-      const l = this.quip(DA_JOINT, dstId);
-      this.emit('da', l.en, { zh: l.zh });
-    }
-    return pct / 100;
-  }
-
-  // ---- 偷师 learning from the strong
-  /** Remember a custom spell of `attacker` that just hit `victim` (bolt damage, a root or a disarm). */
-  private noteSpellHit(attacker: Wizard, victim: Wizard, tags: string[]) {
-    if (attacker === victim || victim.npc || attacker.npc) return;
-    const name = tags[1];
-    if (!name) return;
-    const spell = attacker.spells.find((s) => !s.builtin && s.name === name);
-    if (!spell) return;
-    const key = `${attacker.handle}:${spell.id}`;
-    if (victim.studied?.includes(key)) return;
-    const hits = (victim.studyHits ?? []).filter((h) => this.now - h.lastAt < STUDY_MEMORY_S);
-    const h = hits.find((x) => x.key === key);
-    if (h) Object.assign(h, { lastAt: this.now, source: spell.source, name: spell.name, authorName: attacker.name });
-    else {
-      hits.push({ key, spellId: spell.id, name: spell.name, author: attacker.id, authorName: attacker.name, authorHandle: attacker.handle, source: spell.source, firstAt: this.now, lastAt: this.now });
-      if (hits.length > STUDY_KEEP) { hits.sort((a, b) => b.lastAt - a.lastAt); hits.length = STUDY_KEEP; }
-    }
-    victim.studyHits = hits;
-  }
-
-  /** Spells that hit you recently and that you have not studied: whose, and when you can study them (world time). */
-  studyable(w: Wizard) {
-    return (w.studyHits ?? []).filter((h) => this.now - h.lastAt < STUDY_MEMORY_S && !w.studied?.includes(h.key)).map((h) => ({
-      spell: h.name, from: h.authorName, handle: h.authorHandle,
-      readyAt: round(h.firstAt + STUDY_DELAY_S), readyIn: Math.max(0, Math.ceil(STUDY_DELAY_S - (this.now - h.firstAt))),
-      forgottenAt: round(h.lastAt + STUDY_MEMORY_S),
-    }));
-  }
-
-  /** Revelio on yourself also shows which spells that hit you are ready to be studied. */
-  private revealStudies(w: Wizard) {
-    for (const s of this.studyable(w)) this.tell(w, s.readyIn ? fill(STUDY_WAIT, { k: s.from, spell: s.spell, s: s.readyIn }) : fill(STUDY_READY, { k: s.from, spell: s.spell }));
-  }
-
-  /**
-   * 偷师: read the source of a custom spell that hit you, STUDY_DELAY_S after it first did and while it hit you
-   * in the last STUDY_MEMORY_S — once per spell. With `copy`, forge it into your own book (your year's caps and
-   * spellbook size apply, as for any forge; the copy records its author). A failed copy does not spend the study.
-   */
-  studySpell(wid: string, spell: string, opts: { from?: string; copy?: boolean; name?: string; slot?: number } = {}) {
-    const w = this.need(wid);
-    if (w.npc) throw new Error('NPCs learn from the curriculum.');
-    const k = String(spell ?? '').trim().toLowerCase();
-    const f = opts.from?.trim().toLowerCase();
-    const live = (w.studyHits ?? []).filter((h) => this.now - h.lastAt < STUDY_MEMORY_S);
-    w.studyHits = live;
-    let c = live.filter((h) => !w.studied?.includes(h.key) && (h.name.toLowerCase() === k || h.key.toLowerCase() === k));
-    if (f) c = c.filter((h) => h.authorHandle.toLowerCase() === f || h.authorName.toLowerCase() === f);
-    if (!c.length) throw new Error(`No spell called "${spell}" of another wizard has hit you in the last ${STUDY_MEMORY_S / 60} minutes (the curriculum is in your book already; each spell can be studied once). 最近 ${STUDY_MEMORY_S / 60} 分钟内没有叫「${spell}」的自创咒语打中过你（每个咒语只能偷师一次）。`);
-    if (c.length > 1) throw new Error(`Several wizards hit you with a spell called "${spell}": say whose (from: ${c.map((h) => h.authorHandle).join(' | ')}).`);
-    const h = c[0];
-    const wait = Math.ceil(STUDY_DELAY_S - (this.now - h.firstAt));
-    if (wait > 0) throw new Error(`You have not watched "${h.name}" long enough to see how it works: ${wait}s more. 偷师要有耐心：再看 ${wait} 秒。 retry_after=${wait}`);
-    let copied: { name: string; id: string; notes: string[] } | undefined;
-    if (opts.copy) {
-      const name = (opts.name ?? h.name).trim();
-      if (w.spells.some((s) => s.name.toLowerCase() === name.toLowerCase())) throw new Error(`You already have a spell called "${name}": give the copy another name. 你的咒语书里已经有「${name}」了，换个名字。`);
-      // forgeSpell throws on your caps or a full book: then nothing is spent
-      const r = this.forgeSpell(w.id, { name, source: h.source, slot: opts.slot, origin: { author: h.authorName, handle: h.authorHandle, spell: h.name, at: this.now } });
-      copied = { name: r.spell.name, id: r.spell.id, notes: r.notes };
-    }
-    w.studied = [...(w.studied ?? []), h.key].slice(-STUDIED_KEEP);
-    w.studyHits = live.filter((x) => x !== h);
-    this.fx({ k: 'reveal', x: w.pos.x, z: w.pos.z, h: w.handle });
-    const author = this.wizards.get(h.author);
-    if (author && author !== w) this.tell(author, fill(STUDIED_YOU, { v: w.name, spell: h.name }));
-    return {
-      studied: h.name, author: h.authorName, handle: h.authorHandle, source: h.source, ...(copied ? { copied } : {}),
-      note: copied ? `"${copied.name}" is in your book now, credited to ${h.authorName}.` : 'Studied. Forge it yourself from this source, or call again next time with copy:true to have it copied and credited.',
-    };
-  }
 
   // ---- 专注力 agent concentration (a political knob: rules.agents)
   /** An agent's concentration: the pool regenerates at rules.agents.regen per second up to maxPerMinute. */
@@ -3461,7 +3037,7 @@ export class World {
   }
 
   /**
-   * The MCP layer calls this before every tool: an action tool (AGENT_TOOL_COST) spends concentration; with
+   * The MCP layer calls this before every tool: an action tool (AGENT_TOOL_COST, a feature tool's cost) spends concentration; with
    * too little left it is refused with a bilingual "your wand hand is tired" and a retry-after. Reading tools,
    * talking to your human and everything a browser sends are free; a decree can switch it off (rules.agents).
    */
@@ -3473,7 +3049,8 @@ export class World {
     const cur = f ? focusAfter(f.pts, a.maxPerMinute, a.regen, this.now - f.at) : a.maxPerMinute;
     if (cur < cost) {
       const retryAfter = Math.max(1, Math.ceil((cost - cur) / a.regen));
-      return { ok: false, retryAfter, error: tiredText(Math.floor(cur), a.maxPerMinute, retryAfter) };
+      const c = Math.floor(cur);
+      return { ok: false, retryAfter, error: `Your wand hand is tired (concentration ${c}/${a.maxPerMinute}). Rest ${retryAfter}s and try again. 你的持杖手累了（专注力 ${c}/${a.maxPerMinute}），歇 ${retryAfter} 秒再试。 retry_after=${retryAfter}` };
     }
     this.focus.set(wid, { pts: cur - cost, at: this.now });
     return { ok: true, cost, left: Math.floor(cur - cost) };
@@ -3497,7 +3074,7 @@ export class World {
       title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
       elderWand: this.flags.elderWandHolder === x.id || undefined,
-      darkLord: this.flags.darkLordId === x.id || undefined,
+      ...this.views(HOOKS.look, (f) => f.view.look(this, x)), // e.g. darkLord
     })).sort((a, b) => a.dist - b.dist);
     const creatures = [...this.nearCreatures(w.pos, r)].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
       id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
@@ -3534,10 +3111,11 @@ export class World {
         rank: i + 1, name: w.name, handle: w.handle, title: this.title(w).zh, house: w.house, year: w.year, reputation: Math.round(w.reputation), online: this.online(w), npc: w.npc || undefined,
       })),
       minister: m ? { name: m.name, decreeUnspent: m.decreeCharges > 0 } : null,
-      darkLord: this.darkLordView(),
-      darkLordRule: `The reputation #1 (min ${DARK_LORD_MIN_REP}, seen in the last ${DARK_LORD_SEEN_S / 60} minutes) is the Dark Lord: +${DARK_LORD_POWER_PCT - 100}% damage, whereabouts announced every ${DARK_LORD_BROADCAST_S}s, and a stun steals 30% of their reputation. A challenger needs 110% of theirs to take the mark.`,
+      ...Object.assign({}, ...HOOKS.board.map((f) => f.view.board(this))), // e.g. the Dark Lord
       ministerMinReputation: this.ministerBar(),
-      ministerRule: `At the end of each term the highest-reputation wizard (min ${this.ministerBar()}) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
+      // who would take office if the term ended now (NPCs on the board never do)
+      ministerInLine: ((all) => all[electMinister(all, this.ministerBar())]?.name ?? null)([...this.wizards.values()]),
+      ministerRule: `At the end of each term the highest-reputation player (min ${this.ministerBar()}; NPCs never hold office) becomes Minister for Magic and may issue one decree. Then everyone's reputation is multiplied by ${this.rules.terms.reputationDecay} (what carries into the next term).`,
       houseCups: this.houseCups.slice(-5),
       loopholeFirstFoundBy: this.flags.loopholeFoundBy,
     };
@@ -3566,10 +3144,9 @@ export class World {
       cursedItemsStuck: this.boundItems(w).map((i) => ({ item: i.name, id: i.id, slot: i.slot, secondsLeft: Math.ceil((i.boundUntil ?? 0) - this.now) })),
       hexRespiteFor: w.respiteUntil > this.now ? round(w.respiteUntil - this.now) : 0,
       agent: { paused: w.agentPaused, goal: w.agentGoal, concentration: this.focusState(w.id) },
-      darkLord: this.flags.darkLordId === w.id,
-      dumbledoresArmy: this.isDaMember(w.id),
       lawless: this.inLawless(w.pos),
-      studyable: this.studyable(w),
+      // the features' view of you: darkLord, da, studyable, …
+      ...this.views(HOOKS.whoami, (f) => (f.view.whoami ?? f.view.me)!(this, w)),
       // read-only: a look changes only through a spell with (glamour ...) — see the grimoire
       appearance: { look: glamourKey(w.look) ?? 'house colours', colourJinxFor: (w.jinxLook?.until ?? 0) > this.now ? round(w.jinxLook!.until - this.now) : 0 },
     };
@@ -3613,7 +3190,6 @@ export class World {
       if (w.st.jailedUntil) s += 'J';
       if (this.flags.elderWandHolder === w.id) s += 'E';
       if (w.decreeCharges) s += 'M';
-      if (this.flags.darkLordId === w.id) s += 'V'; // 黑魔王: the Dark Mark hangs over them
       if (w.npc) s += 'N';
       if (w.st.silencedUntil > this.now) s += 'Q';
       s += auraFlags(w.auras, this.now);
@@ -3622,11 +3198,10 @@ export class World {
     });
     return {
       t: round(this.now), hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather, term: { n: this.term.n, left: Math.max(0, Math.round(this.term.endsAt - this.now)) },
-      // 黑魔王: the Dark Lord's whereabouts, for everyone (outside the area-of-interest arrays), or null
-      dl: this.darkLordView(true),
-      // 学院杯: the four houses' points, the final minute, the ceremony card; 校园事件轮盘: the event (kernel/wheel.ts)
+      // 学院杯: the four houses' points, the final minute, the ceremony card
       cup: this.cupView(),
-      // 决斗俱乐部: the match on the stage (handles, phase, seconds left), for everyone
+      // the features', for everyone (outside the area-of-interest arrays): the Dark Lord's whereabouts (dl), the
+      // event (ev), the match on the duel stage (du), Quidditch (qd)
       ...Object.fromEntries(HOOKS.wire.map((f) => [f.wire.key, f.wire.get(this)])),
       w: ws,
       c: [...this.creatures.values()].map((c) => ({
@@ -3692,39 +3267,20 @@ export class World {
       proclamation: this.rules.proclamation,
       hex: this.hexState(w),
       agent: this.agentState(w),
-      unfair: this.unfairState(w),
-      fun: this.funState(w),
-    };
-  }
-
-  /**
-   * The Dark Lord as everyone may see them (leaderboard; snapshot `dl` when `compact`): handle, name, where,
-   * whole-metre position, since when (world time). Null when nobody holds the mark or they are offline.
-   */
-  darkLordView(compact?: boolean) {
-    const d = this.darkLord();
-    if (!d || !this.online(d)) return null;
-    const place = this.placeName(d.pos);
-    if (compact) return { h: d.handle, n: d.name, x: Math.round(d.pos.x), z: Math.round(d.pos.z), p: place };
-    return { handle: d.handle, name: d.name, house: d.house, reputation: Math.round(d.reputation), place, placeZh: zhPlace(place), x: Math.round(d.pos.x), z: Math.round(d.pos.z), since: round(this.flags.darkLordSince) };
-  }
-
-  /**
-   * privateState().unfair: the player's own view of the 不公平，但好玩 mechanics (for client panels): the Dark
-   * Lord (and whether it is you), the DA, the spells you can study, your agent's concentration, the lawless zone.
-   * Whole numbers and world times, so it changes rarely.
-   */
-  unfairState(w: Wizard) {
-    const da = this.daState(w.id, this.medianNow());
-    return {
-      darkLord: this.darkLordView(), youAreDarkLord: this.flags.darkLordId === w.id,
-      da: { member: da.member, eligible: da.eligible, size: da.size, online: da.online, quorum: da.quorum, members: da.members, veto: da.veto },
-      study: this.studyable(w).map(({ spell, from, handle, readyAt }) => ({ spell, from, handle, readyAt })),
+      /** 专注力 (rules.agents) and 无规则区: README 不公平，但好玩. */
       focus: this.focusState(w.id),
       lawless: this.inLawless(w.pos),
-      /** Seconds the joint-Patronus badge still shows for you (your last joint hit + DA_JOINT_BADGE_S), else 0. */
-      joint: Math.max(0, round((this.jointAt.get(w.id) ?? -1e9) + DA_JOINT_BADGE_S - this.now)),
+      fun: this.funState(w),
+      // the features' view of you (darkLord, da, studyable, …): resent when it changes, so each one stays steady
+      ...this.views(HOOKS.me, (f) => f.view.me(this, w)),
     };
+  }
+
+  /** The features' fields of a view: { key: value } for each feature, leaving out undefined. */
+  private views<F extends { view: { key: string } }>(fs: readonly F[], get: (f: F) => unknown): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const f of fs) { const v = get(f); if (v !== undefined) out[f.view.key] = v; }
+    return out;
   }
 
   /**
@@ -3796,10 +3352,13 @@ export class World {
     w.term = data.term;
     w.houseCups = data.houseCups ?? [];
     w.decrees = data.decrees ?? [];
+    // only the flags this build keeps (older saves kept the Dark Mark and the DA here too: their features load them)
+    const f0: Partial<World['flags']> = data.flags ?? {};
     w.flags = {
-      ...w.flags, ...data.flags, statues: data.flags?.statues ?? [], curseFoundBy: data.flags?.curseFoundBy ?? null,
-      housePoints: data.flags?.housePoints ?? { term: 0, pts: {} },
-      chests: data.flags?.chests ?? { term: 0, opened: {} },
+      ...w.flags, ...Object.fromEntries(Object.keys(w.flags).filter((k) => k in f0).map((k) => [k, f0[k as keyof World['flags']]])),
+      statues: f0.statues ?? [], curseFoundBy: f0.curseFoundBy ?? null,
+      housePoints: f0.housePoints ?? { term: 0, pts: {} },
+      chests: f0.chests ?? { term: 0, opened: {} },
     };
     w.seq = data.seq ?? 0;
     // v1 saves ran 15-minute terms by default: move them to the new default unless a decree chose the length
@@ -3812,7 +3371,7 @@ export class World {
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {
-        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, sealPages: {}, sealTries: {}, wasMinister: false, npc: false,
+        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, wasMinister: false, npc: false,
         hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, look: null,
       };
       const wz: Wizard = {
@@ -3839,7 +3398,6 @@ export class World {
       }
       w.wizards.set(x.id, wz);
     }
-    sanitizeMarket(w);
     return w;
   }
 }
@@ -3879,8 +3437,6 @@ const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, 
  * What a hotbar spell is for, read off its effect primitives (Spell.effects), so the browser's smart casting can pick
  * a target: harm aims at a foe, help at a friend or yourself, self needs no target. Harm wins when a spell does both.
  */
-/** How long the joint-Patronus badge stays lit after your last joint hit. */
-const DA_JOINT_BADGE_S = 6;
 const HITS_KEPT = 8, HITS_SHOWN_S = 30;
 /** How near a hidden chest has to be before look shows it (about what a browser player would spot). */
 const CHEST_SIGHT = 12;

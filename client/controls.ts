@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { CreatureKind, House } from '../src/shared/constants';
-import { LANDMARKS, inZoneId } from '../src/shared/map';
+import { WARD_CD_S, WARD_MANA, WARD_MAX_S, type CreatureKind, type House } from '../src/shared/constants';
+import { inZoneId } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
 import { heightAt, rayGround } from './terrain';
 
@@ -48,13 +48,28 @@ export interface ControlsDeps {
 }
 
 // ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
-/** Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …` asks first. */
-export type ChatRoute = { to: 'public'; text: string } | { to: 'agent'; text: string } | { to: 'ask'; word: string; text: string; rest: string };
+/**
+ * Where a line typed into the chat box goes: `@agent …` / `@a …` is a private owl to your agent; any other `@word …`
+ * asks first; `/h …` (or /学院) your house, `/n …` (/附近) those near you, `/w name …` (/私 name …) a whisper;
+ * anything else the whole school (kernel/chat.ts channels).
+ */
+export type ChatRoute =
+  | { to: 'public'; text: string; ch?: 'house' | 'near' | 'dm'; dm?: string }
+  | { to: 'agent'; text: string }
+  | { to: 'ask'; word: string; text: string; rest: string };
 export function routeChat(raw: string): ChatRoute | null {
   const text = String(raw ?? '').trim();
   if (!text) return null;
   const mine = /^@(?:agent|a)(?=$|[\s:：,，])[\s:：,，]*/i.exec(text);
   if (mine) { const rest = text.slice(mine[0].length).trim(); return rest ? { to: 'agent', text: rest } : null; }
+  const slash = /^\/(h|house|学院|n|near|附近|w|whisper|私)(?=$|\s)\s*/i.exec(text);
+  if (slash) {
+    const k = slash[1].toLowerCase(), rest = text.slice(slash[0].length).trim();
+    if (k === 'h' || k === 'house' || k === '学院') return rest ? { to: 'public', text: rest, ch: 'house' } : null;
+    if (k === 'n' || k === 'near' || k === '附近') return rest ? { to: 'public', text: rest, ch: 'near' } : null;
+    const m = /^(\S+)\s+([\s\S]+)$/.exec(rest);
+    return m ? { to: 'public', text: m[2].trim(), ch: 'dm', dm: m[1] } : null;
+  }
   const other = /^@([^\s:：,，]+)[\s:：,，]*/.exec(text);
   if (other) return { to: 'ask', word: other[1], text, rest: text.slice(other[0].length).trim() };
   return { to: 'public', text };
@@ -211,8 +226,6 @@ export function createControls(d: ControlsDeps) {
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
   const fullCd = new Map<string, number>();
   const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null }[] = [];
-  let seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] | null = null;
-  let sealsAsked = -1, lastRead = -1e9;
   let hotbarSig = '';
   /** A phone or tablet: no hover, a coarse pointer. (Touch laptops keep the mouse UI; their touches still work.) */
   const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -487,23 +500,6 @@ export function createControls(d: ControlsDeps) {
       const w = wIdx.get(fallen)!, m = model(fallen)!.root.position;
       return { label: L(`按 F 扶起 ${esc(w.n)}（快快复苏）`, `F — revive ${esc(w.n)} (Rennervate)`), x: m.x, z: m.z, y: m.y + 2.6, act: () => castAt(rk, fallen) };
     }
-    if (seals) {
-      for (const s of seals) {
-        if (s.tier <= me.seals) continue;
-        // a seal below its year will not even speak to you: no prompt at the spawn for a first-year
-        if (me.year < (s.requiresYear ?? 1)) continue;
-        for (const pg of s.pages) {
-          if (pg.collected) continue;
-          const l = LANDMARKS.find((x) => x.name === pg.where);
-          if (!l || Math.hypot(l.x - p.x, l.z - p.z) > 9.5) continue;
-          return {
-            label: L(`按 F 阅读书页 ·「${esc(s.zh)}」第 ${pg.page} 页`, `F — read the page (${esc(s.name.split('—')[0].trim())}, page ${pg.page})`),
-            x: l.x, z: l.z, y: heightAt(l.x, l.z) + 3.8,
-            act: () => { lastRead = now(); d.send({ t: 'readpage', tier: s.tier }); },
-          };
-        }
-      }
-    }
     return d.extraAction?.() ?? null;
   }
   function doAction() {
@@ -772,7 +768,6 @@ export function createControls(d: ControlsDeps) {
     const sig = me.hotbar.map((s) => s?.id ?? '').join('|');
     if (sig !== hotbarSig) { hotbarSig = sig; d.send({ t: 'book' }); }
     for (const s of me.hotbar) if (s && s.cd > (fullCd.get(s.id) ?? 0) + 0.05) fullCd.set(s.id, s.cd);
-    if (sealsAsked !== me.seals) { sealsAsked = me.seals; d.send({ t: 'seals' }); }
     // keep the hotbar's click spell an attack spell if there is one
     const sel = me.hotbar[selected];
     if (!sel || kindOf(sel) !== 'harm') { const h = me.hotbar.findIndex((s) => s && kindOf(s) === 'harm'); if (h >= 0) selected = h; }
@@ -908,8 +903,9 @@ export function createControls(d: ControlsDeps) {
       ${row('L', L('排行榜：学期末声望第一成为魔法部长（改写规则）；声望 ≥150 的第一名戴上黑魔标记', 'Leaderboard: the top wizard at term end becomes Minister (rewrites the rules); the top one with 150+ wears the Dark Mark'))}
       ${row('J', L('邓布利多军：弱者的联盟，加入、在法令颁布后投票否决、联合守护神', "Dumbledore's Army: the underdogs' union; join, veto a fresh decree, strike together"))}
       ${row('P', L('魁地奇：每学期一场，两个学院轮流对阵。集合时按 P 上场；在球场上飞得更快；碰到鬼飞球就拿，F 射门（从另一端的圈里穿过 +10）；任何咒语擦过游走球都能把它打开；找球手贴着金色飞贼 0.8 秒就抓住（+150，比赛结束）', 'Quidditch: one match a term, two houses in turn. P to play while it is called; you fly faster on the pitch; touch the Quaffle to take it, F to shoot (through a hoop at the other end, +10); any spell that passes a Bludger beats it away; a Seeker who stays on the Snitch for 0.8 s catches it (+150, the match ends)'))}
-      ${row('G', L('决斗俱乐部：报名 / 退出。凑齐两人就在庭院决斗台开打，打倒不进医院，赢了加声望（每学期最多 5 场有奖励）', 'Duelling Club: join / leave. Two make a match on the Courtyard stage; a knock-out sends nobody to the Hospital Wing; wins pay reputation (up to 5 rewarded a term)'))}
+      ${row('G', L('决斗俱乐部：报名 / 退出（Shift+G 报名 2v2）。凑齐两人就在庭院决斗台开打，打倒不进医院，赢了加声望（每学期最多 5 场有奖励）', 'Duelling Club: join / leave (Shift+G: the 2v2 queue). Two make a match on the Courtyard stage; a knock-out sends nobody to the Hospital Wing; wins pay reputation (up to 5 rewarded a term)'))}
       ${row(L('空格', 'Space'), L('翻滚闪避：瞄准你的咒语和飞刺会落空；盔甲护身卡在咒语落地前一瞬间举起，能把它弹回去', 'Dodge roll: aimed spells and thorns miss; raise Protego just before a bolt lands to send it back'))}
+      ${row('X', L(`铁甲咒待发：${WARD_MAX_S} 秒内第一道打向你的咒语会被完美格挡（${WARD_MANA} 法力，${WARD_CD_S} 秒一次，举着时不能施别的咒语）`, `Ward: for ${WARD_MAX_S} s the first spell at you meets a perfect Protego (${WARD_MANA} mana, once every ${WARD_CD_S} s, no other spell meanwhile)`))}
       ${row('V', L('看你的 Agent 玩（按键不打断它）', 'Watch your agent play (your keys will not interrupt it)'))}
       ${row(L('回车', 'Enter'), L('聊天（有些话在这里有魔力）', 'Chat (some words have power here)'))}
       </table>
@@ -953,15 +949,10 @@ export function createControls(d: ControlsDeps) {
   }
   function onError() {
     if (dest?.pending && now() - dest.t < 3) clearDest();
-    // a page read that failed means our copy of the Restricted Section is stale (an agent may have read it over MCP)
-    if (now() - lastRead < 3) sealsAsked = -1;
   }
   function onArmory(spells: { id: string; incantation: string; effects: string[] }[]) {
     spellInfo.clear();
     for (const s of spells) spellInfo.set(s.id, { incantation: s.incantation, effects: s.effects });
-  }
-  function onSeals(section: { seals: { tier: number; zh: string; name: string; requiresYear?: number; pages: { page: number; where: string; collected: boolean }[] }[] }) {
-    seals = section.seals;
   }
 
   setupTouch();
@@ -979,7 +970,7 @@ export function createControls(d: ControlsDeps) {
     notify: (ev: 'book' | 'menu' | 'owl') => tutorial.notify(ev),
     /** The tutorial (or its closing word) is on screen. */
     tutorialActive: () => tutorial.active(),
-    onCast, onGoto, onError, onArmory, onSeals,
+    onCast, onGoto, onError, onArmory,
   };
 }
 

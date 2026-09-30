@@ -1,6 +1,6 @@
 /**
  * The browser panels (client/panels): the pure parts (directions, countdowns, the words for states), and that what
- * they read is what the kernel sends — privateState().unfair, the snapshot's `dl`, the exam list and report.
+ * they read is what the kernel sends — the features' fields of privateState(), the snapshot's `dl`, the exam list and report.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -10,7 +10,8 @@ import { derived } from '../src/kernel/progression.js';
 import {
   FAMILIAR_KINDS, bearing, daStanding, familiarStatus, fmtClock, fmtDist, focusLevel, newlyReady, pickLang, quorumMet, readyIn, vetoPhase,
 } from '../client/panels/logic.js';
-import type { DaView, ExamList, FamiliarState, SitReport, UnfairState } from '../client/panels/types.js';
+import type { DaView, ExamList, FamiliarState, SitReport, UnfairMe } from '../client/panels/types.js';
+import { updateDarkLord } from '../src/kernel/unfair.js';
 
 const html = readFileSync(new URL('../client/index.html', import.meta.url), 'utf8');
 
@@ -86,24 +87,23 @@ describe('the panels, pure parts (client/panels/logic.ts)', () => {
 });
 
 describe('what the panels read is what the kernel sends', () => {
-  it('privateState().unfair and the snapshot `dl` have the shapes the panels use', () => {
+  it("privateState()'s darkLord, da, studyable, focus, lawless and the snapshot `dl` have the shapes the panels use", () => {
     const w = new World({ seed: 3, secret: 'x' });
     w.rules.creatures.spawnMultiplier = 0;
     const dl = online(w, 'Tom Riddle', 'Slytherin', 400, 120, 40);
     const me = online(w, 'Neville', 'Gryffindor', 10);
     w.tick(0.05);
-    w.updateDarkLord();
-    const s = w.snapshot();
+    updateDarkLord(w);
+    const s = w.snapshot() as ReturnType<World['snapshot']> & { dl?: unknown };
     expect(s.dl).toMatchObject({ h: dl.handle, n: 'Tom Riddle', x: 120, z: 40 });
-    expect(s.w.find((x) => x.h === dl.handle)!.s).toContain('V');
-    const mine = w.privateState(me.id).unfair as UnfairState;
-    expect(mine.youAreDarkLord).toBe(false);
-    expect(mine.darkLord).toMatchObject({ name: 'Tom Riddle' });
-    expect(Object.keys(mine.da).sort()).toEqual(expect.arrayContaining(['member', 'eligible', 'size', 'online', 'quorum', 'veto']));
+    const mine = w.privateState(me.id) as unknown as UnfairMe;
+    expect(mine.darkLord).toBe(false);
+    expect(Object.keys(mine.da).sort()).toEqual(expect.arrayContaining(['member', 'eligible', 'size', 'online', 'quorum', 'veto', 'jointBadge']));
     expect(Object.keys(mine.da.veto).sort()).toEqual(['decree', 'needed', 'perTerm', 'usedThisTerm', 'voted', 'votes', 'windowSeconds']);
     expect(mine.focus).toMatchObject({ on: true, max: expect.any(Number), cur: expect.any(Number) });
-    expect(Array.isArray(mine.study)).toBe(true);
-    expect((w.privateState(dl.id).unfair as UnfairState).youAreDarkLord).toBe(true);
+    expect(mine.lawless).toBe(false);
+    expect(Array.isArray(mine.studyable)).toBe(true);
+    expect((w.privateState(dl.id) as unknown as UnfairMe).darkLord).toBe(true);
   });
   it('the exam list and a sitting carry what the O.W.L. panel draws', () => {
     const w = new World({ seed: 3, secret: 'x' });

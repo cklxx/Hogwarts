@@ -1,5 +1,5 @@
 ------------------------------- MODULE Seals -------------------------------
-(* The Restricted Section (world.ts readSealPage / breakSeal): seals break in order, only for a
+(* The Restricted Section (seals.ts readSealPage / breakSeal): seals break in order, only for a
    wizard of the right year holding every page, and at most three attempts per cooling window. *)
 EXTENDS Naturals, Sequences
 

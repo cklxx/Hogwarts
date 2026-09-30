@@ -46,3 +46,20 @@ export function parsePairCode(raw: string): { realm: number | null; body: string
   for (const c of body) if (!PAIR_ALPHABET.includes(c)) return null;
   return { realm: prefix ? Number(prefix) : null, body };
 }
+
+/**
+ * The key two names collide on (World.enroll: a name is one wizard's): compatibility forms folded (NFKC: full-width
+ * letters), accents dropped, case ignored, spaces _ . ' - ignored, and the Cyrillic and Greek letters that look like
+ * Latin ones read as those. "Harry Potter", "harry_potter", "Hárry.Potter" and "Hаrry Potter" (a Cyrillic а) are one
+ * name, so nobody can pass for someone else.
+ */
+const LOOKALIKE: Record<string, string> = {
+  а: 'a', в: 'b', е: 'e', ё: 'e', к: 'k', м: 'm', н: 'h', о: 'o', р: 'p', с: 'c', т: 't', у: 'y', х: 'x', і: 'i', ї: 'i', ј: 'j', ѕ: 's', ԁ: 'd', ԛ: 'q', ԝ: 'w', һ: 'h',
+  α: 'a', β: 'b', ε: 'e', η: 'n', ι: 'i', κ: 'k', μ: 'u', ν: 'v', ο: 'o', ρ: 'p', τ: 't', υ: 'u', χ: 'x', ω: 'w',
+};
+export function nameKey(name: string): string {
+  const s = name.normalize('NFKC').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[\s_.'\-]/g, '');
+  let out = '';
+  for (const ch of s) out += LOOKALIKE[ch] ?? ch;
+  return out;
+}
