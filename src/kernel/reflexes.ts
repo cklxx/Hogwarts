@@ -138,7 +138,8 @@ function act(world: World, w: Wizard, r: Reflex, ctx: Ctx): { ok: true; did: str
       const tg = r.target ?? 'nearest_enemy';
       const target = tg === 'self' ? w.id : tg === 'attacker' ? ctx.attacker ?? ctx.enemy : tg === 'weakest_ally' ? ctx.ally ?? weakestAlly(world, w, r.range ?? 15)?.w.id : ctx.enemy ?? nearestEnemy(world, w, r.range ?? 20)?.id;
       if (!target) return { ok: false, no: `no ${tg.replace('_', ' ')} in reach` };
-      const rep = world.cast(w.id, r.spell!, { target });
+      // a wizard by handle: cast (like any caller) refuses another wizard's registry number
+      const rep = world.cast(w.id, r.spell!, { target: target !== w.id ? world.wizards.get(target)?.handle ?? target : target });
       const who = world.entity(target)?.name ?? target;
       return rep.ok ? { ok: true, did: `cast ${rep.spell}${target === w.id ? '' : ` at ${who}`}`, zh: `${target === w.id ? '' : `对 ${who} `}施放了 ${rep.spell}` } : { ok: false, no: rep.error ?? 'refused' };
     }

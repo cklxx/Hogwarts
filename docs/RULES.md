@@ -24,6 +24,8 @@
 | 恶咒永远不能把人打到昏迷，也不能让人永远不能动、永远说不了话 | `hexDot`、沉默冷却 | Lean `hex_dot_never_stuns`、`always_moves`；TLA+ `Hex`（`MovableAlways`、`SilenceNeverPermanent`） |
 | 属性再怎么被削也有下限（生命、法力、速度、伤害） | `src/kernel/progression.ts` | Lean `hp_floor`、`mana_floor`、`speed_floor`、`power_pos` |
 | 决斗俱乐部里只有对手之间能互相伤害：2v2 的队友互相打不到，出局的人碰不到也不会被碰，外人不能打、不能治 | `World.canHarm` 的决斗分支（`duelFoes`） | TLA+ `Hostility`（`DuelMutual`、`DuelTeammates`、`DuelIsolated`） |
+| 决斗中躲不进安全区：决斗台和礼堂的安全区有重叠，开打后走进安全区就算走下台（出局）；台子中心或任何一端在安全区里，俱乐部就关门 | `stepDuelClub`、`duelClosed`（`src/kernel/duelclub.ts`） | `test/duelclub3.test.ts` |
+| 决斗俱乐部的 NPC 陪练不以大欺小：不会派比对面最低年级的玩家高 2 个年级以上的 NPC，NPC 也不打这样的玩家 | `freeNpcs` / `fairFor`（`src/kernel/duelclub.ts`，同 `npcMayFight` 的年级规则） | `test/duelclub3.test.ts` |
 | 人永远优先：你一操作，Agent 立刻让路；暂停 Agent 后它只能看、能说话 | `World.setInput`、Agent 控制 | TLA+ `Control` |
 | 黑魔法也要过伤害判定：夺魂咒永远不能用在巫师身上（谁的意志都不能被夺走），厉火只烧 `canHarm` 允许烧的 | `src/kernel/dark.ts` | `test/dark.test.ts` |
 | 插件带来的 Runes 原语和内核自带的一样：受年级和封印门槛、法力上限、法令禁用的约束 | `registerPrims`、`FEATURE_SPELLS`（`src/kernel/magic.ts`） | `test/dark.test.ts`，TLA+ `CastTxn` |
@@ -33,7 +35,7 @@
 | 规则 | 在哪里强制 | 证明 / 测试 |
 |---|---|---|
 | 每人每学期能加的学院分有上限，学院分永远不为负 | `src/kernel/housecup.ts` | Lean `cup_term_bounded`、`cup_deduct_nonneg`、`house_points_bounded` |
-| 决斗声望：同一对手 10 分钟一次，每学期最多 5 场 | `src/kernel/duelclub.ts` `duelGrant` | Lean `duel_club_term_bounded` |
+| 决斗声望：同一对手 10 分钟一次，每学期最多 5 场；开打前（鞠躬、倒数）有人离开或下线只算取消：不计胜负、不给奖励、不记进重赛间隔 | `src/kernel/duelclub.ts` `duelGrant`、`cancelMatch` | Lean `duel_club_term_bounded`，`test/duelclub3.test.ts` |
 | 魁地奇的声望和学院分都有上限 | `qdRep` / `qdCup` | Lean `qd_rep_bounded`、`qd_cup_bounded` |
 | 集市版税：每人每咒语每天一次，每日有总上限，不给自己付、不给 NPC 付 | `src/kernel/market.ts` | TLA+ `Market`，Lean `royalty_*` |
 | 校园事件同时最多一件，奖励只发一次 | `src/kernel/wheel.ts` | TLA+ `EventWheel` |
