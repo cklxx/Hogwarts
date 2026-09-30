@@ -7,7 +7,7 @@
  *
  * The answer goes only to private, loopback and link-local senders (and to this machine's own subnets, /16 or
  * smaller), at most RATE per sender per second, and it is
- * small: a spoofed probe cannot turn this into a traffic amplifier aimed at the internet. DISCOVERY=0 turns it off.
+ * small: a spoofed probe cannot turn this into a traffic amplifier aimed at the internet.
  */
 import { createHash } from 'node:crypto';
 import { createSocket, type Socket } from 'node:dgram';
@@ -59,9 +59,8 @@ export function buildId(dist: string): string {
   } catch { return 'dev'; }
 }
 
-/** Answer probes on `port`/udp. Returns the socket (close it to stop), or null when turned off or the port is taken. */
+/** Answer probes on `port`/udp. Returns the socket (close it to stop), or null when the port is taken. */
 export function startDiscovery(port: number, info: () => Omit<ServerInfo, 'hogwarts' | 'protocol'>): Socket | null {
-  if (process.env.DISCOVERY === '0') return null;
   const sock = createSocket({ type: 'udp4', reuseAddr: true });
   const seen = new Map<string, { t: number; n: number }>();
   sock.on('message', (msg, from) => {

@@ -29,7 +29,7 @@
 
 | 步 | 内容 | 状态 / 验收标准 |
 |---|---|---|
-| P0 | 服务器：`GET /api/version`（名称、版本、构建号、协议号、在线人数）；UDP 局域网发现（端口同 `PORT`，只回应私网/本机/同网段，限频；`DISCOVERY=0` 关）；`npm run find` 列出局域网服务器。客户端：服务器换了新构建时提示「游戏已更新」，空闲 1 分钟（或标签页在后台）自动刷新，写咒语、打字时不刷新 | 已完成（`wf/shell`） |
+| P0 | 服务器：`GET /api/version`（名称、版本、构建号、协议号、在线人数）；UDP 局域网发现（端口同 `PORT`，只回应私网/本机/同网段，限频）；`npm run find` 列出局域网服务器。客户端：服务器换了新构建时提示「游戏已更新」，空闲 1 分钟（或标签页在后台）自动刷新，写咒语、打字时不刷新 | 已完成（`wf/shell`） |
 | P1 | Tauri 2 壳（`desktop/`）：服务器列表（发现 + 手动输入 + 记住上次，上次的服务器在线就直接进）、直接加载服务器页面（内容永远与服务器同版本）、密钥存系统钥匙串（每个服务器一条，失效随之删除）、F11 全屏、Ctrl+Shift+S 换服务器（macOS 走中文菜单栏：⌃⌘F / ⇧⌘S）、外部链接走系统浏览器；GitHub Actions 构建 Windows / macOS / Linux 安装包（不签名） | 已完成：Linux 上端到端实测（Xvfb + Secret Service：自动发现 → 钥匙串登录 → 别处换钥后旧钥删除，`desktop/test-gui.sh`）；macOS 15.6（Apple Silicon）真机部分验证（2026-09-30）：局域网发现找到服务器、启动器探测 → 进入、`.app` 用局域网 IP 连接未被「本地网络」权限拦、钥匙串自动登录（4 秒进世界）；锁屏下未能验：「游戏已更新」自动刷新、F11、Ctrl+Shift+S、画面（锁屏时 WebKit 挂起页面）。**遗留**：安装包未签名，钥匙串条目只信任创建它的那一版程序，推测每次更新壳后首次读钥匙串会弹系统授权框，点之前启动器停在「正在连接…」（用另一个程序写入的条目实测会弹）——签名后消失。Windows 待真机 |
 | P2 | 一键连接我的 Agent：`hogwarts-desktop --mcp-stdio` 是 MCP stdio 服务器，转发到服务器 `/mcp`，密钥从钥匙串读；enroll/login/pair/rotate_key 发出的新钥先存钥匙串再从模型看到的文字里抹掉；服务器重启自动重建会话；启动器按钮写入 Claude Desktop 配置（留 .bak）或运行 `claude mcp add`；桌面客户端里的猫头鹰邮递显示这条命令 | 已完成：桥的端到端测试（钥匙串 / 精简环境两种）、Claude Desktop 配置写入、`claude mcp get hogwarts` → Connected（Linux）。macOS 真机：`desktop/test-bridge.mts` 两种模式全过；Rust 桥存钥后改写回复里的 `play` / `remember` / `connect`（原先还让 Agent 自己记 token、推荐 Node 桥），与 Node 桥一致。待做：真机 Claude Desktop 验收。Rust 桥的猫头鹰推送已加（`3eb90af`） |
 | P3 | 可选：壳内恢复 WebGPU（从 `205ed7b` 取回），浏览器版继续 WebGL | 视真机测量决定 |

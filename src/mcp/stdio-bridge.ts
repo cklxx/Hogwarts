@@ -163,4 +163,4 @@ server.setRequestHandler(ReadResourceRequestSchema, (req) => withUpstream((c) =>
 
 await chooseKey();
 await server.connect(new StdioServerTransport());
-if (process.env.HOGWARTS_CHANNEL !== '0') setInterval(() => void pollOwls(), 2000).unref();
+setInterval(() => void pollOwls(), 2000).unref();

@@ -145,7 +145,7 @@ async function main() {
     const T0 = Date.now();
     page.on('console', (m: { type(): string; text(): string }) => { const t = m.text(); if (args.has('verbose') || m.type() === 'error' || m.type() === 'warning' || t.startsWith('[perf]') || t.startsWith('[gpu]')) console.log(`  ${((Date.now() - T0) / 1000).toFixed(1)}s [${m.type()}] ${t.slice(0, 400)}`); });
     const t0 = Date.now();
-    await page.goto(`${base}/?perf=1&capture=1&q=high&dyn=0${GPU === 'webgl' ? '&gpu=webgl' : ''}${EXTRA}#k=${w.viewer}`, { waitUntil: 'load' });
+    await page.goto(`${base}/?perf=1&capture=1&q=high${GPU === 'webgl' ? '&gpu=webgl' : ''}${EXTRA}#k=${w.viewer}`, { waitUntil: 'load' });
     await page.waitForFunction(() => (window as any).__perf?.marks?.firstFrame, null, { timeout: 300_000, polling: 500 });
     const backend = await page.evaluate(() => (window as any).__perf?.backend ?? 'webgl (WebGLRenderer)');
     console.log(`${LABEL}: first frame after ${((Date.now() - t0) / 1000).toFixed(1)} s, backend ${backend}`);

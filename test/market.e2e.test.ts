@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
+import { onMsg } from './ws.js';
 
 const PORT = Number(process.env.HOGWARTS_MARKET_PORT ?? 9110 + Math.floor(Math.random() * 10));
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -55,7 +56,7 @@ describe('咒语集市 over MCP and WebSocket', () => {
     const { token } = (await r.json()) as { token: string };
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const msgs: any[] = [];
-    ws.on('message', (d) => msgs.push(JSON.parse(String(d))));
+    onMsg(ws, (m) => msgs.push(m));
     await new Promise((ok, bad) => { ws.once('open', ok); ws.once('error', bad); });
     const next = async (pred: (m: any) => boolean) => {
       const t0 = Date.now();

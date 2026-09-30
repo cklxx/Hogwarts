@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { World } from '../src/kernel/world.js';
 import { CHESTS } from '../src/shared/chests.js';
+import { onMsg } from './ws.js';
 
 const PORT = Number(process.env.HOGWARTS_FUN_PORT ?? 9120 + Math.floor(Math.random() * 10));
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -71,7 +72,7 @@ describe('学院杯 · 校园事件轮盘 · 巧克力蛙画片 over MCP and Web
     const { token } = (await r.json()) as { token: string };
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const msgs: any[] = [];
-    ws.on('message', (d) => msgs.push(JSON.parse(String(d))));
+    onMsg(ws, (m) => msgs.push(m));
     await new Promise((ok, bad) => { ws.once('open', ok); ws.once('error', bad); });
     const next = async (pred: (m: any) => boolean, ms = 15000) => {
       const t0 = Date.now();

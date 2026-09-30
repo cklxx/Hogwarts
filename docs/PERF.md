@@ -358,31 +358,7 @@ Server (`src/server`):
 | variable | default | meaning |
 |---|---|---|
 | `REALMS` | unset | `N` > 1: N realm processes behind one front door on `PORT` (above) |
-| `AOI_RADIUS` | 140 | area-of-interest reach in metres (cell to cell); 0 turns AOI off for everyone |
-| `AOI_MARGIN` | 10 | hysteresis margin in metres (≤ radius/4); everything within radius − 2·margin is always sent |
-| `AOI_CELL` | 16 | AOI grid cell in metres |
-| `AOI_ALL` | unset | `1`: AOI snapshots for every client, not only those connecting with `aoi=1` |
-| `WS_SLOW_BYTES` / `WS_DEAD_BYTES` | 1 MB / 16 MB | skip snapshots / drop the socket when this much is queued |
 | `HOGWARTS_VERIFY_SPATIAL` | unset | `1`: cross-check every spatial query against a full scan (debugging) |
-
-## For the client streams
-
-Things this stream cannot do from the server, in the order they pay off:
-
-(Items 1 and 2 are done in the client pass, [below](#client-browser-wffast).)
-
-1. **Enable AOI for browsers** (3.6x less bandwidth): in `client/main.ts` `apply()`, when a wizard,
-   creature or bolt is missing from a snapshot, dispose its geometries, materials and textures
-   (including the label's `CanvasTexture`) — or keep a pool and hide/reuse models; puff only for a real
-   death (e.g. a creature that vanished within ~100 m, inside the guaranteed 120 m; beyond that it
-   merely left the area). Then add `&aoi=1` to the `/ws` URL in `connect()`. (The dispose half is worth
-   doing anyway: today every death or logout leaks one model's GPU buffers.)
-2. **Send at most one `input` per 50 ms** (the world tick), always including the final state (e.g.
-   send immediately if 50 ms have passed since the last one, else schedule one for when they have).
-   Nothing in the simulation changes; the server saves 5-35 % of a core per 500 players.
-3. `client/i18n.ts` ERRORS: `[/^Slow down: too many messages/, () => '慢一点——消息发得太快了']`.
-4. Optional: `/api/leaderboard?token=…` — no longer needed for REALMS (the routing cookie does it), but
-   harmless and explicit.
 
 ## Reproduce
 
@@ -390,11 +366,8 @@ Things this stream cannot do from the server, in the order they pay off:
 npx tsx scripts/bench.ts kernel --n=100,500,1000,2000,5000       # --secs=30 --warm=10 by default
 npx tsx scripts/bench.ts trace --n=150 --secs=30                   # prints the fingerprint
 npx tsx scripts/bench.ts net --k=50,200,500 --layout=spread,crowd --secs=15 --warm=5 --port=7900
-npx tsx scripts/bench.ts net --k=500 --env=AOI_RADIUS=0            # AOI off for everyone
 npx tsx scripts/bench.ts net --k=400 --realms=2                    # REALMS mode
 npx tsx scripts/bench.ts net --k=500 --input-hz=144                # frame-rate input (fix pass)
-npx tsx scripts/bench.ts net --k=500 --aoi=0 --input-hz=60         # the shipped client: full snapshots
-npx tsx scripts/bench.ts churn --n=300 --secs=120 --aoi=0,140/0,140/10,140/20   # AOI enter/leave per client
 # --out=results.jsonl appends machine-readable rows; BENCH_NODE_FLAGS="--cpu-prof" profiles the server.
 ```
 
@@ -610,10 +583,10 @@ all ~10 snapshots a second instead of 1-2 (still nothing next to a frame's budge
 ```bash
 npx vite build
 npx tsx scripts/perf-client.ts --port=8820 --q=high,low --secs=8 --warm=3 --size=640x360 --census --url='&dyn=0'
-#   --spots=follow,crowd,castle,lake,overview,close  --bots=60 --crowd=30 --npcs=12  --aoi=0|1
+#   --spots=follow,crowd,castle,lake,overview,close  --bots=60 --crowd=30 --npcs=12
 #   --shots=dir (screenshots, HUD hidden)  --profile | --profile=spot (CPU profile)  --detail=Mesh,Group
 #   --out=results.jsonl  --label=after ;  PLAYWRIGHT_CORE=… CHROMIUM=… to point at your own
-# in the game: ?perf=1 (overlay) · ?lod=0 (every model in full) · ?dyn=0 · ?aoi=0 · ?q=low|high
+# in the game: ?perf=1 (overlay) · ?q=low|high
 ```
 For "before", check out `c7665c4`, cherry-pick `32c5bbe` (the probe hooks in `client/main.ts`), copy
 `client/perf.ts` and `scripts/perf-client.ts` from this branch, build, and run the same command.
@@ -1232,3 +1205,30 @@ Profile at 1 000 clients: receiving input 17 % (20 000 JSON messages a second th
 `writev` 12.5 % (one per socket per broadcast), world tick 14 %, payload assembly ~15 %. The next step is
 structural: gateway processes that own the sockets (parse input, assemble and write frames from the rows
 the world process publishes once per broadcast), leaving the world process with the tick and one encode.
+
+## Deletion pass (wf/prune): one wire, one set of numbers
+
+Only the best configuration is left. Browsers get the binary delta snapshots of their area (`binfanout.ts`, wire format
+`src/shared/snapwire.ts`); the JSON snapshots, the whole-world snapshot for clients without AOI, the `?v=` / `?aoi=`
+switches, `AOI_ALL` and the single-event `{t:'event'}` message are gone. `fanout.ts` is now only the grid geometry
+(`AoiGrid`). The tuning knobs `AOI_RADIUS` / `AOI_CELL` / `AOI_MARGIN` (140 / 16 / 10), `FANOUT_SLICE` (100) and
+`WS_SLOW_BYTES` / `WS_DEAD_BYTES` (1 MB / 16 MB) are constants at the values measured above. Also gone: `bench.ts churn`
+(it compared AOI configurations), `bench.ts net --aoi / --v`, `perf-client.ts --aoi`, the client's `?lod=0` and
+`?dyn=0`, and `DISCOVERY=0` / `HOGWARTS_CHANNEL=0`. Kept: `REALMS` (a scaling mode), `?q=` (quality stays automatic
+per device), `?capture=1` / `?perf=1` (the promo and the probes) and the test hooks (`NPC_COUNT`, `EVENT_FIRST_S`,
+`MCP_MAX_SESSIONS`, `MCP_EVICT_IDLE_MS`, `HOGWARTS_VERIFY_SPATIAL`).
+
+The shipped path did not change, so neither do the numbers. `bench.ts net`, spread, 2 alternating rounds per side,
+main with `--v=2` (what the browser already used) against this branch (load < 2):
+
+| clients | loop p99 ms | world.tick p50 / p95 ms | bcast p50 / p95 ms | server CPU % | KB/s per client | cast RTT p99 ms |
+|---:|---|---|---|---|---|---|
+| 200 main | 11.0 / 11.5 | 1.33 / 2.29, 1.35 / 2.16 | 6.18 / 8.12, 6.20 / 7.87 | 34.8 / 30.8 | 27.9 / 27.9 | 7.5 / 9.5 |
+| 200 prune | 10.2 / 11.6 | 1.28 / 2.42, 1.32 / 2.18 | 6.17 / 8.59, 6.34 / 7.59 | 37.4 / 37.6 | 27.7 / 27.7 | 9.7 / 10.6 |
+| 500 main | 14.1 / 15.5 | 2.24 / 3.94, 2.32 / 4.27 | 9.03 / 12.0, 9.19 / 12.5 | 61.0 / 60.7 | 57.0 / 56.7 | 12.9 / 10.6 |
+| 500 prune | 15.2 / 13.9 | 2.29 / 3.87, 2.29 / 4.06 | 9.45 / 13.6, 9.26 / 12.1 | 60.9 / 62.3 | 56.6 / 57.1 | 15.6 / 10.4 |
+
+(The 200-client CPU reads 3-7 points higher on the branch in both rounds; at 500 it is level. Two rounds cannot
+separate that from noise.) The area-of-interest guarantees are now checked on the binary frames themselves
+(`test/snapwire.test.ts`: everything within 120 m, nothing beyond ~205 m, every field the snapshot's own, the
+hysteresis at the edge, the first frame exactly the cells in reach).

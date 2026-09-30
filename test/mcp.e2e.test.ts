@@ -6,6 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
+import { onMsg } from './ws.js';
 
 const PORT = Number(process.env.HOGWARTS_TEST_PORT ?? 17000 + Math.floor(Math.random() * 1000));
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -127,9 +128,9 @@ describe('MCP over streamable HTTP', () => {
     const { token } = (await r.json()) as { token: string };
     // the key comes from a header or the browser's subprotocol entry, never from the address
     expect((await fetch(`${BASE}/api/me?token=${encodeURIComponent(token)}`)).status).toBe(401);
-    const opened = (ws: WebSocket) => new Promise<string>((ok) => { ws.on('message', (m) => ok(JSON.parse(String(m)).t)); ws.on('unexpected-response', (_q, res) => ok(`HTTP ${res.statusCode}`)); ws.on('error', () => ok('error')); });
+    const opened = (ws: WebSocket) => new Promise<string>((ok) => { onMsg(ws, (m) => ok(m.t)); ws.on('unexpected-response', (_q, res) => ok(`HTTP ${res.statusCode}`)); ws.on('error', () => ok('error')); });
     expect(await opened(new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(token)}`))).toBe('HTTP 401');
-    const browser = new WebSocket(`ws://127.0.0.1:${PORT}/ws?aoi=1`, ['hogwarts', `hw-key.${token}`]); // what client/main.ts sends
+    const browser = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, ['hogwarts', `hw-key.${token}`]); // what client/main.ts sends
     expect(await opened(browser)).toBe('welcome');
     expect(browser.protocol).toBe('hogwarts'); // the key entry is never echoed back
     browser.close();
@@ -137,8 +138,7 @@ describe('MCP over streamable HTTP', () => {
     const got = new Set<string>();
     let bought: unknown = null, build: unknown = null;
     await new Promise<void>((ok) => {
-      ws.on('message', (m) => {
-        const msg = JSON.parse(String(m));
+      onMsg(ws, (msg) => {
         got.add(msg.t);
         if (msg.t === 'welcome') build = msg.build;
         if (msg.t === 'welcome') { ws.send(JSON.stringify({ t: 'cast', key: '1' })); ws.send(JSON.stringify({ t: 'buy', item: 'amulet' })); }
@@ -158,8 +158,7 @@ describe('MCP over streamable HTTP', () => {
     // the O.W.L. exams panel: {t:'exams'} lists the week, {t:'sit'} grades a submission (kernel/exams.ts)
     const next = (t: string) => new Promise<any>((ok, bad) => {
       const timer = setTimeout(() => bad(new Error(`no ${t}`)), 8000);
-      const on = (raw: WebSocket.RawData) => { const m = JSON.parse(String(raw)); if (m.t === t || m.t === 'err') { clearTimeout(timer); ws.off('message', on); ok(m); } };
-      ws.on('message', on);
+      const off = onMsg(ws, (m) => { if (m.t === t || m.t === 'err') { clearTimeout(timer); off(); ok(m); } });
     });
     ws.send(JSON.stringify({ t: 'exams' }));
     const list = await next('exams');
@@ -179,8 +178,7 @@ describe('MCP over streamable HTTP', () => {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
     const next = (pred: (m: any) => boolean, ms = 8000) => new Promise<any>((ok, bad) => {
       const t = setTimeout(() => bad(new Error('ws timeout')), ms);
-      const on = (raw: WebSocket.RawData) => { const m = JSON.parse(String(raw)); if (pred(m)) { clearTimeout(t); ws.off('message', on); ok(m); } };
-      ws.on('message', on);
+      const off = onMsg(ws, (m) => { if (pred(m)) { clearTimeout(t); off(); ok(m); } });
     });
     ws.on('message', (raw) => wsMsgs.push(String(raw)));
     const welcome = await next((m) => m.t === 'welcome');
@@ -239,7 +237,8 @@ describe('MCP over streamable HTTP', () => {
     const sock = (tok: string) => {
       const s = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${tok}` } });
       const msgs: any[] = [];
-      s.on('message', (raw) => { wsMsgs.push(String(raw)); msgs.push(JSON.parse(String(raw))); });
+      s.on('message', (raw) => wsMsgs.push(String(raw)));
+      onMsg(s, (m) => msgs.push(m));
       const closed = new Promise<number>((ok) => s.on('close', (code) => ok(code)));
       const opened = new Promise((ok) => s.once('open', ok));
       return { s, msgs, closed, opened };
@@ -283,7 +282,7 @@ describe('MCP over streamable HTTP', () => {
 
     // confirm with the browser connected: the player declines (a new agent session with the new key)
     const agent2 = await client(third);
-    const q = new Promise<any>((ok) => owner.s.on('message', (raw) => { const m = JSON.parse(String(raw)); if (m.t === 'event' && m.e.type === 'ask') ok(m); }));
+    const q = new Promise<any>((ok) => onMsg(owner.s, (m) => { if (m.t === 'event' && m.e.type === 'ask') ok(m); }));
     const conf = call(agent2, 'confirm_with_player', { question: 'Destroy everything?', timeout_seconds: 10 });
     const asked2 = await q;
     owner.s.send(JSON.stringify({ t: 'answer', id: asked2.e.owl.id, choice: asked2.e.owl.options[1] }));

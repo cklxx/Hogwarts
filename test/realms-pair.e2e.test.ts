@@ -6,6 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
+import { onMsg } from './ws.js';
 
 // REALMS=2 behind one front door (src/server/realms.ts): pairing codes "K-ABC-DEF" route to realm K.
 const PORT = Number(process.env.HOGWARTS_REALMS_TEST_PORT ?? 8062);
@@ -26,8 +27,8 @@ async function call(c: Client, name: string, args: Record<string, unknown> = {})
 async function player(name: string) {
   const { token } = (await (await fetch(`${BASE}/api/enroll`, { method: 'POST', body: JSON.stringify({ name }) })).json()) as { token: string };
   const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${token}` } });
-  const welcome = await new Promise<any>((ok) => ws.on('message', (raw) => { const m = JSON.parse(String(raw)); if (m.t === 'welcome') ok(m); }));
-  const code = new Promise<string>((ok) => ws.on('message', (raw) => { const m = JSON.parse(String(raw)); if (m.t === 'paircode') ok(m.code); }));
+  const welcome = await new Promise<any>((ok) => onMsg(ws, (m) => { if (m.t === 'welcome') ok(m); }));
+  const code = new Promise<string>((ok) => onMsg(ws, (m) => { if (m.t === 'paircode') ok(m.code); }));
   ws.send(JSON.stringify({ t: 'paircode' }));
   return { token, ws, registry: welcome.registry as string, code: await code, realm: Number(/^r(\d+)\./.exec(token)![1]) };
 }
