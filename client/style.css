@@ -428,7 +428,7 @@ html:lang(en) #overlay > div { font: 700 calc(38px * var(--t))/1.2 var(--latin);
 #tutorial[data-at="topleft"] { left: calc(22px * var(--u)); top: calc(var(--tl-bottom, calc(48px * var(--u))) + calc(10px * var(--u))); }
 #tutorial .tut-n { flex: none; min-width: calc(34px * var(--u)); height: calc(34px * var(--u)); padding: 0 calc(5px * var(--u)); display: grid; place-items: center; border-radius: 50%; color: #fff4e4;
   background: radial-gradient(circle at 35% 30%, #c0403a, #7a1418 72%); box-shadow: 0 calc(1px * var(--u)) calc(2px * var(--u)) rgba(0, 0, 0, .4); font: 700 calc(15px * var(--t))/1 var(--latin); font-feature-settings: 'lnum' 1, 'tnum' 1; letter-spacing: 0; }
-#tutorial .tut-line { min-width: 0; }
+#tutorial .tut-line { min-width: 0; text-wrap: balance; } /* two even lines, never a lone word (the Mac line is longer: 右键或 Ctrl+拖动) */
 #tutorial .tut-line b { color: var(--wax); font-weight: 600; }
 #tutorial .tut-line .dir { color: var(--indigo); margin-left: .5em; white-space: nowrap; font-weight: 500; }
 #tutorial .arrow { display: inline-block; width: 1.1em; text-align: center; color: var(--wax); font-weight: 700; }

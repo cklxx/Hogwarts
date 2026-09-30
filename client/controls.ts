@@ -129,7 +129,7 @@ export function wheelCam(e: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' |
   return { zoom: sideways ? 0 : dy * 0.01, yaw: sideways ? dx * 0.004 : 0 };
 }
 /** How to turn the camera, in the help and hints: a Mac trackpad has no right button to drag with. */
-export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+按住拖动' : '右键拖动';
+export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+拖动' : '右键拖动';
 export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
 /** Camera distance limits (the wheel, the pinch and the touch pinch share them). */
 export const clampDist = (v: number) => Math.max(3.5, Math.min(40, v));
