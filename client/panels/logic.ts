@@ -113,3 +113,14 @@ export function pickLang(s: string, want: 'zh' | 'en'): string {
 }
 /** An error for a panel: the kernel's refusals are often "English 中文" — the reader's half, after a ✗. */
 export const errHalf = (raw: string, want: 'zh' | 'en') => `✗ ${pickLang(raw.replace(/^✗\s*/, ''), want)}`;
+
+/**
+ * The centre banner's headline (the quiet HUD, 2026-09-30): only the first sentence, at most `max` characters — a
+ * three-line decree over the middle of the screen covered the wizard and whatever was coming at them; the whole
+ * text goes to the feed.
+ */
+export function headline(text: string, max = 26): string {
+  const m = /^.+?[！!。？?]/u.exec(text.trim());
+  const first = (m ? m[0] : text.trim()).replace(/^[📜\s]+/u, '');
+  return first.length > max ? `${first.slice(0, max - 1)}…` : first;
+}

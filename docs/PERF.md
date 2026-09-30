@@ -1413,3 +1413,25 @@ Cost:
 Found on the way: `putStrike` ran its per-axis "too far" test before its NaN test. A wizard with a NaN x and a far,
 finite z was left out, where `around()` keeps it. It now falls back to `around()` first, as its comment always said.
 test/perf.test.ts's cross-check caught it once props changed the course of that test's bolts.
+
+## 2026-09-30 — the quiet HUD (`wf/quiet`)
+
+How much of the screen the HUD covers. Method: two stills of the same frozen frame (`?capture=1`), one with the HUD
+and one with it hidden; the share of pixels that differ; `$S/uicov.mjs`. The first run is 1280×720 desktop and a
+390×844 phone, main against this branch. Two servers can be in different states (one had a curfew running), so the
+per-piece bounding-box shares are the fair comparison. The passing things (banner, toasts, message stack) are
+hidden in both.
+
+| desktop piece | before | after |
+|---|---:|---:|
+| Today's lessons (folded to 📜 0/3; open on hover, a click, or for 6 s when a lesson moves) | 2.1 % | 0.2 % |
+| The motto in the top-right corner (only a Minister's own proclamation shows) | 1.3 % | 0.1 % |
+| The H-help button (gone after the tutorial; H still works) | 0.3 % | 0 |
+| Top-right column | 5.1 % | 4.3 % |
+| Chat tabs (folded: only 全部 with its unread count) and bar words / full-bar numbers | inside their boxes | inside their boxes |
+
+Whole-screen pixel share, the first single samples: desktop 14.7 % (main) against 18.3 % (branch). The difference is
+state, not chrome: that sample caught the event slip of a running curfew (2.9 %). The centre banner used to be three
+lines for 7 s, 11.9 % of the screen in one sample. It is now one headline (first sentence, ≤ 26 characters) for 3.5 s,
+higher up (17 % from the top instead of 30 %); the full text goes to the feed. The phone shell (15 % bottom controls)
+is unchanged: it was cut down last round.
