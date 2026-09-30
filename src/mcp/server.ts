@@ -694,65 +694,6 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     return { ok: true, enacted: r.changes, ...(confirmed ? { approvedBy: `your human (${confirmed.via})` } : {}) };
   }));
 
-  // ---------------------------------------------------------------- 不公平，但好玩 (README)
-  register('dumbledores_army', {
-    title: "Dumbledore's Army",
-    description: "邓布利多军: the underdogs' union. Whether you may join (reputation below 100 or below the median), its size and who is online (members see each other), the Minister's decree it may still veto (majority of ≥3 online members, within 180 s, once per term), and the joint-spell rule (3 members hitting one target within 4 s: ×1.25).",
-    annotations: { readOnlyHint: true },
-  }, me((wid) => world.daState(wid)));
-
-  register('join_dumbledores_army', {
-    title: "Join Dumbledore's Army",
-    description: 'Sign the parchment in the Room of Requirement (only if your reputation is below 100 or below the median). Membership is secret: only members see each other.',
-  }, me((wid) => world.joinDA(wid)));
-
-  register('leave_dumbledores_army', {
-    title: "Leave Dumbledore's Army",
-    description: 'Take your name off the parchment.',
-  }, me((wid) => world.leaveDA(wid)));
-
-  register('veto_decree', {
-    title: "Vote to veto the Minister's decree",
-    description: "DA members only: vote to veto the Minister's last decree. It is reverted when a strict majority of the DA members online (at least 3 of them) has voted, within 180 s of the decree; once per term.",
-  }, me((wid) => world.vetoDecree(wid)));
-
-  register('study_spell', {
-    title: 'Study a spell that hit you (偷师)',
-    description: "Learn from the strong: a custom spell another wizard hit you with can be studied 120 s after it first hit you (while it hit you in the last 10 minutes), once per spell. Returns its source; copy:true forges it into your book (your year's caps and spellbook size apply; the copy records its author). Casting Revelio lists what is ready; whoami.studyable too.",
-    inputSchema: {
-      spell: z.string().min(1).max(60).describe('the spell\'s name, as it hit you'),
-      from: z.string().optional().describe('whose (handle or name), if several spells share the name'),
-      copy: z.boolean().optional().describe('also forge it into your book (default false)'),
-      name: z.string().min(1).max(40).optional().describe('name for your copy (default: the original name)'),
-      slot: z.number().int().min(1).max(6).optional().describe('hotbar slot for the copy'),
-    },
-  }, me((wid, a: { spell: string; from?: string; copy?: boolean; name?: string; slot?: number }) => world.studySpell(wid, a.spell, a)));
-
-  register('restricted_section', {
-    title: 'The Restricted Section',
-    description: 'The four seals that guard the greatest magic: what each gives, where their pages rest, and the codex of Old Runes. Bigger magic is locked behind harder seals.',
-    annotations: { readOnlyHint: true },
-  }, me((wid) => world.restrictedSection(wid)));
-
-  register('read_seal_page', {
-    title: 'Read a page of a seal',
-    description: 'Collect a page of a seal. You must be standing within 10m of the landmark where that page rests.',
-    inputSchema: { tier: z.number().int().min(1).max(4) },
-  }, me((wid, a: { tier: number }) => world.readSealPage(wid, a.tier)));
-
-  register('inspect_seal', {
-    title: 'Study a seal',
-    description: 'The Old Runes of a seal, as far as the pages you hold reveal them.',
-    inputSchema: { tier: z.number().int().min(1).max(4) },
-    annotations: { readOnlyHint: true },
-  }, me((wid, a: { tier: number }) => world.inspectSeal(wid, a.tier)));
-
-  register('break_seal', {
-    title: 'Speak the words to a seal',
-    description: 'Attempt to break a seal with its input words (32-bit, e.g. "0x1a2b3c4d"). Exactly one answer opens it. 3 attempts per 10 minutes; every failure bites.',
-    inputSchema: { tier: z.number().int().min(1).max(4), words: z.array(z.union([z.string(), z.number()])).min(1).max(4) },
-  }, me((wid, a: { tier: number; words: (string | number)[] }) => world.breakSeal(wid, a.tier, a.words)));
-
   register('marauders_map', {
     title: "The Marauder's Map",
     description: 'An old piece of parchment.',

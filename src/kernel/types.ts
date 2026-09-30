@@ -27,21 +27,6 @@ export interface Spell {
   lastMana?: number;
 }
 
-/** 偷师: a custom spell of another wizard that hit you (the author's registry id is kept server-side only). */
-export interface StudyHit {
-  /** `${authorHandle}:${spellId}` — also what `studied` remembers. */
-  key: string;
-  spellId: string;
-  name: string;
-  author: string;
-  authorName: string;
-  authorHandle: string;
-  /** The source as it was when it last hit you. */
-  source: string;
-  firstAt: number;
-  lastAt: number;
-}
-
 export interface Item {
   id: string;
   name: string;
@@ -166,10 +151,8 @@ export interface Wizard {
   lastSeenAt: number;
   /** HUD corners unlocked by the reveal charm. */
   ui: string[];
-  /** Restricted-Section seals broken (0..4), pages collected and recent failed attempts per tier. */
+  /** Restricted-Section seals broken (0..4): it lifts the Runes caps (the quest itself: kernel/seals.ts). */
   seals: number;
-  sealPages: Record<string, number[]>;
-  sealTries: Record<string, number[]>;
   wasMinister: boolean;
   /** Server-driven non-player wizard. */
   npc: boolean;
@@ -193,9 +176,6 @@ export interface Wizard {
   look: Glamour | null;
   /** Not persisted: someone's Colour-Change jinx (≤ GLAMOUR_PRANK_MAX_S; Finite Incantatem ends it). */
   jinxLook: JinxLook | null;
-  /** 偷师: custom spells of others that hit you recently (≤ STUDY_KEEP, persisted), and the ones you studied (≤ STUDIED_KEEP). */
-  studyHits?: StudyHit[];
-  studied?: string[];
   /** 学院杯: this term's house-point ledger (kernel/housecup.ts; persisted, reset by a new term). */
   cup?: CupLedger;
   /** 巧克力蛙画片: the cards in this wizard's album (ids from lore/cards.ts; persisted). */

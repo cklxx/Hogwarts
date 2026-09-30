@@ -329,12 +329,9 @@ type ClientMsg =
   | { t: 'forge'; name: string; incantation?: string; source: string; slot?: number }
   | { t: 'unlearn'; spell: string }
   | { t: 'hotbar'; slots: (string | null)[] }
-  | { t: 'seals' }
-  | { t: 'readpage'; tier: number }
-  | { t: 'breakseal'; tier: number; words: string[] }
   | { t: 'goto'; x: number; z: number }
   | { t: 'dodge'; dx: number; dz: number }
-  // (a feature's own messages, {t: feature id, …}, go to kernel/features.ts before this switch)
+  // (a feature's own messages, {t: feature id, …} — seals, da, study, duel, quidditch, … — go to kernel/features.ts before this switch)
   // Owl Post (docs/AGENT_LINK.md §C.5)
   | { t: 'owl'; text: string }
   | { t: 'answer'; id: number; choice: string }
@@ -350,9 +347,6 @@ type ClientMsg =
   | { t: 'examboard'; id?: string }
   // the browser shop: a fixed preset forged into your own trunk (shop.ts)
   | { t: 'buy'; item: string; lang?: string }
-  // 不公平，但好玩: Dumbledore's Army and 偷师 (README; replies { t: 'da', r } and { t: 'study', r })
-  | { t: 'da'; op?: 'status' | 'join' | 'leave' | 'veto' }
-  | { t: 'study'; spell: string; from?: string; copy?: boolean; name?: string; slot?: number }
   // 咒语集市 (kernel/market.ts marketMessage): reads and actions; replies { t: 'market', op, r } (+ a fresh book)
   | { t: 'market'; op?: 'browse' | 'spell'; [k: string]: unknown }
   | { t: 'marketop'; op: 'publish' | 'unpublish' | 'copy' | 'fork'; [k: string]: unknown }
@@ -395,18 +389,6 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
         break;
       }
       case 'unlearn': world.unlearn(wid, String(m.spell)); book(); break;
-      case 'seals': {
-        const tier = Math.min(4, w.seals + 1);
-        reply({ t: 'seals', section: world.restrictedSection(wid), current: world.inspectSeal(wid, tier) });
-        break;
-      }
-      case 'readpage': reply({ t: 'sealmsg', ok: true, r: world.readSealPage(wid, Number(m.tier)) }); handleClient(ws, wid, { t: 'seals' }); break;
-      case 'breakseal': {
-        const words = Array.isArray(m.words) ? m.words.slice(0, 4).map(String) : [];
-        reply({ t: 'sealmsg', ok: true, r: world.breakSeal(wid, Number(m.tier), words) });
-        handleClient(ws, wid, { t: 'seals' });
-        break;
-      }
       case 'goto': reply({ t: 'goto', goal: finite(m.x) && finite(m.z) ? world.setGoal(wid, { x: m.x, z: m.z }) : world.setGoal(wid, null) }); break;
       case 'dodge': world.dodge(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0); break; // (a roll on cooldown just does nothing)
       case 'hotbar': if (Array.isArray(m.slots)) { world.setHotbar(wid, m.slots.map((x) => (x ? String(x) : null))); book(); } break;
@@ -417,17 +399,6 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
       case 'buy': reply({ t: 'bought', r: buyPreset(world, wid, String(m.item ?? ''), m.lang === 'en' ? 'en' : 'zh') }); book(); break;
       case 'chest': reply({ t: 'chest', r: world.openChest(wid) }); break;
       case 'school': reply({ t: 'school', r: schoolEvents(world, wid) }); break;
-      case 'da': {
-        const r = m.op === 'join' ? world.joinDA(wid) : m.op === 'leave' ? world.leaveDA(wid) : m.op === 'veto' ? world.vetoDecree(wid) : world.daState(wid);
-        reply({ t: 'da', op: m.op ?? 'status', r });
-        break;
-      }
-      case 'study': {
-        const r = world.studySpell(wid, String(m.spell ?? ''), { from: typeof m.from === 'string' ? m.from : undefined, copy: m.copy === true, name: typeof m.name === 'string' ? m.name : undefined, slot: finite(m.slot) ? m.slot : undefined });
-        reply({ t: 'study', r });
-        if (r.copied) book();
-        break;
-      }
       case 'market':
       case 'marketop': {
         const r = marketMessage(world, wid, m);

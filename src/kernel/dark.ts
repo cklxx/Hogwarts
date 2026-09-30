@@ -19,7 +19,7 @@ import { RuneError } from '../runes/parser.js';
 import { zhPlace } from '../shared/zh.js';
 import type { Prim } from '../runes/primitives.js';
 import type { Feature, FeatureSpell } from './feature.js';
-import type { Projectile, Wizard } from './types.js';
+import type { Wizard } from './types.js';
 import type { World } from './world.js';
 
 export const DARK_YEAR = 4, DARK_SEALS = 1;
@@ -148,7 +148,8 @@ export const DARK_FEATURE: Feature = {
       return shown.length || d.marks.length ? { w: shown, m: d.marks.map((m) => [Math.round(m.x), Math.round(m.z), Math.ceil(m.until - world.now)]) } : undefined;
     },
   },
-  hit(world, p: Projectile, id) { if (p.tags.includes(SECTUM_TAG)) world.applyAura(id, 'poison', DARK_BLEED_S, DARK_BLEED, p.owner); },
+  // 神锋无影: the blade's wound (after its damage; a multiplier of 1: it changes nothing else)
+  hit(world, by, _src, dstId, tags, dmg) { if (dmg && tags.includes(SECTUM_TAG)) world.applyAura(dstId, 'poison', DARK_BLEED_S, DARK_BLEED, by); return 1; },
   tools: [{
     name: 'darkness', title: 'Your darkness', cost: 0, readOnly: true,
     description: `黑魔法: how dark you are (0–${DARK_MAX}; others see it from ${DARK_SHOWN}; it fades ${Math.round(DARK_FADE * 60)} a minute) and the Dark Arts (year ${DARK_YEAR}, a broken seal): sectumsempra, fiendfyre, imperio, morsmordre — Runes primitives, see the grimoire. Each costs your house points outside the lawless forest.`,

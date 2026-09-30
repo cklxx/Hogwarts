@@ -1,7 +1,7 @@
 ------------------------------- MODULE DAVeto -------------------------------
-(* Dumbledore's Army's veto (src/kernel/world.ts decree / vetoDecree / enactVeto / unfairSweep / endTerm).
+(* Dumbledore's Army's veto (src/kernel/world.ts decree / endTerm; src/kernel/unfair.ts DA_FEATURE: vetoDecree / enactVeto / its sweep).
    A rule with constitutional bounds, a Minister holding decree charges, DA members who come and go
-   online and vote. VoteVeto(m) is World.vetoDecree clause by clause: a member in play votes; the veto
+   online and vote. VoteVeto(m) is unfair.ts vetoDecree clause by clause: a member in play votes; the veto
    passes at that vote when at least Quorum members are online and a strict majority of THEM has voted,
    within Window ticks of the decree, and only if the DA has not vetoed this term. It restores the
    rulebook the decree replaced (VetoWindow.before). Charges models how many decrees a Minister may issue
@@ -40,7 +40,7 @@ Tick == /\ age' = IF dstate = "enacted" /\ age <= Window THEN age + 1 ELSE age
 Join(m)  == m \notin online /\ online' = online \cup {m} /\ UNCHANGED <<term, charges, rule, before, decreed, dstate, age, votes, vetoTerm, vetoes, lastVeto>>
 Leave(m) == m \in online /\ online' = online \ {m} /\ UNCHANGED <<term, charges, rule, before, decreed, dstate, age, votes, vetoTerm, vetoes, lastVeto>>
 
-\* World.vetoDecree(m): the guards, then the vote, then (maybe) the veto, in one step
+\* vetoDecree(world, m) (unfair.ts): the guards, then the vote, then (maybe) the veto, in one step
 VoteVeto(m) ==
   /\ m \in online                       \* a member in play
   /\ vetoTerm # term                    \* DA_VETOES_PER_TERM = 1
