@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { EFFECT_PRIMITIVES, FORGE_FAIL_PER_MIN, ITEM_MODS, ITEM_SLOTS, LISTEN_MAX_S } from '../shared/constants.js';
 import { LANDMARKS, landmarkById } from '../shared/map.js';
 import { describeRulebookSchema } from '../kernel/rulebook.js';
-import type { OwlMsg, WorldEvent } from '../kernel/types.js';
+import { visibleTo, type OwlMsg, type WorldEvent } from '../kernel/types.js';
 import { AGENT_PAUSED, type World } from '../kernel/world.js';
 import { HISTORY } from '../lore/history.js';
 import { TIME_REMARKS, WEATHER_REMARKS, WHOAMI_QUOTES, dayPart } from '../lore/memes.js';
@@ -132,7 +132,7 @@ function rememberBlock(name: string, registry: string) {
 }
 
 /** An event as an agent sees it. */
-const agentEvent = (e: WorldEvent) => ({ id: e.id, type: e.type, text: e.text, private: !!e.to, ...(e.from ? { from: e.from } : {}) });
+const agentEvent = (e: WorldEvent) => ({ id: e.id, type: e.type, text: e.text, private: !!(e.to || e.aud), ...(e.ch ? { ch: e.ch } : {}), ...(e.from ? { from: e.from } : {}) });
 /** An owl from the player as an agent sees it. */
 function agentOwl(m: OwlMsg, question?: OwlMsg) {
   return {
@@ -540,7 +540,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     inputSchema: { since: z.number().int().optional(), limit: z.number().int().min(1).max(100).optional() },
     annotations: { readOnlyHint: true },
   }, me((wid, a: { since?: number; limit?: number }) =>
-    world.events.filter((e) => (!e.to || e.to === wid) && e.id > (a.since ?? 0)).slice(-(a.limit ?? 30)).map((e) => ({ ...agentEvent(e), t: e.t }))));
+    world.events.filter((e) => visibleTo(e, wid) && e.id > (a.since ?? 0)).slice(-(a.limit ?? 30)).map((e) => ({ ...agentEvent(e), t: e.t }))));
 
   // ---------------------------------------------------------------- your human (docs/AGENT_LINK.md §C.3)
   register('tell_player', {

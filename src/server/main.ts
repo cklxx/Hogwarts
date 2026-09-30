@@ -16,6 +16,7 @@ import { marketMessage } from '../kernel/market.js';
 import { schoolEvents } from '../kernel/wheel.js';
 import { FEATURE_BY_ID } from '../kernel/features.js';
 import { TICK, World } from '../kernel/world.js';
+import { visibleTo } from '../kernel/types.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
 import { createMcpServer, isConfirmAnswer, type McpSession } from '../mcp/server.js';
@@ -376,7 +377,6 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
     switch (m.t) {
       case 'input': world.setInput(wid, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
       case 'cast': reply({ t: 'cast', r: world.cast(wid, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
-      case 'chat': world.say(w, String(m.text ?? '')); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
       case 'unequip': world.unequip(wid, String(m.slot)); items(); break;
       case 'destroy': { const it = world.destroyItem(wid, String(m.item)); reply({ t: 'destroyed', item: it.id, name: it.name }); items(); break; }
@@ -453,7 +453,7 @@ http.on('upgrade', (req, socket, head) => {
     clients.set(ws, w.id);
     w.connections++;
     // No token here (the client has it) and no `who` on events (registry ids): World.wireEvent.
-    const recent = world.events.filter((e) => !e.to || e.to === w.id).slice(-30).map((e) => world.wireEvent(e));
+    const recent = world.events.filter((e) => visibleTo(e, w.id)).slice(-30).map((e) => world.wireEvent(e));
     ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     // Area-of-interest snapshots only for clients that say they handle entities leaving their area (aoi=1),
     // or for everyone with AOI_ALL=1; the others get the full snapshot as before (fanout.ts).
@@ -471,7 +471,7 @@ http.on('upgrade', (req, socket, head) => {
 // Events: encoded once, queued for the sockets connected right now, written with the next broadcast (net.ts).
 world.onEvent((e) => {
   const msg = Buffer.from(JSON.stringify({ t: 'event', e: world.wireEvent(e) }));
-  for (const [ws, wid] of clients) if (!e.to || e.to === wid) enqueue(ws, msg);
+  for (const [ws, wid] of clients) if (visibleTo(e, wid)) enqueue(ws, msg);
 });
 
 // Snapshots: built and serialised once per broadcast (fanout.ts). Clients with AOI get the entities
