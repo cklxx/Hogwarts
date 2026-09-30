@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the macOS app's Info.plist by Tauri. -->
+<plist version="1.0">
+<dict>
+  <!-- macOS 15 asks before an app talks to the LAN (finding servers, joining one): say why in the prompt -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>霍格沃茨要在局域网里查找并连接游戏服务器。Hogwarts looks for game servers on your local network and connects to the one you pick.</string>
+  <!-- a game: macOS 14+ turns on Game Mode in full screen (CPU / GPU priority, lower Bluetooth latency) -->
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.role-playing-games</string>
+  <key>LSSupportsGameMode</key>
+  <true/>
+  <!-- Chinese first: system strings (menus WebKit adds, dialogs) follow the user's language, Chinese by default -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh_CN</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>zh_CN</string>
+    <string>en</string>
+  </array>
+  <key>CFBundleAllowMixedLocalizations</key>
+  <true/>
+</dict>
+</plist>

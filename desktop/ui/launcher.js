@@ -4,15 +4,22 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const status = (text, err = false) => { const el = $('#status'); el.textContent = text; el.classList.toggle('err', err); };
 let busy = false;
+const MAC = /Mac/.test(navigator.platform);
+// the shell's shortcuts on this platform (macOS: the menu's ⌃⌘F / ⇧⌘S, since F11 is Show Desktop there)
+invoke('keys').then((k) => { $('#keys').textContent = `进入游戏后：${k.full} 全屏，${k.switch} 回到这里换服务器。密钥保存在系统钥匙串里。`; }).catch(() => {});
 
 async function enter(url) {
   if (busy) return;
   busy = true;
   document.querySelectorAll('button').forEach((b) => (b.disabled = true));
   status(`正在连接 ${url} …`);
+  // unsigned builds: after an update macOS asks whether this (new) program may read the key it stored, and the
+  // connection waits for that answer
+  const slow = MAC && setTimeout(() => status(`正在连接 ${url} …如果系统询问能否使用钥匙串里的「hogwarts-desktop」，请点「始终允许」。`), 2000);
   try {
     await invoke('connect', { url }); // opens the game window and closes this one
   } catch (e) {
+    clearTimeout(slow);
     status(String(e), true);
     busy = false;
     document.querySelectorAll('button').forEach((b) => (b.disabled = false));

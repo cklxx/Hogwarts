@@ -101,6 +101,39 @@ export interface AgentInfo {
   sessions?: number;
   connected?: boolean;
 }
+/**
+ * An Enter (or Escape) that belongs to the page, not to an input method: with 拼音 / 注音 / 日本語, Enter commits the
+ * candidate and Escape drops it. Chromium marks those keydowns isComposing; Safari / WKWebView (the macOS desktop
+ * client) fire compositionend first, so isComposing is already false there and only keyCode 229 gives it away.
+ */
+export function pageKey(e: Pick<KeyboardEvent, 'isComposing' | 'keyCode'>): boolean {
+  return !e.isComposing && e.keyCode !== 229;
+}
+export const isSubmitEnter = (e: Pick<KeyboardEvent, 'key' | 'isComposing' | 'keyCode'>) => e.key === 'Enter' && pageKey(e);
+
+/** Mac (not an iPad, which says Mac too): Ctrl+click is the right button there, and the trackpad is the mouse. */
+export const IS_MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform) && (navigator.maxTouchPoints ?? 0) < 2;
+
+/**
+ * A wheel event → camera change. Up/down (a mouse wheel, or two fingers on a trackpad) zooms; a trackpad pinch
+ * (ctrl+wheel in Chromium and Firefox) zooms too, faster, since its deltas are small; sideways (two fingers on a
+ * trackpad, or Shift+wheel) turns the camera. Line / page deltas (deltaMode 1 / 2, some mice) are scaled to pixels.
+ */
+export function wheelCam(e: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' | 'ctrlKey'>): { zoom: number; yaw: number } {
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+  const dx = e.deltaX * unit, dy = e.deltaY * unit;
+  if (e.ctrlKey) return { zoom: dy * 0.05, yaw: 0 };
+  // a mostly vertical scroll only zooms (a trackpad never scrolls perfectly straight); sideways follows the fingers
+  // like a drag does (natural scrolling: fingers to the right = deltaX < 0 = yaw down, as a drag to the right)
+  const sideways = Math.abs(dx) > Math.abs(dy) * 0.5;
+  return { zoom: sideways ? 0 : dy * 0.01, yaw: sideways ? dx * 0.004 : 0 };
+}
+/** How to turn the camera, in the help and hints: a Mac trackpad has no right button to drag with. */
+export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+按住拖动' : '右键拖动';
+export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
+/** Camera distance limits (the wheel, the pinch and the touch pinch share them). */
+export const clampDist = (v: number) => Math.max(3.5, Math.min(40, v));
+
 export interface AgentView { connected: boolean; client: string; ago: number | null; tool: string | null; goal: string | null; paused: boolean }
 /** An agent seen within this many seconds counts as connected when the server does not say how many MCP sessions there are. */
 export const AGENT_LIVE_S = 300;
@@ -380,7 +413,7 @@ export function createControls(d: ControlsDeps) {
     const p = myPos();
     // wild creatures first: a newcomer's Tab should find the pixie, not a rival player
     const list = hostilesAhead(45, 42, true);
-    if (!list.length || !p) { d.toast(L('前方没有可以攻击的目标。转动镜头（右键拖动 / Q E）再试试。', 'No foe ahead. Turn the camera (right-drag / Q E) and try again.')); return; }
+    if (!list.length || !p) { d.toast(L(`前方没有可以攻击的目标。转动镜头（${LOOK_ZH} / Q E）再试试。`, `No foe ahead. Turn the camera (${LOOK_EN} / Q E) and try again.`)); return; }
     let next = list.find((k) => !tabbed.has(k) && k !== target);
     if (!next) { tabbed = new Set(); next = list.find((k) => k !== target) ?? list[0]; }
     tabbed.add(next);
@@ -521,18 +554,22 @@ export function createControls(d: ControlsDeps) {
     keys.add(k.toLowerCase());
     return false;
   }
-  addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+  // macOS sends no keyup for a key released while ⌘ is down: when ⌘ goes up, forget them all (a held key's
+  // auto-repeat puts it back)
+  addEventListener('keyup', (e) => { if (e.key === 'Meta') keys.clear(); else keys.delete(e.key.toLowerCase()); });
   addEventListener('blur', () => { keys.clear(); dragging = false; });
 
   // ------------------------------------------------------------------ input: mouse
   d.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // the button that turns the camera: the right one, or on a Mac Ctrl+click (a trackpad's right click, held)
+  let dragButton = -1;
   d.canvas.addEventListener('mousedown', (e) => {
-    if (e.button === 2) { dragging = true; return; }
+    if (e.button === 2 || (e.button === 0 && e.ctrlKey && IS_MAC)) { dragging = true; dragButton = e.button; return; }
     if (e.button !== 0) return;
     mx = e.clientX; my = e.clientY; mouseIn = true; overCanvas = true;
     primaryAt(e.clientX, e.clientY, e.shiftKey);
   });
-  addEventListener('mouseup', (e) => { if (e.button === 2) dragging = false; });
+  addEventListener('mouseup', (e) => { if (e.button === dragButton) { dragging = false; dragButton = -1; } });
   addEventListener('mousemove', (e) => {
     mx = e.clientX; my = e.clientY; mouseIn = true;
     overCanvas = e.target === d.canvas;
@@ -546,7 +583,19 @@ export function createControls(d: ControlsDeps) {
     }
   });
   addEventListener('mouseout', (e) => { if (!e.relatedTarget) mouseIn = false; });
-  d.canvas.addEventListener('wheel', (e) => { d.cam.dist = Math.max(3.5, Math.min(40, d.cam.dist + e.deltaY * 0.01)); }, { passive: true });
+  // not passive: a pinch (ctrl+wheel) would otherwise zoom the whole page instead of the camera
+  d.canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const c = wheelCam(e);
+    d.cam.dist = clampDist(d.cam.dist + c.zoom);
+    if (c.yaw) { d.cam.yaw += c.yaw; lastDrag = now(); }
+  }, { passive: false });
+  // Safari / WKWebView report a trackpad pinch as gesture events (with a scale), not as ctrl+wheel
+  let pinchFrom = 0;
+  type Gesture = Event & { scale: number };
+  d.canvas.addEventListener('gesturestart', (e) => { e.preventDefault(); pinchFrom = d.cam.dist; });
+  d.canvas.addEventListener('gesturechange', (e) => { e.preventDefault(); const s = (e as Gesture).scale; if (pinchFrom && s > 0) d.cam.dist = clampDist(pinchFrom / s); });
+  d.canvas.addEventListener('gestureend', (e) => { e.preventDefault(); pinchFrom = 0; });
 
   /** Left click / tap: a foe → target it and cast the attack spell; a friend → target it; the ground → walk there. Shift: cast at the ground. */
   function primaryAt(px: number, py: number, shift = false) {
@@ -588,7 +637,7 @@ export function createControls(d: ControlsDeps) {
       e.preventDefault();
       if (e.touches.length === 2 && stickId === null) {
         const p = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        if (pinch) d.cam.dist = Math.max(3.5, Math.min(40, d.cam.dist - (p - pinch) * 0.05));
+        if (pinch) d.cam.dist = clampDist(d.cam.dist - (p - pinch) * 0.05);
         pinch = p; lookMoved = true;
         return;
       }
@@ -879,7 +928,8 @@ export function createControls(d: ControlsDeps) {
       <h3>${L('移动', 'Moving')}</h3><table>
       ${row('W A S D', L('移动（相对镜头方向）；跑动时镜头会慢慢转到你身后', 'Move (relative to the camera); the camera drifts in behind you'))}
       ${row(L('左键 地面', 'Click ground'), L('自动寻路走过去（地上会出现金色标记；按 WASD 取消）', 'Walk there by the shortest path (gold marker; WASD cancels)'))}
-      ${row(L('右键拖动', 'Right-drag'), L('转动视角（之后几秒镜头不会自动跟随）', 'Turn the camera (auto-follow pauses for a few seconds)'))}
+      ${row(L(LOOK_ZH, LOOK_EN), L('转动视角（之后几秒镜头不会自动跟随）', 'Turn the camera (auto-follow pauses for a few seconds)'))}
+      ${IS_MAC ? row(L('双指捏合 / 上下滑', 'Pinch / two-finger scroll'), L('拉近拉远；双指左右滑也能转视角', 'Zoom; a sideways two-finger swipe turns the camera too')) : ''}
       ${row('Q / E', L('向左 / 向右转镜头', 'Turn the camera left / right'))}
       ${row(L('滚轮', 'Wheel'), L('拉近 / 拉远', 'Zoom'))}
       </table>
@@ -1080,7 +1130,7 @@ function createTutorial(t: TutorialDeps) {
       at: 'bottom',
       line: () => t.touch
         ? L('按住<b>左下方</b>拖动行走，或<b>点一下地面</b>走过去', 'Drag on the <b>lower left</b> to walk, or <b>tap the ground</b>')
-        : L(`${key('W')}${key('A')}${key('S')}${key('D')} 行走，或<b>左键点地面</b>走过去 · 右键拖动转视角`, `${key('W')}${key('A')}${key('S')}${key('D')} to walk, or <b>click the ground</b> · right-drag to look`),
+        : L(`${key('W')}${key('A')}${key('S')}${key('D')} 行走，或<b>左键点地面</b>走过去 · ${LOOK_ZH}转视角`, `${key('W')}${key('A')}${key('S')}${key('D')} to walk, or <b>click the ground</b> · ${LOOK_EN} to look`),
     },
     {
       at: 'bottom',

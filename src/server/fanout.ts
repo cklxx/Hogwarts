@@ -21,9 +21,9 @@ import type { World } from '../kernel/world.js';
  * leaves behind drops out 120-205 m behind it. That churn is inherent to any area of interest.)
  *
  * Payloads are per anchor CELL, so every client anchored to the same cell shares one Buffer. To make
- * building a payload cheap, each grid row is encoded once per broadcast as one buffer (cells in column
- * order, comma separated) with byte offsets per cell; the cells in reach of a client form one column
- * interval per row, i.e. one contiguous byte range, so a payload is ~4 x (2·radius/cell + 1) memcpys.
+ * building a payload cheap, each category is encoded once per broadcast into one buffer, row by row (cells
+ * in column order, comma separated), with byte offsets per cell; the cells in reach of a client form one
+ * column interval per row, i.e. one contiguous byte range, so a payload is ~4 x (2·radius/cell + 1) memcpys.
  *
  * The JSON is exactly `{ t: 'snap', s: world.snapshot() }` — same keys in the same order, same values;
  * only the four arrays are filtered. But a client that gets AOI snapshots sees entities leave (and
@@ -33,7 +33,10 @@ import type { World } from '../kernel/world.js';
  */
 export type Snapshot = ReturnType<World['snapshot']>;
 
-interface Row { cols: number[]; start: number[]; end: number[]; buf: Buffer }
+/** One grid row of a category: its non-empty columns (ascending) and each cell's bytes in the category's buffer. */
+interface Row { cols: number[]; start: number[]; end: number[] }
+/** A category's encoded entries: `rows[cz - z0]`, all in `buf`. */
+interface Encoded { buf: Buffer; z0: number; rows: (Row | undefined)[] }
 
 export const OFF = 1 << 14;
 const clampCell = (v: number) => (v < -OFF + 1 ? -OFF + 1 : v > OFF - 2 ? OFF - 2 : v);
@@ -44,8 +47,8 @@ const CLOSE = Buffer.from(']');
 const IDENT: ((e: Record<string, unknown>) => unknown)[] = [(e) => e.h, (e) => e.i, (e) => e.i, () => undefined];
 
 export class SnapshotFanout {
-  /** rows[k]: category k (w, c, p, fx) → row z → encoded row. */
-  private rows: Map<number, Row>[] = [new Map(), new Map(), new Map(), new Map()];
+  /** enc[k]: category k (w, c, p, fx), encoded. */
+  private enc: Encoded[] = [];
   /** filed[k]: category k → entity identity → packed cell it is filed under (hysteresis). */
   private filed: Map<unknown, number>[] = [new Map(), new Map(), new Map()];
   private payloads = new Map<number, Buffer>();
@@ -57,6 +60,10 @@ export class SnapshotFanout {
   /** span[i] = how many columns either side are in reach in the row dz = i - lim (-1: none). */
   readonly span: number[] = [];
   readonly lim: number;
+  /** payloadFor's scratch: the byte ranges (and their category) it copies. */
+  private from: Int32Array;
+  private to: Int32Array;
+  private kind: Uint8Array;
   /** Hysteresis margin in metres (0 .. radius/4). */
   readonly margin: number;
   /** Everything within this distance of a client is always in its payload: radius − 2·margin. */
@@ -73,6 +80,9 @@ export class SnapshotFanout {
       for (let dx = 0; dx <= this.lim; dx++) if (this.inReach(dx, dz)) s = dx;
       this.span.push(s);
     }
+    this.from = new Int32Array(4 * this.span.length);
+    this.to = new Int32Array(4 * this.span.length);
+    this.kind = new Uint8Array(4 * this.span.length);
   }
 
   get enabled() { return this.radius > 0; }
@@ -114,7 +124,6 @@ export class SnapshotFanout {
   /** Encode the snapshot's entries row by row (once per broadcast, on the first AOI payload). */
   private encode() {
     this.encoded = true;
-    for (const r of this.rows) r.clear();
     const snap = this.snap!;
     const { w, c, p, fx, elder, willowCalm, look, ...headFields } = snap;
     // Same key order as JSON.stringify(snapshot): t, hour, night, weather, term, w, c, p, fx, elder, willowCalm, look
@@ -123,36 +132,44 @@ export class SnapshotFanout {
     const lists = [w, c, p, fx] as unknown as ({ x: number; z: number } & Record<string, unknown>)[][];
     const D = 2 * OFF;
     for (let k = 0; k < 4; k++) {
+      const list = lists[k], n = list.length;
       const prev = this.filed[k], next = k < 3 ? new Map<unknown, number>() : null;
-      // row z → column x → serialised entries (snapshot order within a cell)
-      const grid = new Map<number, Map<number, string[]>>();
-      for (const e of lists[k]) {
-        const id = IDENT[k](e);
+      // each entry's cell (sticky), as a row-major sort key, and its JSON
+      const rk = new Float64Array(n), json: string[] = new Array(n);
+      let bytes = 0;
+      for (let i = 0; i < n; i++) {
+        const e = list[i], id = IDENT[k](e);
         const key = next && id !== undefined ? this.stickyCell(prev.get(id), e.x, e.z) : pack(this.cellOf(e.x), this.cellOf(e.z));
         if (next && id !== undefined) next.set(id, key);
-        const cx = Math.floor(key / D) - OFF, cz = (key % D) - OFF;
-        let row = grid.get(cz);
-        if (!row) { row = new Map(); grid.set(cz, row); }
-        let cellList = row.get(cx);
-        if (!cellList) { cellList = []; row.set(cx, cellList); }
-        cellList.push(JSON.stringify(e));
+        rk[i] = (key % D) * D + Math.floor(key / D); // (cz, cx), both offset by OFF
+        json[i] = JSON.stringify(e);
+        bytes += 3 * json[i].length + 1; // UTF-8 needs at most 3 bytes per UTF-16 unit, +1 for the comma
       }
       if (next) this.filed[k] = next;
-      for (const [cz, row] of grid) {
-        const cols = [...row.keys()].sort((a, b) => a - b);
-        const pieces = cols.map((cx) => Buffer.from(row.get(cx)!.join(',')));
-        const start: number[] = [], end: number[] = [];
-        let at = 0;
-        for (let i = 0; i < pieces.length; i++) {
-          if (i) at += 1; // the comma between cells
-          start.push(at);
-          at += pieces[i].length;
-          end.push(at);
-        }
-        const buf = Buffer.allocUnsafe(at);
-        for (let i = 0; i < pieces.length; i++) { pieces[i].copy(buf, start[i]); if (i) buf[start[i] - 1] = 0x2c; }
-        this.rows[k].set(cz, { cols, start, end, buf });
+      // row by row, cells in column order, entries in snapshot order within a cell (the sort is stable)
+      const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => rk[a] - rk[b]);
+      // one buffer per category, reused from broadcast to broadcast (payloads are copies)
+      const old = this.enc[k]?.buf;
+      const buf = old && old.length >= bytes ? old : Buffer.allocUnsafe(Math.max(bytes, 2 * (old?.length ?? 0)));
+      const z0 = n ? Math.floor(rk[order[0]] / D) - OFF : 0;
+      const rows: (Row | undefined)[] = n ? new Array(Math.floor(rk[order[n - 1]] / D) - OFF - z0 + 1) : [];
+      let at = 0, row: Row | undefined, rz = 0, rx = 0;
+      for (let o = 0; o < n; o++) {
+        const i = order[o], cz = Math.floor(rk[i] / D) - OFF, cx = (rk[i] % D) - OFF;
+        if (!row || cz !== rz) { // a new row (the previous one ends here: rows are not separated)
+          if (row) row.end.push(at);
+          row = rows[cz - z0] = { cols: [cx], start: [at], end: [] };
+          rz = cz; rx = cx;
+        } else if (cx !== rx) { // the next cell of the row
+          row.end.push(at);
+          buf[at++] = 0x2c;
+          row.cols.push(cx); row.start.push(at);
+          rx = cx;
+        } else buf[at++] = 0x2c; // the next entry of the cell
+        at += buf.write(json[i], at);
       }
+      if (row) row.end.push(at);
+      this.enc[k] = { buf, z0, rows };
     }
   }
 
@@ -171,33 +188,31 @@ export class SnapshotFanout {
     if (hit) return hit;
     const cx = Math.floor(key / (2 * OFF)) - OFF, cz = (key % (2 * OFF)) - OFF;
     // Collect one byte range per (category, row), nearest rows first.
-    const bufs: Buffer[] = [], from: number[] = [], to: number[] = [], kinds: number[] = [];
-    let total = this.head.length + this.tail.length + CLOSE.length;
+    const { from, to, kind, span, lim } = this;
+    let nr = 0, total = this.head.length + this.tail.length + CLOSE.length;
     for (let k = 0; k < 4; k++) {
       total += OPEN[k].length;
-      const rows = this.rows[k];
-      let n = 0;
-      for (let i = 0; i < this.span.length; i++) {
-        const s = this.span[i];
-        if (s < 0) continue;
-        const row = rows.get(cz + i - this.lim);
+      const { rows, z0 } = this.enc[k];
+      for (let i = 0, first = nr; i < span.length; i++) {
+        const s = span[i], r = cz + i - lim - z0;
+        if (s < 0 || r < 0 || r >= rows.length) continue;
+        const row = rows[r];
         if (!row) continue;
         const a = lowerBound(row.cols, cx - s), b = lowerBound(row.cols, cx + s + 1) - 1;
         if (a > b) continue;
-        bufs.push(row.buf); from.push(row.start[a]); to.push(row.end[b]); kinds.push(k);
-        total += row.end[b] - row.start[a] + (n++ ? 1 : 0);
+        from[nr] = row.start[a]; to[nr] = row.end[b]; kind[nr] = k;
+        total += to[nr] - from[nr] + (nr > first ? 1 : 0);
+        nr++;
       }
     }
     const out = Buffer.allocUnsafe(total);
     let at = this.head.copy(out, 0);
-    let j = 0;
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0, j = 0; k < 4; k++) {
       at += OPEN[k].copy(out, at);
-      let first = true;
-      for (; j < bufs.length && kinds[j] === k; j++) {
-        if (!first) out[at++] = 0x2c;
-        at += bufs[j].copy(out, at, from[j], to[j]);
-        first = false;
+      const buf = this.enc[k].buf;
+      for (let first = j; j < nr && kind[j] === k; j++) {
+        if (j > first) out[at++] = 0x2c;
+        at += buf.copy(out, at, from[j], to[j]);
       }
     }
     at += CLOSE.copy(out, at);

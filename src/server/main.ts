@@ -363,6 +363,13 @@ const aimOf = (m: { x?: unknown; z?: unknown }) => (finite(m.x) && finite(m.z) ?
 function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
   const w = world.wizards.get(wid);
   if (!w || !m || typeof m !== 'object') return;
+  // Movement input is most of the traffic (up to the display's frame rate): straight to the kernel, without the
+  // closures and the feature lookup below (no feature has the id 'input').
+  if (m.t === 'input') {
+    try { world.setInput(actingAs(world, wid), finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); }
+    catch (e) { ws.send(JSON.stringify({ t: 'err', error: (e as Error).message })); }
+    return;
+  }
   const reply = (o: unknown) => ws.send(JSON.stringify(o));
   const book = () => reply({ t: 'book', armory: world.armory(wid), grimoire: grimoire(w.year, world.rules, w.seals) });
   const items = () => reply({ t: 'items', items: world.armory(wid).items });
@@ -373,7 +380,6 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
     const body = actingAs(world, wid); // whom the keys move (a feature may lend you another body)
     switch (m.t) {
       case 'resync': { const b = netState(ws).bin; if (b) b.resync = true; break; } // a v=2 decoder lost its place (shared/snapwire.ts)
-      case 'input': world.setInput(body, finite(m.dx) ? m.dx : 0, finite(m.dz) ? m.dz : 0, finite(m.f) ? m.f : undefined); break;
       case 'cast': reply({ t: 'cast', r: world.cast(body, String(m.key), { aim: aimOf(m), target: typeof m.target === 'string' ? m.target : null }) }); break;
       case 'equip': world.equip(wid, String(m.item)); items(); break;
       case 'unequip': world.unequip(wid, String(m.slot)); items(); break;

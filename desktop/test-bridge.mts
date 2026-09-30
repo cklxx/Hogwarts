@@ -8,7 +8,7 @@
  *   dbus-run-session -- bash -c 'printf pw | gnome-keyring-daemon --unlock --replace --daemonize --components=secrets >/dev/null; sleep 1;
  *     npx tsx desktop/test-bridge.mts desktop/src-tauri/target/debug/hogwarts-desktop /tmp/hw-bridge 17992 [--stripped]'
  * --stripped starts the bridge with the SDK's default (minimal) environment, as some MCP clients do: on Linux
- * there is then no keychain, and the key is kept for the session and left in the reply.
+ * there is then no keychain, and the key is kept for the session and left in the reply (macOS / Windows still have one).
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -36,8 +36,9 @@ await c.connect(new StdioClientTransport({ command: exe, args: ['--mcp-stdio', '
 const text = async (name: string, args: object = {}) => ((await c.callTool({ name, arguments: args })) as { content: { text: string }[] }).content.map((x) => x.text).join('\n');
 check((await c.listTools()).tools.some((t) => t.name === 'whoami'), 'tools listed through the bridge');
 const e = JSON.parse(await text('enroll', { name: `Bridge ${Date.now() % 100000}` }));
-if (stripped) check(typeof e.token === 'string' && e.token.length > 8, 'no keychain: the key is left in the reply');
-else check(/keychain/.test(String(e.token)) && !String(e.token).includes(String(JSON.parse(await text('whoami')).registry ?? 'x')), `the key went to the keychain, not to the model (token field: ${e.token})`);
+// a stripped environment only loses the keychain on Linux (Secret Service over D-Bus); macOS / Windows keep theirs
+if (stripped && process.platform === 'linux') check(typeof e.token === 'string' && e.token.length > 8 && !/keychain/.test(e.token), 'no keychain: the key is left in the reply');
+else check(/keychain/.test(String(e.token)) && !JSON.stringify(e).includes("#k=") && !e.connect?.bridge && !String(e.token).includes(String(JSON.parse(await text('whoami')).registry ?? 'x')), `the key went to the keychain, not to the model (token field: ${e.token})`);
 check(JSON.parse(await text('whoami')).name === e.name, 'whoami: bound to the new wizard');
 check(!!c.getServerCapabilities()?.experimental?.['claude/channel'], 'the bridge declares claude/channel');
 // the human's owl (sent from the game window, which holds the key): with the keychain the test cannot read the

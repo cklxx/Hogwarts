@@ -33,7 +33,7 @@ import { Separator } from './separation.js';
 import { statueCollider } from '../shared/layout.js';
 import { findPath } from './pathfind.js';
 import { thinkNpcs } from './npc.js';
-import { EntityMap } from './spatial.js';
+import { closePairs, EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
 import {
   MAX_ITEMS, derived, gasLimit, hexDotHp, hexPrice, hexTickDmg, moveSlow, itemBudget, itemPoints, itemPrice, maxNodes, spellbookSize, yearForXp, XP_FOR_YEAR,
@@ -464,9 +464,65 @@ export class World {
       const v = this.entity(c.id)!;
       if (filter(v)) out.push(v);
     }
-    const res = out.sort((a, b) => dist(a.pos, p) - dist(b.pos, p)).slice(0, limit);
+    if (out.length > 1) out.sort((a, b) => dist(a.pos, p) - dist(b.pos, p));
+    const res = limit >= out.length ? out : out.slice(0, limit);
     if (World.verifySpatial) this.verifyAround(res, p, radius, filter, exclude, limit);
     return res;
+  }
+
+  private strikeW: Wizard[] = [];
+  private strikeC: Creature[] = [];
+  /** boltTargets' answer: strikeE[0..strikeN), nearest first, at the distances in strikeD. */
+  private strikeE: (Wizard | Creature)[] = [];
+  private strikeD: number[] = [];
+  private strikeN = 0;
+  /**
+   * What a bolt at p may strike this sub-step: exactly `around(p, r, () => true, exclude, limit)` — the active
+   * wizards and live creatures within r (≤ 40), nearest first (ties: wizards, then creatures, each in Map order),
+   * at most `limit` — as entities instead of views, with no allocation and no sort. The bolt loop asks this three
+   * times per spell in flight per tick and nearly always finds nothing. Not re-entrant (stepProjectiles only).
+   */
+  private boltTargets(p: Vec2, r: number, exclude: string, limit: number): number {
+    this.strikeN = 0;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) return this.boltTargetsByAround(p, r, exclude, limit);
+    const ws = this.wizards.grid.near(p.x, p.z, r, this.strikeW)!;
+    for (let i = 0; i < ws.length; i++) {
+      const w = ws[i];
+      if (w.id !== exclude && this.isActive(w) && !this.putStrike(w, p, r, limit)) return this.boltTargetsByAround(p, r, exclude, limit);
+    }
+    const cs = this.creatures.grid.near(p.x, p.z, r, this.strikeC)!;
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i];
+      if (c.id !== exclude && c.hp > 0 && !this.putStrike(c, p, r, limit)) return this.boltTargetsByAround(p, r, exclude, limit);
+    }
+    if (World.verifySpatial) {
+      const want = this.around(p, r, () => true, exclude, limit).map((e) => e.id).join(), got = this.strikeE.slice(0, this.strikeN).map((e) => e.id).join();
+      if (want !== got) throw new Error(`boltTargets diverged at (${p.x}, ${p.z}): [${got}] != [${want}]`);
+    }
+    return this.strikeN;
+  }
+  /** A bolt or an entity somewhere non-finite (NaN distances): around's own answer, as it always was. */
+  private boltTargetsByAround(p: Vec2, r: number, exclude: string, limit: number): number {
+    const v = this.around(p, r, () => true, exclude, limit);
+    for (let i = 0; i < v.length; i++) { this.strikeE[i] = (this.wizards.get(v[i].id) ?? this.creatures.get(v[i].id))!; this.strikeD[i] = dist(v[i].pos, p); }
+    return (this.strikeN = v.length);
+  }
+  /**
+   * Keep e if it is within r, among the nearest `limit`, after any equal distance (around's stable sort and slice).
+   * False for a NaN distance, which around() would keep and sort its own way.
+   */
+  private putStrike(e: Wizard | Creature, p: Vec2, r: number, limit: number): boolean {
+    const ex = e.pos.x - p.x, ez = e.pos.z - p.z;
+    if (ex > r || ex < -r || ez > r || ez < -r) return true; // farther than r along one axis (hypot ≥ each |axis|)
+    const d = dist(e.pos, p);
+    if (d !== d) return false;
+    if (d > r) return true;
+    const E = this.strikeE, D = this.strikeD, n = this.strikeN;
+    if (n === limit && !(d < D[n - 1])) return true;
+    let j = n < limit ? this.strikeN++ : n - 1;
+    while (j > 0 && D[j - 1] > d) { E[j] = E[j - 1]; D[j] = D[j - 1]; j--; }
+    E[j] = e; D[j] = d;
+    return true;
   }
 
   /** The original full-scan `around`, kept as the reference the spatial index is checked against. */
@@ -1103,11 +1159,18 @@ export class World {
   private clashSpells() {
     if (this.projectiles.size < 2 || this.projectiles.size > CLASH_MAX) return;
     const ps = [...this.projectiles.values()].filter((p) => this.wizards.has(p.owner));
-    for (let i = 0; i < ps.length; i++) {
-      const p = ps[i];
+    // Nothing moves in here, and a pair more than CLASH_R apart along either axis cannot meet (hypot ≥ each |axis|):
+    // only the pairs closePairs finds get the test, in the same order. With a non-finite position anywhere, every
+    // pair gets it, as before (hypot(x, NaN) is NaN).
+    const n = ps.length, X = new Float64Array(n), Z = new Float64Array(n);
+    let finite = true;
+    for (let i = 0; i < n; i++) { X[i] = ps[i].pos.x; Z[i] = ps[i].pos.z; if (!Number.isFinite(X[i] + Z[i])) finite = false; }
+    const close = finite ? closePairs(X, Z, CLASH_R) : null;
+    for (let i = 0; i < n; i++) {
+      const p = ps[i], js = close?.[i];
       if (!this.projectiles.has(p.id)) continue;
-      for (let j = i + 1; j < ps.length; j++) {
-        const q = ps[j];
+      for (let k = 0, m = close ? js?.length ?? 0 : n - i - 1; k < m; k++) {
+        const q = ps[js ? js[k] : i + 1 + k];
         if (!this.projectiles.has(q.id) || q.owner === p.owner) continue;
         if (Math.hypot(p.pos.x - q.pos.x, p.pos.z - q.pos.z) > CLASH_R) continue;
         if (!this.canHarm(p.owner, q.owner) && !this.canHarm(q.owner, p.owner)) continue;
@@ -2320,7 +2383,7 @@ export class World {
       [dx, dz] = [dx * c - dz * s, dx * s + dz * c];
     }
     const speed = this.rules.physics.moveSpeed * d.speedMult * haste * moveSlow(auraMag(w.auras, 'chill', this.now), jelly) * mult;
-    const before = { ...w.pos };
+    const bx = w.pos.x, bz = w.pos.z; // where it stood
     w.pos.x += dx * speed * dt;
     w.pos.z += dz * speed * dt;
     if (w.st.jailedUntil) {
@@ -2329,12 +2392,12 @@ export class World {
     }
     this.solids.resolve(w.pos, 0.5, bounded);
     // Agents walking into walls: slide sideways a little so they don't get stuck forever.
-    if (w.goal && dist(before, w.pos) < speed * dt * 0.2) {
+    if (w.goal && Math.hypot(bx - w.pos.x, bz - w.pos.z) < speed * dt * 0.2) {
       w.pos.x += -dz * speed * dt;
       w.pos.z += dx * speed * dt;
       this.solids.resolve(w.pos, 0.5, bounded);
     }
-    if (w.goal) this.unstick(w, dist(before, w.pos) / (speed * dt), dt);
+    if (w.goal) this.unstick(w, Math.hypot(bx - w.pos.x, bz - w.pos.z) / (speed * dt), dt);
     this.moved(w);
   }
 
@@ -2433,12 +2496,12 @@ export class World {
           break;
         }
         for (const f of HOOKS.bolt) f.bolt(this, p); // 金色飞贼 / 皮皮鬼, 魁地奇's Bludgers: a spell passing close by
-        for (const e of this.around(p.pos, 2.2, () => true, p.owner, 4)) {
-          const r = e.kind === 'creature' ? CREATURES[this.creatures.get(e.id)!.kind].radius : 0.5;
-          if (dist(e.pos, p.pos) > r + 0.45) continue;
+        for (let i = 0, n = this.boltTargets(p.pos, 2.2, p.owner, 4); i < n; i++) {
+          const e = this.strikeE[i], isW = 'house' in e;
+          if (this.strikeD[i] > (isW ? 0.5 : CREATURES[e.kind].radius) + 0.45) continue;
           if (!strikes(this, p.owner, p.homing, e.id)) continue; // a homing spell passes through the caster's allies (allies.ts)
-          if (e.kind === 'wizard' && this.dodging(e.id)) continue; // 翻滚闪避: it flies past
-          if (e.kind === 'wizard' && this.tryReflect(p, e.id)) break; // 完美格挡: back where it came from
+          if (isW && this.dodging(e.id)) continue; // 翻滚闪避: it flies past
+          if (isW && this.tryReflect(p, e.id)) break; // 完美格挡: back where it came from
           this.hit(p, e.id);
           dead = true;
           break;
