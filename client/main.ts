@@ -23,7 +23,8 @@ import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
 import { PANELS, agentView, isSubmitEnter, pageKey, agoText, createControls, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
-import { PAIR_TTL_S, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
+import { PAIR_TTL_S, SCHOOL_MOTTO, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
+import { headline } from './panels/logic';
 import { SnapDecoder } from '../src/shared/snapwire';
 import { TIPS } from '../src/lore/memes';
 import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, spellIcon } from './ink';
@@ -674,11 +675,14 @@ function banner(text: string, type = 'system') {
   if (shell) { shell.say(text, PRIO.news); return; }
   // one big thing in the centre at a time: while the House Cup ceremony or a card reveal holds it, news goes to the feed
   if (fun.claimsCentre()) { feedLine(text, type); return; }
+  // (the quiet HUD: the centre gets a one-line headline for a few seconds; the whole text goes to the feed)
   const b = $('#banner');
-  b.textContent = text;
+  const h = headline(text);
+  b.textContent = h;
   b.classList.remove('out');
   b.hidden = false;
-  bannerT = 7;
+  bannerT = 3.5;
+  if (h !== text) feedLine(text, type);
 }
 /** A line for you alone (an error, a note from a cast): one at a time, above the hotbar, then gone. */
 let toastTimer = 0;
@@ -758,7 +762,8 @@ function hud() {
   const h = snap.hour;
   const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
   const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather);
-  const procl = me.proclamation ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
+  // (the motto is the default proclamation: only a Minister's own words take the corner — the quiet HUD)
+  const procl = me.proclamation && me.proclamation !== SCHOOL_MOTTO ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
   setHtml($('#clock'), has('tempus')
     ? `<div class="time veiled">${ic(snap.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</span></div>${procl}`
     : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
@@ -840,6 +845,8 @@ const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
   setStyle(b.children[0] as HTMLElement, 'width', `${Math.max(0, Math.min(100, (v / Math.max(1, max)) * 100)).toFixed(2)}%`);
   setText(b.children[1], text);
+  // (the numbers only when it is not full: a full bar says so by itself — the quiet HUD)
+  b.classList.toggle('full', v >= max);
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

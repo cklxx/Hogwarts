@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   CARD_DROP_PCT_DEFAULT, CARD_DROP_PCT_MAX, CUP_CAP_DEFAULT, CUP_CAP_MAX, CUP_CAP_MIN, CUP_MULT_DEFAULT, CUP_MULT_MAX, EVENT_IDS, EVENT_INTERVAL_DEFAULT, EVENT_INTERVAL_MAX, EVENT_INTERVAL_MIN,
 } from '../shared/constants.js';
-import { CREATURE_KINDS, ELEMENTS, SPELL_PRIMITIVES, type SpellPrimitive, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, TERM_DEFAULT_S, type Element, type WildKind } from '../shared/constants.js';
+import { CREATURE_KINDS, ELEMENTS, SCHOOL_MOTTO, SPELL_PRIMITIVES, type SpellPrimitive, MARKET_BAN_MAX, MARKET_CAP_DEFAULT, MARKET_CAP_MAX, MARKET_ID_RE, MARKET_PROMOTE_MAX, TERM_DEFAULT_S, type Element, type WildKind } from '../shared/constants.js';
 
 /**
  * The Rulebook is ALL the policy of the world. The kernel is pure mechanism and reads every tunable
@@ -148,7 +148,7 @@ export const RulebookSchema = z.object({
     .prefault({})
     .describe('The spell market (咒语集市): published spells, copies and forks'),
   laws: z.array(LawSchema).max(5).default([]).describe('Standing laws: Runes programs the world runs on events'),
-  proclamation: z.string().max(280).default('Draco dormiens nunquam titillandus.'),
+  proclamation: z.string().max(280).default(SCHOOL_MOTTO),
 });
 
 export type Rulebook = z.infer<typeof RulebookSchema>;

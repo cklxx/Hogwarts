@@ -1188,6 +1188,8 @@ function createTutorial(t: TutorialDeps) {
   const save = (v: string) => { try { localStorage.setItem(KEY, v); } catch { /* private mode */ } };
   const saved = load();
   let step = saved === 'done' ? -1 : Math.max(0, Math.min(6, Number(saved) || 0));
+  // after the tutorial the H-help button goes (H still opens it): the quiet HUD
+  document.body.classList.toggle('tut-done', step === -1);
   let start: { x: number; z: number } | null = null;
   let doneUntil = 0;
   let lastHtml = '';
@@ -1326,6 +1328,7 @@ function createTutorial(t: TutorialDeps) {
   function finish(completed: boolean) {
     step = -1;
     save('done');
+    document.body.classList.add('tut-done');
     doneUntil = completed ? now() + 12 : 0;
     render();
   }

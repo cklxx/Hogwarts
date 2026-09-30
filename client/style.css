@@ -361,7 +361,7 @@ body:has(#tutorial[data-at="topright"]:not([hidden]):not([data-over])) #clock .p
 #toast.out { opacity: 0; }
 #lore { position: fixed; left: 50%; bottom: calc(var(--bars-h, calc(150px * var(--u))) + calc(20px * var(--u))); transform: translateX(-50%); width: min(calc(560px * var(--u)), calc(100vw - calc(32px * var(--u)))); z-index: 1; pointer-events: none; opacity: 0; }
 #lore.show { opacity: .95; }
-#banner { position: fixed; top: 30%; left: 50%; transform: translateX(-50%); z-index: 4; width: max-content; max-width: min(34em, calc(100vw - calc(32px * var(--u)))); padding: calc(12px * var(--u)) calc(34px * var(--u)) calc(14px * var(--u)); text-align: center; --edge: calc(12px * var(--u));
+#banner { position: fixed; top: 17%; left: 50%; transform: translateX(-50%); z-index: 4; width: max-content; max-width: min(34em, calc(100vw - calc(32px * var(--u)))); padding: calc(12px * var(--u)) calc(34px * var(--u)) calc(14px * var(--u)); text-align: center; --edge: calc(12px * var(--u));
   font-size: calc(20px * var(--t)); line-height: 1.55; letter-spacing: .04em; pointer-events: none; animation: fadein .6s var(--ease) both; transition: opacity 1s;
   box-shadow: inset 0 0 calc(22px * var(--u)) rgba(120, 72, 22, .45), var(--shadow); }
 #banner::before, #banner::after { content: ''; display: block; height: calc(12px * var(--u)); margin: 0 auto; width: 70%; background: var(--rule) center / 100% 100% no-repeat; }
@@ -986,3 +986,8 @@ body.touch #book .editor:not(:has(#sp-tpl:not([hidden]))) #sp-code { display: no
 #goal .g-go { flex: none; margin-left: calc(4px * var(--u)); padding: calc(2px * var(--u)) calc(12px * var(--u)); font-size: calc(14px * var(--t)); }
 /* an open sheet (the spellbook, the trunk, …) is the whole screen on a phone: today's lessons wait under it */
 body.touch:has(.sheet:not([hidden])) #quests { display: none; }
+/* the quiet HUD (2026-09-30): a full health / mana bar shows no numbers and no words; after the tutorial the help
+   button goes (H still opens it) */
+#bars .vitals .lbl { display: none; }
+#bars .bar.full > span { visibility: hidden; }
+body.tut-done #help .mini { display: none; }

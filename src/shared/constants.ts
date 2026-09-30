@@ -37,6 +37,8 @@ export type EffectPrimitive = (typeof EFFECT_PRIMITIVES)[number];
  * Primitives a feature plugin brings (kernel/feature.ts `spells`): named here so the Rulebook can price and ban them
  * like the kernel's own (the schema is built before the plugins load). 黑魔法: kernel/dark.ts.
  */
+/** The school motto: the Rulebook's proclamation until a Minister writes one (the HUD shows only a real one). */
+export const SCHOOL_MOTTO = 'Draco dormiens nunquam titillandus.';
 export const PLUGIN_PRIMITIVES = ['sectumsempra', 'fiendfyre', 'imperio', 'morsmordre'] as const;
 export const SPELL_PRIMITIVES = [...EFFECT_PRIMITIVES, ...PLUGIN_PRIMITIVES] as const;
 export type SpellPrimitive = (typeof SPELL_PRIMITIVES)[number];
