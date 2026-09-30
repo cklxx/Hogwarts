@@ -175,6 +175,9 @@ describe('asking an agent (🦉 让 Agent 帮我写)', () => {
     expect(p).toContain('配对码 ABC-DEF');
     expect(p).toContain('slot=2');
     expect(agentPrompt({ draft: '', error: '', slot: 1 })).toContain('Esc');
+    // an agent that has never had the game gets the one command that adds it, in the same paste
+    const cmd = 'claude mcp add -s user --transport http hogwarts http://10.0.0.2:7777/mcp';
+    expect(agentPrompt({ draft: '', error: '', slot: 1, code: 'ABC-DEF', add: cmd })).toContain(cmd);
   });
 });
 

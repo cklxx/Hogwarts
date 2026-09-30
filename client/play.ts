@@ -286,14 +286,18 @@ export function agentAsk(o: { draft: string; error: string; slot: number; name?:
   const tail = err ? L(` —— 报错：${err}`, ` — error: ${err}`) : '';
   return `${head}${o.name ? L(`（名字：${o.name}）`, ` (name: ${o.name})`) : ''}${body}${tail}`.slice(0, 400);
 }
-/** The block to copy to an agent that is not connected yet: the request plus how to connect. */
-export function agentPrompt(o: { draft: string; error: string; slot: number; name?: string; code?: string | null }): string {
+/**
+ * The block to copy to an agent that is not connected yet: how to connect (the pairing code, and for an agent that
+ * has never had the game, the one command that adds it: `add`), then the request. One paste does it all.
+ */
+export function agentPrompt(o: { draft: string; error: string; slot: number; name?: string; code?: string | null; add?: string }): string {
   const connect = o.code
-    ? L(`连上霍格沃茨，配对码 ${o.code}。`, `Connect to Hogwarts, pairing code ${o.code}.`)
+    ? L(`连上霍格沃茨：用 hogwarts 的 pair 工具，配对码 ${o.code}。`, `Connect to Hogwarts: call the hogwarts pair tool with pairing code ${o.code}.`)
     : L('连上霍格沃茨（我会在游戏里按 Esc 生成配对码告诉你）。', 'Connect to Hogwarts (I will press Esc in the game and read you the pairing code).');
   const draft = o.draft.trim();
   return [
     connect,
+    o.add ? L(`还没有 hogwarts 工具的话，先在终端运行 \`${o.add}\`，重开会话后再配对。`, `No hogwarts tools yet? Run \`${o.add}\` in a terminal first, then pair in a new session.`) : '',
     L(`然后帮我把咒语书里的这个咒语改好，用 forge_spell 铸造${o.name ? `成「${o.name}」` : ''}，放到 ${o.slot} 号快捷栏（slot=${o.slot}）：`, `Then fix this spell from my spellbook, forge it with forge_spell${o.name ? ` as "${o.name}"` : ''} and put it on hotbar slot ${o.slot} (slot=${o.slot}):`),
     draft || L('（还没写 —— 帮我写一个好用的攻击咒语）', '(nothing yet — write me a good attack spell)'),
     o.error ? L(`现在的报错：${o.error.replace(/^✗\s*/, '')}`, `The error now: ${o.error.replace(/^✗\s*/, '')}`) : '',

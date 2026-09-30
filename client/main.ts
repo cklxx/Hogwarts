@@ -944,7 +944,27 @@ $('#menu').addEventListener('click', (e) => {
 });
 function copyText(text: string, b: HTMLElement) {
   const o = b.textContent;
-  navigator.clipboard?.writeText(text).then(() => { b.textContent = L('已复制 ✓', 'Copied ✓'); setTimeout(() => { b.textContent = o; }, 1200); }, () => { /* no clipboard: select it by hand */ });
+  const say = (t: string) => { b.textContent = t; setTimeout(() => { b.textContent = o; }, 1500); };
+  const done = () => say(L('已复制 ✓', 'Copied ✓'));
+  // navigator.clipboard exists only on https and localhost: a LAN server over http (http://10.x:7777) has none, and
+  // the button used to do nothing there. execCommand('copy') still works in that page, inside the click.
+  const legacy = () => {
+    const t = document.createElement('textarea');
+    const f = document.activeElement as HTMLElement | null;
+    t.value = text; t.readOnly = true;
+    t.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.append(t);
+    t.select();
+    t.setSelectionRange(0, text.length); // iOS selects nothing in a read-only field without it
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* refused */ }
+    t.remove();
+    f?.focus(); // select() took the focus: give it back to the button
+    return ok;
+  };
+  if (window.isSecureContext && navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => (legacy() ? done() : say(L('复制失败，请手动选中', 'Copy failed: select it by hand'))));
+  else if (legacy()) done();
+  else say(L('复制失败，请手动选中', 'Copy failed: select it by hand'));
 }
 function requestPairCode() {
   if (performance.now() - pairAsked < 1500) return;
@@ -1475,19 +1495,29 @@ function agentRequest() {
     name: $<HTMLInputElement>('#sp-name').value.trim() || undefined,
   };
 }
+const pairValid = () => (pairing && pairing.until > performance.now() ? pairing.code : null);
+/** The one command that gives an agent the game's tools (the desktop client's own bridge when there is one). */
+function agentAddCmd() {
+  const shell = (window as unknown as { __HOGWARTS_SHELL__?: { claudeCode?: string } }).__HOGWARTS_SHELL__;
+  return shell?.claudeCode ?? `claude mcp add -s user --transport http hogwarts ${mcpUrl || `${location.origin}/mcp`}`;
+}
+/** Not connected: one block to paste, pairing code included — asked for as the block opens, so one click copies it all. */
 function renderAgentBlock() {
   const box = $('#sp-agent');
-  const code = pairing && pairing.until > performance.now() ? pairing.code : null;
-  box.innerHTML = `<p><b>${L('你的 Agent 还没连接。', 'Your agent is not connected.')}</b> ${L('把下面这段复制给它（例如 Claude Code）：', 'Copy this to it (e.g. Claude Code):')}</p>
-    <div class="op-cmd"><pre id="sp-agent-text">${esc(agentPrompt({ ...agentRequest(), code }))}</pre></div>
-    <p class="row"><button data-copy="sp-agent-text">${L('复制给 Agent 的提示词', 'Copy the prompt for your agent')}</button>${code ? '' : ` <button class="ghost" data-act="pair">${L('生成配对码（放进提示词）', 'Get a pairing code (goes in the prompt)')}</button>`} <button class="ghost quiet" data-act="close">${L('收起', 'Hide')}</button></p>`;
+  const code = pairValid();
+  if (!code) requestPairCode(); // onPairCode renders this block again with the code in it
+  box.innerHTML = `<p><b>${L('你的 Agent 还没连接。', 'Your agent is not connected.')}</b> ${L('点一下复制，粘贴给它（例如 Claude Code），它会自己连上并铸造。', 'Copy it with one click and paste it to your agent (e.g. Claude Code): it connects and forges on its own.')}</p>
+    <div class="op-cmd"><pre id="sp-agent-text">${esc(agentPrompt({ ...agentRequest(), code, add: agentAddCmd() }))}</pre></div>
+    <p class="row"><button data-copy="sp-agent-text"${code ? '' : ' class="ghost"'}>${code ? L('复制给 Agent', 'Copy for my agent') : L('正在生成配对码…', 'Getting a pairing code…')}</button> <button class="ghost quiet" data-act="close">${L('收起', 'Hide')}</button></p>`;
   box.hidden = false;
 }
 $('#sp-agent').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
   if (!b) return;
-  if (b.dataset.copy) copyText($('#sp-agent-text').textContent ?? '', b);
-  if (b.dataset.act === 'pair') requestPairCode();
+  if (b.dataset.copy) {
+    if (pairValid()) copyText($('#sp-agent-text').textContent ?? '', b);
+    else renderAgentBlock(); // no code yet (the reply was lost, or it ran out while the block was open): ask again, then copy
+  }
   if (b.dataset.act === 'close') $('#sp-agent').hidden = true;
 });
 $('#sp-agent-btn').onclick = () => {
