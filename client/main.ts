@@ -310,7 +310,7 @@ const actors = new THREE.Group();
 actors.name = 'actors';
 scene.add(actors);
 const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
-let camYaw = 0, camPitch = 0.34, camDist = 8.5; // closer third-person framing: the wizard fills about a fifth of the screen height
+let camYaw = Math.PI, camPitch = 0.34, camDist = 8.5; // behind a new arrival, who faces south (the lawn, not the Great Hall's wall); // closer third-person framing: the wizard fills about a fifth of the screen height
 let clock = 0;
 
 // ------------------------------------------------------------------ network

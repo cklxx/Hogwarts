@@ -142,6 +142,10 @@ export const AGENT_LOG_MAX = 12, AGENT_ACTIVE_S = 120;
 /** 熟能生厌 (World.freshness): full rewards for the first GRIND_FREE_KILLS of one creature kind in GRIND_FATIGUE_S seconds, then less, down to GRIND_FLOOR. */
 export const GRIND_FREE_KILLS = 6, GRIND_FATIGUE_S = 600, GRIND_FLOOR = 0.05;
 
+/** What counts as NPC news for World.emit's gate, and how often the school hears any. */
+const NPC_NEWS = new Set<EventType>(['level', 'combat', 'creature', 'achievement']);
+const NPC_NEWS_GAP_S = 30;
+
 export class World {
   rules: Rulebook;
   now = 0;
@@ -254,6 +258,9 @@ export class World {
 
   emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string; ch?: WorldEvent['ch']; aud?: string[] } = {}) {
     const e: WorldEvent = { id: ++this.eventSeq, t: round(this.now), type, text, ...opts };
+    // NPC news (an NPC's level-up, knock-out, scuffle with another NPC): world-wide at most one every NPC_NEWS_GAP_S.
+    // The 2026-09-30 walk-through: five such lines in a newcomer's first 15 s buried the event slip and their own news.
+    if (NPC_NEWS.has(type) && !opts.to && !opts.aud && opts.who?.length && opts.who.every((id) => this.wizards.get(id)?.npc) && !this.banter(['npc-news', NPC_NEWS_GAP_S])) return e;
     this.events.push(e);
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
     for (const l of this.listeners) l(e);
@@ -792,7 +799,7 @@ export class World {
       id, handle: `p${++this.flags.handleSeq}`, token: this.mintToken(), name: clean, house,
       wand: canon?.wand ?? ollivander(() => this.rng()),
       year: 1, xp: 0, reputation: 0, termReputation: 0, galleons: 20, hp: 100, mana: 100,
-      pos: { x: SPAWN.x + (this.rng() - 0.5) * 6, z: SPAWN.z + (this.rng() - 0.5) * 6 }, facing: 0,
+      pos: { x: SPAWN.x + (this.rng() - 0.5) * 6, z: SPAWN.z + (this.rng() - 0.5) * 6 }, facing: Math.PI, // south: the lawn and its pixies, not the Great Hall's wall
       input: { dx: 0, dz: 0 }, goal: null, route: [], spells: [], hotbar: [null, null, null, null, null, null], items: [], equipped: {},
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,

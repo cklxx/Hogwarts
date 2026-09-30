@@ -460,6 +460,15 @@ html:lang(en) #presence .pl b { font: 700 calc(16px * var(--t)) var(--latin); }
 /* ------------------------------------------------------------------ touch */
 #stick { position: fixed; width: calc(112px * var(--u)); height: calc(112px * var(--u)); border-radius: 50%; transform: translate(-50%, -50%); border: calc(2px * var(--u)) solid rgba(246, 235, 208, .6); background: radial-gradient(circle, rgba(40, 25, 10, .25), rgba(40, 25, 10, .1)); pointer-events: none; display: none; z-index: 3; }
 #stick.on { display: block; }
+#tb-roll { display: none; }
+/* a phone: the stick rests bottom-left, faint, until a thumb lands anywhere on the left (then it jumps there);
+   the roll button mirrors it bottom-right (Space on a keyboard) */
+body.touch #stick { display: block; left: calc(max(calc(14px * var(--u)), env(safe-area-inset-left)) + calc(58px * var(--u))); top: calc(100dvh - var(--bars-h, calc(150px * var(--u))) - calc(76px * var(--u))); opacity: .55; transition: opacity .2s; }
+body.touch #stick.on { opacity: 1; transition: none; }
+body.touch #tb-roll { display: grid; place-items: center; position: fixed; z-index: 3; width: calc(64px * var(--u)); height: calc(64px * var(--u)); padding: 0; border-radius: 50%;
+  right: calc(max(calc(10px * var(--u)), env(safe-area-inset-right)) + calc(62px * var(--u))); top: calc(100dvh - var(--bars-h, calc(150px * var(--u))) - calc(108px * var(--u))); color: var(--ink); background: rgb(var(--sheen2) / .78); border: calc(2px * var(--u)) solid rgba(90, 64, 41, .55); }
+body.touch #tb-roll svg.ic { width: calc(34px * var(--u)); height: calc(34px * var(--u)); }
+body.touch #chatlog { bottom: calc(var(--bars-h, calc(150px * var(--u))) + calc(150px * var(--u))); }
 #stick i { position: absolute; left: 50%; top: 50%; width: calc(46px * var(--u)); height: calc(46px * var(--u)); border-radius: 50%; background: rgb(var(--sheen2) / .6); border: calc(2px * var(--u)) solid rgba(90, 64, 41, .6); transform: translate(-50%, -50%); }
 #touchbar { display: none; }
 body.touch #touchbar { display: flex; flex-direction: column; gap: calc(8px * var(--u)); position: fixed; right: max(calc(10px * var(--u)), env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); z-index: 3; }
@@ -913,4 +922,12 @@ body:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #toast { bo
   /* the feed: only its newest line, smaller (two NPC scuffles filled the screen) */
   #feed > div:not(:last-child) { display: none; }
   #feed > div { font-size: calc(13.5px * var(--t)); line-height: 1.45; }
+}
+/* while the coach mark sits at the bottom, the stick and the roll button rise above it (--tut-b, main.ts trackBars) */
+body.touch:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #stick:not(.on) { top: calc(100dvh - var(--bars-h, calc(150px * var(--u))) - var(--tut-b, calc(56px * var(--u))) - calc(86px * var(--u))); }
+body.touch:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #tb-roll { top: calc(100dvh - var(--bars-h, calc(150px * var(--u))) - var(--tut-b, calc(56px * var(--u))) - calc(118px * var(--u))); }
+/* today's lessons on a phone: a chip just above the stick, not over the event slips */
+@media (max-width: 520px) {
+  body.touch #quests { bottom: calc(var(--bars-h, calc(150px * var(--u))) + calc(150px * var(--u))) !important; }
+  body.touch:has(#tutorial[data-at="bottom"]:not([hidden]):not([data-over])) #quests { bottom: calc(var(--bars-h, calc(150px * var(--u))) + var(--tut-b, calc(56px * var(--u))) + calc(160px * var(--u))) !important; }
 }

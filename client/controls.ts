@@ -551,7 +551,7 @@ export function createControls(d: ControlsDeps) {
     if (/^[1-6]$/.test(k)) { castSlot(Number(k) - 1); return true; }
     if (k === 'f' || k === 'F') { if (!e.repeat) doAction(); return true; }
     // 翻滚闪避 (World.dodge): the way you are running, else straight ahead
-    if (k === ' ') { e.preventDefault(); if (!e.repeat) d.send({ t: 'dodge', dx: moveDx, dz: moveDz }); return true; }
+    if (k === ' ') { e.preventDefault(); if (!e.repeat) roll(); return true; }
     if (k === 'h' || k === 'H' || k === '?') { if (!e.repeat) toggleHelp(); return true; }
     keys.add(k.toLowerCase());
     return false;
@@ -613,7 +613,10 @@ export function createControls(d: ControlsDeps) {
     walkTo(aim.x, aim.z);
   }
 
-  // ------------------------------------------------------------------ input: touch (virtual joystick, tap, drag to look, pinch to zoom)
+  /** 翻滚闪避: the way you are pushing (keys or stick), else straight ahead. */
+  function roll() { d.send({ t: 'dodge', dx: moveDx, dz: moveDz }); }
+
+  // ------------------------------------------------------------------ input: touch (a stick that is always there, tap, drag to look, pinch to zoom, a roll button)
   function setupTouch() {
     if (touch) document.body.classList.add('touch');
     if (!canTouch) return;
@@ -664,7 +667,8 @@ export function createControls(d: ControlsDeps) {
     }, { passive: false });
     const end = (e: TouchEvent) => {
       for (const t of Array.from(e.changedTouches)) {
-        if (t.identifier === stickId) { stickId = null; joy.x = joy.y = 0; stick.classList.remove('on'); }
+        // back to its resting place (CSS): a phone player sees where to put the thumb (2026-09-30: an invisible stick read as "no joystick")
+        if (t.identifier === stickId) { stickId = null; joy.x = joy.y = 0; stick.classList.remove('on'); stick.style.left = stick.style.top = ''; knob.style.transform = 'translate(-50%, -50%)'; }
         else if (t.identifier === lookId) {
           lookId = null;
           if (!lookMoved && e.timeStamp - lt0 < 450) primaryAt(t.clientX, t.clientY);
@@ -674,6 +678,8 @@ export function createControls(d: ControlsDeps) {
     };
     d.canvas.addEventListener('touchend', end);
     d.canvas.addEventListener('touchcancel', end);
+    $('#tb-roll').addEventListener('touchstart', (e) => { e.preventDefault(); roll(); }, { passive: false });
+    $('#tb-roll').onclick = () => roll();
     $('#tb-menu').onclick = () => { d.panels.menu(); tutorial.notify('menu'); };
     $('#tb-book').onclick = () => d.panels.book();
     $('#tb-tab').onclick = () => cycleTarget();
@@ -684,7 +690,7 @@ export function createControls(d: ControlsDeps) {
   }
 
   // ------------------------------------------------------------------ per-frame update (called from main.ts' frame loop)
-  let lastInput = '', inputTimer = 0, inputGap = 0, facing = 0;
+  let lastInput = '', inputTimer = 0, inputGap = 0, facing = Math.PI; // south, as the camera starts (main.ts camYaw) and a new arrival stands
   /** The world direction the keys push right now (Space rolls that way, else straight ahead). */
   let moveDx = 0, moveDz = 0;
   /**
