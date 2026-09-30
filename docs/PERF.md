@@ -1175,3 +1175,69 @@ rewritten paths are covered.
   title…). It would need per-view change tracking to skip.
 * Kernel: `near()` is still ~12 % of the tick (cell loads for 2 grids × 3 sub-steps × spells in flight). One
   swept query per spell per tick would need the candidates re-checked per sub-step to stay exact.
+
+## Wire v2: binary delta snapshots, sliced fan-out (perf/extreme)
+
+Machine: digest, 64 × Xeon Platinum 8457C, Node v22.23.3. `bench.ts net --layout=spread`, one realm,
+clients at 20 Hz input and a cast a second, 5 s warm-up, 15 s measured. Load generator on the same box.
+
+**What a snapshot was made of** (1 000 spread wizards, measured in-process): an AOI payload averaged
+53 KB; wizards 60 % of the bytes, projectiles 33 %, fx 4.5 %. Between two broadcasts 91 % of wizards had
+moved, 0.4 % had any other field change: each broadcast re-sent ~128 B of JSON per wizard for 6 changing
+numbers. fx coordinates went out unrounded (`-201.39637030804573`).
+
+**What changed**
+1. `src/shared/snapwire.ts`, `src/server/binfanout.ts`: sockets that connect with `v=2` get binary frames.
+   Per entity, position / facing / health travel as zigzag varints every frame; the other fields travel as
+   JSON only when the entity is new to its cell, the field changed, the cell is new to the client's area,
+   or the client missed a frame (then the next frame carries everything). Same grid, hysteresis and
+   per-row buffers as the JSON fan-out; each cell is encoded once as `delta` and once as `full`.
+   The browser client asks for `v=2` (`?v=1` in the page address gets JSON). `test/snapwire.test.ts`
+   decodes 2 000+ frames (moving viewers, births and deaths, missed frames) and compares each with the
+   JSON AOI snapshot entity by entity.
+2. v=2 sockets get their queued events as one `{t:'evs', es:[…]}` message per broadcast instead of one
+   WebSocket frame per event.
+3. The fan-out runs in slices of `FANOUT_SLICE` (100) sockets with `setImmediate` between them, so ticks,
+   casts and input are held up by at most one slice. It also creates no closure per socket or per input
+   message: under tsx each closure costs an `Object.defineProperty` (`__name`), 9.9 % of the server's CPU
+   at 1 000 clients before this change.
+4. `npm start` runs Node with `--max-semi-space-size=64` (fewer scavenges; see the table).
+
+In-process, 1 000 wizards, mean payload per client: JSON AOI 53 344 B → v2 8 189 B (6.5×); the first frame
+after connecting or a missed frame is 59.6 KB.
+
+| 1 000 clients | loop p99 ms | loop max ms | cast RTT p50 / p99 ms | KB/s per client | server CPU % |
+|---|---:|---:|---:|---:|---:|
+| before (v1 JSON, 2 runs) | 96.8 / 127 | 125 / 140 | 28.1 / 79.8, 33.2 / 109 | 514 / 476 | 142 / 152 |
+| v2 frames only | 136 | 221 | 33.6 / 132 | 100 | 122 |
+| + sliced fan-out, no closures, default heap (3 runs) | 85.8 / 67.8 / 74.0 | 135 / 106 / 134 | 17.5 / 85.9, 14.6 / 64.2, 15.4 / 92.4 | 101 | 123 |
+| + `--max-semi-space-size=64` (3 runs) | **63.3 / 60.2 / 55.2** | 86.7 / 97.3 / 89.2 | **13.4 / 56.6, 14.5 / 45.7, 11.9 / 56.3** | **~103** | 119 |
+
+| 500 clients | loop p99 ms | cast RTT p50 / p99 ms | KB/s per client |
+|---|---:|---:|---:|
+| before (v1 JSON, 2 runs) | 31.8 / 29.5 | 3.84 / 33.2, 2.97 / 33.8 | 285 |
+| after | **18.1** | **3.43 / 15.1** | **57** |
+
+v2 frames alone cut bandwidth 5× but not latency: the fan-out's cost was per socket (payload assembly
+with a closure per row, one `writev` per socket), not per byte. Slicing and removing the closures did that.
+The `bcast` column of `bench.ts net` now times only the first slice of each broadcast.
+
+Browser (headless Chrome on a Mac GPU, `perf-client.ts --q=high`, 60 bots): v1 → v2 WebSocket 103-110 →
+16-19 KB/s, 60 fps and no frame over 50 ms either way, frame decode 0.10 ms (JSON.parse 0.05 ms). The
+client's heap churn (~30-45 MB/s, 7-12 GCs in 6 s) is the same on both and is not addressed here.
+`perf-client.ts` now splits arguments at the first `=` only (`--url=&v=1` used to arrive as `&v`).
+
+**Together with wf/perf-server** (this branch merged with main `e84488a`), 1 000 clients, main and the
+branch alternating, 3 rounds each, same box and command (the branch with `--max-semi-space-size=64` and
+`--v=2`, as `npm start` and the browser client run it):
+
+| 1 000 clients | loop p99 ms | loop max ms | cast RTT p50 / p99 ms | KB/s per client | server CPU % |
+|---|---:|---:|---:|---:|---:|
+| main `e84488a` (v1 JSON) | 98.4 / 98.8 / 95.4 | 119 / 114 / 110 | 26.0 / 90.1, 28.3 / 87.6, 29.0 / 81.3 | 508 / 509 / 525 | 147 / 140 / 140 |
+| this branch (v2) | **43.5 / 36.3 / 36.1** | 84.9 / 70.6 / 76.0 | **12.2 / 40.4, 9.16 / 35.8, 8.29 / 38.7** | **104 / 104 / 103** | 116 / 109 / 115 |
+
+One realm now holds 1 000 spread clients inside the 50 ms tick budget at p99. What is left at that size
+(profile before the merge): receiving input (20 000 JSON messages a second through the ws receiver), one
+`writev` per socket per broadcast, and the tick. Beyond it the step is structural: gateway processes that
+own the sockets (parse input, assemble and write frames from the rows the world process publishes once per
+broadcast), leaving the world process with the tick and one encode.

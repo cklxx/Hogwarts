@@ -38,9 +38,9 @@ interface Row { cols: number[]; start: number[]; end: number[] }
 /** A category's encoded entries: `rows[cz - z0]`, all in `buf`. */
 interface Encoded { buf: Buffer; z0: number; rows: (Row | undefined)[] }
 
-const OFF = 1 << 14;
+export const OFF = 1 << 14;
 const clampCell = (v: number) => (v < -OFF + 1 ? -OFF + 1 : v > OFF - 2 ? OFF - 2 : v);
-const pack = (cx: number, cz: number) => (cx + OFF) * 2 * OFF + (cz + OFF);
+export const pack = (cx: number, cz: number) => (cx + OFF) * 2 * OFF + (cz + OFF);
 const OPEN = ['"w":[', '],"c":[', '],"p":[', '],"fx":['].map((s) => Buffer.from(s));
 const CLOSE = Buffer.from(']');
 /** Entry identity per category, for the sticky filing (fx are one-shot: no identity, no stickiness). */
@@ -58,8 +58,8 @@ export class SnapshotFanout {
   private snap: Snapshot | null = null;
   private encoded = false;
   /** span[i] = how many columns either side are in reach in the row dz = i - lim (-1: none). */
-  private span: number[] = [];
-  private lim: number;
+  readonly span: number[] = [];
+  readonly lim: number;
   /** payloadFor's scratch: the byte ranges (and their category) it copies. */
   private from: Int32Array;
   private to: Int32Array;
@@ -224,7 +224,7 @@ export class SnapshotFanout {
 }
 
 /** First index i with xs[i] >= v (xs ascending). */
-function lowerBound(xs: number[], v: number) {
+export function lowerBound(xs: number[], v: number) {
   let lo = 0, hi = xs.length;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (xs[mid] < v) lo = mid + 1; else hi = mid; }
   return lo;
