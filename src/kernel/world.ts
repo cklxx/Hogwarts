@@ -18,7 +18,7 @@ import type { Node } from '../runes/parser.js';
 import { CREATURES } from './creatures.js';
 import { AURA_DEFS, type AuraKind, addAura, auraMag, hasAura, isDebuff, live, withoutDebuffs } from './auras.js';
 import { BOUND_REFUSAL, CURSE_BLESS, FORGE_REFUSAL, HEX_FRESH_SENDER, HEX_YEAR, JINX_NAMES, SILENCED, danceJitter, parseJinx } from './hex.js';
-import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
+import { PAIR_REFUSAL, PAIR_THROTTLED, formatPairCode, nameKey, parsePairCode, randomPairBody, realmOfPrefix } from './identity.js';
 import { SEAL_REWARDS, SEAL_REWARDS_ZH, SEAL_TIERS, CODEX, disassemble, generateSeal, parseWord, runSeal, type Seal } from './seals.js';
 import { TITLES, titleIndex } from '../lore/titles.js';
 import {
@@ -58,6 +58,7 @@ import { bannedCastText, bannedListing, marketDecreeErrors, marketDecreeNews, pa
 import type {
   Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
 } from './types.js';
+import { visibleTo } from './types.js';
 
 export { FORGE_REFUSAL, SILENCED, BOUND_REFUSAL, CURSE_BLESS } from './hex.js';
 export { PAIR_REFUSAL, PAIR_THROTTLED, parsePairCode } from './identity.js';
@@ -273,7 +274,7 @@ export class World {
   private nid(prefix: string) { return `${prefix}${(++this.seq).toString(36)}${Math.floor(this.rng() * 1296).toString(36)}`; }
   onEvent(fn: (e: WorldEvent) => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string } = {}) {
+  emit(type: EventType, text: string, opts: { to?: string; who?: string[]; zh?: string; from?: WorldEvent['from']; owl?: WorldEvent['owl']; card?: string; ch?: WorldEvent['ch']; aud?: string[] } = {}) {
     const e: WorldEvent = { id: ++this.eventSeq, t: round(this.now), type, text, ...opts };
     this.events.push(e);
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
@@ -286,7 +287,7 @@ export class World {
    * which would hand every player everyone's registry number). Send `wireEvent(e)`, never `e`.
    */
   wireEvent(e: WorldEvent): WireEvent {
-    const { who: _who, ...rest } = e;
+    const { who: _who, aud: _aud, ...rest } = e;
     return rest;
   }
 
@@ -299,7 +300,7 @@ export class World {
     const out: WorldEvent[] = [];
     for (const e of this.events) {
       if (e.id <= sinceId) continue;
-      if (e.to && e.to !== wid) continue;
+      if (!visibleTo(e, wid)) continue;
       if (e.from === 'agent') continue;
       if (e.type === 'chat' && e.who?.[0] === wid) continue;
       out.push(e);
@@ -730,7 +731,9 @@ export class World {
   enroll(name: string, preference?: string): { wizard: Wizard; sorting: string } {
     const clean = name.trim().replace(/\s+/g, ' ');
     if (!/^[\p{L}\p{N} _'.-]{2,24}$/u.test(clean)) throw new Error('A name must be 2-24 letters, digits, spaces, _ \' . or -');
-    for (const w of this.wizards.values()) if (w.name.toLowerCase() === clean.toLowerCase()) throw new Error(`There is already a ${w.house} called ${w.name}.`);
+    // one name, one wizard: lookalikes (case, spacing, accents, Cyrillic letters) count as the same name
+    const key = nameKey(clean);
+    for (const w of this.wizards.values()) if (nameKey(w.name) === key) throw new Error(`There is already a ${w.house} called ${w.name}: that name is taken (so is anything that looks like it). Pick another. 已经有一位${zhHouse(w.house)}的巫师叫 ${w.name}：这个名字（以及看起来一样的名字）已被占用，换一个吧。`);
     const canon = canonFor(clean);
     let house: House;
     let sorting: string;

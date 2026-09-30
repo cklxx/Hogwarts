@@ -26,6 +26,8 @@ export interface ClientFeature {
   hud?(): void;
   /** A key the game has not used: true when this feature took it. */
   keydown?(e: KeyboardEvent): boolean;
+  /** Every world event you receive (fresh = just happened; false = the backlog in the welcome). */
+  onEvent?(e: { id: number; type: string; text: string; zh?: string }, fresh: boolean): void;
   /** A server message: true when it was this feature's. */
   onMessage?(msg: { t: string; [k: string]: unknown }): boolean;
   /** Every frame: the feature's things in the 3D world. */
