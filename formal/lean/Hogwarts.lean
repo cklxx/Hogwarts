@@ -1441,6 +1441,25 @@ def bullyVectors : String :=
     return out
   "{\"BULLY_YEAR_GAP\":" ++ toString BULLY_YEAR_GAP ++ ",\"pays\":[" ++ ",".intercalate rows ++ "]}"
 
+/-! ## No one-shots (playtest round 3)
+No wild creature's single blow takes more than CREATURE_HIT_CAP_PCT % of a wizard's maximum health, however an event
+scaled it (`creature_hit_capped`); so from full health it takes at least three blows to knock anyone out
+(`creature_two_blows_survive`): there is always a moment to shield, heal or run. src/kernel/world.ts damageInner. -/
+def CREATURE_HIT_CAP_PCT : Nat := 40
+def creatureHit (a maxHp : Nat) : Nat := min a (maxHp * CREATURE_HIT_CAP_PCT / 100)
+
+theorem creature_hit_capped (a m : Nat) : creatureHit a m ≤ m * CREATURE_HIT_CAP_PCT / 100 := Nat.min_le_right _ _
+
+theorem creature_two_blows_survive (a b m : Nat) (hm : 0 < m) : creatureHit a m + creatureHit b m < m := by
+  unfold creatureHit CREATURE_HIT_CAP_PCT; omega
+
+def creatureVectors : String := Id.run do
+  let mut out : List String := []
+  for a in [0, 7, 28, 40, 100, 140, 1000] do
+    for m in [1, 5, 35, 100, 115, 190, 250] do
+      out := out ++ [s!"[{a},{m},{creatureHit a m}]"]
+  return "{\"CAP_PCT\":" ++ toString CREATURE_HIT_CAP_PCT ++ ",\"hits\":[" ++ ",".intercalate out ++ "]}"
+
 def xpSamples : List Nat := (List.range 90).map (· * 50)
 
 def vectors : String :=
@@ -1460,7 +1479,7 @@ def vectors : String :=
         out := out ++ [s!"[{v},{p},{steal v p}]"]
     return out
   "{\"yearForXp\":[" ++ ",".intercalate years ++ "],\"titleIndex\":[" ++ ",".intercalate titles ++
-    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ ",\"duel\":" ++ duelVectors ++ ",\"quidditch\":" ++ qdVectors ++ ",\"minister\":" ++ ministerVectors ++ ",\"bully\":" ++ bullyVectors ++ "}"
+    "],\"steal\":[" ++ ",".intercalate steals ++ "],\"agentLink\":" ++ agentLinkVectors ++ ",\"unfair\":" ++ unfairVectors ++ ",\"market\":" ++ marketVectors ++ ",\"cup\":" ++ cupVectors ++ ",\"duel\":" ++ duelVectors ++ ",\"quidditch\":" ++ qdVectors ++ ",\"minister\":" ++ ministerVectors ++ ",\"bully\":" ++ bullyVectors ++ ",\"creature\":" ++ creatureVectors ++ "}"
 
 #eval IO.println ("VECTORS " ++ vectors)
 

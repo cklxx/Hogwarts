@@ -66,6 +66,8 @@ export const PAIR_TTL_S = 600;
 /** A new wizard's first minutes: creatures hit 30% softer (the Hogwarts nurses call it 新生护符). */
 export const NEWCOMER_WARD_S = 180;
 export const NEWCOMER_WARD = 0.3;
+/** No wild creature's single blow takes more than this share of a wizard's maximum health (docs/RULES.md). */
+export const CREATURE_HIT_CAP = 0.4;
 /**
  * 以大欺小: knocking out a wizard more than BULLY_YEAR_GAP years below you pays no reputation (progression.ts
  * stunPaysRep, Lean `stun_pays_rep`), and an NPC never picks a fight with a player that far below it (npc.ts).

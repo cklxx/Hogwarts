@@ -39,6 +39,8 @@
 | 校园事件同时最多一件，奖励只发一次 | `src/kernel/wheel.ts` | TLA+ `EventWheel` |
 | 施法是原子的：法力不够就整段不生效，也不扣法力；法力永远不为负 | `src/kernel/magic.ts` | TLA+ `CastTxn`，Lean `commit_spends_exactly`、`fizzle_is_free` |
 | 偷声望有比例上限，决斗中声望守恒 | `src/kernel/unfair.ts` | Lean `steal_*`、`duel_conserves*` |
+| 野生魔物一击最多打掉你最大生命的 40 %（事件加强过的也一样）：满血至少要挨三下才会倒 | `CREATURE_HIT_CAP`、`World.damageInner` | Lean `creature_hit_capped`、`creature_two_blows_survive` + 向量，`test/round4.test.ts` |
+| 施法打不到就不扣法力：目标不在了、中间有墙、对方打不得，都当场拒绝，法力分文不动 | `World.cast` | `test/round4.test.ts`（TLA+ `CastTxn` 的「失败不扣」） |
 
 ## 4. 政治
 
