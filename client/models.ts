@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { parseGlamourKey, type Glamour, type GlamourMaterial } from '../src/shared/glamour';
+import { OVERLAY } from './layers';
 import { STORYBOOK, rimLit } from './textures';
 
 /** A canvas sprite used for name tags, hp bars and speech bubbles. */
@@ -16,9 +17,11 @@ export class Label {
     this.canvas.height = 160;
     this.tex = new THREE.CanvasTexture(this.canvas);
     this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, depthTest: false, transparent: true }));
+    // on the overlay (layers.ts): drawn at the screen's resolution, its colours as painted (not tone mapped)
+    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, depthTest: false, transparent: true, toneMapped: false }));
     this.sprite.scale.set(4.8 * scale, 1.5 * scale, 1);
     this.sprite.renderOrder = 10;
+    this.sprite.layers.set(OVERLAY);
   }
   private pending: [string, string, number, string | undefined, string, string] | null = null;
   /**

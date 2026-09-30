@@ -133,6 +133,21 @@ describe('createDynRes (dynres.ts)', () => {
     expect(d.ratio).toBeGreaterThan(r);
     expect(seen.length).toBeGreaterThan(3);
   });
+  it('onFloor: only once slow at the lowest scale for floorS seconds running, never on a short hitch while above it', () => {
+    let floors = 0;
+    const d = createDynRes({ min: 0.5, max: 1, apply: () => {}, onFloor: () => floors++, floorS: 4 });
+    const run = (ms: number, secs: number) => { for (let t = 0; t < secs * 1000; t += ms) d.frame(ms); };
+    // the loading's slow first seconds: stepping down, not yet at the floor
+    run(40, 3);
+    expect(floors).toBe(0);
+    run(40, 3); // reaches 0.5 and stays slow
+    expect(d.ratio).toBe(0.5);
+    run(40, 5);
+    expect(floors).toBe(1);
+    // fast again at the floor: no call
+    run(16.7, 6);
+    expect(floors).toBe(1);
+  });
 });
 
 describe('serveStatic (static.ts): caching and compression', () => {

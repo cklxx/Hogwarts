@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from './terrain';
+import { OVERLAY } from './layers';
 
 /**
  * Short-lived spell effects (rings, puffs, pillars of light, floating damage numbers, lightning), pooled.
@@ -45,9 +46,10 @@ export function createEffects(scene: THREE.Scene) {
   const columnGeo = new THREE.CylinderGeometry(0.9, 1.05, 8, 20, 1, true);
   const columns = pool(() => new THREE.Mesh(columnGeo, new THREE.MeshBasicMaterial({ alphaMap: fade, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })));
   const texts = pool(() => {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, toneMapped: false }));
     sp.scale.set(1.6, 0.8, 1);
     sp.renderOrder = 20;
+    sp.layers.set(OVERLAY); // sharp at any render scale (layers.ts)
     return sp;
   });
   /** Damage-number textures by text and colour, least recently used dropped beyond 96. */

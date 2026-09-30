@@ -1312,3 +1312,66 @@ not 4×.
 梗牌 (src/kernel/memetags.ts): one pass over online wizards per second (16 rule checks each, a map write), one string
 field in the static part of the snapshot entry — sent only when a tag changes; a label repaint only then too.
 
+
+## 2026-09-30 — native-resolution text, render scale, edge exits (`wf/smooth`)
+
+The owner: 「分辨率还是很低，界面非常卡」. Measured first (`scripts/perf-client.ts`, 60 bots + 12 NPCs, main at `3c1f33c`):
+
+- **CPU is not where it goes.** `--nodraw` (every frame's JS, nothing drawn), 1280×720: JS 1.2–1.9 ms per frame, the
+  10 Hz HUD 31–38 ms/s (≈ 3.5 %), 13–37 layouts and ~71 style recalcs a second (6–9 / 28–32 ms/s), no long tasks. A
+  60 fps frame has 16.7 ms: on this box the page's own work uses a tenth of it.
+- **So it is the GPU**, which this box does not have (SwiftShader: fps only as a direction). What the pipeline asks of
+  one, per frame: a half-float 4×MSAA target (2× at 'low'), UnrealBloom (5 mips, 12 passes), a 2048² PCF shadow map
+  every other frame, the lake's mirror re-rendering the scene every other frame, the output pass — and a second
+  MSAA buffer on the canvas itself (`antialias: true`), which only ever received the output pass.
+- **Why it also looked blurry**: the resolution *was* the frame budget. The whole frame, text included, rendered at
+  the dynamic ratio (desktop 'low' 0.5–0.75×, a phone 0.75–1.5× of CSS pixels, then stretched), and 'high' dropped to
+  'low' if the *first 3 s after the first snapshot* averaged over 45 ms — the seconds of texture uploads and label
+  paints, so a machine that would have run 'high' fine could be put on 0.5× for the session.
+
+What changed (the usual engine split: 3D at a render scale, UI at native):
+
+| | before | after |
+|---|---|---|
+| Canvas (what the screen shows) | the render scale (e.g. 292×633 on a 390×844 @3x phone at 0.75×) | the screen's own pixels, up to 2× (780×1688 on that phone) |
+| 3D render scale (dynres.ts) | desktop 'high' 0.6–2×, 'low' 0.5–0.75×; phone 0.75–1.5× | 'high' 0.7–2×, 'low' 0.6–1×; phone 0.75–1.5× (same GPU cost as before at the same scale) |
+| Upscale | bilinear (the canvas was stretched by CSS) | bilinear + a sharpen held to the 4-neighbour min/max (the idea of FSR 1's RCAS: cannot ring), strength by scale (0 at 1:1, ≤ 0.8) — four extra taps in the output pass |
+| Name tags, damage numbers, the veil's signs | in the 3D pass, at the render scale, tone-mapped | on an overlay layer (client/layers.ts) drawn after the composer straight onto the canvas: native resolution, colours as painted (they already ignored depth, so nothing else changes) |
+| Canvas MSAA | on (`antialias: true`) | off (the scene keeps its MSAA in the composer's target) |
+| Dropping to 'low' | first 3 s after the first snapshot averaging > 45 ms | only when dynres has sat at its floor and frames stay slow 4 s running (`onFloor`, test/fast.test.ts) |
+| Phone frame rate | whatever the screen asks (120 Hz → twice the GPU work and heat) | capped at ~60 (frames under 12 ms apart skipped; 60 Hz screens unaffected) |
+| HUD layout reads | 10×/s `getBoundingClientRect` right after the HUD's writes (a forced layout each time) | ResizeObserver / MutationObserver (after layout; no forced layout), re-measured once on the next frame when the edges moved |
+| Shadow type | PCFSoft (three r18x ignores it with a warning each start) | PCF (what actually ran) |
+
+Same-scale A/B (SwiftShader, 960×540, `capture=1` so both run a fixed scale: 1× 'high', 0.75× 'low'; main then this
+branch, back to back, same world; fps ±15 % run to run here, so read direction only):
+
+| q / spot | fps main → branch | draw calls main → branch |
+|---|---|---|
+| high / follow | 0.81 → 0.77 | 473 → 535 |
+| high / crowd | 0.74 → 0.59 | 671 → 723 |
+| low / follow | 1.21 → 1.29 | 395 → 398 |
+| low / crowd | 1.20 → 1.04 | 525 → 641 |
+
+At a fixed scale the change is cost-neutral within this box's noise. The overlay is 71 draw calls (census, `high/follow`,
+640×360: `Scene:screen` 71, the main pass 469, shadow map 75, bloom 12, output 1). Those are the name-tag sprites,
+which used to be drawn inside the main pass. The call totals move with where the random-walking bots are. What the
+change buys is how the same GPU cost looks. Stills at the same 0.75× scene scale (`?q=low&capture=1`), main against
+the branch:
+
+- 390×844 @3x phone: the name tag and the 梗牌 go from an unreadable smudge to crisp.
+- 1280×720 @2x desktop: the canvas is 960×540 on main and 2560×1440 on the branch, and names and the ground's edges
+  are sharper.
+
+The frame rate on a real GPU is still unmeasured here. From now on each browser reports it every 15 s: frame
+interval p50 / p95, render scale, quality, pixel ratio and the GPU's name (WebGL `RENDERER`). The server keeps it in
+the playtest metrics (kernel/metrics.ts `fps`), and `scripts/playtest/report.ts` prints it next to each player. The
+next phone playtest therefore gives real-device numbers instead of SwiftShader's.
+
+The veil (边缘出口) costs this per wizard per tick:
+
+- up to four subtractions and a dot product;
+- a 1-entry map write while someone presses into an edge;
+- one Array.includes over the 8 gates while a routed walk is headed to an edge.
+
+The client adds a pool of four sprites placed each frame, shown only within 14 m of an edge.

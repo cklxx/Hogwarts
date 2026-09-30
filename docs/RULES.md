@@ -45,7 +45,7 @@
 | 偷声望有比例上限，决斗中声望守恒 | `src/kernel/unfair.ts` | Lean `steal_*`、`duel_conserves*` |
 | 野生魔物一击最多打掉你最大生命的 40 %（事件加强过的也一样）：满血至少要挨三下才会倒 | `CREATURE_HIT_CAP`、`World.damageInner` | Lean `creature_hit_capped`、`creature_two_blows_survive` + 向量，`test/round4.test.ts` |
 | 一年级不会被野生魔物成群围上：同一时刻最多 2 只主动挑上你（被你打了的照样追你） | `NEWCOMER_PACK`、`World.stepCreatures` | `test/round9.test.ts` |
-| 场景之间是迷雾：人走不过去，魔咒射不过去；只有传送门能过，决斗中、魁地奇队员不能过门；路线只是路过门口不会被传送 | `src/shared/scenes.ts`、`src/kernel/scenes.ts`、`World.setGoal` | `test/scenes.test.ts` |
+| 场景之间是迷雾：魔咒射不过去，人只能经传送门或边缘出口过去（手推着走进迷雾 0.35 秒；点地面 / `move_to` 的路线走到边缘再过；点在边外 3 米内只走到边缘；站长 2026-09-30 定：迷雾不是空气墙），出来一定在某个场景里；决斗中、魁地奇队员、NPC 都不会过；路线只是路过门口不会被传送 | `src/shared/scenes.ts`、`src/kernel/scenes.ts`、`World.setGoal` | `test/scenes.test.ts` |
 | 野生魔物只在自己家的场景里活动：不挑别的场景的人，会飞的也飞不出去 | `World.stepCreatures`（`sameScene`）、`World.stepToward` | `test/round10.test.ts` |
 | 决斗中的翻滚不会把你滚出决斗台或滚进安全区（会改道） | `stageRoll`（`src/kernel/duelclub.ts`，`dodgeDir` 钩子） | `test/round10.test.ts` |
 | 施法打不到就不扣法力：目标不在了、中间有墙、对方打不得，都当场拒绝，法力分文不动 | `World.cast` | `test/round4.test.ts`（TLA+ `CastTxn` 的「失败不扣」） |

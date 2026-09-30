@@ -90,6 +90,6 @@ npx tauri build                                      # 打当前平台的安装�
 ## 还没在真实环境里验证的（按风险排）
 
 1. 桌面客户端在 macOS / Windows 上的安装与运行（CI 只保证能构建）。
-2. 真显卡上的帧率（这里只有软件渲染 SwiftShader，所有帧率数字只看方向）。
+2. 真显卡上的帧率（这里只有软件渲染 SwiftShader，所有帧率数字只看方向）。现在每个浏览器每 15 秒把自己的帧间隔 p50 / p95、3D 倍率、画质、GPU 名报给服务器（`kernel/metrics.ts` `fps`，`scripts/playtest/report.ts` 打出来）：下一轮真机试玩就有数。
 3. 使魔（内置 Agent）调用真实 Claude API 的延迟与花费。
 4. 局域网发现跨真实路由器/交换机（这里只在一台机器的回环和单网段上测过）。
