@@ -22,7 +22,7 @@ export function flooChoices(here: { x: number; z: number }) {
   return { at, to: FIREPLACES.filter((f) => f.id !== at.id).map((f) => ({ ...f, dist: Math.round(Math.hypot(f.x - at.x, f.z - at.z)) })).sort((a, b) => a.dist - b.dist) };
 }
 
-export const travelFeature: ClientFeatureFactory = (d): ClientFeature => {
+export const travelFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
   const group = new THREE.Group();
   group.name = 'travel';
   const hearth = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 1.6, 0.9), new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 0.95 }), FIREPLACES.length);
@@ -56,7 +56,7 @@ export const travelFeature: ClientFeatureFactory = (d): ClientFeature => {
       if (b.dataset.to) d.send({ t: 'travel', to: b.dataset.to });
       closePicker();
     });
-    document.body.append(picker);
+    document.body.append(ctx.own(picker));
   }
   return {
     id: 'travel',

@@ -10,6 +10,8 @@ import { createQuidditch3d, type QdSnap } from '../quidditch3d';
 import { bearing, esc, fmtDist } from './logic';
 
 export interface QdDeps {
+  /** The feature's context (client/context.ts) takes the elements this makes: gone when the feature is reloaded. */
+  own?: <T extends Element>(el: T) => T;
   send: (o: unknown) => void;
   toast: (t: string) => void;
   qd: () => QdSnap | undefined;
@@ -60,6 +62,7 @@ export function createQuidditch(d: QdDeps) {
     el = document.createElement('div');
     el.id = 'qdslip';
     (document.getElementById('duelslip') ?? document.getElementById('evslip') ?? clock).after(el);
+    d.own?.(el);
     return el;
   }
   const inIt = () => !!d.qd()?.r.some((r) => r[0] === d.myHandle());
@@ -107,9 +110,9 @@ export function createQuidditch(d: QdDeps) {
 }
 
 /** Quidditch as a client feature (client/features.ts): the slip and keys, and the match in 3D. */
-export const quidditchFeature: ClientFeatureFactory = (d) => {
+export const quidditchFeature: ClientFeatureFactory = (d, ctx) => {
   const qd = () => d.wire<QdSnap>('qd');
-  const ui = createQuidditch({ send: d.send, toast: d.toast, qd, myHandle: d.myHandle, myHouse: d.myHouse, myPos: d.myPos, camYaw: d.camYaw });
+  const ui = createQuidditch({ own: (el) => ctx.own(el), send: d.send, toast: d.toast, qd, myHandle: d.myHandle, myHouse: d.myHouse, myPos: d.myPos, camYaw: d.camYaw });
   const world = createQuidditch3d(d.posOf, d.facingOf);
   // (its keys act: not while you watch your agent play)
   return { id: 'quidditch', widgets: [{ id: 'qdslip', zh: '魁地奇', en: 'Quidditch' }], ...ui, keydown: (e) => !d.observing() && ui.keydown(e), group: world.group, frame: (dt) => world.frame(dt, qd()), lift: world.lift };

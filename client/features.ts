@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * The browser's features (client/feature.ts), each the client half of a kernel feature (src/kernel/features.ts).
  * Add one here and main.ts runs its HUD, keys, messages, panels, 3D and rider height.
@@ -19,10 +20,34 @@ import { wardFeature } from './panels/ward';
 import { scenesFeature } from './scenes3d';
 import { uiFeature } from './ui';
 
-// the top stack reads in this order: the Dark Lord's ribbon, the lawless zone, the DA's vote card and joint Patronus
-export const CLIENT_FEATURES: readonly ClientFeatureFactory[] = [
-  darkLordFeature, lawlessFeature, daFeature, studyFeature, sealsFeature, chatFeature, duelFeature, quidditchFeature, wardFeature, travelFeature, questsFeature, darkFeature, trunkFeature, scenesFeature, uiFeature,
+/**
+ * Each feature under the module it lives in (the key a hot update names: client/hot.ts, vite.config.ts featureChunks).
+ * The top stack reads in this order: the Dark Lord's ribbon, the lawless zone, the DA's vote card and joint Patronus.
+ */
+export const CLIENT_FEATURES: readonly (readonly [string, ClientFeatureFactory])[] = [
+  ['panels/darkmark', darkLordFeature], ['panels/lawless', lawlessFeature], ['panels/da', daFeature], ['panels/study', studyFeature],
+  ['panels/seals', sealsFeature], ['panels/chat', chatFeature], ['panels/duel', duelFeature], ['panels/quidditch', quidditchFeature],
+  ['panels/ward', wardFeature], ['panels/travel', travelFeature], ['panels/quests', questsFeature], ['panels/dark', darkFeature],
+  ['panels/trunk', trunkFeature], ['scenes3d', scenesFeature], ['ui', uiFeature],
 ];
+
+/** npm run dev: an edited feature module arrives here (Vite HMR); main.ts swaps it in (FeatureHost.reload). */
+let featureHot: ((key: string, mk: ClientFeatureFactory) => void) | null = null;
+export const setFeatureHot = (f: typeof featureHot) => { featureHot = f; };
+if (import.meta.hot) {
+  // (the literal list Vite needs, in CLIENT_FEATURES' order)
+  import.meta.hot.accept([
+    './panels/darkmark', './panels/lawless', './panels/da', './panels/study', './panels/seals', './panels/chat', './panels/duel', './panels/quidditch',
+    './panels/ward', './panels/travel', './panels/quests', './panels/dark', './panels/trunk', './scenes3d', './ui',
+  ], (mods) => {
+    mods.forEach((m, i) => {
+      if (!m) return;
+      const [key, old] = CLIENT_FEATURES[i];
+      const mk = (m as Record<string, unknown>)[old.name];
+      if (typeof mk === 'function') featureHot?.(key, mk as ClientFeatureFactory);
+    });
+  });
+}
 
 /** The stack at the top centre, under the target frame (#pn-top): every feature's `top`, in order. */
 export function renderTop(feats: readonly ClientFeature[]) {

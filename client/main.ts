@@ -31,7 +31,9 @@ import * as probe from './perf';
 import { createMarket } from './market';
 import { createPanels, type FamiliarState, type FocusView } from './panels';
 import { createFun } from './panels/fun';
-import { CLIENT_FEATURES, renderTop } from './features';
+import { CLIENT_FEATURES, renderTop, setFeatureHot } from './features';
+import { createHot } from './hot';
+import { FeatureHost } from './context';
 import type { ClientFeature } from './feature';
 import { createFunWorld } from './funworld';
 import { PRIO, createPhoneShell } from './phone';
@@ -343,7 +345,7 @@ function connect() {
     }
     probe.end('parse', tp);
     probe.wsMessage(typeof m.data === 'string' ? m.data.length : (m.data as ArrayBuffer).byteLength, msg.t === 'snap');
-    for (const f of observers) f.observe!(msg); // features that follow what others asked for (the trunk reads every armory)
+    for (const f of feats) f.observe?.(msg); // features that follow what others asked for (the trunk reads every armory)
     if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
     if (watch.onMessage(msg)) return; // 看 Agent 玩 (client/watch.ts)
     if (msg.t === 'welcome') {
@@ -358,6 +360,7 @@ function connect() {
       onBuild(msg.build);
       if (msg.pair?.code) onPairCode(msg.pair);
     }
+    else if (msg.t === 'build') onBuild(msg.build); // the server saw a new client build in dist/ (no restart)
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') { me = msg.s; myHandle = (msg.s as { actAs?: { handle: string } }).actAs?.handle ?? ownHandle; }
     else if (msg.t === 'evs') for (const e of msg.es) { fun.onEvent(e); for (const f of feats) f.onEvent?.(e, true); feed(e, true); }
@@ -661,6 +664,16 @@ function onBuild(b: unknown) {
   if (typeof b !== 'string' || !b || b === 'dev') return;
   if (!firstBuild) { firstBuild = b; return; }
   if (b === firstBuild || document.getElementById('update-note')) return;
+  // 客户端热更新 (client/hot.ts): only features changed → swap them in the running page; else the note below
+  void hot.update().then((r) => {
+    console.info('hot update:', JSON.stringify(r));
+    if (r.kind === 'page') { reloadNote(); return; }
+    firstBuild = b;
+    if (r.kind === 'hot') { renderTop(feats); toast(L(`界面已热更新：${r.keys.length} 个插件`, `Hot update: ${r.keys.length} feature(s)`)); }
+  });
+}
+function reloadNote() {
+  if (document.getElementById('update-note')) return;
   const n = document.createElement('div');
   n.id = 'update-note';
   n.setAttribute('role', 'status');
@@ -1662,7 +1675,7 @@ const pn = createPanels({ send, me: () => me, agentConnected: () => !!agentNow()
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo, walkTo: (x, z) => ctl.walkTo(x, z) });
 // the features (client/features.ts: the Dark Lord, the DA, 偷师, the Restricted Section, the Duelling Club, Quidditch, …),
 // all built from the same deps
-const feats: ClientFeature[] = CLIENT_FEATURES.map((mk) => mk({
+const host = new FeatureHost({
   send, toast,
   wire: <T,>(key: string) => (snap as Record<string, unknown> | null)?.[key] as T | undefined,
   me: () => me as Record<string, any> | null, now: () => snap?.t ?? 0,
@@ -1670,16 +1683,18 @@ const feats: ClientFeature[] = CLIENT_FEATURES.map((mk) => mk({
   nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?',
   posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? null,
   solo, spells: () => bookSpells, wantSpells, openBook: () => { if ($('#book').hidden) toggleBook(true); }, loadDraft, features: () => feats, castOnSelf: (spell) => ctl.castOnSelf(spell),
-}));
+}, scene);
+for (const [key, mk] of CLIENT_FEATURES) host.add(key, mk);
+/** The running features: one array, a hot update swaps entries in place (client/context.ts, client/hot.ts). */
+const feats: ClientFeature[] = host.list;
+const hot = createHot(host);
+// npm run dev: Vite's HMR swaps an edited feature module the same way (client/features.ts)
+setFeatureHot((key, mk) => { if (host.reload(key, mk)) renderTop(feats); });
 renderTop(feats);
-const observers = feats.filter((f) => f.observe);
-const badgers = feats.filter((f) => f.badge);
 /** The features' marks beside a wizard's name (☠ the Dark Lord): text for the name tag, markup for the parchment. */
-const badges = (h: string, html?: boolean) => { let s = ''; for (const f of badgers) s += f.badge!(h, html); return s; };
-const lifters = feats.filter((f) => f.lift);
+const badges = (h: string, html?: boolean) => { let s = ''; for (const f of feats) if (f.badge) s += f.badge(h, html); return s; };
 const funWorld = createFunWorld();
 scene.add(funWorld.group);
-for (const f of feats) if (f.group) scene.add(f.group);
 /** What a chest held (the card itself arrives as its own event and flips over). */
 function onChest(r: { whereZh?: string; where?: string; housePoints?: number; galleons?: number; card?: string; fragment?: { zh: string; en: string; source: string }; left?: number }) {
   const parts: string[] = [];
@@ -1793,7 +1808,7 @@ function animWizard(w: WizardEntry, h: string) {
   w.root.position.x += (w.tx - w.root.position.x) * FR.k;
   w.root.position.z += (w.tz - w.root.position.z) * FR.k;
   let lift = 0;
-  for (const f of lifters) lift += f.lift!(h); // 魁地奇: riders fly
+  for (const f of feats) if (f.lift) lift += f.lift(h); // 魁地奇: riders fly
   w.root.position.y = groundOf(w) + lift;
   const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
   w.body.rotation.y += turn * Math.min(1, FR.dt * 14);

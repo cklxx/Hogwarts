@@ -14,7 +14,7 @@ export function questLines(lessons: readonly Lesson[], zh: boolean) {
   return { done: lessons.filter((l) => l.done).length, of: lessons.length, rows: lessons.map((l) => ({ text: zh ? l.zh : l.en, n: `${Math.min(l.got, l.of)}/${l.of}`, done: l.done })) };
 }
 
-export const questsFeature: ClientFeatureFactory = (d): ClientFeature => {
+export const questsFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
   // folded on a portrait phone: open, it sat on top of the wizard (tap to unfold)
   let lessons: Lesson[] = [], askedAt = -1e9, open = !(typeof matchMedia === 'function' && matchMedia('(max-width: 520px)').matches), dirty = false;
   const el = document.createElement('div');
@@ -22,7 +22,7 @@ export const questsFeature: ClientFeatureFactory = (d): ClientFeature => {
   el.hidden = true;
   el.style.cssText = 'position:fixed;left:calc(16px * var(--u));bottom:calc(440px * var(--u));z-index:6;max-width:min(calc(340px * var(--u)),calc(100vw - 32px));padding:calc(6px * var(--u)) calc(10px * var(--u));background:rgb(var(--sheen2) / .9);color:var(--ink);border:1px solid var(--ink3);border-radius:calc(6px * var(--u));font-size:calc(14px * var(--t));cursor:pointer';
   el.addEventListener('click', () => { open = !open; dirty = true; });
-  document.body.append(el);
+  document.body.append(ctx.own(el));
   const ask = () => { askedAt = performance.now(); d.send({ t: 'quests' }); };
   function render() {
     dirty = false;

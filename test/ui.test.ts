@@ -28,7 +28,7 @@ describe('界面 layout', () => {
   });
 
   it('widget ids are unique across main.ts and the features, and the 界面 feature is registered', () => {
-    expect(CLIENT_FEATURES.some((f) => f.name === 'uiFeature')).toBe(true);
+    expect(CLIENT_FEATURES.some(([key, f]) => key === 'ui' && f.name === 'uiFeature')).toBe(true);
     const ids = BASE_WIDGETS.map((w) => w.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
