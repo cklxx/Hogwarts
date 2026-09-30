@@ -162,3 +162,48 @@ describe('small ones', () => {
     expect(() => w.forgeSpell(a.id, { name: 'A2', source: '(heal self)' })).toThrow(/missing amount/);
   });
 });
+
+describe('试玩指标 (kernel/metrics.ts)', () => {
+  it('records the first move, cast and kill, systems, chat and the tutorial step; survives a restart; never an NPC', async () => {
+    const { chatSend } = await import('../src/kernel/chat.js');
+    const { joinDA } = await import('../src/kernel/unfair.js');
+    const { FEATURE_BY_ID } = await import('../src/kernel/features.js');
+    const w = mk();
+    const a = join(w, 'Metric Kid', 'Hufflepuff', 100, 100, 1), npc = join(w, 'Npc Kid', 'Slytherin', 140, 100);
+    npc.npc = true;
+    run(w, 1.1);
+    const m = w.metrics.of.get(a.id)!;
+    expect(m).toMatchObject({ name: 'Metric Kid', sessions: 1 });
+    expect(w.metrics.of.has(npc.id)).toBe(false);
+    a.pos = { x: 110, z: 100 };
+    const pix = beast(w, 'px_m', 110, 92, 5);
+    expect(w.cast(a.id, 'Stupefy', { target: 'px_m' }).ok).toBe(true);
+    run(w, 1.5);
+    expect(pix.hp <= 0 || !w.creatures.has('px_m')).toBe(true);
+    chatSend(w, a.id, { text: 'hello all' });
+    joinDA(w, a.id);
+    run(w, 1.1);
+    expect(m.move).toBeGreaterThan(0);
+    expect(m.cast).toBeGreaterThan(0);
+    expect(m.kill).toBeGreaterThan(0);
+    expect(m.chats).toBe(1);
+    expect(Object.keys(m.sys)).toEqual(expect.arrayContaining(['fight', 'da']));
+    FEATURE_BY_ID.get('metrics')!.ws!(w, a.id, { tut: 4, touch: true });
+    FEATURE_BY_ID.get('metrics')!.ws!(w, a.id, { tut: 2 });
+    expect(m).toMatchObject({ tut: 4, touch: true });
+    const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
+    expect(back.metrics.of.get(a.id)).toMatchObject({ name: 'Metric Kid', tut: 4, chats: 1, kill: m.kill });
+  });
+
+  it('a return after SESSION_GAP_S offline is a second session', async () => {
+    const { SESSION_GAP_S } = await import('../src/kernel/metrics.js');
+    const w = mk();
+    const a = join(w, 'Comeback Kid', 'Ravenclaw');
+    run(w, 1.1);
+    a.connections = 0; a.lastMcpAt = -1e9;
+    w.now += SESSION_GAP_S + 5;
+    a.connections = 1;
+    run(w, 1.1);
+    expect(w.metrics.of.get(a.id)!.sessions).toBe(2);
+  });
+});
