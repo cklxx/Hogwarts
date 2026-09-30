@@ -969,12 +969,11 @@ body.touch #tb-extra:not([hidden]) { position: absolute; right: calc(100% + calc
 /* the 2026-09-30 Sonnet phone playtest (docs/PLAYTEST.md round 6):
    - the agent step's two buttons squeezed its words into a one-character column: on a phone the buttons wrap below;
    - one guide at a time: the next-goal slip waits while the coach mark shows (they said two different "next"s);
-   - the centre banner can be tapped away; the sheets' close button is a thumb's size */
+   - the sheets' close button is a thumb's size (the centre banner is the phone shell's message line now) */
 body.touch #tutorial { flex-wrap: wrap; }
 body.touch #tutorial .tut-line { flex: 1 1 calc(170px * var(--u)); }
 body.touch #tutorial .tut-acts { margin-left: auto; }
 body:has(#tutorial:not([hidden])) #goal { display: none; }
-body.touch #banner { pointer-events: auto; }
 body.touch button.x { width: calc(46px * var(--u)); height: calc(46px * var(--u)); }
 body.touch button.x svg.ic { width: calc(28px * var(--u)); height: calc(28px * var(--u)); }
 /* the spellbook on a phone: a template first (above the list), the Runes source only behind 看代码 */

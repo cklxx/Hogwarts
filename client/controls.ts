@@ -1185,16 +1185,19 @@ function createTutorial(t: TutorialDeps) {
     return `<span class="dir"><span class="arrow" style="transform:rotate(${(a + t.yaw()).toFixed(2)}rad)">↑</span>${L(`大礼堂 ${Math.round(d)} 米`, `Great Hall ${Math.round(d)} m`)}</span>`;
   }
   /** One short line per step, placed beside the control it talks about (`at`); the help panel (H) has the long version. */
-  type Step = { at: 'bottom' | 'topleft' | 'topright'; line: () => string; acts?: () => string; live?: () => string };
+  /** `short`: a phone's line (手机壳: one line of a dozen characters, beside the thumb, client/phone.ts). */
+  type Step = { at: 'bottom' | 'topleft' | 'topright'; line: () => string; short?: () => string; acts?: () => string; live?: () => string };
   const STEPS: Step[] = [
     {
       at: 'bottom',
+      short: () => L('拖动<b>左下圆圈</b>走路', 'Drag the <b>circle</b> to walk'),
       line: () => t.touch
         ? L('按住<b>左下方</b>拖动行走', 'Drag on the <b>lower left</b> to walk')
         : L(`${key('W')}${key('A')}${key('S')}${key('D')} 行走，或<b>左键点地面</b>走过去 · ${LOOK_ZH}转视角`, `${key('W')}${key('A')}${key('S')}${key('D')} to walk, or <b>click the ground</b> · ${LOOK_EN} to look`),
     },
     {
       at: 'bottom',
+      short: () => L('点 <b>◎</b> 选小精灵，再点 <b>1</b>', 'Tap <b>◎</b> for a pixie, then <b>1</b>'),
       line: () => {
         const s = t.slotOf('Stupefy');
         const k = key(s >= 0 ? String(s + 1) : '1');
@@ -1206,12 +1209,14 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'bottom',
+      short: () => L('去<b>大礼堂</b>（安全区）', 'To the <b>Great Hall</b> (safe)'),
       line: () => L('走进<b>大礼堂（安全区）</b>再学写咒语：那里没有魔物，也不能决斗', 'Walk into the <b>Great Hall (safe zone)</b> before you learn to write spells: no creatures, no duels'),
       acts: () => `<button data-act="hall">${L('带我去', 'Take me there')}</button>`,
       live: hallHint,
     },
     {
       at: 'bottom',
+      short: () => L('改一个<b>咒语</b>，变成你的', 'Make a <b>spell</b> your own'),
       line: () => t.touch
         ? L('打开<b>咒语书</b>：每个咒语都能改，从模板开始改个数字就是你自己的', 'Open the <b>spellbook</b>: every spell can be changed; start from a template and tweak a number')
         : L(`按 ${key('B')} 打开<b>咒语书</b>：咒语就是 Runes 程序（也能用模板拼）`, `${key('B')} opens the <b>spellbook</b>: every spell is a Runes program (or start from a template)`),
@@ -1219,6 +1224,7 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'topright',
+      short: () => { const s = t.slotOf('Tempus'); return s >= 0 ? L(`点 <b>${s + 1}</b> 号：看时间`, `Tap <b>${s + 1}</b>: the time`) : L('施放<b>时间显现</b>', 'Cast <b>Tempus</b>'); },
       line: () => {
         const s = t.slotOf('Tempus');
         return s >= 0
@@ -1228,12 +1234,14 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'topleft',
+      short: () => L('连上你的 <b>AI Agent</b>', 'Connect your <b>AI agent</b>'),
       line: () => L(`连接你的 AI Agent：${t.touch ? '点 <b>信封</b>' : `按 ${key('Esc')}`} 生成配对码，对它说「连上霍格沃茨，配对码 …」`, `Connect your AI agent: ${t.touch ? 'tap the <b>letter</b>' : key('Esc')} for a pairing code, then tell it "Connect to Hogwarts, pairing code …"`),
       acts: () => `<button data-act="pair">${L('生成配对码', 'Get a code')}</button> <button data-act="later" class="ghost">${L('以后再说', 'Later')}</button>`,
       live: () => { const a = t.agent(); return a?.connected ? `<span class="dir">✓ ${L(`${esc(a.client)} 已连接`, `${esc(a.client)} connected`)}</span>` : ''; },
     },
     {
       at: 'topleft',
+      short: () => L('给 Agent <b>写一句</b>', '<b>Write</b> to your agent'),
       line: () => L(`${t.touch ? '点<b>写信</b>' : `按 ${key('O')}`} 给你的 Agent 写一句话（只有你们俩看得见）`, `${t.touch ? 'Tap <b>Write</b>' : key('O')} to write your agent a line (only the two of you see it)`),
       acts: () => `<button data-act="owl">${L('写信', 'Write')}</button> <button data-act="later" class="ghost">${L('跳过', 'Skip')}</button>`,
     },
@@ -1243,7 +1251,7 @@ function createTutorial(t: TutorialDeps) {
   function render() {
     if (step < 0) {
       if (doneUntil > now()) {
-        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成。「⋯」里的「帮助」有全部操作，祝你玩得开心！', 'You know the basics. Help (under ⋯) shows every control. Enjoy Hogwarts!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
+        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
         el.dataset.at = 'bottom';
         if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;
@@ -1254,7 +1262,7 @@ function createTutorial(t: TutorialDeps) {
     // the last step (talk to your agent) only appears while an agent is connected
     if (step === 6 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
-    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
+    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
     if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
     el.dataset.at = s.at;
     // never behind an open panel: above it instead
