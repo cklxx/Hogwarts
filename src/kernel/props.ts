@@ -174,6 +174,10 @@ export const PROPS_FEATURE: Feature = {
         return {
           id: p.id, kind: p.kind, zh: d.zh, x: p.x, z: p.z, ...(p.group ? { group: p.group } : {}),
           state: s.broken.has(p.id) ? 'broken' : s.awake.has(p.id) ? 'awake' : 'rest',
+          // how long it stays lit, and how its three stand (the 2026-10-01 playtest: two agents lighting the Willow's
+          // stones over chat thought they had 2–3 s; they had 30 — now they can see it)
+          ...(s.awake.has(p.id) ? { secondsLeft: Math.ceil(s.awake.get(p.id)!.until - world.now) } : {}),
+          ...(p.group ? { groupLit: `${(members.get(p.group) ?? []).filter((q) => (s.awake.get(q.id)?.until ?? 0) > world.now).length}/${(members.get(p.group) ?? []).length}` } : {}),
           ...(d.wakes ? { wakes: d.wakes } : {}), hint: `${d.hintZh} / ${d.hintEn}`,
         };
       });

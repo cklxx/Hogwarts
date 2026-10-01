@@ -1572,3 +1572,33 @@ The three headless-phone new players (Ivy, Leo, Nina) were all stuck in the firs
 - **Night too dark (2/3).** The night floor was raised: hemisphere 0.35 → 0.6 of day, moon 1.2 → 1.7, image light
   0.25 → 0.4, exposure at night 1.1 → 1.35. Day is unchanged. Same spot, 23:00, q=high, play area clear of the HUD:
   mean luminance 23.2 → 40.6, pixels under 40 went from 93 % to 48 %.
+
+## 2026-10-01 — the agents' day-2/day-3 list, and the 2.5D canopy (`wf/day3`)
+
+Each fix below has a test (`test/lockon.test.ts`, `test/lookcast.test.ts`, `test/agents.test.ts`,
+`test/duelclub.test.ts`, `test/props.test.ts`):
+
+- **2v2 "locked on to Mia, hit Seamus"**: reproduced. Every kernel attack spell named at Mia landed on Mia. A spell
+  written as `(first (enemies 25))` went for the nearest foe, Seamus standing in front. `(enemies r)` now puts the
+  target you named first.
+- **look vs cast**: no disagreement in the kernel (604 casts from 400 spots: look's canHarm / blocked matched every
+  outcome). What changes between the two is the world moving on, so a refused "no clear shot" now says where the
+  target is now.
+- **Possession**:
+  - When it runs out or the body falls, the next MCP result begins with a notice; nothing acts as you unannounced.
+  - Your own body's reflexes pause while you play a vessel.
+  - A held NPC is never drafted into a duel or a match.
+- **Balance**:
+  - Seals give +10 % per seal on the caps (was +20 %).
+  - A reflex answers only someone who struck at you (a hit, or a spell of theirs flying at you, parried or not). Your
+    own splash on a friend no longer starts it.
+  - look shows a lit prop's seconds left and its group's `1/3`. The Willow's stones stay lit 30 s; the agents thought
+    they had 2–3.
+- **2.5D in the forest**: the lens's nearer camera put tree crowns between it and you, and the view solids do not
+  model them. You showed as an x-ray under a solid crown. Two changes:
+  - In 2.5D the cut-out round you is always on (radius 1.9 → 2.6 m). The cut only takes what is nearer the camera than
+    you and above your feet.
+  - A new `canopy` term in the same fragment fade dithers away 65 % of whatever is nearer than you and more than 3.2 m
+    over your feet, anywhere on the screen: crowns, the tops of walls. It is one extra `step` and `smoothstep` in a
+    shader that already ran, with no new draw calls.
+  - `view-audit --flat`, 300 spots: player seen 99.7 % → 100 % (the castle battlement miss is gone).

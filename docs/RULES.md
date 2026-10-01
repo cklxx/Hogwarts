@@ -44,6 +44,8 @@
 | 场景道具：打碎东西每人每学期最多 50 次给经验（每次 2）；一组三个同时点亮，每个出了力的人每组每学期只拿一次奖励（25 经验 + 2 加隆）；烟火桶只伤野生魔物、不伤巫师；带目标的魔弹不会被路边的箱子吃掉 | `src/kernel/props.ts`（`PROP_BREAKS_PER_TERM`、`paid`） | `test/props.test.ts` |
 | 掉落：打碎的东西 35% 掉一件（冰块必掉、坩埚煮出药水），加隆每人每学期最多 60 个，魔力和生命只补到上限；地上最多 160 件、40 秒消失 | `src/kernel/loot.ts`（`LOOT_GALLEONS_PER_TERM`） | `test/dressing.test.ts` |
 | 冰路：冰只在湖面上结、25 秒化掉；化的时候站在上面的人一定被送回最近的岸边（不会卡在水里）；没有冰时走不进湖 | `src/kernel/ice.ts`（`sweep`）、`Solids.walkOn` | `test/ice.test.ts` |
+| 反射只还手：对巫师，只有对方 30 秒内打中你或朝你放了咒语才算交手（你误伤别人不算）；附身期间你自己身体的反射暂停 | `src/kernel/reflexes.ts`（`fighting`） | `test/agents.test.ts`、`test/round4.test.ts` |
+| 锁定的目标优先：`(enemies r)` 把你点名的目标排在第一个，按「第一个敌人」写的咒语打你锁定的人 | `src/kernel/magic.ts` | `test/lockon.test.ts` |
 | 遭遇：每个遭遇每人每学期只开一次门（三选一）；符文最高 3 级，满了门里只剩加隆和研习；佐科后院的小精灵出不了院子（离中心 3.8 米），院子里每一处都在某个烟火桶的火星范围内 | `src/kernel/encounters.ts`（`done`、`doorsFor`）、`CreatureDef.also.leash` | `test/encounters.test.ts` |
 | 符文零件：每种每人只给一次；一个咒语只装一个；符文多打出来的魔弹 / 跳跃 / 爆炸带 `rune` 标记，不会再触发符文（不会自己连锁放大）；NPC 不带符文 | `src/kernel/runes.ts`（`grantRune`、`RUNE_TAG`） | `test/runes.test.ts` |
 | 施法是原子的：法力不够就整段不生效，也不扣法力；法力永远不为负 | `src/kernel/magic.ts` | TLA+ `CastTxn`，Lean `commit_spends_exactly`、`fizzle_is_free` |
