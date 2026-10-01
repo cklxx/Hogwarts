@@ -2135,6 +2135,9 @@ export class World {
     if (!hop && sceneAt(w.pos.x, w.pos.z) && !sceneAt(to.x, to.z)) throw new Error(`(${Math.round(to.x)}, ${Math.round(to.z)}) is in the mist between the scenes: nobody walks there. Scenes: ${SCENES.map((s) => `${s.id} [${s.box.join(', ')}]`).join('; ')}. 那里在场景之间的雾里，走不过去。`);
     if (hop) this.via.set(w.id, { to: sceneAt(to.x, to.z) ? to : hop.out, by, gate: hop });
     route ??= findPath(w.pos, hop ? hop.at : to, this.solids);
+    // out onto water that bears you (Solids.walkOn, bridge: ice): the grid knows only land — to where it starts, then over it
+    const over = !hop && this.solids.walkOn?.(to.x, to.z) ? this.solids.bridge?.(w.pos, to) : null;
+    if (over) route = this.solids.walkOn!(w.pos.x, w.pos.z) ? over.slice(1) : [...(findPath(w.pos, over[0], this.solids) ?? []), ...over.slice(1)];
     this.stuck.delete(w.id);
     if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
     w.route = route;
