@@ -377,6 +377,7 @@ describe('world simulation', () => {
     const w = new World({ seed: 7 });
     const a = join(w, 'Alice');
     a.pos = { x: 60, z: 60 };
+    a.createdAt = -1e6; // (past a newcomer's peace: NEWCOMER_PEACE_S)
     run(w, 10);
     expect(w.creatures.size).toBeGreaterThan(5);
     // step within reach of the nearest spider: it must come for us

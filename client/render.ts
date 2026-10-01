@@ -407,15 +407,17 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     moon.position.copy(focus).addScaledVector(moonDir, 200);
     moon.target.position.copy(focus);
     // by day the "moon" light is the cool fill from the side away from the sun
-    moon.intensity = (0.3 * dayFactor + 1.2 * night * night) * look.sunIntensity * (clear ? 1 : 0.7);
+    moon.intensity = (0.3 * dayFactor + 1.7 * night * night) * look.sunIntensity * (clear ? 1 : 0.7);
     moon.color.set(0x9db8ff).lerp(c1.set(0x8aa6ff), night);
     // sky light takes the painted sky's own colour: blue by day, rose-lavender at dusk, deep blue at night
-    hemi.intensity = (0.5 + 0.2 * dayFactor + 0.3 * dusk) * (0.35 + 0.65 * dayFactor) * (clear ? 1 : 1.2);
+    // (the night floor 0.35 → 0.6, the moon 1.2 → 1.7, the image light 0.25 → 0.4: the 2026-10-01 phone playtest could not
+    // tell the lake shore from the path at night — docs/PERF.md has the luminance before and after)
+    hemi.intensity = (0.5 + 0.2 * dayFactor + 0.3 * dusk) * (0.6 + 0.4 * dayFactor) * (clear ? 1 : 1.2);
     hemi.color.copy(su.uMid.value).lerp(su.uZenith.value, 0.3);
     hemi.color.multiplyScalar(1 / Math.max(1e-4, hemi.color.r, hemi.color.g, hemi.color.b)).lerp(WHITE, 0.35);
     hemi.groundColor.set(0x1a1826).lerp(c1.set(0x6b5a3a), dayFactor).lerp(c2.set(0x8a5a44), dusk * 0.5);
     scene.environment = night > 0.6 ? env.night : dusk > 0.45 ? env.dusk : env.day;
-    scene.environmentIntensity = 0.25 + 0.15 * dayFactor;
+    scene.environmentIntensity = 0.4;
     // rim light on characters: the key light's colour, from its side
     setVec(shared.storyKeyDir, dayFactor > 0.35 ? sunDir : moonDir);
     c1.copy(sun.color).multiplyScalar(0.35 + 0.45 * dusk).lerp(c2.set(0x8fb0ff).multiplyScalar(0.5), night);
@@ -436,7 +438,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     moonSprite.material.opacity = Math.max(0, 1 - dayFactor * 1.4);
     if (painted) painted.position.copy(camera.position);
 
-    renderer.toneMappingExposure = 1.1 - 0.2 * dayFactor;
+    renderer.toneMappingExposure = 1.35 - 0.45 * dayFactor; // (night 1.1 → 1.35, day 0.9 as before)
     // clouds: white with lilac shade by day; peach tops and violet bellies at dusk; moonlit blue at night
     clouds.position.x = (performance.now() / 1000) * 3 % 2400;
     const cu = storyClouds!.mat.uniforms;

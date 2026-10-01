@@ -149,8 +149,11 @@ export function createPhoneShell() {
         if (e && e.parentElement !== pg) pg.append(e);
       }
       // keep the drawer's order as listed (a piece made later lands at the end)
+      // (only the pieces' own order counts: anything else on the page would make every tick re-append them all, and a
+      // node moved mid-tap loses the tap)
       const kids = DRAWER_IDS.map((id) => document.getElementById(id)).filter((e): e is HTMLElement => !!e);
-      if (kids.some((e, i) => pg.children[i] !== e)) for (const e of kids) pg.append(e);
+      const order = Array.from(pg.children).filter((c) => kids.includes(c as HTMLElement));
+      if (order.some((e, i) => e !== kids[i])) for (const e of kids) pg.append(e);
       const sig = liveSig();
       btn.classList.toggle('dot', !!sig && sig !== seen && drawer.hidden);
       const l = mq.step(now());
