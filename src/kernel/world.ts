@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
-  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, CREATURE_HIT_CAP,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, NEWCOMER_PEACE_S, CREATURE_HIT_CAP,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource,
@@ -2647,6 +2647,8 @@ export class World {
     const pickable = (c: Creature, e: { id: string; pos: Vec2 }) => {
       if (!this.canHarm(c.id, e.id) || !sameScene(c, e.pos)) return false;
       const w = this.wizards.get(e.id);
+      // (a newcomer is left alone by what they have not hurt: NEWCOMER_PEACE_S)
+      if (w && !w.npc && this.now - w.createdAt < NEWCOMER_PEACE_S && !(c.damageBy[w.id] > 0)) return false;
       return !w || w.year > 1 || (hunted.get(e.id) ?? 0) < NEWCOMER_PACK;
     };
     for (const c of [...this.creatures.values()]) {

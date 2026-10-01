@@ -1545,3 +1545,30 @@ Cost (`perf-client --bots=0`; SwiftShader, so only the direction counts):
 - Puddles join the wet zones through a square-then-circle test per entity per second.
 - Drops: one map; pickups are checked each tick only while something lies about. A player is sent what lies
   within 30 m of them only, never the whole ground's list.
+
+## 2026-10-01 — the first minutes, after the phone playtest (`wf/newbie`)
+
+The three headless-phone new players (Ivy, Leo, Nina) were all stuck in the first minutes. What was changed, and how it was checked:
+
+- **Tab / the target button locked on to players, not pixies (3/3).** A first-year's Tab and auto-aim never pick a
+  wizard; clicking a wizard still targets them. With nothing within 30 m, Tab looks out to 60 m. The phone's line
+  said "tap ◎", which is the view button; it now shows the target icon. Emulated phone (390×844, touch), six
+  other-house players standing round the newcomer: one tap gave 「康沃尔郡小精灵 · 22 米」.
+- **The Tempus step (3/3).** The step names the hourglass and has its own 施放 button. Before, the book opened on a
+  template that covered the list. Emulated phone: tap 打开 → book open, step 5 → tap 施放 → clock lit, step 6.
+- **Buttons needing several taps (3/3).** Two causes, both fixed:
+  - The coach mark wrote `data-at` and `data-over` every HUD tick, changed or not. Each write woke main.ts's
+    MutationObserver, which measured the HUD (`trackBars`), so there were ten forced layouts a second while the
+    tutorial showed.
+  - The phone drawer re-appended its pieces every tick whenever its page held anything else, and a node moved
+    mid-tap loses the tap.
+
+  On the emulated phone, the centre of every tutorial button is the button itself (`elementFromPoint`): 带我去
+  walked (38 → 34 m in 2.5 s), and 打开 and 施放 worked. The offset the agents saw may be partly their screenshot
+  driver; that part is not verified.
+- **Killed while reading (2/3), Dementors before the first lesson (1/3).** For NEWCOMER_PEACE_S = 300 s a wild
+  creature goes only for a newcomer who has hurt it (`test/playability.test.ts`). The pixies stay on their wet
+  lawn, so the first-reaction guarantee is not touched.
+- **Night too dark (2/3).** The night floor was raised: hemisphere 0.35 → 0.6 of day, moon 1.2 → 1.7, image light
+  0.25 → 0.4, exposure at night 1.1 → 1.35. Day is unchanged. Same spot, 23:00, q=high, play area clear of the HUD:
+  mean luminance 23.2 → 40.6, pixels under 40 went from 93 % to 48 %.

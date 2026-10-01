@@ -20,7 +20,7 @@
 | 规则 | 在哪里强制 | 证明 / 测试 |
 |---|---|---|
 | 安全区里谁也伤不到谁；被击晕的人不能再挨打 | `World.canHarm` | TLA+ `Hostility`（`SafeZonesAreSafe`、`StunnedUntouchable`） |
-| 新入学的巫师有保护期；恶咒和诅咒包裹碰不到新人和 NPC | `NEWCOMER_WARD`、`src/kernel/hex.ts` | TLA+ `Hex`（`FreshAndNpcImmune`） |
+| 新入学的巫师有保护期：入学 5 分钟内野生魔物不主动找你（只有你打过的会还手），3 分钟内魔物伤害减 30%；恶咒和诅咒包裹碰不到新人和 NPC | `NEWCOMER_PEACE_S`、`NEWCOMER_WARD`、`src/kernel/hex.ts` | `test/playability.test.ts`、TLA+ `Hex`（`FreshAndNpcImmune`） |
 | 恶咒永远不能把人打到昏迷，也不能让人永远不能动、永远说不了话 | `hexDot`、沉默冷却 | Lean `hex_dot_never_stuns`、`always_moves`；TLA+ `Hex`（`MovableAlways`、`SilenceNeverPermanent`） |
 | 属性再怎么被削也有下限（生命、法力、速度、伤害） | `src/kernel/progression.ts` | Lean `hp_floor`、`mana_floor`、`speed_floor`、`power_pos` |
 | 决斗俱乐部里只有对手之间能互相伤害：2v2 的队友互相打不到，出局的人碰不到也不会被碰，外人不能打、不能治 | `World.canHarm` 的决斗分支（`duelFoes`） | TLA+ `Hostility`（`DuelMutual`、`DuelTeammates`、`DuelIsolated`） |
