@@ -258,3 +258,25 @@ textarea.runes:focus { background: rgba(120, 80, 30, .14); border-left-color: va
 #runecard button { font-size: calc(14px * var(--t)); padding: calc(5px * var(--u)) calc(10px * var(--u)); }
 #hotbar > div[data-rune]::before { content: attr(data-rune); position: absolute; left: 50%; top: 3px; transform: translateX(-50%); font-size: 11px; line-height: 1; padding: 2px 4px; border-radius: 6px;
   background: rgba(214, 170, 50, .92); color: #2b1d0e; font-weight: 700; pointer-events: none; }
+/* 遭遇 (panels/encounters.ts): the goal line at the top while you are in one, and the doors when you clear it */
+#encgoal { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 92px); transform: translateX(-50%); z-index: 6; max-width: min(34em, calc(100vw - 32px));
+  padding: calc(5px * var(--u)) calc(14px * var(--u)); background: rgb(var(--sheen2) / .9); color: var(--ink); border: 1px solid var(--ink3); border-radius: 999px;
+  font-size: calc(14px * var(--t)); text-align: center; pointer-events: auto; box-shadow: var(--shadow); }
+#encgoal b { color: var(--wax, #962024); margin-right: 4px; }
+#encgoal small { display: block; font-size: calc(12px * var(--t)); opacity: .8; margin-top: 2px; }
+#encgoal.done { opacity: .75; }
+body.phone #encgoal { top: calc(env(safe-area-inset-top, 0px) + 104px); }
+#encdoors { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 9; width: min(40em, calc(100vw - 32px));
+  padding: calc(14px * var(--u)) calc(16px * var(--u)); background: rgb(var(--sheen2) / .97); color: var(--ink); border: 1px solid var(--ink3); border-radius: calc(10px * var(--u));
+  box-shadow: 0 0 0 2px rgba(214, 170, 50, .6), var(--shadow); text-align: center; animation: fadein .35s var(--ease) both; }
+#encdoors > b { display: block; font-size: calc(19px * var(--t)); color: var(--wax, #962024); margin-bottom: 10px; }
+#encdoors .ed-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+#encdoors button { flex: 1 1 10em; max-width: 13em; min-height: 8em; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px;
+  white-space: normal; text-align: center; line-height: 1.35; padding: 12px 10px; height: auto; border-radius: calc(8px * var(--u));
+  background: rgb(var(--sheen) / .9); color: var(--ink); border: 1px solid var(--ink3); box-shadow: none; text-shadow: none; cursor: pointer; }
+#encdoors button:hover:not(:disabled) { border-color: var(--wax, #962024); transform: translateY(-2px); }
+#encdoors button:disabled { opacity: .6; }
+#encdoors button i { font-style: normal; font-size: calc(26px * var(--t)); line-height: 1.2; }
+#encdoors button b { font-size: calc(15px * var(--t)); color: var(--wax, #962024); }
+#encdoors button span { font-size: calc(12.5px * var(--t)); opacity: .85; }
+#encdoors button.ed-rune, #encdoors button.ed-level { border-color: rgba(214, 170, 50, .95); box-shadow: 0 0 0 1px rgba(214, 170, 50, .5); }

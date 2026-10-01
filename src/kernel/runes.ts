@@ -9,13 +9,12 @@
  *
  * How you get them — each by something the game guarantees will happen (docs/DESIGN.md §4): split with your first
  * magic reaction (kernel/chem.ts: the first hit on the lawn's wet pixies is always one), burst with your first
- * puzzle of three props (kernel/props.ts), chain for clearing the greenhouse (GREENHOUSE_SNARES Devil's Snares down
- * there — the greenhouse is humid: its snares are always wet, so the first spell there reacts too). Checked once a
- * second from those features' own state; the browser's card (client/panels/runes.ts) offers to put the new rune on
- * a spell until it is on one.
+ * puzzle of three props (kernel/props.ts), and any of them — or a level on one you have (RUNE_MAX) — as a door when
+ * you clear an encounter (kernel/encounters.ts). Checked once a second from those features' own state; the browser's
+ * card (client/panels/runes.ts) offers to put the new rune on a spell until it is on one.
  */
 import { z } from 'zod';
-import { BURST_DMG, BURST_R, CHAIN_DMG, CHAIN_LEAPS, CHAIN_R, GREENHOUSE, GREENHOUSE_SNARES, RUNE_IDS, RUNES, SPLIT_DEG, SPLIT_SHARE, type RuneId } from '../shared/runes.js';
+import { BURST_LV, CHAIN_DMG, CHAIN_LV, CHAIN_R, RUNE_IDS, RUNE_MAX, RUNES, runeAt, SPLIT_DEG, SPLIT_LV, type RuneId } from '../shared/runes.js';
 import type { Feature } from './feature.js';
 import type { Projectile, Wizard } from './types.js';
 import type { World } from './world.js';
@@ -24,23 +23,27 @@ declare module './world.js' {
   interface World {
     /** 符文零件 (this module's Feature). */
     runes: {
-      /** Per wizard: runes owned (at most one of each) and which spell (by id) each is on. */
-      of: Map<string, { bag: RuneId[]; on: Record<string, RuneId> }>;
-      /** Devil's Snares downed in the greenhouse, per wizard; the snares alive there last second and who hit them last. */
-      snares: Map<string, number>; alive: Map<string, string | null>;
+      /** Per wizard: runes owned (at most one of each), which spell (by id) each is on, and levels above 1. */
+      of: Map<string, Mine>;
       /** Bolts already seen (split once, on the first tick). */
       seen: Set<string>;
     };
   }
 }
 
+interface Mine { bag: RuneId[]; on: Record<string, RuneId>; lv?: Partial<Record<RuneId, number>> }
 const mine = (world: World, wid: string) => world.runes.of.get(wid) ?? world.runes.of.set(wid, { bag: [], on: {} }).get(wid)!;
-/** The rune on the spell a cast came from (its name is in the tags), or null. */
-function runeOf(world: World, w: Wizard | undefined, tags: readonly string[]): RuneId | null {
+/** The level of rune `k` that `wid` has: 0 none, else 1..RUNE_MAX. */
+export function runeLevel(world: World, wid: string, k: RuneId) {
+  const r = world.runes.of.get(wid);
+  return r?.bag.includes(k) ? Math.min(RUNE_MAX, r.lv?.[k] ?? 1) : 0;
+}
+/** The rune on the spell a cast came from (its name is in the tags) and its level, or null. */
+function runeOf(world: World, w: Wizard | undefined, tags: readonly string[]): { k: RuneId; lv: number } | null {
   if (!w || w.npc) return null;
   const r = world.runes.of.get(w.id);
   if (!r) return null;
-  for (const s of w.spells) if (tags.includes(s.name) && r.on[s.id]) return r.on[s.id];
+  for (const s of w.spells) if (tags.includes(s.name) && r.on[s.id]) return { k: r.on[s.id], lv: runeLevel(world, w.id, r.on[s.id]) };
   return null;
 }
 const RUNE_TAG = 'rune';
@@ -54,6 +57,17 @@ export function grantRune(world: World, wid: string, k: RuneId) {
   r.bag.push(k);
   const d = RUNES[k];
   world.emit('achievement', `✨ A new rune: ${d.en} — ${d.docEn}. Put it on a spell (the card, or MCP runes).`, { to: wid, zh: `✨ 新符文：${d.zh}——${d.docZh}。把它装到一个咒语上（点卡片，或 MCP runes）。` });
+  return true;
+}
+
+/** Raise `wid`'s rune `k` one level (to at most RUNE_MAX): a line says what it does now. */
+export function raiseRune(world: World, wid: string, k: RuneId) {
+  const n = runeLevel(world, wid, k);
+  if (!n || n >= RUNE_MAX) return false;
+  const r = mine(world, wid);
+  (r.lv ??= {})[k] = n + 1;
+  const d = RUNES[k], at = runeAt(k, n + 1);
+  world.emit('achievement', `✨ ${d.en} is level ${n + 1}: ${at.en}.`, { to: wid, zh: `✨「${d.zh}」升到 ${n + 1} 级：${at.zh}。` });
   return true;
 }
 
@@ -73,50 +87,52 @@ export const unequipRune = (world: World, wid: string, spellId: string) => { con
 function status(world: World, wid: string) {
   const w = world.need(wid), r = mine(world, wid);
   return {
-    runes: RUNE_IDS.map((k) => ({ id: k, zh: RUNES[k].zh, en: RUNES[k].en, does: `${RUNES[k].docZh} / ${RUNES[k].docEn}`, owned: r.bag.includes(k), on: Object.entries(r.on).find(([, x]) => x === k)?.[0] ? w.spells.find((s) => s.id === Object.entries(r.on).find(([, x]) => x === k)![0])?.name ?? null : null, howToGet: `${RUNES[k].howZh} / ${RUNES[k].howEn}`, code: RUNES[k].code })),
+    runes: RUNE_IDS.map((k) => {
+      const lv = runeLevel(world, wid, k), at = runeAt(k, Math.max(1, lv)), spell = Object.entries(r.on).find(([, x]) => x === k)?.[0];
+      return { id: k, zh: RUNES[k].zh, en: RUNES[k].en, level: lv, maxLevel: RUNE_MAX, does: `${at.zh} / ${at.en}`, owned: lv > 0, on: spell ? w.spells.find((s) => s.id === spell)?.name ?? null : null, howToGet: `${RUNES[k].howZh} / ${RUNES[k].howEn}`, code: RUNES[k].code };
+    }),
   };
 }
 
-/** Split a bolt into three: two more at ±SPLIT_DEG (straight, SPLIT_SHARE of its power). */
-function split(world: World, p: Projectile, w: Wizard) {
+/** Split a bolt: `each` more either side, SPLIT_DEG apart (straight), each and itself `share` of its power. */
+function split(world: World, p: Projectile, w: Wizard, lv: number) {
+  const { each, share } = SPLIT_LV[lv - 1];
   const sp = Math.hypot(p.vel.x, p.vel.z) || 1;
   const dir = Math.atan2(p.vel.x, p.vel.z);
-  for (const s of [-1, 1]) {
-    const a = dir + (s * SPLIT_DEG * Math.PI) / 180;
+  for (let i = 1; i <= each; i++) for (const s of [-1, 1]) {
+    const a = dir + (s * i * SPLIT_DEG * Math.PI) / 180;
     const to = { x: p.pos.x + Math.sin(a) * sp * 2, z: p.pos.z + Math.cos(a) * sp * 2 };
-    world.spawnProjectile({ id: w.id, pos: { ...p.pos }, facing: w.facing }, 'bolt', to, null, p.power * SPLIT_SHARE, p.element, 0, [...p.tags, RUNE_TAG]);
+    world.spawnProjectile({ id: w.id, pos: { ...p.pos }, facing: w.facing }, 'bolt', to, null, p.power * share, p.element, 0, [...p.tags, RUNE_TAG]);
   }
-  p.power *= SPLIT_SHARE;
+  p.power *= share;
 }
 
 export const RUNES_FEATURE: Feature = {
   id: 'runes',
-  init(world) { world.runes = { of: new Map(), snares: new Map(), alive: new Map(), seen: new Set() }; },
+  init(world) { world.runes = { of: new Map(), seen: new Set() }; },
   bolt(world, p) {
     if (world.runes.seen.has(p.id)) return;
     world.runes.seen.add(p.id);
     if (p.kind !== 'bolt' || p.tags.includes(RUNE_TAG)) return;
-    const w = world.wizards.get(p.owner);
-    if (runeOf(world, w, p.tags) === 'split') split(world, p, w!);
+    const w = world.wizards.get(p.owner), r = runeOf(world, w, p.tags);
+    if (r?.k === 'split') split(world, p, w!, r.lv);
   },
   hit(world, by, src, dstId, tags, dmg, element) {
-    // (the greenhouse's snares: who hit each last — it may be gone before the next second's count)
-    const sn = world.creatures.get(dstId);
-    if (dmg && by && sn?.kind === 'snare' && Math.hypot(sn.pos.x - GREENHOUSE.x, sn.pos.z - GREENHOUSE.z) <= GREENHOUSE.r) world.runes.alive.set(dstId, by);
     if (!dmg || !element || tags.includes(RUNE_TAG)) return 1;
     const r = runeOf(world, src ?? (by ? world.wizards.get(by) : undefined), tags);
-    if (r !== 'chain' && r !== 'burst') return 1;
+    if (r?.k !== 'chain' && r?.k !== 'burst') return 1;
     const t = world.wizards.get(dstId) ?? world.creatures.get(dstId);
     if (!t) return 1;
     const rt = [...tags, RUNE_TAG];
-    if (r === 'burst') {
-      world.fx({ k: 'nova', x: t.pos.x, z: t.pos.z, r: BURST_R, e: element });
-      for (const o of world.around(t.pos, BURST_R, (x) => x.id !== dstId && world.canHarm(by, x.id), by ?? undefined, 8)) world.damage(by, o.id, BURST_DMG, element, rt);
+    if (r.k === 'burst') {
+      const b = BURST_LV[r.lv - 1];
+      world.fx({ k: 'nova', x: t.pos.x, z: t.pos.z, r: b.r, e: element });
+      for (const o of world.around(t.pos, b.r, (x) => x.id !== dstId && world.canHarm(by, x.id), by ?? undefined, 8)) world.damage(by, o.id, b.dmg, element, rt);
     } else {
       const pts = [t.pos.x, t.pos.z];
       let from = t.pos;
       const hit = new Set([dstId]);
-      for (let i = 0; i < CHAIN_LEAPS; i++) {
+      for (let i = 0; i < CHAIN_LV[r.lv - 1]; i++) {
         const o = world.around(from, CHAIN_R, (x) => !hit.has(x.id) && world.canHarm(by, x.id), by ?? undefined, 1)[0];
         if (!o) break;
         hit.add(o.id); pts.push(o.pos.x, o.pos.z); from = o.pos;
@@ -130,27 +146,14 @@ export const RUNES_FEATURE: Feature = {
     const s = world.runes;
     // bolts long gone
     if (s.seen.size > 4096) for (const id of s.seen) if (!world.projectiles.has(id)) s.seen.delete(id);
-    // the greenhouse's snares: who downed each one that is gone since last second
-    for (const [id, by] of [...s.alive]) {
-      const c = world.creatures.get(id);
-      if (c && c.hp > 0) continue;
-      s.alive.delete(id);
-      if (!by) continue;
-      const n = (s.snares.get(by) ?? 0) + 1;
-      s.snares.set(by, n);
-      if (n === GREENHOUSE_SNARES && world.wizards.get(by) && !world.wizards.get(by)!.npc) {
-        world.emit('achievement', 'The greenhouse is clear of Devil’s Snare!', { to: by, zh: '温室里的魔鬼网清干净了！' });
-        grantRune(world, by, 'chain');
-      }
-    }
-    // the other two: from the features that make them happen
+    // from the features that make them happen
     for (const [wid, n] of world.chem?.reactions ?? []) if (n > 0) grantRune(world, wid, 'split');
     for (const [wid, groups] of world.props?.paid ?? []) if (groups.size > 0) grantRune(world, wid, 'burst');
   },
-  view: { key: 'runes', me: (world, w) => { const r = world.runes.of.get(w.id); return r ? { bag: r.bag, on: r.on } : null; } },
+  view: { key: 'runes', me: (world, w) => { const r = world.runes.of.get(w.id); return r ? { bag: r.bag, on: r.on, ...(r.lv ? { lv: r.lv } : {}) } : null; } },
   tools: [{
     name: 'runes', title: 'Runes', cost: 0,
-    description: '符文零件: pieces that change how a spell lands — split (a bolt goes out as three), chain (a hit leaps on to two more foes), burst (a hit bursts 3 m round). See what you own and how to get the rest; put one on a spell with {rune, spell} (one rune per spell), take it off with {spell, off: true}.',
+    description: '符文零件: pieces that change how a spell lands — split (a bolt goes out as three), chain (a hit leaps on to two more foes), burst (a hit bursts 3 m round); levels 1–3 (an encounter door raises one). See what you own, each one\'s level and how to get the rest; put one on a spell with {rune, spell} (one rune per spell), take it off with {spell, off: true}.',
     input: { rune: z.enum(RUNE_IDS as [RuneId, ...RuneId[]]).optional(), spell: z.string().max(60).optional(), off: z.boolean().optional() },
     run(world, wid, a) {
       if (a.spell && a.off) return unequipRune(world, wid, world.need(wid).spells.find((s) => s.name === a.spell || s.id === a.spell)?.id ?? String(a.spell));
@@ -163,16 +166,17 @@ export const RUNES_FEATURE: Feature = {
     if (typeof m.rune === 'string' && typeof m.spell === 'string' && (RUNE_IDS as string[]).includes(m.rune)) return equipRune(world, wid, m.rune as RuneId, m.spell);
     return status(world, wid);
   },
-  save: (world) => ({ of: Object.fromEntries(world.runes.of), snares: Object.fromEntries(world.runes.snares) }),
+  save: (world) => ({ of: Object.fromEntries(world.runes.of) }),
   load(world, data) {
-    const d = data as { of?: Record<string, { bag?: unknown; on?: unknown }>; snares?: Record<string, number> } | undefined;
+    const d = data as { of?: Record<string, { bag?: unknown; on?: unknown; lv?: unknown }> } | undefined;
     if (!d || typeof d !== 'object') return;
     for (const [wid, r] of Object.entries(d.of ?? {})) {
       const bag = Array.isArray(r.bag) ? (r.bag as unknown[]).filter((x): x is RuneId => (RUNE_IDS as unknown[]).includes(x)) : [];
       const on: Record<string, RuneId> = {};
       for (const [k, v] of Object.entries((r.on as Record<string, unknown>) ?? {})) if ((RUNE_IDS as unknown[]).includes(v)) on[k] = v as RuneId;
-      world.runes.of.set(wid, { bag, on });
+      const lv: Partial<Record<RuneId, number>> = {};
+      for (const [k, v] of Object.entries((r.lv as Record<string, unknown>) ?? {})) if ((RUNE_IDS as string[]).includes(k) && typeof v === 'number' && v >= 1) lv[k as RuneId] = Math.min(RUNE_MAX, Math.floor(v));
+      world.runes.of.set(wid, { bag, on, ...(Object.keys(lv).length ? { lv } : {}) });
     }
-    for (const [k, v] of Object.entries(d.snares ?? {})) if (typeof v === 'number') world.runes.snares.set(k, v);
   },
 };

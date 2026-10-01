@@ -12,7 +12,11 @@ import { World, spellKind } from '../src/kernel/world.js';
 import type { Creature, Fx, Wizard } from '../src/kernel/types.js';
 import { SPAWN } from '../src/shared/map.js';
 import { PROPS } from '../src/shared/props.js';
-import { BURST_DMG, CHAIN_DMG, GREENHOUSE, GREENHOUSE_SNARES, SPLIT_SHARE } from '../src/shared/runes.js';
+import { BURST_DMG, CHAIN_DMG, SPLIT_SHARE } from '../src/shared/runes.js';
+import { encounterById } from '../src/shared/encounters.js';
+import { pickDoor } from '../src/kernel/encounters.js';
+
+const GREENHOUSE = encounterById('greenhouse')!, GREENHOUSE_SNARES = GREENHOUSE.need;
 
 function mk(spawn = 0) {
   const w = new World({ seed: 41, secret: 'runes' });
@@ -109,7 +113,7 @@ describe('runes: how you get them (guaranteed)', () => {
       expect(bag(w, a), sp!.name).toContain('split');
     }
   });
-  it('the greenhouse: the first spell at a snare there reacts (whichever); downing GREENHOUSE_SNARES pays chain', () => {
+  it('the greenhouse: the first spell at a snare there reacts (whichever); downing its snares opens a door to chain', () => {
     const w0 = mk();
     const a0 = w0.enroll('GH Bar', 'Hufflepuff' as never).wizard;
     const attacks = a0.hotbar.map((id, i) => ({ i, sp: a0.spells.find((s) => s.id === id) })).filter((x) => x.sp && spellKind(x.sp.effects) === 'harm');
@@ -133,6 +137,8 @@ describe('runes: how you get them (guaranteed)', () => {
       w.damage(a.id, s.id, 999, 'fire');
       run(w, 2.2);
     }
+    expect(w.enc.doors.get(a.id)?.[0].doors[0]).toEqual({ t: 'rune', rune: 'chain' });
+    pickDoor(w, a.id, 0);
     expect(bag(w, a)).toContain('chain');
   });
   it('the first puzzle of three props pays burst', () => {

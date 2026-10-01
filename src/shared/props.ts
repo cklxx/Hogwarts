@@ -8,7 +8,7 @@
  */
 import type { Element } from './constants.js';
 
-export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'brazier' | 'rune' | 'basin' | 'crystal';
+export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'web' | 'brazier' | 'rune' | 'basin' | 'crystal';
 export interface PropDef {
   zh: string; en: string;
   /** Any hurting spell breaks it (back after PROP_RESPAWN_S). */
@@ -18,8 +18,8 @@ export interface PropDef {
   secs?: number;
   /** The element that puts it out again (a brazier under ice, a basin under fire). */
   quench?: Element;
-  /** A whizbang: fire sets it off (a blast of this radius, fire). */
-  blast?: number;
+  /** Fire sets it off: a fire blast of this radius (WHIZBANG_POWER unless `power`) that touches the props in it. */
+  blast?: number; power?: number;
   /** Hint for the look-over (MCP look, the hover line). */
   hintZh: string; hintEn: string;
 }
@@ -29,6 +29,8 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   pumpkin: { zh: '南瓜', en: 'pumpkin', breaks: true, hintZh: '海格的南瓜，打碎它', hintEn: "Hagrid's pumpkin: smash it" },
   pot: { zh: '陶罐', en: 'pot', breaks: true, hintZh: '任何攻击咒都能打碎', hintEn: 'any hurting spell breaks it' },
   whizbang: { zh: '韦斯莱烟火桶', en: 'Weasley whizbang barrel', breaks: true, blast: 4, hintZh: '火一碰就炸，炸到旁边的东西和魔物', hintEn: 'fire sets it off: it blasts what stands near' },
+  // (a web's blast is its fire running along the strands: the webs it touches burn too, a cluster at once)
+  web: { zh: '蛛网', en: 'spider web', breaks: true, blast: 2.6, power: 8, hintZh: '火一碰，连着的蛛网一起烧；任何攻击咒能打掉一片', hintEn: 'fire runs along to the webs it touches; any hurting spell tears one' },
   brazier: { zh: '火盆', en: 'brazier', wakes: 'fire', secs: 40, quench: 'ice', hintZh: '用火点燃；三个同时燃着有奖励', hintEn: 'light it with fire; all three lit at once pays' },
   rune: { zh: '符文石', en: 'rune stone', wakes: 'lightning', secs: 30, hintZh: '用雷电充能；三块同时亮着有奖励', hintEn: 'charge it with lightning; all three at once pays' },
   basin: { zh: '水盆', en: 'basin', wakes: 'ice', secs: 35, quench: 'fire', hintZh: '用冰冻住；三个同时冻着有奖励', hintEn: 'freeze it with ice; all three at once pays' },
@@ -48,6 +50,9 @@ export const PROP_BREAK_XP = 2, PROP_BREAKS_PER_TERM = 50;
 export const PROP_GROUP_XP = 25, PROP_GROUP_GALLEONS = 2;
 /** A whizbang's blast hurts wild creatures this much (fire). */
 export const WHIZBANG_POWER = 18;
+/** A fire hit on anyone standing this near a prop that fire sets off (a whizbang, a web) sets it off too: sparks.
+ *  (A whizbang's own reach: every spot Zonko's pixies are born on is within it of a barrel, kernel/creatures.ts.) */
+export const IGNITE_R = 4;
 
 export const PROP_GROUPS: readonly PropGroup[] = [
   { id: 'dungeon-fire', zh: '地窖火盆', en: 'the dungeon braziers', kind: 'brazier' },
@@ -81,6 +86,10 @@ export const PROPS: readonly Prop[] = [
   at('fr-1', 'rune', 125, 10, 'forest-runes'), at('fr-2', 'rune', 128, 13, 'forest-runes'), at('fr-3', 'rune', 122, 13, 'forest-runes'),
   at('gl-1', 'crystal', 112, -4, 'glade-light'), at('gl-2', 'crystal', 115, -1, 'glade-light'), at('gl-3', 'crystal', 108.5, 0, 'glade-light'),
   at('fr-4', 'pot', 118, 30), at('fr-5', 'crate', 140, 20),
+  // the acromantula nest (src/shared/encounters.ts): three clusters of webs, each burning as one
+  at('web-1', 'web', 136, 31), at('web-2', 'web', 138, 31.5), at('web-3', 'web', 137, 33.4),
+  at('web-4', 'web', 144, 37), at('web-5', 'web', 146, 37.5), at('web-6', 'web', 145, 39.4),
+  at('web-7', 'web', 133, 41), at('web-8', 'web', 135, 41.5), at('web-9', 'web', 134, 43.4),
   // the pitch: crates by the stands, braziers at the entrance, whizbangs for the fans
   at('pt-1', 'brazier', 42, -130, 'pitch-fire'), at('pt-2', 'brazier', 45, -127, 'pitch-fire'), at('pt-3', 'brazier', 39, -127, 'pitch-fire'),
   at('pt-4', 'crate', 66, -140), at('pt-5', 'crate', 67, -142), at('pt-6', 'whizbang', 20, -140), at('pt-7', 'whizbang', 21, -143),
@@ -88,5 +97,7 @@ export const PROPS: readonly Prop[] = [
   at('hm-1', 'barrel', -14.5, 160), at('hm-2', 'barrel', -16.5, 163.5), at('hm-3', 'barrel', -18.5, 163.5), at('hm-4', 'whizbang', 15.5, 148.5), at('hm-5', 'whizbang', 17, 148.5),
   at('hm-6', 'brazier', 0, 180, 'village-fire'), at('hm-7', 'brazier', 3, 183, 'village-fire'), at('hm-8', 'brazier', -3, 183, 'village-fire'),
   at('hm-9', 'crate', 30, 145), at('hm-10', 'pot', 40, 190),
+  // Zonko's yard (src/shared/encounters.ts): a row of whizbangs close enough that one sets off the next
+  at('zk-1', 'whizbang', 8, 139), at('zk-2', 'whizbang', 10.8, 139), at('zk-3', 'whizbang', 13.6, 139), at('zk-4', 'whizbang', 16.4, 139), at('zk-5', 'whizbang', 19.2, 139),
 ];
 export const propById = (id: string) => PROPS.find((p) => p.id === id) ?? null;

@@ -5,13 +5,14 @@
  * (the `blast` hook: a nova, a storm breaking, each place a chain leaps to). Then:
  *  - a breakable breaks (PROP_BREAK_XP to the caster, at most PROP_BREAKS_PER_TERM a term), back in PROP_RESPAWN_S;
  *  - a whizbang touched by fire goes up: a fire blast of its radius that hurts wild creatures (never wizards) and
- *    touches the props round it — a row of barrels goes off one after another;
+ *    touches the props round it — a row of barrels goes off one after another; a fire hit on anyone within IGNITE_R
+ *    of one sets it off as well (the `hit` hook: a pixie burning among the barrels, a spider by its web);
  *  - an elemental prop woken by its element stays awake `secs` (its quench element puts it out); when all three of a
  *    group are awake at once, each wizard who woke one of them in that time gets PROP_GROUP_XP and PROP_GROUP_GALLEONS,
  *    once per group per term (RULES: rewards are capped).
  * State goes out as the snapshot's `props` (only what is not at rest), and MCP look lists the props within 25 m.
  */
-import { PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROPS, WHIZBANG_POWER, type Prop } from '../shared/props.js';
+import { IGNITE_R, PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROPS, WHIZBANG_POWER, type Prop } from '../shared/props.js';
 import type { Element } from '../shared/constants.js';
 import type { Feature } from './feature.js';
 import type { Vec2 } from './types.js';
@@ -21,8 +22,8 @@ declare module './world.js' {
   interface World {
     /** 场景道具 (this module's Feature). */
     props: {
-      /** Broken props: when each comes back. */
-      broken: Map<string, number>;
+      /** Broken props: when each comes back; who broke each and when (an encounter counts them, kernel/encounters.ts). */
+      broken: Map<string, number>; who: Map<string, { by: string; at: number }>;
       /** Awake props: until when, and who woke it (wizard id). */
       awake: Map<string, { until: number; by: string }>;
       /** This term's counts: breaks per wizard, groups paid per wizard. */
@@ -58,6 +59,7 @@ export function touch(world: World, p: Prop, element: Element, by: string, depth
   const w = world.wizards.get(by);
   if (def.breaks) {
     s.broken.set(p.id, world.now + PROP_RESPAWN_S);
+    s.who.set(p.id, { by, at: world.now });
     world.fx({ k: 'hit', x: p.x, z: p.z, e: element });
     if (w && !w.npc) {
       const n = s.breaks.get(w.id) ?? 0;
@@ -67,7 +69,7 @@ export function touch(world: World, p: Prop, element: Element, by: string, depth
       // 韦斯莱烟火: a fire blast round it — wild creatures only, and whatever props stand in it
       world.fx({ k: 'nova', x: p.x, z: p.z, r: def.blast, e: 'fire' });
       world.fx({ k: 'stormhit', x: p.x, z: p.z, r: def.blast, e: 'fire' });
-      for (const e of world.around(p, def.blast, (e) => !('house' in e) && world.canHarm(by, e.id), by, 16)) world.damage(by, e.id, WHIZBANG_POWER, 'fire', ['whizbang']);
+      for (const e of world.around(p, def.blast, (e) => !('house' in e) && world.canHarm(by, e.id), by, 16)) world.damage(by, e.id, def.power ?? WHIZBANG_POWER, 'fire', ['whizbang']);
       for (const q of near(p, def.blast, [])) if (q !== p) touch(world, q, 'fire', by, depth + 1);
     }
     return true;
@@ -103,7 +105,7 @@ function solve(world: World, gid: string) {
 const scratch: Prop[] = [];
 export const PROPS_FEATURE: Feature = {
   id: 'props',
-  init(world) { world.props = { broken: new Map(), awake: new Map(), term: world.term.n, breaks: new Map(), paid: new Map() }; },
+  init(world) { world.props = { broken: new Map(), who: new Map(), awake: new Map(), term: world.term.n, breaks: new Map(), paid: new Map() }; },
   // a straight bolt passing close touches the nearest prop and is spent on it (one with a target flies past: a fight
   // among the crates is not eaten by them)
   bolt(world, p) {
@@ -113,12 +115,19 @@ export const PROPS_FEATURE: Feature = {
       if (touch(world, q, p.element, p.owner)) { p.ttl = 0; return; }
     }
   },
+  // sparks: a direct fire hit on someone by a whizbang or a web sets it off (its own blasts excepted)
+  hit(world, by, _src, dstId, tags, dmg, element) {
+    if (element !== 'fire' || !dmg || !by || tags.includes('whizbang')) return 1;
+    const e = world.wizards.get(dstId) ?? world.creatures.get(dstId);
+    if (e) for (const q of near(e.pos, IGNITE_R, [])) if (PROP_DEFS[q.kind].blast) touch(world, q, 'fire', by);
+    return 1;
+  },
   blast(world, by, at, r, element) {
     for (const q of near(at, r + PROP_R, [])) touch(world, q, element, by);
   },
   sweep(world) {
     const s = world.props;
-    for (const [id, t] of s.broken) if (t <= world.now) s.broken.delete(id);
+    for (const [id, t] of s.broken) if (t <= world.now) { s.broken.delete(id); s.who.delete(id); }
     for (const [id, a] of s.awake) if (a.until <= world.now) s.awake.delete(id);
   },
   // the browser: what is not at rest (broken: seconds until back; awake: seconds left)

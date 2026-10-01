@@ -2,14 +2,15 @@
  * 符文零件 in the browser (src/shared/runes.ts; the kernel's src/kernel/runes.ts): a rune you own that is on no spell
  * shows a card over the hotbar — what it does, the line of Runes it is worth, and one button per attack spell on your
  * bar — until it is on one (docs/DESIGN.md §4: every new player puts their first rune on a spell; the card is that
- * step, and it does not go away by itself). A hotbar tile whose spell carries a rune shows the rune's first character (its ::before; ::after is the selection ring).
+ * step, and it does not go away by itself). A hotbar tile whose spell carries a rune shows the rune's first character
+ * and its level above 1 (its ::before; ::after is the selection ring).
  */
 import type { ClientFeature, ClientFeatureFactory } from '../feature';
 import { L, spellName } from '../i18n';
 import { RUNES, type RuneId } from '../../src/shared/runes';
 import { esc } from './logic';
 
-interface Mine { bag: RuneId[]; on: Record<string, RuneId> }
+interface Mine { bag: RuneId[]; on: Record<string, RuneId>; lv?: Partial<Record<RuneId, number>> }
 interface Slot { id: string; name: string; kind?: string }
 
 /** The rune waiting for a spell (the first owned and on none), or null. Pure, for tests. */
@@ -43,7 +44,8 @@ export const runesFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
         const t = tiles[i] as HTMLElement | undefined;
         if (!t) return;
         const k = s && r?.on[s.id];
-        const mark = k ? L(RUNES[k].zh.slice(0, 1), RUNES[k].en.slice(0, 1)) : '';
+        const lv = k ? r?.lv?.[k] ?? 1 : 1;
+        const mark = k ? L(RUNES[k].zh.slice(0, 1), RUNES[k].en.slice(0, 1)) + (lv > 1 ? String(lv) : '') : '';
         if ((t.dataset.rune ?? '') !== mark) { if (mark) t.dataset.rune = mark; else t.removeAttribute('data-rune'); }
       });
       // the card

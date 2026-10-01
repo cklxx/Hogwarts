@@ -1482,3 +1482,15 @@ the camera hangs 0.1 m in front of a 2 m merlon, and the merlon is not among the
 away.
 
 No frame-rate claim (SwiftShader).
+
+## 2026-10-01 — encounters, rune levels, sparks (`wf/encounters`)
+
+- Kernel, the `encounters` sweep: once a second it goes over the goal creatures hit in an encounter (a map, usually
+  empty) and the 14 goal props (9 webs, 5 whizbangs). The `hit` hook adds three circle tests per direct hit on a
+  creature.
+- Props, sparks: a direct fire hit looks up the 8 m prop grid within IGNITE_R, one or two cells.
+- The leash (`CreatureDef.also`): one optional-chained lookup per creature step. Only the pixie has an `also` entry,
+  so every other kind stops at `undefined`.
+- Client: the webs are one instanced mesh, one more draw call (plus its shadow). The goal line and the doors are DOM,
+  rewritten only when their text changes.
+- No frame-rate claim (SwiftShader).

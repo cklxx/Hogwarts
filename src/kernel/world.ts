@@ -2766,6 +2766,9 @@ export class World {
     // and never out of their home's scene: the veil stops walkers, a flyer is held at its edge (the 2026-09-30 society
     // playtest: the lake's Dementors flew over into the courtyard after anyone within their 25 m)
     else if (!c.owner) { const s = sceneAt(c.home.x, c.home.z); if (s) { c.pos.x = clampN(c.pos.x, s.box[0], s.box[2]); c.pos.z = clampN(c.pos.z, s.box[1], s.box[3]); } }
+    // and one born at a leashed place stays within its leash (CreatureDef `also`)
+    const lp = !c.owner && CREATURES[c.kind].also?.find((p) => p.leash && Math.hypot(c.home.x - p.x, c.home.z - p.z) <= p.r + 1);
+    if (lp) { const ox = c.pos.x - lp.x, oz = c.pos.z - lp.z, o = Math.hypot(ox, oz); if (o > lp.leash!) { c.pos.x = lp.x + (ox / o) * lp.leash!; c.pos.z = lp.z + (oz / o) * lp.leash!; } }
     // wild creatures never wander into safe zones
     if (!c.owner && this.inSafe(c.pos)) { c.pos.x -= (dx / l) * s; c.pos.z -= (dz / l) * s; }
     this.moved(c);
@@ -2782,28 +2785,30 @@ export class World {
         for (const c of alive) if (!c.target || !rc.enabled[kind]) this.creatures.delete(c.id);
         continue;
       }
-      const max = Math.round(def.spawn.max * rc.spawnMultiplier);
-      if (alive.length >= max) continue;
-      if (def.rare && this.rng() > def.rare) continue;
-      for (let tries = 0; tries < 12; tries++) {
-        const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * def.spawn.r;
-        const p = { x: def.spawn.x + Math.cos(a) * r, z: def.spawn.z + Math.sin(a) * r };
-        const q = { ...p };
-        this.solids.resolve(q, def.radius);
-        if (!def.flying && dist(p, q) > 0.01) continue;
-        if (this.inSafe(p) || this.within(p, 'great_hall') || (def.faction === 'hostile' && this.within(p, 'courtyard'))) continue;
-        // never born already on top of someone: outside its own aggro reach of every wizard (playtest round 3: an
-        // acromantula appearing beside whoever walked into the forest)
-        const clear = Math.max(8, def.aggro + 2);
-        if (def.faction === 'hostile' && [...this.nearWizards(p, clear)].some((w) => this.isActive(w) && dist(w.pos, p) < clear)) continue;
-        const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
-        const c: Creature = {
-          id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,
-          wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: def.lifetime ? this.now + def.lifetime : 0,
-        };
-        this.creatures.set(c.id, c);
-        if (kind === 'phoenix') this.emit('creature', 'A phoenix sings somewhere over the grounds. Fawkes has come.', { zh: '场地上空某处传来凤凰的歌声。福克斯来了。' });
-        break;
+      for (const sp of def.also ? [def.spawn, ...def.also] : [def.spawn]) {
+        const max = Math.round(sp.max * rc.spawnMultiplier);
+        if ((def.also ? alive.filter((c) => Math.hypot(c.home.x - sp.x, c.home.z - sp.z) <= sp.r + 1).length : alive.length) >= max) continue;
+        if (def.rare && this.rng() > def.rare) continue;
+        for (let tries = 0; tries < 12; tries++) {
+          const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * sp.r;
+          const p = { x: sp.x + Math.cos(a) * r, z: sp.z + Math.sin(a) * r };
+          const q = { ...p };
+          this.solids.resolve(q, def.radius);
+          if (!def.flying && dist(p, q) > 0.01) continue;
+          if (this.inSafe(p) || this.within(p, 'great_hall') || (def.faction === 'hostile' && this.within(p, 'courtyard'))) continue;
+          // never born already on top of someone: outside its own aggro reach of every wizard (playtest round 3: an
+          // acromantula appearing beside whoever walked into the forest)
+          const clear = Math.max(8, def.aggro + 2);
+          if (def.faction === 'hostile' && [...this.nearWizards(p, clear)].some((w) => this.isActive(w) && dist(w.pos, p) < clear)) continue;
+          const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
+          const c: Creature = {
+            id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,
+            wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: def.lifetime ? this.now + def.lifetime : 0,
+          };
+          this.creatures.set(c.id, c);
+          if (kind === 'phoenix') this.emit('creature', 'A phoenix sings somewhere over the grounds. Fawkes has come.', { zh: '场地上空某处传来凤凰的歌声。福克斯来了。' });
+          break;
+        }
       }
     }
   }

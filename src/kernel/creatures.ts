@@ -11,6 +11,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   pixie: {
     kind: 'pixie', name: 'Cornish Pixie', faction: 'hostile', hp: 24, speed: 5.5, damage: 4, range: 1.6, cooldown: 1.0, aggro: 7, radius: 0.35,
     xp: 12, rep: 1, galleons: 1, weak: { ice: 2 }, spawn: { x: 12, z: 10, r: 18, max: 6 }, // the lawn just south of the courtyard: a first-year's first target is ~20 m away (it was ~60), and not a swarm
+    also: [{ x: 14, z: 139, r: 3.5, max: 5, leash: 3.8 }], // loose from Zonko's, kept in its yard: every spot there is within a spark of a whizbang (src/shared/encounters.ts)
     lore: 'Electric blue, eight inches high, and mischievous. Lockhart released a cage of them once. Freezing charms work.',
   },
   snare: {
