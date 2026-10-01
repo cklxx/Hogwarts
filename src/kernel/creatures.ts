@@ -15,7 +15,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   snare: {
     kind: 'snare', name: "Devil's Snare", faction: 'hostile', hp: 60, speed: 0, damage: 5, range: 3.5, cooldown: 1.2, aggro: 3.5, radius: 1.2,
-    xp: 10, rep: 1, galleons: 1, weak: { fire: 2, light: 3 }, spawn: { x: 41, z: -24, r: 12, max: 4 },
+    xp: 10, rep: 1, galleons: 1, weak: { fire: 2, light: 3 }, spawn: { x: 41, z: -26, r: 8, max: 4 },
     ranged: { range: 48, power: 7, cooldown: 2.2, element: 'arcane', kind: 'bolt', provoked: true },
     lore: 'Roots anything that lingers, and flings thorns at whoever burns it from afar. Fire or sunlight.',
   },

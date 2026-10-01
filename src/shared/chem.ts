@@ -38,6 +38,8 @@ export const WATER_TAG = 'water';
 export const WET_ZONES: readonly { id: string; zh: string; x: number; z: number; r: number }[] = [
   { id: 'lawn', zh: '草地露水', x: 12, z: 10, r: 20 },
   { id: 'lake', zh: '湖边浅水', x: -86, z: 36, r: 10 },
+  // the greenhouses are humid: their Devil's Snare is always wet (the encounter there: src/kernel/runes.ts)
+  { id: 'greenhouse', zh: '温室水汽', x: 41, z: -28, r: 14 },
 ];
 export const inWetZone = (x: number, z: number) => WET_ZONES.some((w) => Math.hypot(x - w.x, z - w.z) <= w.r);
 
