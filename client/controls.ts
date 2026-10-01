@@ -139,7 +139,8 @@ export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+拖动' : '右键拖动';
 export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
 /**
  * 2.5D (the owner, 2026-09-30: 「可以 2.5d？这个视角现在很不舒服」): the camera of Diablo, Hades, Don't Starve — a fixed
- * angle, FLAT_PITCH down (~53°), from FLAT_DIST away with a long lens (render.ts FLAT_FOV), following you without ever
+ * angle, framed as a long lens (FLAT_FOV) from FLAT_DIST would frame you — client/lens.ts takes the camera in nearer
+ * with a wider lens and tips it lower (narrow near, wide far: more ground on screen) — following you without ever
  * turning by itself; Q / E (or a drag, let go) turn it in 45° steps; the wheel / a pinch zooms within FLAT_ZOOM. It
  * replaced the old 俯视 (1.15 rad from 16 m with a 55° lens: the fisheye look) and is the first view everywhere;
  * the follow camera stays one toggle away (Z, the drawer's ◎). The key is new, so everyone starts in 2.5D once.

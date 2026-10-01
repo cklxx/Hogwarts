@@ -2,7 +2,7 @@
  * Can you always see your wizard? The camera audit of client/view.ts, on the real scene in headless Chromium.
  *
  *   npx vite build && npx tsx scripts/view-audit.ts [--port=8840] [--n=500] [--seed=11] [--q=high|low]
- *        [--min=99] [--chromium=/opt/pw-browsers/chromium] [--playwright=<playwright-core/index.mjs>]
+ *        [--min=99] [--chromium=/opt/pw-browsers/chromium] [--playwright=<playwright-core/index.mjs>] [--flat]
  *
  * Starts `src/server/main.ts` on a scratch world, opens the client with `?debug=view`, and runs
  * `window.__view.audit(n, seed)` twice: with the camera as it is (spring arm, occluder fading) and as it was
@@ -11,12 +11,17 @@
  * the camera to the wizard's head, chest and knees through the scene's own static meshes (merged batches,
  * instanced trees, the terrain), letting a ray on through what the fade dithers away there. Prints the share of
  * samples where the head or chest is seen, and exits 1 below `--min` percent.
+ *
+ * `--flat`: the 2.5D camera instead (FLAT_DIST, a random 45° turn), with client/lens.ts's lens for this 16:9 page
+ * (`now`) and with the long lens it replaced (`before`: k 1, pitch 0.92, 30°).
  */
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { FLAT_DIST } from '../client/controls.js';
+import { flatLens } from '../client/lens.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1'] as [string, string]; }));
@@ -41,11 +46,14 @@ try {
   await page.goto(`${base}/?q=${Q}&debug=view#k=${encodeURIComponent(token)}`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!(window as unknown as { __view?: { me(): unknown } }).__view?.me(), null, { timeout: 300000 });
   type Report = { n: number; pct: number; pctNoFade: number; head: number; chest: number; knees: number; fadeOn: number; byArea: Record<string, [number, number]>; misses: unknown[]; ms: number };
-  const run = (old: boolean) => page.evaluate(([n, seed, old]: [number, number, boolean]) => (window as unknown as { __view: { audit(n: number, s: number, o: boolean): Report } }).__view.audit(n, seed, old), [N, SEED, old] as [number, number, boolean]) as Promise<Report>;
-  const now = await run(false), before = await run(true);
+  type Flat = { k: number; pitch: number; fov: number; dist: number } | null;
+  const run = (old: boolean, flat: Flat = null) => page.evaluate(([n, seed, old, flat]: [number, number, boolean, Flat]) => (window as unknown as { __view: { audit(n: number, s: number, o: boolean, f?: Flat): Report } }).__view.audit(n, seed, old, flat ?? undefined), [N, SEED, old, flat] as [number, number, boolean, Flat]) as Promise<Report>;
+  const flat = args.has('flat');
+  const now = flat ? await run(false, { ...flatLens(16 / 9), dist: FLAT_DIST }) : await run(false);
+  const before = flat ? await run(false, { k: 1, pitch: 0.92, fov: 30, dist: FLAT_DIST }) : await run(true);
   const row = (name: string, r: Report) => console.log(`${name.padEnd(8)} seen ${String(r.pct).padStart(5)} %  (head ${r.head}, chest ${r.chest}, knees ${r.knees} of ${r.n}; without the fade ${r.pctNoFade} %; fade on in ${r.fadeOn})  ` +
     Object.entries(r.byArea).map(([a, [n, ok]]) => `${a} ${ok}/${n}`).join(', ') + `  [${r.ms} ms]`);
-  console.log(`camera audit: ${N} samples, seed ${SEED}, q=${Q}`);
+  console.log(`camera audit${flat ? ' (2.5D)' : ''}: ${N} samples, seed ${SEED}, q=${Q}`);
   row('now', now);
   row('before', before);
   if (now.misses.length) console.log('missed:', JSON.stringify(now.misses, null, 1));
