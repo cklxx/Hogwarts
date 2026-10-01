@@ -7,6 +7,7 @@
  * (src/kernel/chem.ts: the effects), the browser (client/chem3d.ts: the names, the bursts) and agents (look).
  */
 import type { Element } from './constants.js';
+import { PROP_DEFS, PROPS } from './props.js';
 
 export type ReactionId = 'soak' | 'vaporize' | 'freeze' | 'conduct' | 'slip' | 'rainbow' | 'shatter' | 'melt' | 'overload' | 'douse';
 export interface Reaction { zh: string; en: string; /** damage multiplier on the hit that set it off */ mult: number; doc: string }
@@ -41,7 +42,10 @@ export const WET_ZONES: readonly { id: string; zh: string; x: number; z: number;
   // the greenhouses are humid: their Devil's Snare is always wet (the encounter there: src/kernel/runes.ts)
   { id: 'greenhouse', zh: '温室水汽', x: 41, z: -28, r: 14 },
 ];
-export const inWetZone = (x: number, z: number) => WET_ZONES.some((w) => Math.hypot(x - w.x, z - w.z) <= w.r);
+/** A puddle (src/shared/props.ts, `wets`) wets whoever stands within this of it. */
+export const PUDDLE_R = 1.8;
+const PUDDLES = PROPS.filter((p) => PROP_DEFS[p.kind].wets);
+export const inWetZone = (x: number, z: number) => WET_ZONES.some((w) => Math.hypot(x - w.x, z - w.z) <= w.r) || PUDDLES.some((p) => Math.abs(p.x - x) <= PUDDLE_R && Math.abs(p.z - z) <= PUDDLE_R && Math.hypot(p.x - x, p.z - z) <= PUDDLE_R);
 
 /** What a hurting spell of `element` does to a target in these states (null: nothing), in the table's order. */
 export function reactionOf(element: Element, st: { wet: boolean; frozen: boolean; burning: boolean; chilled: boolean }, water = false): ReactionId | null {
