@@ -74,18 +74,18 @@ export const SEAL_TIERS = [
 
 export const SEAL_REWARDS_ZH = [
   '',
-  '所有威力上限 +20%，每次施法效果 +1',
-  '上限 +40%，效果 +2，并解锁 chain（在敌人之间跳跃的闪电）',
-  '上限 +60%，效果 +3',
-  '上限 +80%，效果 +4，并解锁 storm（在指定地点延迟爆发的风暴）',
+  '所有威力上限 +10%，每次施法效果 +1',
+  '上限 +20%，效果 +2，并解锁 chain（在敌人之间跳跃的闪电）',
+  '上限 +30%，效果 +3',
+  '上限 +40%，效果 +4，并解锁 storm（在指定地点延迟爆发的风暴）',
 ];
 
 export const SEAL_REWARDS = [
   '',
-  '+20% to every power cap, +1 effect per cast',
-  '+40% caps, +2 effects, and the `chain` primitive (lightning that leaps between foes)',
-  '+60% caps, +3 effects',
-  '+80% caps, +4 effects, and the `storm` primitive (a delayed tempest at a point)',
+  '+10% to every power cap, +1 effect per cast',
+  '+20% caps, +2 effects, and the `chain` primitive (lightning that leaps between foes)',
+  '+30% caps, +3 effects',
+  '+40% caps, +4 effects, and the `storm` primitive (a delayed tempest at a point)',
 ];
 
 const M32 = 0xffffffff;

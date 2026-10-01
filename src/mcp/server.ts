@@ -23,6 +23,8 @@ import { albumOf } from '../kernel/cards.js';
  */
 export interface McpSession {
   wizardId: string | null;
+  /** Whom the last tool call acted as (a vessel, kernel/possess.ts): when that ends, the next result says so. */
+  actedAs?: string | null;
   baseUrl: string;
   /** The MCP session id, once initialized (main.ts sets it). */
   id?: string;
@@ -202,7 +204,18 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
       const refused = guard(name, a.length > 1 ? a[0] : undefined);
       if (refused) return refused;
       const before = bound();
+      // 附身 over (it ran out, or the body fell) since the last call: this call is your own wizard's — say so first,
+      // never let it act as you unannounced (the 2026-10-01 NPC playtest: words and spells meant for the vessel
+      // landed on the possessor)
+      const was = session.actedAs, nowAs = acting();
+      session.actedAs = nowAs;
+      const ended = before && was && was !== before && nowAs === before ? world.wizards.get(was)?.name ?? was : null;
       const r = await cb(...a);
+      session.actedAs = acting(); // (as the call left it: a release you asked for needs no telling)
+      if (ended && r && typeof r === 'object' && Array.isArray((r as Content).content)) {
+        const you = world.wizards.get(before!)?.name ?? '';
+        (r as Content).content.unshift({ type: 'text', text: `⚠ The possession of ${ended} is over (it ran out, or the body fell): this call and the next are ${you}'s own. 附身 ${ended} 已经结束（到期或那具身体倒下了）：这次起是你自己（${you}）在行动。` });
+      }
       const now = bound();
       if (now && now !== before) world.setAgentSeen(now, clientName(), name); // enroll / login / pair just bound it
       // 看 Agent 玩: the call for its owner's panel — tool, outcome, and for spells the spell's name (never the arguments)

@@ -161,6 +161,9 @@ describe('props: what spells do', () => {
     const look = w.look(a.id) as unknown as { props?: { id: string; state: string }[] };
     const seen = JSON.stringify(look);
     expect(seen).toContain('dun-1');
+    const d1 = (look.props ?? []).find((q) => q.id === 'dun-1') as unknown as { secondsLeft?: number; groupLit?: string };
+    expect(d1.secondsLeft).toBeGreaterThan(30);
+    expect(d1.groupLit).toBe('1/3');
     const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
     expect(back.props.breaks.get(a.id)).toBe(1);
   });

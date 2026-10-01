@@ -270,6 +270,10 @@ export interface RigInput {
   fixed?: boolean;
 }
 
+/** 2.5D: the cut-out round you (metres; always on there, view.ts place). */
+const FLAT_CUT_R = 2.6;
+/** 2.5D: what dissolves of the high things in front of you (a dither share), and above what height over your feet (m). */
+const CANOPY = [0.65, 3.2] as const;
 /** 2.5D: the camera looks at a point this high over your feet (your middle: you sit in the centre of the picture). */
 export const FIXED_LOOK_Y = 1.0;
 
@@ -423,9 +427,11 @@ export class CameraRig {
  *   cam:   xyz: the camera the cut-outs were worked out for (other passes, like the lake's mirror, are left alone);
  *          w: tan(fov / 2).
  *   res:   x, y: drawing-buffer size (px); z, w: the camera's near and far.
+ *   canopy: 2.5D — x: how much of whatever is nearer the camera than you and higher than y metres over your feet
+ *          dissolves (tree crowns, the tops of walls: the whole screen, not just round you), y: that height.
  */
 const vec4 = () => ({ x: 0, y: 0, z: 0, w: 0 });
-export const FADE = { A: vec4(), B: vec4(), depth: vec4(), cam: vec4(), res: vec4() };
+export const FADE = { A: vec4(), B: vec4(), depth: vec4(), cam: vec4(), res: vec4(), canopy: vec4() };
 
 /**
  * The whole fade, in GLSL, run at the top of the fragment shader of every material with the VIEW_FADE define.
@@ -442,6 +448,7 @@ uniform vec4 viewFadeB;
 uniform vec4 viewFadeDepth;
 uniform vec4 viewFadeCam;
 uniform vec4 viewFadeRes;
+uniform vec4 viewFadeCanopy;
 uniform float viewFadeSelf;
 float viewFadeBayer2( vec2 a ) { a = floor( a ); return fract( a.x / 2.0 + a.y * a.y * 0.75 ); }
 float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
@@ -463,6 +470,8 @@ float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
 		float vfY = cameraPosition.y + ( vec4( vfV, 0.0 ) * viewMatrix ).y;
 		float vfCut = max( viewFadeCut( viewFadeA, viewFadeDepth.x, viewFadeDepth.z, vfD, vfY ), viewFadeCut( viewFadeB, viewFadeDepth.y, viewFadeDepth.w, vfD, vfY ) );
 		viewFadeK = max( viewFadeK, vfCut * 0.86 );
+		// 2.5D canopy: high and in front of you, anywhere on screen
+		viewFadeK = max( viewFadeK, viewFadeCanopy.x * step( viewFadeDepth.z + viewFadeCanopy.y, vfY ) * ( 1.0 - smoothstep( viewFadeDepth.x - 3.0, viewFadeDepth.x - 1.0, vfD ) ) );
 	}
 	#ifndef VIEW_FADE_ALPHA
 	if ( viewFadeK > 0.0 && viewFadeK > viewFadeBayer2( 0.5 * gl_FragCoord.xy ) * 0.25 + viewFadeBayer2( gl_FragCoord.xy ) ) discard;
@@ -500,7 +509,7 @@ export function installViewFade() {
   for (const lib of Object.values(THREE.ShaderLib)) Object.assign(lib.uniforms, fadeUniforms());
 }
 /** The fade's uniforms: the shared cut-outs, and the material's own dissolve (a number: three.js copies it per material). */
-const fadeUniforms = () => ({ viewFadeA: { value: FADE.A }, viewFadeB: { value: FADE.B }, viewFadeDepth: { value: FADE.depth }, viewFadeCam: { value: FADE.cam }, viewFadeRes: { value: FADE.res }, viewFadeSelf: { value: 0 } });
+const fadeUniforms = () => ({ viewFadeA: { value: FADE.A }, viewFadeB: { value: FADE.B }, viewFadeDepth: { value: FADE.depth }, viewFadeCam: { value: FADE.cam }, viewFadeRes: { value: FADE.res }, viewFadeCanopy: { value: FADE.canopy }, viewFadeSelf: { value: 0 } });
 
 /**
  * A copy of `m` that dissolves by itself on the same dither (a Great Hall roof that fades as you step in): set
@@ -732,7 +741,11 @@ export function createView(d: ViewDeps) {
 
     // what hides the player, and the locked target
     const me = d.myHandle();
-    const occA = !capture && (rig.hides(feet.x, feet.y + 1.1, feet.z) || rig.hides(feet.x, feet.y + 1.9, feet.z));
+    // (2.5D: always — the cut only takes what is nearer the camera than you and above your feet, and the lens's nearer
+    // camera puts tree crowns between it and you that the view solids do not model: the 2026-10-01 forest shot showed
+    // you as an x-ray under a solid crown)
+    const flat = d.fixed?.() ?? false;
+    const occA = !capture && (flat || rig.hides(feet.x, feet.y + 1.1, feet.z) || rig.hides(feet.x, feet.y + 1.9, feet.z));
     const tk = d.target();
     const tm = tk ? model(tk) : undefined;
     const tp = tm?.root.position;
@@ -740,7 +753,8 @@ export function createView(d: ViewDeps) {
     const k = 1 - Math.exp(-dt / 0.07);
     fadeA += ((occA ? 1 : 0) - fadeA) * k;
     fadeB += ((occB ? 1 : 0) - fadeB) * k;
-    cutout(FADE.A, feet, fadeA, 1.9, 0);
+    cutout(FADE.A, feet, fadeA, flat ? FLAT_CUT_R : 1.9, 0);
+    FADE.canopy.x = flat && !capture ? CANOPY[0] : 0; FADE.canopy.y = CANOPY[1];
     if (tp) cutout(FADE.B, tp, fadeB, tm && d.creatures.has(tk!) ? 2.4 : 1.9, 1); else FADE.B.w = 0;
     stats.occA = occA; stats.occB = occB;
 
@@ -851,9 +865,9 @@ export function createView(d: ViewDeps) {
       cam.position.set(rg.pos.x, rg.pos.y, rg.pos.z);
       cam.lookAt(rg.look.x, rg.look.y, rg.look.z);
       cam.updateMatrixWorld();
-      const gate = !old && (rg.hides(x, y + 1.1, z) || rg.hides(x, y + 1.9, z));
+      const gate = !old && (!!flat || rg.hides(x, y + 1.1, z) || rg.hides(x, y + 1.9, z));
       d.renderer.getDrawingBufferSize(size);
-      cutout(u, { x, y, z }, gate ? 1 : 0, 1.9, 0, cam, dep);
+      cutout(u, { x, y, z }, gate ? 1 : 0, flat ? FLAT_CUT_R : 1.9, 0, cam, dep);
       const inside = interiorAt(x, z) === 0;
       const through = (py: number, fade: boolean) => {
         hitV.set(x, y + py, z);

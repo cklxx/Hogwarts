@@ -36,7 +36,8 @@ const a = (name: string, type: ArgType, optional = false): ArgSpec => ({ name, t
 
 /** Per-year hard caps. Requests above a cap are clamped (and reported), never refused. */
 export function capsFor(year: number, seals = 0) {
-  const m = 1 + 0.2 * seals;
+  // each seal +10 % on the caps (it was +20 %: the 2026-10-01 playtest — whoever broke the first pulled away at once)
+  const m = 1 + 0.1 * seals;
   return {
     boltPower: Math.floor((10 + 6 * year) * m),
     healAmount: Math.floor((10 + 6 * year) * m),
@@ -162,7 +163,7 @@ export const PRIMS: Prim[] = [
   { name: 'str', kind: 'pure', year: 1, args: [], variadic: 'any', doc: 'Concatenate into a string.' },
   { name: 'rand', kind: 'pure', year: 1, args: [], doc: 'Uniform random number in [0,1).' },
   // ---- queries (read the world, cost 3 gas) ----
-  { name: 'enemies', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Things you may harm within radius of you (creatures + duel-able wizards), nearest first, max 8. Classmates you may duel are in it; (creatures r) lists creatures only (benign ones too).' },
+  { name: 'enemies', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Things you may harm within radius of you (creatures + duel-able wizards): the target you named first, then nearest first, max 8. Classmates you may duel are in it; (creatures r) lists creatures only (benign ones too).' },
   { name: 'allies', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Wizards of your house within radius (excluding you), nearest first, max 8.' },
   { name: 'creatures', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Creatures within radius, nearest first, max 8.' },
   { name: 'wizards', kind: 'query', year: 1, args: [a('radius', 'num')], doc: 'Other wizards within radius, nearest first, max 8.' },

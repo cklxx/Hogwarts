@@ -964,7 +964,9 @@ export class World {
     // …or behind a wall, a tree, a rock: the bolt would only hit that (playtest round 3: four casts, 72 mana, nothing)
     if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inBlast(w.pos, this.entity(target)!.pos)) {
       const t = this.entity(target)!;
-      return { ...fail(`Something stands between you and ${t.name}: no clear shot. Move for one. No mana spent. 你和 ${t.name} 之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
+      // (where it is now: between an agent's look and its cast the world moves on — say it, so no second look is needed)
+      const at = `(${Math.round(t.pos.x)}, ${Math.round(t.pos.z)}), ${dist(t.pos, w.pos).toFixed(1)} m`;
+      return { ...fail(`Something stands between you and ${t.name}, now at ${at}: no clear shot. Move for one. No mana spent. 你和 ${t.name}（现在在 ${at}）之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
     }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     if (!opts.dryRun && Math.hypot(aim.x - w.pos.x, aim.z - w.pos.z) > 0.1) w.facing = Math.atan2(aim.x - w.pos.x, -(aim.z - w.pos.z));
