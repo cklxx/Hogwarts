@@ -59,3 +59,41 @@ describe('lock-on', () => {
     }
   });
 });
+
+describe('a spell with a target weaves past trees (「火打不到后面的怪物」)', () => {
+  it('every forest trunk: a spider right behind it, locked on, is hit; a straight shot still stops at the trunk; look says not blocked', async () => {
+    const { STATIC_COLLIDERS } = await import('../src/shared/layout.js');
+    const { sceneAt } = await import('../src/shared/scenes.js');
+    const trees = STATIC_COLLIDERS.filter((c) => c.style === 'tree' && c.kind === 'disc' && sceneAt(c.x, c.z)?.id === 'forest') as { x: number; z: number; r: number }[];
+    expect(trees.length).toBeGreaterThan(10);
+    let checked = 0;
+    for (const t of trees) {
+      const w = new World({ seed: 21, secret: 'tree' });
+      w.rules.creatures.spawnMultiplier = 0; w.rules.events.pool = []; w.term.endsAt = 1e12;
+      const me = w.enroll('Tree Me', 'Gryffindor' as never).wizard;
+      me.connections = 1; me.createdAt = -1e6; me.mana = 1e6;
+      me.pos = { x: t.x, z: t.z + t.r + 8 };
+      const foe = troll(w, 'c_behind', t.x, t.z - t.r - 1.5);
+      foe.rootedUntil = 1e9; // (it stays behind the trunk)
+      const at = { ...foe.pos };
+      w.solids.resolve(me.pos, 0.5); w.solids.resolve(foe.pos, 1);
+      if (Math.hypot(foe.pos.x - at.x, foe.pos.z - at.z) > 0.01) continue; // (pushed aside: the trunk is not squarely between)
+      // only trunks between (no wall, nothing else)
+      const hit = w.solids.hitSegment(me.pos.x, me.pos.z, foe.pos.x, foe.pos.z);
+      if (!hit || hit.style !== 'tree' || !w.inAim(me.pos, foe.pos) || sceneAt(me.pos.x, me.pos.z)?.id !== 'forest') continue;
+      checked++;
+      const look = w.look(me.id) as unknown as { creatures: { id: string; blocked?: boolean }[] };
+      expect(look.creatures.find((c) => c.id === foe.id)?.blocked, 'look').toBeUndefined();
+      expect(w.cast(me.id, 'Incendio', { target: foe.id }).ok).toBe(true);
+      run(w, 2);
+      expect(foe.hp, `behind the tree at (${t.x}, ${t.z})`).toBeLessThan(1000);
+      me.cooldowns = {}; me.globalCd = 0;
+      foe.auras = []; // (the first one's burn)
+      const hp = foe.hp;
+      w.cast(me.id, 'Incendio', { aim: { ...foe.pos } });
+      run(w, 2);
+      expect(foe.hp, 'a straight shot stops at the trunk').toBe(hp);
+    }
+    expect(checked).toBeGreaterThan(10);
+  });
+});

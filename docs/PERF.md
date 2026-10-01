@@ -1602,3 +1602,23 @@ Each fix below has a test (`test/lockon.test.ts`, `test/lookcast.test.ts`, `test
     over your feet, anywhere on the screen: crowns, the tops of walls. It is one extra `step` and `smoothstep` in a
     shader that already ran, with no new draw calls.
   - `view-audit --flat`, 300 spots: player seen 99.7 % → 100 % (the castle battlement miss is gone).
+
+## 2026-10-01 — hitting what you aim at (`wf/aim`)
+
+The owner: 「火打不到后面的怪物……索敌还是问题很大，聚焦基础的体验」. Measured first:
+
+- **Kernel**: a locked Incendio hits a monster standing behind another, or behind you, every time (pixie, spider, troll; 5, 10, 20 m). An unlocked shot aimed at the far one hits the near one first, which is right for a straight shot.
+- **What blocks a locked shot**: from 3000 random spots per scene, each pair of you and a monster within 25 m:
+
+  | scene | blocked | cause |
+  |---|---:|---|
+  | forest | 12.4 % | all tree trunks |
+  | castle | 4.0 % | mostly the greenhouse walls (the snares stand in front of them: legitimate) |
+  | Hogsmeade | 4.9 % | a building |
+
+  A spell with a target now weaves past trunks (`World.inAim`). Walls and buildings still stop it. A straight shot and a blast still stop at a tree. `test/lockon.test.ts` walks every forest trunk with a monster squarely behind it; that test fails without the change.
+- **Client auto-aim and Tab in 2.5D**:
+  - Before: auto-aim took the camera's 42° forward cone, which missed foes beside you and below you on screen; Tab took a 180° cone, which reached behind the camera to foes you could not see.
+  - Now: both take exactly the foes on screen, nearest first, and a lock is kept only while its target is on screen.
+  - With no foe on screen and no mouse (a phone), the shot goes the way you face, not up the screen.
+  - Browser, the lawn, desktop and phone: every press locked an on-screen pixie (14–28 m) and every lock hit.

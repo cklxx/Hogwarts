@@ -519,7 +519,7 @@ function spar(world: World, w: Wizard, m: DuelMatch) {
   const foes = m.sides[1 - sideOf(m, w.id)].filter((id) => !m.out[id]).map((id) => world.wizards.get(id)).filter((x): x is Wizard => !!x);
   const opp = foes.sort((p, q) => dist(p.pos, w.pos) - dist(q.pos, w.pos))[0];
   if (!opp) { if (w.goal) world.setGoal(w.id, null); return; }
-  const d = dist(opp.pos, w.pos), clear = world.inBlast(w.pos, opp.pos);
+  const d = dist(opp.pos, w.pos), clear = world.inAim(w.pos, opp.pos);
   if (d > DUEL_NPC_REACH || !clear) {
     // a spot nearer the foe, pulled toward the middle of the stage
     const k = Math.max(0, d - DUEL_NPC_REACH * 0.6) / (d || 1);
