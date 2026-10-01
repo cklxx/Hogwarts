@@ -162,6 +162,11 @@ export class Solids {
   hitT = 0;
   private scratch: Vec2 = { x: 0, z: 0 };
 
+  /** Where water bears a walker (ice: src/kernel/ice.ts): a 'water' collider does not push out a circle centred there. */
+  walkOn: ((x: number, z: number) => boolean) | null = null;
+  /** The way over it to `to` (on it): a land point to walk to first (A*), then points on it; null if none. */
+  bridge: ((from: Vec2, to: Vec2) => Vec2[] | null) | null = null;
+
   get dynamic(): readonly Collider[] { return this.D.list; }
   setDynamic(cs: readonly Collider[]) { this.D.set(cs); this.version++; }
 
@@ -173,7 +178,11 @@ export class Solids {
       for (let j = j0; j <= j1; j++)
         for (let i = i0; i <= i1; i++) {
           const c = j * GW + i;
-          for (let k = cellStart[c], end = cellStart[c + 1]; k < end; k++) if (pushOut(S, cellItems[k], p, r)) moved = true;
+          for (let k = cellStart[c], end = cellStart[c + 1]; k < end; k++) {
+            const n = cellItems[k];
+            if (this.walkOn && S.list[n].style === 'water' && this.walkOn(p.x, p.z)) continue;
+            if (pushOut(S, n, p, r)) moved = true;
+          }
         }
     }
     const D = this.D;

@@ -1494,3 +1494,19 @@ No frame-rate claim (SwiftShader).
 - Client: the webs are one instanced mesh, one more draw call (plus its shadow). The goal line and the doors are DOM,
   rewritten only when their text changes.
 - No frame-rate claim (SwiftShader).
+
+## 2026-10-01 — the ice road (`wf/ice`)
+
+- Kernel: an ice bolt over the lake freezes the squares within 1.4 m of it each tick. That is about 16 point tests,
+  and only for ice bolts over the water.
+- `Solids.walkOn` is asked only for a 'water' collider in the cells round a walker, so only at the lake shore. It
+  costs nothing while there is no ice (`ice.size > 0` first).
+- Walking onto the ice: a breadth-first search over the frozen squares (a 15 m road is about 40 squares), once per
+  walk order.
+- The snapshot head carries `ice` only while there is ice: three numbers per square, about 120 numbers for one road.
+- Client: one instanced mesh for all the squares (one draw call), rewritten when the snapshot's `ice` changes. The
+  float is three meshes. `ClientFeature.ground` adds one optional call per feature when an entity's ground is looked
+  up again; that happens only after it moved.
+- Seen in passing, not changed: the lake's water reads almost black from the 2.5D camera at q=low (dark grey at high).
+  The water shader's mirror shows only the sky at grazing angles. Worth a look with the art pass.
+- No frame-rate claim (SwiftShader).

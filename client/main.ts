@@ -450,10 +450,11 @@ type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number
 type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number; /** hp / max at the last snapshot */ hpr?: number };
 /** A creature that vanishes at or under this share of its hp was brought down, not out of sight. */
 const KILL_HPR = 0.35;
-/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame). */
+/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame);
+ *  a feature may stand it on its own ground (ClientFeature.ground). */
 const groundOf = (e: Grounded) => {
   const p = e.root.position;
-  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; e.gy = heightAt(p.x, p.z); }
+  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; let h = heightAt(p.x, p.z); for (const f of feats) if (f.ground) h = f.ground(p.x, p.z, h); e.gy = h; }
   return e.gy!;
 };
 const parked = new Map<string, { m: WizardEntry; at: number }>();
