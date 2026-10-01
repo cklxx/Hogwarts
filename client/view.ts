@@ -3,6 +3,7 @@ import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { HALL_ROOF, INTERIORS, STATIC_COLLIDERS, STATUE_SPOTS, interiorAt, signedDistance, statueViewSolid, viewSolids, type ViewSolid } from '../src/shared/layout';
 import { captureActive } from './capture';
 import { heightAt } from './terrain';
+import { LENS } from './lens';
 
 /**
  * The third-person view, kept clear of the world (docs/COLLISION.md, "The camera"):
@@ -324,11 +325,12 @@ export class CameraRig {
     if (i.fixed) {
       // 2.5D: straight out along the arm, only kept above the hillside; the roof of the room you are in dissolves as
       // before (scene.ts), and whatever else is between is cut away around you (the fade below)
-      const cp = Math.cos(i.pitch), p = this.pos;
-      p.x = x + Math.sin(yaw) * cp * i.dist; p.z = z + Math.cos(yaw) * cp * i.dist;
-      p.y = Math.max(y + FIXED_LOOK_Y + Math.sin(i.pitch) * i.dist, i.ground(p.x, p.z) + 1.5);
+      // (lens.ts: in to dist / k at the lens's pitch — the wider lens from there frames you as `dist` did)
+      const arm = i.dist / LENS.k, cp = Math.cos(LENS.pitch), p = this.pos;
+      p.x = x + Math.sin(yaw) * cp * arm; p.z = z + Math.cos(yaw) * cp * arm;
+      p.y = Math.max(y + FIXED_LOOK_Y + Math.sin(LENS.pitch) * arm, i.ground(p.x, p.z) + 1.5);
       this.look.x = x; this.look.y = y + FIXED_LOOK_Y; this.look.z = z;
-      this.arm = i.dist; this.lift = this.shoulder = this.rise = 0;
+      this.arm = arm; this.lift = this.shoulder = this.rise = 0;
       return;
     }
     const pIn = INDOOR_PITCH[0] + ((Math.min(1.3, Math.max(0.1, i.pitch)) - 0.1) / 1.2) * (INDOOR_PITCH[1] - INDOOR_PITCH[0]);
@@ -800,7 +802,8 @@ export function createView(d: ViewDeps) {
    * anything else stops it. Visible: the head or the chest ray gets through. `old`: the camera as it was before
    * view.ts (no arm, no fading), for comparison.
    */
-  function audit(n = 200, seed = 1, old = false) {
+  /** `flat`: the 2.5D camera instead, with this lens (lens.ts; fov in degrees), at FLAT_DIST and a random 45° turn. */
+  function audit(n = 200, seed = 1, old = false, flat?: { k: number; pitch: number; fov: number; dist: number }) {
     let r = seed >>> 0 || 1;
     const rnd = () => ((r = (Math.imul(r, 48271) >>> 0) % 2147483647) / 2147483647);
     const faded = (m: THREE.Material) => m.defines?.VIEW_FADE !== undefined;
@@ -817,7 +820,9 @@ export function createView(d: ViewDeps) {
       if (Array.isArray(mat) || mat.transparent || !(faded(mat) || terrain.has(m))) return;
       targets.push(m);
     });
-    const cam = new THREE.PerspectiveCamera(d.camera.fov, d.camera.aspect, d.camera.near, d.camera.far);
+    const cam = new THREE.PerspectiveCamera(flat?.fov ?? d.camera.fov, d.camera.aspect, d.camera.near, d.camera.far);
+    const was = { ...LENS };
+    if (flat) Object.assign(LENS, { k: flat.k, pitch: flat.pitch });
     const ray = new THREE.Raycaster();
     const R = HALL_ROOF_BOX;
     const u = vec4(), dep = vec4(), hitV = new THREE.Vector3(), dir = new THREE.Vector3(), proj = new THREE.Vector3();
@@ -835,9 +840,9 @@ export function createView(d: ViewDeps) {
       const [x, z] = area[2](0);
       if (STATIC_COLLIDERS.some((c) => c.h > 0 && signedDistance(c, x, z) < 0.5)) continue;
       const y = heightAt(x, z);
-      const yaw = rnd() * Math.PI * 2, pitch = 0.1 + rnd() * 1.0, dist = 3.5 + rnd() * rnd() * 20;
+      const yaw = flat ? Math.floor(rnd() * 8) * (Math.PI / 4) : rnd() * Math.PI * 2, pitch = 0.1 + rnd() * 1.0, dist = flat ? flat.dist : 3.5 + rnd() * rnd() * 20;
       const rg = new CameraRig(world);
-      for (let k = 0; k < 90; k++) rg.update({ x, y, z, yaw, pitch, dist, dt: 1 / 60, ground: heightAt });
+      for (let k = 0; k < 90; k++) rg.update({ x, y, z, yaw, pitch, dist, dt: 1 / 60, ground: heightAt, fixed: !!flat });
       if (old) {
         rg.pos.x = x + Math.sin(yaw) * Math.cos(pitch) * dist; rg.pos.z = z + Math.cos(yaw) * Math.cos(pitch) * dist;
         rg.pos.y = Math.max(y + PIVOT_Y + Math.sin(pitch) * dist, heightAt(rg.pos.x, rg.pos.z) + 1.5);
@@ -879,6 +884,7 @@ export function createView(d: ViewDeps) {
       const ba = (out.byArea[area[0]] ??= [0, 0]); ba[0]++; ba[1] += ok ? 1 : 0;
       if (!ok && out.misses.length < 20) out.misses.push({ area: area[0], x: +x.toFixed(1), z: +z.toFixed(1), yaw: +yaw.toFixed(2), pitch: +pitch.toFixed(2), dist: +dist.toFixed(1), cam: [+rg.pos.x.toFixed(1), +rg.pos.y.toFixed(1), +rg.pos.z.toFixed(1)], gate, head: head.what, at: head.at });
     }
+    Object.assign(LENS, was);
     return { ...out, pct: +((100 * out.visible) / out.n).toFixed(1), pctNoFade: +((100 * out.visibleNoFade) / out.n).toFixed(1), meshes: targets.length, ms: Math.round(performance.now() - t0) };
   }
 

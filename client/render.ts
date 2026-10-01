@@ -9,23 +9,11 @@ import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { loadEnvironments } from './assets';
 import { captureCamera, captureFocus } from './capture';
 import { OVERLAY } from './layers';
+import { BASE_FOV, fovFor, flatLens, LENS } from './lens';
+export { fovFor, FLAT_FOV, FLAT_H_FOV } from './lens';
 import { gradedOutputPass } from './post';
 import { STORYBOOK, glowSprite, paintedClouds, paintedMoon } from './textures';
 
-/** The camera's vertical field of view; a portrait screen widens it for at least PORTRAIT_H_FOV across (up to PORTRAIT_V_MAX). */
-const BASE_FOV = 55, PORTRAIT_H_FOV = 60, PORTRAIT_V_MAX = 88;
-/** The vertical field of view for a screen of this width ÷ height (pure, for tests). */
-export function fovFor(aspect: number, base = BASE_FOV, hMin = PORTRAIT_H_FOV): number {
-  if (aspect >= 1) return base;
-  const need = (2 * Math.atan(Math.tan((hMin * Math.PI) / 360) / aspect) * 180) / Math.PI;
-  return Math.min(PORTRAIT_V_MAX, Math.max(base, need));
-}
-/**
- * The 2.5D lens (controls.ts setView): a long one from far up, as Diablo's and Hades' cameras are — 30° tall on a
- * wide screen, at least 32° across on a portrait one — so the ground keeps its proportions (things far up the screen
- * are not shrunk, the near ones not blown up) and the view reads like a board, not a fisheye.
- */
-export const FLAT_FOV = 30, FLAT_H_FOV = 32;
 
 export interface Looks { skyTint: string; sunIntensity: number; fogDensity: number; glow: number }
 
@@ -399,7 +387,10 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     camera.aspect = innerWidth / innerHeight;
     // a portrait phone: the vertical field of view widens so the horizontal one stays near PORTRAIT_H_FOV (at 55° a
     // 390×844 screen saw 27° across — "I can't see anyone"), up to PORTRAIT_V_MAX
-    camera.fov = flat ? fovFor(camera.aspect, FLAT_FOV, FLAT_H_FOV) : fovFor(camera.aspect);
+    // (2.5D: the wider lens from nearer that frames you as the long one did, lens.ts)
+    const lens = flatLens(camera.aspect);
+    LENS.k = flat ? lens.k : 1; LENS.pitch = lens.pitch;
+    camera.fov = flat ? lens.fov : fovFor(camera.aspect);
     camera.updateProjectionMatrix();
   }
 
@@ -547,7 +538,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       resize();
     },
     get scale() { return scale; },
-    /** 2.5D's long lens, or the follow camera's (FLAT_FOV). */
+    /** 2.5D's lens (lens.ts flatLens), or the follow camera's. */
     setLens(on: boolean) { if (flat !== on) { flat = on; resize(); } },
     outRatio,
     /** Low quality: smaller shadow map, no bloom pass (the render scale is dynres.ts's). Weak GPUs (auto-detected) or ?q=low. */

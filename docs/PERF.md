@@ -1445,3 +1445,40 @@ is unchanged: it was cut down last round.
 - Hit-stop scales the world's motion (interpolation, animation, particles) by 0.08 for 30–110 ms. It never scales
   the camera, the input or the HUD, and it is off under reduced motion.
 - No frame-rate claim (SwiftShader).
+
+## 2026-10-01 — the 2.5D lens: narrow near, wide far (`wf/lens`)
+
+The owner: 「近小远大的透视效果用来屏幕内能看到更多内容，可以用一些 trick 算法做尽可能少计算」. Read as: the ground the
+screen shows should be narrow near the camera and wide far up the screen (a stronger perspective), so the screen
+holds more of the world. The player stays the same size on screen.
+
+The trick costs nothing per frame. `client/lens.ts` moves the same camera in along its arm to 1/k of the way and
+widens the lens so that tan(fov / 2) grows k times. The player is framed exactly as before; only what is nearer or
+further changes size. The arm also tips lower (pitch 0.92 → 0.80) so the far edge reaches further. Everything else
+still sees an ordinary perspective camera: picking, the cut-outs round you, the lake's mirror, culling. A custom
+projection matrix was the other option, but it would have broken three.js's ray picking and the mirror's oblique
+clip.
+
+How k and the pitch were chosen: the visible ground was worked out for pitch 0.70–0.95 × k 1–2 (16:9, the player at
+24 m), under three limits. Things at the bottom of the screen may be at most 1.4 × the player's size, things at the
+top at least 0.6 ×, and the lens at most 80° across. Lower pitches score higher still (pitch 0.75 at k 1.4 shows
+615 m²), but walls hide more there. A reverse perspective, which makes far things bigger, changes the visible
+ground by +2 %: no gain.
+
+| 16:9 desktop | before (k 1, pitch 0.92, 30°) | after (k 1.5, pitch 0.80, 44°) |
+|---|---:|---:|
+| Visible ground | 402 m² | 571 m² (+42 %) |
+| Far edge ahead of you | 10 m | 15 m |
+| Size at the bottom / top of the screen, against the player | 1.20 / 0.80 | 1.39 / 0.61 |
+| Draw calls, empty world (q high / low, `perf-client --bots=0`) | 121 / 106 | 137 / 103 |
+| Triangles (q high / low) | 245 k / 184 k | 266 k / 181 k |
+| JS per frame (q high / low) | 7.5 / 7.1 ms | 7.6 / 6.5 ms |
+| Player seen (`view-audit --flat`, 300 spots) | 99.3 % | 99.7 % |
+
+A portrait phone is unchanged (k 1, pitch 0.92). Its lens is already 64° tall: it widens to show 32° across.
+
+One spot is missed both before and after: the castle's south-east battlement at (48.9, −53), looking north. There
+the camera hangs 0.1 m in front of a 2 m merlon, and the merlon is not among the view's solids, so it is not cut
+away.
+
+No frame-rate claim (SwiftShader).

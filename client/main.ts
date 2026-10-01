@@ -1985,8 +1985,8 @@ function frame() {
   FR.dt = dt;
   // level of detail from last frame's camera (it moves a fraction of a metre per frame)
   FR.lod = LOD[quality];
-  // (2.5D: the tag's 1.5 m shown TAG_PX tall on screen, whatever the zoom and the lens: size / (2 d tan(fov / 2)) of the height)
-  FR.tag = ctl.flat() ? Math.max(1, Math.min(3.2, ((phone ? 84 : 92) / innerHeight) * 2 * camDist * Math.tan((camera.fov * Math.PI) / 360) / 1.5)) : 1;
+  // (2.5D: the tag's 1.5 m shown TAG_PX tall on screen, whatever the zoom and the lens: size / (2 d tan(fov / 2)) of the height, d the camera's real distance — lens.ts brings it in)
+  FR.tag = ctl.flat() ? Math.max(1, Math.min(3.2, ((phone ? 84 : 92) / innerHeight) * 2 * view.rig.arm * Math.tan((camera.fov * Math.PI) / 360) / 1.5)) : 1;
   FR.focus = ctl.targetKey();
   crowd.begin();
   parts.begin();
