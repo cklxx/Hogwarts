@@ -1510,3 +1510,38 @@ No frame-rate claim (SwiftShader).
 - Seen in passing, not changed: the lake's water reads almost black from the 2.5D camera at q=low (dark grey at high).
   The water shader's mirror shows only the sky at grazing angles. Worth a look with the art pass.
 - No frame-rate claim (SwiftShader).
+
+## 2026-10-01 — dressing, seven new prop kinds, drops (`wf/dress`)
+
+The owner: 「内容太少了……丰富内容元素」. Things to do per screen of open ground, at 571 m² per 16:9 screen: props,
+chests, fireplaces, gates, encounters and creature spawn places. The same count is a test now
+(`test/dressing.test.ts`, ≥ 4 in every scene).
+
+| scene | screens | before | after |
+|---|---:|---:|---:|
+| castle | 24.0 | 43 (1.8/screen) | 112 (4.7) |
+| lake | 2.7 | 12 (4.4) | 33 (12.2) |
+| forest | 7.8 | 29 (3.7) | 73 (9.4) |
+| pitch | 12.0 | 10 (0.8) | 56 (4.7) |
+| Hogsmeade | 18.7 | 22 (1.2) | 81 (4.3) |
+| all | 65.2 | 116 (1.8) | 355 (5.4) |
+
+Cost (`perf-client --bots=0`; SwiftShader, so only the direction counts):
+
+| view | q | draw calls before → after | triangles before → after | JS ms/frame before → after |
+|---|---|---:|---:|---:|
+| the 2.5D camera at spawn | high | 139 → 132 | 271 k → 260 k | 8.1 → 11.4 |
+| the 2.5D camera at spawn | low | 108 → 98 | 184 k → 176 k | 6.8 → 6.0 |
+| wide capture shot, castle | high | 501 → 575 | 278 k → 288 k | 16.1 → 14.8 |
+| wide capture shot, overview | high | 1016 → 1140 | 445 k → 449 k | 25.0 → 26.1 |
+
+- At first the new kinds cost +21 draw calls at spawn (high: 139 → 160), because each kind was one instanced mesh
+  for the whole world and never culled. Each kind is now cut into 24 m tiles, one instanced mesh per tile, and
+  each tile is culled on its own. A frame now draws only the tiles round you, so the gameplay view ends up below
+  where it started.
+- The wide capture shots see most tiles and pay +12–15 %. They are promo cameras, not play.
+- JS per frame is noise at these sizes (8.1 → 11.4 at high, 6.8 → 6.0 at low).
+- Kernel: the props grid (8 m cells) holds 300 props as easily as 60.
+- Puddles join the wet zones through a square-then-circle test per entity per second.
+- Drops: one map; pickups are checked each tick only while something lies about. A player is sent what lies
+  within 30 m of them only, never the whole ground's list.
