@@ -230,6 +230,8 @@ export interface CreatureDef {
    */
   ranged?: { range: number; power: number; cooldown: number; element: Element; kind: 'bolt' | 'root'; secs?: number; provoked?: boolean };
   spawn: { x: number; z: number; r: number; max: number };
+  /** More places it lives (each with its own count); `leash`: those born there never go further than that from it. */
+  also?: { x: number; z: number; r: number; max: number; leash?: number }[];
   lore: string;
 }
 

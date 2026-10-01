@@ -12,6 +12,7 @@ import { duelFeature } from './panels/duel';
 import { lawlessFeature } from './panels/lawless';
 import { questsFeature } from './panels/quests';
 import { runesFeature } from './panels/runes';
+import { encountersFeature } from './panels/encounters';
 import { quidditchFeature } from './panels/quidditch';
 import { sealsFeature } from './panels/seals';
 import { studyFeature } from './panels/study';
@@ -31,7 +32,7 @@ export const CLIENT_FEATURES: readonly (readonly [string, ClientFeatureFactory])
   ['panels/darkmark', darkLordFeature], ['panels/lawless', lawlessFeature], ['panels/da', daFeature], ['panels/study', studyFeature],
   ['panels/seals', sealsFeature], ['panels/chat', chatFeature], ['panels/duel', duelFeature], ['panels/quidditch', quidditchFeature],
   ['panels/ward', wardFeature], ['panels/travel', travelFeature], ['panels/quests', questsFeature], ['panels/dark', darkFeature],
-  ['panels/trunk', trunkFeature], ['panels/runes', runesFeature], ['scenes3d', scenesFeature], ['props3d', propsFeature], ['chem3d', chemFeature], ['ui', uiFeature],
+  ['panels/trunk', trunkFeature], ['panels/runes', runesFeature], ['panels/encounters', encountersFeature], ['scenes3d', scenesFeature], ['props3d', propsFeature], ['chem3d', chemFeature], ['ui', uiFeature],
 ];
 
 /** npm run dev: an edited feature module arrives here (Vite HMR); main.ts swaps it in (FeatureHost.reload). */
@@ -41,7 +42,7 @@ if (import.meta.hot) {
   // (the literal list Vite needs, in CLIENT_FEATURES' order)
   import.meta.hot.accept([
     './panels/darkmark', './panels/lawless', './panels/da', './panels/study', './panels/seals', './panels/chat', './panels/duel', './panels/quidditch',
-    './panels/ward', './panels/travel', './panels/quests', './panels/dark', './panels/trunk', './panels/runes', './scenes3d', './props3d', './chem3d', './ui',
+    './panels/ward', './panels/travel', './panels/quests', './panels/dark', './panels/trunk', './panels/runes', './panels/encounters', './scenes3d', './props3d', './chem3d', './ui',
   ], (mods) => {
     mods.forEach((m, i) => {
       if (!m) return;

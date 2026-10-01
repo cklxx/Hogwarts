@@ -87,9 +87,9 @@ function migrate(world: World) {
     world.moved(w);
   }
   for (const c of world.creatures.values()) {
-    const sp = CREATURES[c.kind].spawn;
-    if (c.owner || c.ev || !sp.max) continue;
-    if (Math.hypot(c.home.x - sp.x, c.home.z - sp.z) > sp.r + 1 || !sceneAt(c.pos.x, c.pos.z)) world.creatures.delete(c.id);
+    const def = CREATURES[c.kind];
+    if (c.owner || c.ev || !def.spawn.max) continue;
+    if ([def.spawn, ...(def.also ?? [])].every((sp) => Math.hypot(c.home.x - sp.x, c.home.z - sp.z) > sp.r + 1) || !sceneAt(c.pos.x, c.pos.z)) world.creatures.delete(c.id);
   }
 }
 

@@ -24,6 +24,11 @@ function body(k: PropKind): THREE.BufferGeometry {
     case 'pumpkin': return painted([[at(new THREE.SphereGeometry(0.45, 12, 8).scale(1, 0.72, 1), 0, 0.33, 0), 0xe57a1c], [at(new THREE.CylinderGeometry(0.04, 0.06, 0.2, 5), 0, 0.72, 0), 0x3f6b2a]]);
     case 'pot': return painted([[at(new THREE.CylinderGeometry(0.2, 0.3, 0.55, 10), 0, 0.28, 0), 0xb8643c], [at(new THREE.TorusGeometry(0.21, 0.035, 4, 12).rotateX(Math.PI / 2), 0, 0.56, 0), 0x8e4a2a]]);
     case 'whizbang': return painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0xc2302a], [at(new THREE.CylinderGeometry(0.385, 0.385, 0.16, 12), 0, 0.5, 0), 0xf2c230], [at(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 4), 0.1, 1.1, 0), 0xf0e6c8]]);
+    // a web strung upright (feet at 0.2 m): spokes and two rings of silk
+    case 'web': return painted([
+      ...[0, 1, 2, 3, 4, 5].map((i) => [at(new THREE.BoxGeometry(0.035, 1.7, 0.035).rotateZ((i * Math.PI) / 6), 0, 1.05, 0), 0xeeeae2] as [THREE.BufferGeometry, number]),
+      [at(new THREE.TorusGeometry(0.38, 0.018, 3, 12), 0, 1.05, 0), 0xe4e0d6], [at(new THREE.TorusGeometry(0.72, 0.018, 3, 16), 0, 1.05, 0), 0xe4e0d6],
+    ]);
     case 'brazier': return painted([
       [at(new THREE.CylinderGeometry(0.48, 0.26, 0.3, 12, 1, true), 0, 1.0, 0), 0x3b342e], [at(new THREE.CircleGeometry(0.42, 12).rotateX(-Math.PI / 2), 0, 0.95, 0), 0x241c16],
       ...[0, 1, 2].map((i) => [at(new THREE.CylinderGeometry(0.04, 0.05, 1.0, 5).rotateZ(0.2).rotateY((i * Math.PI * 2) / 3), Math.sin((i * Math.PI * 2) / 3) * 0.18, 0.5, Math.cos((i * Math.PI * 2) / 3) * 0.18), 0x2d2825] as [THREE.BufferGeometry, number]),
