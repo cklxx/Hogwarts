@@ -93,6 +93,8 @@ export { FRESH_SECONDS };
 const REVEAL_CHARM: Record<string, string> = Object.fromEntries(Object.entries(UI_CHARM_INFO).map(([k, v]) => [v.spell, k]));
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
+/** What a spell with a target flies past (World.inAim): tree trunks. */
+const AIM_PASSES = 'tree';
 /** placeName's order: the most specific zone wins. */
 const PLACE_ORDER: ZoneId[] = ['azkaban', 'erised', 'great_hall', 'seventh_floor', 'tomb', 'willow', 'dungeons', 'greenhouses', 'courtyard', 'pitch', 'hogsmeade', 'deep_forest', 'forest', 'lake_shore', 'grounds'];
 
@@ -962,7 +964,7 @@ export class World {
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
     }
     // …or behind a wall, a tree, a rock: the bolt would only hit that (playtest round 3: four casts, 72 mana, nothing)
-    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inBlast(w.pos, this.entity(target)!.pos)) {
+    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inAim(w.pos, this.entity(target)!.pos)) {
       const t = this.entity(target)!;
       // (where it is now: between an agent's look and its cast the world moves on — say it, so no second look is needed)
       const at = `(${Math.round(t.pos.x)}, ${Math.round(t.pos.z)}), ${dist(t.pos, w.pos).toFixed(1)} m`;
@@ -1270,6 +1272,14 @@ export class World {
   /** An area spell's blast reaches only what no wall stands in front of (the same test a bolt makes). */
   inBlast(from: Vec2, to: Vec2): boolean {
     return !this.solids.hitSegment(from.x, from.z, to.x, to.z);
+  }
+  /**
+   * A spell with a target reaches it unless a wall or a building stands between: it weaves past tree trunks (the
+   * 2026-10-01 owner test: 「火打不到后面的怪物」 — in the forest one foe in eight within 25 m stood behind a trunk, and
+   * the cast at it was refused). A straight shot and a blast still stop at a tree.
+   */
+  inAim(from: Vec2, to: Vec2): boolean {
+    return !this.solids.hitSegment(from.x, from.z, to.x, to.z, undefined, 0, AIM_PASSES);
   }
 
   reveal(w: Wizard, key: UiCharm) {
@@ -2583,7 +2593,7 @@ export class World {
         p.pos.x += (p.vel.x * dt) / steps;
         p.pos.z += (p.vel.z * dt) / steps;
         // the whole sub-step's path, not just where it ends: a fast bolt never tunnels through a thin wall
-        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z);
+        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z, undefined, 0, p.homing ? AIM_PASSES : undefined); // (one with a target weaves past trees: inAim)
         if (wall) {
           const t = this.solids.hitT;
           p.pos.x = ax + (p.pos.x - ax) * t;
@@ -3270,14 +3280,14 @@ export class World {
       handle: x.handle, name: x.name, house: x.house, year: x.year, hp: Math.round(x.hp), dist: round(dist(x.pos, w.pos)), x: round(x.pos.x), z: round(x.pos.z),
       title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
-      blocked: (this.canHarm(w.id, x.id) && !this.inBlast(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
+      blocked: (this.canHarm(w.id, x.id) && !this.inAim(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
       elderWand: this.flags.elderWandHolder === x.id || undefined,
       ...this.views(HOOKS.look, (f) => f.view.look(this, x)), // e.g. darkLord
     })).sort((a, b) => a.dist - b.dist);
     const creatures = [...this.nearCreatures(w.pos, r)].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
       id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
       canHarm: this.canHarm(w.id, c.id), auras: live(c.auras, this.now).map((a) => a.k),
-      blocked: (this.canHarm(w.id, c.id) && !this.inBlast(w.pos, c.pos)) || undefined,
+      blocked: (this.canHarm(w.id, c.id) && !this.inAim(w.pos, c.pos)) || undefined,
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
       // what it shrugs off (the troll: arcane ×0.6), and whether a school event brought it (playtest round 4)
