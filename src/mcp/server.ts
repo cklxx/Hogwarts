@@ -5,6 +5,7 @@ import type { ServerNotification, ServerRequest } from '@modelcontextprotocol/sd
 import { z } from 'zod';
 import { SPELL_PRIMITIVES, FORGE_FAIL_PER_MIN, ITEM_MODS, ITEM_SLOTS, LISTEN_MAX_S } from '../shared/constants.js';
 import { LANDMARKS, landmarkById } from '../shared/map.js';
+import { PROPS, propById } from '../shared/props.js';
 import { describeRulebookSchema } from '../kernel/rulebook.js';
 import { visibleTo, type OwlMsg, type WorldEvent } from '../kernel/types.js';
 import { AGENT_PAUSED, type World } from '../kernel/world.js';
@@ -554,14 +555,30 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('cast', {
     title: 'Cast a spell',
-    description: 'Cast a spell from your book at a target (creature id from look, or a wizard handle/name) or at a point. Returns what was cast, mana spent, or why it fizzled; a bolt lands a moment later — look.yourHits then says what you hit, for how much, and what went down. An attack aimed at someone you may not harm is refused with the reason (no mana). Swish and flick. (一挥，一抖。)',
+    description: 'Cast a spell from your book at a target (creature id from look, wizard handle/name, or prop id/kind like "brazier-courtyard-1" or "brazier" for the nearest one) or at a point. Returns what was cast, mana spent, or why it fizzled; a bolt lands a moment later — look.yourHits then says what you hit, for how much, and what went down. An attack aimed at someone you may not harm is refused with the reason (no mana). Swish and flick. (一挥，一抖。)',
     inputSchema: {
       spell: z.string().describe('spell name, id, or hotbar key 1-6'),
       target: z.string().optional(),
       aim_x: z.number().optional(),
       aim_z: z.number().optional(),
     },
-  }, me((wid, a: { spell: string; target?: string; aim_x?: number; aim_z?: number }) => world.cast(wid, a.spell, { target: a.target, aim: aimOf(a.aim_x, a.aim_z) })));
+  }, me((wid, a: { spell: string; target?: string; aim_x?: number; aim_z?: number }) => {
+    // resolve prop targets (by id or kind) to aim coordinates — nearest match to caster
+    let target = a.target, aim = aimOf(a.aim_x, a.aim_z);
+    if (target && !aim) {
+      const w = world.wizards.get(wid);
+      const t = target;
+      const byId = propById(t);
+      const byKind = byId ? null : PROPS.filter((p) => p.kind === t.toLowerCase());
+      const prop = byId ?? (byKind?.length && w ? byKind.reduce((best, p) => {
+        const d = Math.hypot(p.x - w.pos.x, p.z - w.pos.z);
+        const bd = Math.hypot(best.x - w.pos.x, best.z - w.pos.z);
+        return d < bd ? p : best;
+      }) : null);
+      if (prop) { target = undefined; aim = { x: prop.x, z: prop.z }; }
+    }
+    return world.cast(wid, a.spell, { target, aim });
+  }));
 
   register('say', {
     title: 'Say something',
