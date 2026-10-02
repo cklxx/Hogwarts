@@ -1510,3 +1510,109 @@ No frame-rate claim (SwiftShader).
 - Seen in passing, not changed: the lake's water reads almost black from the 2.5D camera at q=low (dark grey at high).
   The water shader's mirror shows only the sky at grazing angles. Worth a look with the art pass.
 - No frame-rate claim (SwiftShader).
+
+## 2026-10-02 — the night freeze + skating (merged into the `ice` feature, `wf/ice-merge`)
+
+On top of the ice road: at night the whole lake freezes (`iceNight`, flipped by the 1 Hz sweep),
+and any ice skates 25% faster (`moveMult`) with a glide (`stepLate`: let go and the last velocity
+carries on, decaying; it digs in when a walk goal completes so you stop at the float). `onIce` is
+the one predicate both use; `walkOn` needs no change. The thaw at dawn reuses the melt handler.
+Isolated cost at 1 000 wizards: `moveMult` 0.044 ms/tick, `stepLate` ~0.03 ms/tick while skating.
+The snapshot's `ice` wire is `{ night, cells }` now; the client draws the night sheet (one painted
+`paintedIce` disc, one draw call, faded over 2.5 s) plus the road's tiles.
+
+A `moveWizard` fast path: a wizard with no keys, no goal and no dodge in progress returns before
+the four-hook `moveMult` chain. Idle `moveWizard` for 1 000 wizards: 0.173 ms → 0.030 ms per tick
+(the chain alone, measured in isolation). No frame-rate claim (SwiftShader).
+
+## 2026-10-01 — dressing, seven new prop kinds, drops (`wf/dress`)
+
+The owner: 「内容太少了……丰富内容元素」. Things to do per screen of open ground, at 571 m² per 16:9 screen: props,
+chests, fireplaces, gates, encounters and creature spawn places. The same count is a test now
+(`test/dressing.test.ts`, ≥ 4 in every scene).
+
+| scene | screens | before | after |
+|---|---:|---:|---:|
+| castle | 24.0 | 43 (1.8/screen) | 112 (4.7) |
+| lake | 2.7 | 12 (4.4) | 33 (12.2) |
+| forest | 7.8 | 29 (3.7) | 73 (9.4) |
+| pitch | 12.0 | 10 (0.8) | 56 (4.7) |
+| Hogsmeade | 18.7 | 22 (1.2) | 81 (4.3) |
+| all | 65.2 | 116 (1.8) | 355 (5.4) |
+
+Cost (`perf-client --bots=0`; SwiftShader, so only the direction counts):
+
+| view | q | draw calls before → after | triangles before → after | JS ms/frame before → after |
+|---|---|---:|---:|---:|
+| the 2.5D camera at spawn | high | 139 → 132 | 271 k → 260 k | 8.1 → 11.4 |
+| the 2.5D camera at spawn | low | 108 → 98 | 184 k → 176 k | 6.8 → 6.0 |
+| wide capture shot, castle | high | 501 → 575 | 278 k → 288 k | 16.1 → 14.8 |
+| wide capture shot, overview | high | 1016 → 1140 | 445 k → 449 k | 25.0 → 26.1 |
+
+- At first the new kinds cost +21 draw calls at spawn (high: 139 → 160), because each kind was one instanced mesh
+  for the whole world and never culled. Each kind is now cut into 24 m tiles, one instanced mesh per tile, and
+  each tile is culled on its own. A frame now draws only the tiles round you, so the gameplay view ends up below
+  where it started.
+- The wide capture shots see most tiles and pay +12–15 %. They are promo cameras, not play.
+- JS per frame is noise at these sizes (8.1 → 11.4 at high, 6.8 → 6.0 at low).
+- Kernel: the props grid (8 m cells) holds 300 props as easily as 60.
+- Puddles join the wet zones through a square-then-circle test per entity per second.
+- Drops: one map; pickups are checked each tick only while something lies about. A player is sent what lies
+  within 30 m of them only, never the whole ground's list.
+
+## 2026-10-01 — the first minutes, after the phone playtest (`wf/newbie`)
+
+The three headless-phone new players (Ivy, Leo, Nina) were all stuck in the first minutes. What was changed, and how it was checked:
+
+- **Tab / the target button locked on to players, not pixies (3/3).** A first-year's Tab and auto-aim never pick a
+  wizard; clicking a wizard still targets them. With nothing within 30 m, Tab looks out to 60 m. The phone's line
+  said "tap ◎", which is the view button; it now shows the target icon. Emulated phone (390×844, touch), six
+  other-house players standing round the newcomer: one tap gave 「康沃尔郡小精灵 · 22 米」.
+- **The Tempus step (3/3).** The step names the hourglass and has its own 施放 button. Before, the book opened on a
+  template that covered the list. Emulated phone: tap 打开 → book open, step 5 → tap 施放 → clock lit, step 6.
+- **Buttons needing several taps (3/3).** Two causes, both fixed:
+  - The coach mark wrote `data-at` and `data-over` every HUD tick, changed or not. Each write woke main.ts's
+    MutationObserver, which measured the HUD (`trackBars`), so there were ten forced layouts a second while the
+    tutorial showed.
+  - The phone drawer re-appended its pieces every tick whenever its page held anything else, and a node moved
+    mid-tap loses the tap.
+
+  On the emulated phone, the centre of every tutorial button is the button itself (`elementFromPoint`): 带我去
+  walked (38 → 34 m in 2.5 s), and 打开 and 施放 worked. The offset the agents saw may be partly their screenshot
+  driver; that part is not verified.
+- **Killed while reading (2/3), Dementors before the first lesson (1/3).** For NEWCOMER_PEACE_S = 300 s a wild
+  creature goes only for a newcomer who has hurt it (`test/playability.test.ts`). The pixies stay on their wet
+  lawn, so the first-reaction guarantee is not touched.
+- **Night too dark (2/3).** The night floor was raised: hemisphere 0.35 → 0.6 of day, moon 1.2 → 1.7, image light
+  0.25 → 0.4, exposure at night 1.1 → 1.35. Day is unchanged. Same spot, 23:00, q=high, play area clear of the HUD:
+  mean luminance 23.2 → 40.6, pixels under 40 went from 93 % to 48 %.
+
+## 2026-10-01 — the agents' day-2/day-3 list, and the 2.5D canopy (`wf/day3`)
+
+Each fix below has a test (`test/lockon.test.ts`, `test/lookcast.test.ts`, `test/agents.test.ts`,
+`test/duelclub.test.ts`, `test/props.test.ts`):
+
+- **2v2 "locked on to Mia, hit Seamus"**: reproduced. Every kernel attack spell named at Mia landed on Mia. A spell
+  written as `(first (enemies 25))` went for the nearest foe, Seamus standing in front. `(enemies r)` now puts the
+  target you named first.
+- **look vs cast**: no disagreement in the kernel (604 casts from 400 spots: look's canHarm / blocked matched every
+  outcome). What changes between the two is the world moving on, so a refused "no clear shot" now says where the
+  target is now.
+- **Possession**:
+  - When it runs out or the body falls, the next MCP result begins with a notice; nothing acts as you unannounced.
+  - Your own body's reflexes pause while you play a vessel.
+  - A held NPC is never drafted into a duel or a match.
+- **Balance**:
+  - Seals give +10 % per seal on the caps (was +20 %).
+  - A reflex answers only someone who struck at you (a hit, or a spell of theirs flying at you, parried or not). Your
+    own splash on a friend no longer starts it.
+  - look shows a lit prop's seconds left and its group's `1/3`. The Willow's stones stay lit 30 s; the agents thought
+    they had 2–3.
+- **2.5D in the forest**: the lens's nearer camera put tree crowns between it and you, and the view solids do not
+  model them. You showed as an x-ray under a solid crown. Two changes:
+  - In 2.5D the cut-out round you is always on (radius 1.9 → 2.6 m). The cut only takes what is nearer the camera than
+    you and above your feet.
+  - A new `canopy` term in the same fragment fade dithers away 65 % of whatever is nearer than you and more than 3.2 m
+    over your feet, anywhere on the screen: crowns, the tops of walls. It is one extra `step` and `smoothstep` in a
+    shader that already ran, with no new draw calls.
+  - `view-audit --flat`, 300 spots: player seen 99.7 % → 100 % (the castle battlement miss is gone).
