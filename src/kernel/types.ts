@@ -161,6 +161,10 @@ export interface Wizard {
   wasMinister: boolean;
   /** Server-driven non-player wizard. */
   npc: boolean;
+  /** Landmark ids already discovered (exploration XP, once each). */
+  visited: string[];
+  /** World time of last exploration check (throttle). */
+  lastExploreAt: number;
   auras: Aura[];
   /** Per-wizard cooldown for phoenix tears. */
   tearsAt: number;

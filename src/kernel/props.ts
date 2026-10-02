@@ -10,10 +10,15 @@
  *  - an elemental prop woken by its element stays awake `secs` (its quench element puts it out); when all three of a
  *    group are awake at once, each wizard who woke one of them in that time gets PROP_GROUP_XP and PROP_GROUP_GALLEONS,
  *    once per group per term (RULES: rewards are capped).
+ *  - a toadstool bursts under any hurting spell (`pop`): spores round it, and the toadstools by it go too;
+ *  - a breakable may leave something on the ground (kernel/loot.ts: one in LOOT_PCT, an ice block always); a
+ *    cauldron woken by fire brews a potion beside it;
  * State goes out as the snapshot's `props` (only what is not at rest), and MCP look lists the props within 25 m.
  */
-import { IGNITE_R, PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROPS, WHIZBANG_POWER, type Prop } from '../shared/props.js';
+import { IGNITE_R, PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROP_WAKE_XP, PROPS, WHIZBANG_POWER, type Prop } from '../shared/props.js';
 import type { Element } from '../shared/constants.js';
+import { LOOT_PCT, LOOT_WEIGHTS, type LootKind } from '../shared/loot.js';
+import { drop } from './loot.js';
 import type { Feature } from './feature.js';
 import type { Vec2 } from './types.js';
 import type { World } from './world.js';
@@ -65,6 +70,14 @@ export function touch(world: World, p: Prop, element: Element, by: string, depth
       const n = s.breaks.get(w.id) ?? 0;
       if (n < PROP_BREAKS_PER_TERM) { s.breaks.set(w.id, n + 1); world.gainXp(w, PROP_BREAK_XP); }
     }
+    // what it leaves on the ground
+    for (let i = 0, n = def.loot ?? (world.funRand() * 100 < LOOT_PCT ? 1 : 0); i < n; i++) drop(world, p, lootKind(world));
+    if (def.pop && depth < 6) {
+      // 孢子: a burst round it, of its own element — wild creatures only, and the props in it
+      world.fx({ k: 'nova', x: p.x, z: p.z, r: def.pop.r, e: def.pop.element });
+      for (const e of world.around(p, def.pop.r, (e) => !('house' in e) && world.canHarm(by, e.id), by, 16)) world.damage(by, e.id, def.pop.power, def.pop.element, ['whizbang']);
+      for (const q of near(p, def.pop.r, [])) if (q !== p && PROP_DEFS[q.kind].pop) touch(world, q, def.pop.element, by, depth + 1);
+    }
     if (def.blast && element === 'fire' && depth < 6) {
       // 韦斯莱烟火: a fire blast round it — wild creatures only, and whatever props stand in it
       world.fx({ k: 'nova', x: p.x, z: p.z, r: def.blast, e: 'fire' });
@@ -75,11 +88,20 @@ export function touch(world: World, p: Prop, element: Element, by: string, depth
     return true;
   }
   if (def.quench === element && s.awake.has(p.id)) { s.awake.delete(p.id); world.fx({ k: 'hit', x: p.x, z: p.z, e: element }); return true; }
-  if (def.wakes !== element) return false;
+  if (def.wakes !== element && def.also !== element) return false;
+  if (def.brews && !s.awake.has(p.id)) drop(world, p, 'potion');
   s.awake.set(p.id, { until: world.now + (def.secs ?? 30), by });
   world.fx({ k: 'hit', x: p.x, z: p.z, e: element });
+  if (w && !w.npc) world.gainXp(w, PROP_WAKE_XP);
   if (p.group) solve(world, p.group);
   return true;
+}
+
+const LOOT_SUM = LOOT_WEIGHTS.reduce((a, [, w]) => a + w, 0);
+function lootKind(world: World): LootKind {
+  let r = world.funRand() * LOOT_SUM;
+  for (const [k, w] of LOOT_WEIGHTS) { r -= w; if (r < 0) return k; }
+  return LOOT_WEIGHTS[0][0];
 }
 
 /** All three of a group awake: pay each who woke one (once per group per term). */
@@ -153,6 +175,10 @@ export const PROPS_FEATURE: Feature = {
         return {
           id: p.id, kind: p.kind, zh: d.zh, x: p.x, z: p.z, ...(p.group ? { group: p.group } : {}),
           state: s.broken.has(p.id) ? 'broken' : s.awake.has(p.id) ? 'awake' : 'rest',
+          // how long it stays lit, and how its three stand (the 2026-10-01 playtest: two agents lighting the Willow's
+          // stones over chat thought they had 2–3 s; they had 30 — now they can see it)
+          ...(s.awake.has(p.id) ? { secondsLeft: Math.ceil(s.awake.get(p.id)!.until - world.now) } : {}),
+          ...(p.group ? { groupLit: `${(members.get(p.group) ?? []).filter((q) => (s.awake.get(q.id)?.until ?? 0) > world.now).length}/${(members.get(p.group) ?? []).length}` } : {}),
           ...(d.wakes ? { wakes: d.wakes } : {}), hint: `${d.hintZh} / ${d.hintEn}`,
         };
       });

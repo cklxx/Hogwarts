@@ -13,6 +13,8 @@ export const DRESSING_GROUPS: readonly PropGroup[] = [
   { id: 'hogsmeade-lamps-2', zh: '霍格莫德街上的灯笼', en: 'the Hogsmeade street lanterns', kind: 'lantern' },
   { id: 'hogsmeade-lamps-3', zh: '霍格莫德街上的灯笼', en: 'the Hogsmeade street lanterns', kind: 'lantern' },
   { id: 'hogsmeade-lamps-4', zh: '霍格莫德街上的灯笼', en: 'the Hogsmeade street lanterns', kind: 'lantern' },
+  { id: 'forest-runes-1', zh: '禁林的符文石', en: 'the forest rune stones', kind: 'rune' },
+  { id: 'forest-crystals-1', zh: '禁林的水晶', en: 'the forest crystals', kind: 'crystal' },
 ];
 
 export const DRESSING: readonly Prop[] = [
@@ -262,7 +264,7 @@ export const DRESSING: readonly Prop[] = [
   { id: 'road1b-lamp-0-1', kind: 'lamppost', x: -75.0, z: 55.0 },
   { id: 'road1b-lamp-1-1', kind: 'lamppost', x: -75.0, z: 58.0 },
   { id: 'road1b-lamp-1-2', kind: 'lamppost', x: -75.0, z: 50.0 },
-  { id: 'road1b-lamp-2-1', kind: 'lamppost', x: 102.0, z: 36.0 },
+  { id: 'road1b-lamp-2-1', kind: 'lamppost', x: 105.0, z: 33.0 },
   { id: 'road2-lamp-1', kind: 'lamppost', x: 3.5, z: 5.7 },
   { id: 'road2-lamp-2', kind: 'lamppost', x: 3.5, z: 33.4 },
   { id: 'road2-lamp-3', kind: 'lamppost', x: 3.5, z: 35.0 },
@@ -272,11 +274,36 @@ export const DRESSING: readonly Prop[] = [
   { id: 'road2-lamp-7', kind: 'lamppost', x: 3.5, z: 172.0 },
   { id: 'sign-courtyard', kind: 'signpost', x: 6.0, z: -18.0 },
   { id: 'sign-lake', kind: 'signpost', x: -74.0, z: 28.0 },
-  { id: 'sign-hagrid', kind: 'signpost', x: 88.0, z: 38.0 },
+  { id: 'sign-hagrid', kind: 'signpost', x: 84.0, z: 42.0 },
   { id: 'sign-hogsmeade', kind: 'signpost', x: 4.0, z: 164.0 },
-  { id: 'bench-lake-1', kind: 'bench', x: -74.0, z: 36.0 },
+  { id: 'bench-lake-1', kind: 'bench', x: -74.0, z: 30.0 },
   { id: 'bench-lake-2', kind: 'bench', x: -79.0, z: 18.0 },
   { id: 'bench-courtyard', kind: 'bench', x: 9.0, z: -26.0 },
   { id: 'bench-hogsmeade', kind: 'bench', x: -6.0, z: 167.0 },
   { id: 'bench-hagrid', kind: 'bench', x: 90.0, z: 26.0 },
+  // ---- 2026-10-02: 补 20 件（6 种零布置道具）
+  // 庭院：火盆×2 + 水盆×1（出生点夜晚照明）
+  { id: 'brazier-courtyard-1', kind: 'brazier', x: 8.0, z: -20.0 },
+  { id: 'brazier-courtyard-2', kind: 'brazier', x: -8.0, z: -20.0 },
+  { id: 'basin-courtyard-1', kind: 'basin', x: 0.0, z: -30.0 },
+  // 海格小屋：南瓜×5（标志性南瓜地）
+  { id: 'pumpkin-hagrid-1', kind: 'pumpkin', x: 83.0, z: 44.0 },
+  { id: 'pumpkin-hagrid-2', kind: 'pumpkin', x: 85.0, z: 46.0 },
+  { id: 'pumpkin-hagrid-3', kind: 'pumpkin', x: 87.0, z: 44.0 },
+  { id: 'pumpkin-hagrid-4', kind: 'pumpkin', x: 89.0, z: 46.0 },
+  { id: 'pumpkin-hagrid-5', kind: 'pumpkin', x: 91.0, z: 44.0 },
+  // 霍格莫德：烟花×3 + 火盆×1 + 南瓜×2
+  { id: 'whizbang-hogsmeade-1', kind: 'whizbang', x: -5.0, z: 165.0 },
+  { id: 'whizbang-hogsmeade-2', kind: 'whizbang', x: -3.0, z: 165.0 },
+  { id: 'whizbang-hogsmeade-3', kind: 'whizbang', x: -4.0, z: 167.0 },
+  { id: 'brazier-hogsmeade-1', kind: 'brazier', x: 0.0, z: 170.0 },
+  { id: 'pumpkin-hogsmeade-1', kind: 'pumpkin', x: 10.0, z: 175.0 },
+  { id: 'pumpkin-hogsmeade-2', kind: 'pumpkin', x: -10.0, z: 175.0 },
+  // 禁林：符文石×3 + 水晶×3（神秘感，组奖励）
+  { id: 'rune-forest-1', kind: 'rune', x: 115.0, z: 20.0, group: 'forest-runes-1' },
+  { id: 'rune-forest-2', kind: 'rune', x: 118.0, z: 22.0, group: 'forest-runes-1' },
+  { id: 'rune-forest-3', kind: 'rune', x: 113.0, z: 24.0, group: 'forest-runes-1' },
+  { id: 'crystal-forest-1', kind: 'crystal', x: 120.0, z: 25.0, group: 'forest-crystals-1' },
+  { id: 'crystal-forest-2', kind: 'crystal', x: 123.0, z: 27.0, group: 'forest-crystals-1' },
+  { id: 'crystal-forest-3', kind: 'crystal', x: 121.0, z: 30.0, group: 'forest-crystals-1' },
 ];

@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { XP_FOR_YEAR } from '../src/kernel/progression.js';
 import { STATIC_COLLIDERS, signedDistance } from '../src/shared/layout.js';
-import { PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_RESPAWN_S, PROPS, propById } from '../src/shared/props.js';
+import { PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_RESPAWN_S, PROP_WAKE_XP, PROPS, propById } from '../src/shared/props.js';
 import { sceneAt } from '../src/shared/scenes.js';
 import { touch } from '../src/kernel/props.js';
 import { World } from '../src/kernel/world.js';
@@ -85,17 +85,17 @@ describe('props: what spells do', () => {
     const xp = a.xp, g = a.galleons;
     for (const q of ms) { expect(w.cast(a.id, 'Incendio', { aim: { x: q.x, z: q.z } }).ok).toBe(true); run(w, 1.6); }
     for (const q of ms) expect(w.props.awake.has(q.id), q.id).toBe(true);
-    expect(a.xp - xp).toBe(PROP_GROUP_XP);
+    expect(a.xp - xp).toBe(3 * PROP_WAKE_XP + PROP_GROUP_XP);
     expect(a.galleons - g).toBe(PROP_GROUP_GALLEONS);
-    // again this term: nothing more
+    // again this term: wake XP again, but group pays once
     w.props.awake.clear();
     for (const q of ms) touch(w, q, 'fire', a.id);
-    expect(a.xp - xp).toBe(PROP_GROUP_XP);
+    expect(a.xp - xp).toBe(6 * PROP_WAKE_XP + PROP_GROUP_XP);
     // a new term
     w.term.n++;
     w.props.awake.clear();
     for (const q of ms) touch(w, q, 'fire', a.id);
-    expect(a.xp - xp).toBe(2 * PROP_GROUP_XP);
+    expect(a.xp - xp).toBe(9 * PROP_WAKE_XP + 2 * PROP_GROUP_XP);
   });
   it('one Bombarda (a fire nova) in their middle lights all three at once', () => {
     const w = mk();
@@ -114,8 +114,8 @@ describe('props: what spells do', () => {
     const a = wiz(w, 'A', { x: 0, z: 170 }), b = wiz(w, 'B', { x: 0, z: 171 });
     const xa = a.xp, xb = b.xp;
     touch(w, ms[0], 'fire', a.id); touch(w, ms[1], 'fire', b.id); touch(w, ms[2], 'fire', a.id);
-    expect(a.xp - xa).toBe(PROP_GROUP_XP);
-    expect(b.xp - xb).toBe(PROP_GROUP_XP);
+    expect(a.xp - xa).toBe(2 * PROP_WAKE_XP + PROP_GROUP_XP);
+    expect(b.xp - xb).toBe(PROP_WAKE_XP + PROP_GROUP_XP);
   });
   it('the wrong element does nothing; ice puts a lit brazier out; a lit one burns down', () => {
     const w = mk();
@@ -161,6 +161,9 @@ describe('props: what spells do', () => {
     const look = w.look(a.id) as unknown as { props?: { id: string; state: string }[] };
     const seen = JSON.stringify(look);
     expect(seen).toContain('dun-1');
+    const d1 = (look.props ?? []).find((q) => q.id === 'dun-1') as unknown as { secondsLeft?: number; groupLit?: string };
+    expect(d1.secondsLeft).toBeGreaterThan(30);
+    expect(d1.groupLit).toBe('1/3');
     const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
     expect(back.props.breaks.get(a.id)).toBe(1);
   });
