@@ -668,6 +668,19 @@ export const NPC_LINES: Record<string, Line[]> = {
     { zh: '（掰着手指）一、二……二。', en: '(counting on fingers) One, two... two.' },
     { zh: '我……忘了我要说什么了。', en: 'I... forgot what I was gonna say.' },
   ],
+  'Madam Rosmerta': [
+    { zh: '来杯黄油啤酒吗，亲爱的？', en: 'A butterbeer, dear?' },
+    { zh: '三把扫帚永远为你们敞开。', en: 'The Three Broomsticks is always open for you.' },
+    { zh: '今天村子里真热闹。', en: 'The village is lively today.' },
+    { zh: '当心门口的台阶，刚拖过地。', en: 'Mind the step, just mopped.' },
+    { zh: '邓布利多教授上次来也是坐的这个位置。', en: 'Professor Dumbledore sat right there last time.' },
+  ],
+  'Ambrosius Flume': [
+    { zh: '蜂蜜公爵的新品：血腥棒棒糖！', en: 'Honeydukes new arrival: blood-flavoured lollipops!' },
+    { zh: '巧克力蛙，买五送一！', en: 'Chocolate Frogs, buy five get one free!' },
+    { zh: '比比多味豆，就在里面。', en: 'Bertie Bott\'s beans, right inside.' },
+    { zh: '糖果能治愈一切，真的。', en: 'Sweets cure everything. Truly.' },
+  ],
 };
 
 /** Extra chatter at night / in weather (mixed into the NPC's own pool). */

@@ -119,6 +119,8 @@ const CLAIM_R = 1.3;
 const TILE = 24;
 /** Things you can touch read a size larger than life (the 2.5D camera hangs 24 m up) and a touch brighter. */
 const SIZE = 1.35;
+/** Kinds too small for their shadow to matter: they skip the shadow map (docs/PERF.md 2026-10-03). */
+const NO_SHADOW: Set<PropKind> = new Set(['mushroom', 'web', 'pumpkin', 'pot', 'ice', 'hay']);
 /** A faint ring on the ground under each kind that wakes, in its element's colour: this one does something. */
 const RING: Partial<Record<PropKind, number>> = { brazier: 0xff9a3c, rune: 0x6ab4ff, basin: 0xa8e8ff, crystal: 0xffe6a0, lantern: 0xffb24a, cauldron: 0x7de07a };
 
@@ -136,7 +138,21 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   const ringGeo = new THREE.RingGeometry(0.62, 0.8, 24).rotateX(-Math.PI / 2).translate(0, 0.06, 0);
   const ringMat = new Map(kinds.filter((k) => RING[k]).map((k) => [k, new THREE.MeshBasicMaterial({ color: RING[k], transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })]));
   const glowGeo = new Map(kinds.filter((k) => GLOW[k]).map((k) => [k, GLOW[k]!.geo()]));
-  const glowMat = new Map(kinds.filter((k) => GLOW[k]).map((k) => [k, new THREE.MeshBasicMaterial({ color: GLOW[k]!.color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })]));
+  // the flames and charges breathe in the vertex shader (a scale pulsation): the CPU never rewrites a live matrix
+  const glowTime = { value: 0 };
+  const glowMat = new Map(kinds.filter((k) => GLOW[k]).map((k) => {
+    const gm = new THREE.MeshBasicMaterial({ color: GLOW[k]!.color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    gm.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = glowTime;
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          float gph = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
+          transformed *= 1.0 + 0.08 * sin(uTime * 9.0 + gph);
+        #endif`);
+    };
+    gm.customProgramCacheKey = () => 'prop-glow';
+    return [k, gm] as [PropKind, THREE.MeshBasicMaterial];
+  }));
   interface Bucket { k: PropKind; list: Prop[]; m: THREE.InstancedMesh; g?: THREE.InstancedMesh; r?: THREE.InstancedMesh }
   const byKey = new Map<string, Prop[]>();
   for (const p of PROPS) { const key = `${p.kind}|${Math.floor(p.x / TILE)},${Math.floor(p.z / TILE)}`; (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(p); }
@@ -144,7 +160,7 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   for (const [key, list] of byKey) {
     const k = list[0].kind;
     const m = new THREE.InstancedMesh(geo.get(k)!, PROP_DEFS[k].wets ? wetMat : mat, list.length);
-    m.name = `props:${key}`; m.castShadow = !PROP_DEFS[k].wets; m.receiveShadow = true;
+    m.name = `props:${key}`; m.castShadow = !PROP_DEFS[k].wets && !NO_SHADOW.has(k); m.receiveShadow = true;
     list.forEach((p, i) => m.setMatrixAt(i, place(p, true)));
     m.computeBoundingSphere();
     const b: Bucket = { k, list, m };
@@ -175,14 +191,12 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   let hovered: Prop | null = null, hoverAt = 0, t = 0;
 
   let sig = '';
-  let awake = new Set<string>();
   function apply() {
     const w = d.wire<{ b?: Record<string, number>; a?: Record<string, number> }>('props');
     const b = w?.b ?? {}, a = w?.a ?? {};
     const next = `${Object.keys(b).sort().join()}|${Object.keys(a).sort().join()}`;
     if (next === sig) return;
     sig = next;
-    awake = new Set(Object.keys(a));
     for (const { list, m, g, r } of buckets) {
       list.forEach((p, i) => { m.setMatrixAt(i, place(p, !(p.id in b))); if (g) g.setMatrixAt(i, place(p, p.id in a && !(p.id in b))); if (r) r.setMatrixAt(i, place(p, !(p.id in a))); });
       m.instanceMatrix.needsUpdate = true;
@@ -205,14 +219,7 @@ export const propsFeature: ClientFeatureFactory = (d) => {
     frame(dt) {
       t += dt;
       apply();
-      // the flames and charges breathe
-      for (const { list, g } of buckets) {
-        if (!awake.size) break;
-        if (!g) continue;
-        let any = false;
-        list.forEach((p, i) => { if (awake.has(p.id)) { g.setMatrixAt(i, place(p, true, 1 + 0.08 * Math.sin(t * 9 + i * 1.7))); any = true; } });
-        if (any) g.instanceMatrix.needsUpdate = true;
-      }
+      glowTime.value = t;
       if (hovered && t - hoverAt > 0.2) hovered = null;
       sign.visible = !!hovered;
       if (hovered) {
