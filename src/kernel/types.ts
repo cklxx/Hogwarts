@@ -131,7 +131,9 @@ export interface Wizard {
   titles: string[];
   stats: { stuns: number; stunned: number; creatures: number; casts: number; forged: number; reflects?: number; dodges?: number;
     /** Spells forged (forge_spell, copies and forks); `forged` counts items. */
-    spells?: number };
+    spells?: number;
+    /** Metres skated on the Black Lake ice (the ice feature's daily quest). */
+    skate?: number };
   st: WizardStatus;
   cooldowns: Record<string, number>;
   globalCd: number;
@@ -320,7 +322,11 @@ export const visibleTo = (e: WorldEvent, wid: string) => (e.to ? e.to === wid : 
 export interface Fx {
   k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal' | 'dodge' | 'reflect' | 'clash'
     /** a magic reaction (kernel/chem.ts): h = its id */
-    | 'react';
+    | 'react'
+    /** something picked up off the ground (kernel/loot.ts): h = its kind, n = how much */
+    | 'loot'
+    /** the Black Lake freezing over or thawing (kernel/ice.ts): at the lake's centre */
+    | 'freeze';
   x: number;
   z: number;
   r?: number;

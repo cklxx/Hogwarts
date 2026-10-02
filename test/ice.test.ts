@@ -86,3 +86,63 @@ describe('ice: the road (every shore spot facing the float)', () => {
     expect(w.ice.size).toBe(0);
   });
 });
+
+/** Night freeze: the whole lake holds while it is night, with skating. */
+function nightWorld() {
+  const w = new World({ seed: 7, secret: 'ice-test' });
+  w.clock = { at: w.now, hour: 21 }; // night (>= 20)
+  for (const k of [...w.creatures.keys()]) w.creatures.delete(k);
+  w.rules = { ...w.rules, creatures: { ...w.rules.creatures, spawnMultiplier: 0 } };
+  return w;
+}
+const tick = (w: World, s: number) => { for (let i = 0; i < Math.round(s * 20); i++) w.tick(); };
+const ICE_PT = { x: -110, z: 40 };
+
+describe('ice: the night freeze', () => {
+  it('freezes at night and thaws at dawn, announcing both', () => {
+    const w = nightWorld();
+    expect(w.iceNight).toBe(false);
+    tick(w, 1.2);
+    expect(w.iceNight).toBe(true);
+    w.clock = { at: w.now, hour: 10 };
+    tick(w, 1.2);
+    expect(w.iceNight).toBe(false);
+  });
+
+  it('skates 25% faster on night ice', () => {
+    const w = nightWorld();
+    const a = w.enroll('SkaterOne').wizard, b = w.enroll('SkaterTwo').wizard;
+    for (const x of [a, b]) { x.connections = 1; }
+    tick(w, 1.2);
+    a.pos = { ...ICE_PT }; b.pos = { x: -50, z: 40 };
+    w.setInput(a.id, 1, 0); w.setInput(b.id, 1, 0);
+    const ax0 = a.pos.x, bx0 = b.pos.x;
+    tick(w, 2);
+    const iceDist = a.pos.x - ax0, grassDist = b.pos.x - bx0;
+    expect(iceDist / grassDist).toBeCloseTo(1.25, 1);
+  });
+
+  it('counts metres skated for the daily quest', () => {
+    const w = nightWorld();
+    const a = w.enroll('SkaterOne').wizard;
+    a.connections = 1;
+    tick(w, 1.2);
+    a.pos = { ...ICE_PT };
+    w.setInput(a.id, 1, 0);
+    tick(w, 2);
+    w.setInput(a.id, 0, 0);
+    const skated = a.stats.skate ?? 0;
+    expect(skated).toBeGreaterThan(10);
+    expect(skated).toBeLessThan(25);
+  });
+
+  it('the wire carries the night flag', () => {
+    const w = nightWorld();
+    const me = w.enroll('Skater').wizard;
+    me.connections = 1;
+    const snap = (): { ice?: unknown } => w.snapshot() as { ice?: unknown };
+    expect(snap().ice).toBeUndefined();
+    tick(w, 1.2);
+    expect((snap().ice as { night: boolean }).night).toBe(true);
+  });
+});

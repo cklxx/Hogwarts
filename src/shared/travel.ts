@@ -17,5 +17,5 @@ export const FLOO_R = 3;
 /** Between two journeys, and after being hurt (no escaping a fight by the fire). */
 export const FLOO_CD_S = 30, FLOO_HURT_S = 6;
 /** On a broom, outside the castle: this much faster; mounting takes a moment's calm. */
-export const BROOM_MULT = 1.4, BROOM_MOUNT_CD_S = 3, BROOM_HURT_S = 4;
+export const BROOM_MULT = 2.0, BROOM_MOUNT_CD_S = 3, BROOM_HURT_S = 4;
 export const fireplaceNear = (p: { x: number; z: number }, r = FLOO_R) => FIREPLACES.find((f) => Math.hypot(f.x - p.x, f.z - p.z) <= r) ?? null;
