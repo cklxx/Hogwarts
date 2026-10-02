@@ -1616,3 +1616,64 @@ Each fix below has a test (`test/lockon.test.ts`, `test/lookcast.test.ts`, `test
     over your feet, anywhere on the screen: crowns, the tops of walls. It is one extra `step` and `smoothstep` in a
     shader that already ran, with no new draw calls.
   - `view-audit --flat`, 300 spots: player seen 99.7 % → 100 % (the castle battlement miss is gone).
+
+## 2026-10-01 — hitting what you aim at (`wf/aim`)
+
+The owner: 「火打不到后面的怪物……索敌还是问题很大，聚焦基础的体验」. Measured first:
+
+- **Kernel**: a locked Incendio hits a monster standing behind another, or behind you, every time (pixie, spider, troll; 5, 10, 20 m). An unlocked shot aimed at the far one hits the near one first, which is right for a straight shot.
+- **What blocks a locked shot**: from 3000 random spots per scene, each pair of you and a monster within 25 m:
+
+  | scene | blocked | cause |
+  |---|---:|---|
+  | forest | 12.4 % | all tree trunks |
+  | castle | 4.0 % | mostly the greenhouse walls (the snares stand in front of them: legitimate) |
+  | Hogsmeade | 4.9 % | a building |
+
+  A spell with a target now weaves past trunks (`World.inAim`). Walls and buildings still stop it. A straight shot and a blast still stop at a tree. `test/lockon.test.ts` walks every forest trunk with a monster squarely behind it; that test fails without the change.
+- **Client auto-aim and Tab in 2.5D**:
+  - Before: auto-aim took the camera's 42° forward cone, which missed foes beside you and below you on screen; Tab took a 180° cone, which reached behind the camera to foes you could not see.
+  - Now: both take exactly the foes on screen, nearest first, and a lock is kept only while its target is on screen.
+  - With no foe on screen and no mouse (a phone), the shot goes the way you face, not up the screen.
+  - Browser, the lawn, desktop and phone: every press locked an on-screen pixie (14–28 m) and every lock hit.
+
+## 2026-10-02 — the basic loop: find, cast, hit, down (`wf/basics`)
+
+The owner: 「基础体验优化下」. Measured first, in the kernel (`World.cast` at a fixed spot on the lawn, one wizard mashing 5 presses a second for 3 minutes at the nearest pixie, first year, default rules):
+
+| | before | after |
+|---|---:|---:|
+| pixies downed in 3 min (Stupefy) | 44 | 69 |
+| Incendio | 51 | 79 |
+| a rotation of three spells | 13 | 39 |
+| presses refused "not enough mana" (Stupefy) | 621 | 464 |
+| red toasts per mash, browser | 1+ (the ghost target) | 0 |
+
+What changed:
+- **战斗回蓝** (`src/kernel/focus.ts`): a direct hit on a wild creature gives 6 mana back, at most 10 a second. Before, mana (7/s regen, about 15 a Stupefy) ran dry after about 6 casts, and from then on only one press in ten went out.
+- **The press buffer** (`castGate` in `client/controls.ts`): a press during a cooldown or short of mana waits up to 0.6 s and goes out by itself, instead of reaching the server and coming back as a red toast. The client mirrors the server's cooldowns (global 0.25 s, the spell's 0.3 + mana/60 s). A tile you cannot pay for turns grey. Past the 0.6 s, one quiet line every 3 s and the mana bar flashes.
+- **Ghost targets**: the server says the target is gone ("There is no …") when this screen still draws it. The lock is dropped, auto-aim, lock and hover all skip that id for 4 s, and the press goes again at whoever is really there. Nothing was spent.
+
+The browser A/B (30 s mash on the lawn, SwiftShader, about 1 fps) cannot measure hits. The page log shows all 14 sends between 26.9 and 48.8 s, and all 9 replies in one burst at 58.4 s: the starved main thread runs key events first and WebSocket messages last, so the client never sees a pixie fall. Only the toasts count from it (before: a red ghost toast; after: none). Hit counts come from the kernel loop above and `test/castgate.test.ts` (a 60 s mash lands > 1.5 × what mana alone pays for).
+
+## 2026-10-03 — client CPU: particles to the GPU (`wf/ice`)
+
+The owner: 「客户端性能优化下」. A census at spawn (high quality, `?perf=1`) showed the shadow map doing ~60% of all draw calls (157 prop buckets casting), and code review found the per-frame CPU particle loops. All ambient particle motion now integrates in the vertex shader; the CPU never touches a live particle.
+
+| per frame before | after |
+|---|---|
+| weather: 3000 × getY/setY + buffer upload | 3 uniform writes |
+| fireflies: 500 × setXYZ (1500 sin/cos) + upload | 2 uniform writes |
+| lanterns: 260 × getY/setY/getX + upload | 2 uniform writes |
+| prop glow breathe: N_awake × matrix compose (Vector3 alloc + FBM heightAt each) + full buffer upload | 1 uniform write |
+| name-tag declutter: O(n²) every frame | O(n²) every 6th frame |
+| bolt ground height: FBM heightAt per bolt per frame | resampled after 3 m of travel |
+
+What changed:
+- **Weather** (`client/main.ts`): `PointsMaterial` → `ShaderMaterial`; `y = mod(y0 − fall·t, 40)` in the vertex shader; `uTime/uFall/uSize/uScale` uniforms.
+- **Fireflies, lanterns** (`client/decor.ts`): same treatment; each mote's phase comes from a hash of its seed position, so no extra attributes. The glow sprite textures are kept as `uMap`.
+- **Prop glow breathing** (`client/props3d.ts`): `onBeforeCompile` injects `transformed *= 1 + 0.08·sin(uTime·9 + phase)`; instance matrices are now written only when awake/broken state changes.
+- **Small props skip the shadow map** (`client/props3d.ts`): mushroom, web, pumpkin, pot, ice, hay — their shadows were invisible at 2.5D distance.
+- **Tag declutter** (`client/main.ts`): every 6th frame; **bolt height** (`client/main.ts`): cached, resampled after 3 m.
+
+Verified: `tsc` clean, `test/props.test.ts` 11/11, browser smoke test renders with no errors (the new shaders compile). SwiftShader (~0.15 fps) cannot resolve the JS delta — the win is structural: ~3760 CPU particle updates and 2 full buffer uploads per frame are gone.
