@@ -1622,3 +1622,22 @@ The owner: 「火打不到后面的怪物……索敌还是问题很大，聚焦
   - Now: both take exactly the foes on screen, nearest first, and a lock is kept only while its target is on screen.
   - With no foe on screen and no mouse (a phone), the shot goes the way you face, not up the screen.
   - Browser, the lawn, desktop and phone: every press locked an on-screen pixie (14–28 m) and every lock hit.
+
+## 2026-10-02 — the basic loop: find, cast, hit, down (`wf/basics`)
+
+The owner: 「基础体验优化下」. Measured first, in the kernel (`World.cast` at a fixed spot on the lawn, one wizard mashing 5 presses a second for 3 minutes at the nearest pixie, first year, default rules):
+
+| | before | after |
+|---|---:|---:|
+| pixies downed in 3 min (Stupefy) | 44 | 69 |
+| Incendio | 51 | 79 |
+| a rotation of three spells | 13 | 39 |
+| presses refused "not enough mana" (Stupefy) | 621 | 464 |
+| red toasts per mash, browser | 1+ (the ghost target) | 0 |
+
+What changed:
+- **战斗回蓝** (`src/kernel/focus.ts`): a direct hit on a wild creature gives 6 mana back, at most 10 a second. Before, mana (7/s regen, about 15 a Stupefy) ran dry after about 6 casts, and from then on only one press in ten went out.
+- **The press buffer** (`castGate` in `client/controls.ts`): a press during a cooldown or short of mana waits up to 0.6 s and goes out by itself, instead of reaching the server and coming back as a red toast. The client mirrors the server's cooldowns (global 0.25 s, the spell's 0.3 + mana/60 s). A tile you cannot pay for turns grey. Past the 0.6 s, one quiet line every 3 s and the mana bar flashes.
+- **Ghost targets**: the server says the target is gone ("There is no …") when this screen still draws it. The lock is dropped, auto-aim, lock and hover all skip that id for 4 s, and the press goes again at whoever is really there. Nothing was spent.
+
+The browser A/B (30 s mash on the lawn, SwiftShader, about 1 fps) cannot measure hits. The page log shows all 14 sends between 26.9 and 48.8 s, and all 9 replies in one burst at 58.4 s: the starved main thread runs key events first and WebSocket messages last, so the client never sees a pixie fall. Only the toasts count from it (before: a red ghost toast; after: none). Hit counts come from the kernel loop above and `test/castgate.test.ts` (a 60 s mash lands > 1.5 × what mana alone pays for).

@@ -397,7 +397,9 @@ function connect() {
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
       ctl.onCast(msg.r);
-      if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
+      // (too fast / still recharging / short of mana: the press buffer waits those out, controls.ts castGate — a refusal
+      // that slips past it still says nothing: a red line per mashed key was most of what a fight showed)
+      if (!msg.r.ok && !/retry_after=|not enough mana|^There is no "/.test(msg.r.error ?? '')) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
       else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
     }
     else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); market.onBook(); }
@@ -807,6 +809,7 @@ function hud() {
     // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
     el.classList.toggle('sel', i === ctl.selected);
     el.classList.toggle('empty', !s);
+    el.classList.toggle('poor', !!s && s.mana != null && me!.mana + 0.5 < s.mana); // (not enough mana for it now)
     const kind = s?.kind ?? '';
     if (el.dataset.kind !== kind) el.dataset.kind = kind;
     setText(el.children[0], s ? spellName(s.name) : '·');
@@ -1714,6 +1717,7 @@ probe.mark("preControls");
 const ctl = createControls({
   canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,
   snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast, lens: (f: boolean) => R.setLens(f),
+  flashMana: () => { const m = document.querySelector('#bars .mana'); if (!m) return; m.classList.remove('flash'); void (m as HTMLElement).offsetWidth; m.classList.add('flash'); },
   cam: {
     get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; },
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
