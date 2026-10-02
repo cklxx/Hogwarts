@@ -1,19 +1,31 @@
 import * as THREE from 'three';
+import { L } from './i18n';
 import type { ClientFeatureFactory } from './feature';
 import { encounterById } from '../src/shared/encounters';
-import { ICE_CELL, ICE_Y, overWater } from '../src/shared/ice';
+import { ICE_CELL, ICE_Y, LAKE_WATER, overWater } from '../src/shared/ice';
+import { paintedIce } from './textures';
 
 /**
- * 冰路 in the browser (src/shared/ice.ts; the kernel's src/kernel/ice.ts): the frozen squares of the Black Lake as one
- * instanced mesh (one draw call however long the road), rewritten only when the snapshot's `ice` changes; a square
- * with under ICE_FADE s left thins as it melts. And the lake encounter's float out in the middle (a raft, a gold ring).
+ * 冰路 + 夜冻 in the browser (src/shared/ice.ts; the kernel's src/kernel/ice.ts):
+ * - 冰路: the frozen squares as one instanced mesh (one draw call however long the road),
+ *   rewritten only when the snapshot's `ice` changes; a square with under ICE_FADE s left thins as it melts.
+ * - 夜冻: at night the whole lake freezes: one painted sheet fades in over the water, with snowfall.
+ * - 滑行轨迹: skaters leave fading white streaks on the sheet.
+ * - And the lake encounter's float out in the middle (a raft, a gold ring).
  * Whoever stands over the water stands on the ice (`ground`: the lake bed is 5 m down, and nobody walks there else).
  */
 const MAX = 600, ICE_FADE = 4;
+/** Snowflakes over the frozen lake. */
+const SNOW_N = 150;
+/** Skate trail segments (fading). */
+const TRAIL_N = 40;
+
+interface IceWire { night: boolean; cells: number[] }
 
 export const iceFeature: ClientFeatureFactory = (d) => {
   const group = new THREE.Group();
   group.name = 'ice';
+  // 冰路: the spell-frozen squares
   const tiles = new THREE.InstancedMesh(
     new THREE.BoxGeometry(ICE_CELL * 0.98, 0.16, ICE_CELL * 0.98),
     new THREE.MeshStandardMaterial({ color: 0xe4f6ff, roughness: 0.2, emissive: 0x9fd8ff, emissiveIntensity: 0.18, transparent: true, opacity: 0.9 }),
@@ -21,6 +33,17 @@ export const iceFeature: ClientFeatureFactory = (d) => {
   );
   tiles.name = 'ice:tiles'; tiles.count = 0; tiles.frustumCulled = false; tiles.receiveShadow = true;
   group.add(tiles);
+  // 夜冻: the whole-lake sheet
+  const sheetMat = new THREE.MeshStandardMaterial({
+    map: paintedIce(), transparent: true, opacity: 0,
+    roughness: 0.28, metalness: 0.08,
+    emissive: new THREE.Color(0x9fd4ff), emissiveIntensity: 0,
+  });
+  const sheet = new THREE.Mesh(new THREE.CircleGeometry(LAKE_WATER.r, 48).rotateX(-Math.PI / 2), sheetMat);
+  sheet.position.set(LAKE_WATER.x, ICE_Y + 0.02, LAKE_WATER.z);
+  sheet.receiveShadow = true;
+  sheet.visible = false;
+  group.add(sheet);
   // the float
   const lake = encounterById('lake')!;
   const float = new THREE.Group();
@@ -33,8 +56,44 @@ export const iceFeature: ClientFeatureFactory = (d) => {
   float.position.set(lake.x, 0.05, lake.z);
   group.add(float);
 
+  // 降雪: snowflakes over the frozen lake (one Points, recycled)
+  const snowGeo = new THREE.BufferGeometry();
+  const snowPos = new Float32Array(SNOW_N * 3);
+  const snowVel = new Float32Array(SNOW_N);
+  for (let i = 0; i < SNOW_N; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * LAKE_WATER.r;
+    snowPos[i * 3] = LAKE_WATER.x + Math.cos(a) * r;
+    snowPos[i * 3 + 1] = Math.random() * 12;
+    snowPos[i * 3 + 2] = LAKE_WATER.z + Math.sin(a) * r;
+    snowVel[i] = 0.8 + Math.random() * 1.2;
+  }
+  snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+  const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.18, transparent: true, opacity: 0,
+    depthWrite: false, sizeAttenuation: true,
+  }));
+  snow.frustumCulled = false;
+  snow.visible = false;
+  group.add(snow);
+
+  // 滑行轨迹: fading white streaks where the skater has been
+  const trailGeo = new THREE.BufferGeometry();
+  const trailPos = new Float32Array(TRAIL_N * 2 * 3);
+  const trailAge = new Float32Array(TRAIL_N).fill(1e9);
+  trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+  const trail = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({
+    color: 0xeaf6ff, transparent: true, opacity: 0.7, depthWrite: false,
+  }));
+  trail.frustumCulled = false;
+  trail.visible = false;
+  group.add(trail);
+  let trailHead = 0;
+  let lastTrail = { x: 0, z: 0 };
+
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3();
   let sig: unknown = null, t = 0;
+  let shown = 0; // the night sheet's fade: 0 open water, 1 frozen over
+  let pulse = 0; // the frost flash when the night ice comes or goes (seconds left)
   return {
     id: 'ice',
     group,
@@ -43,19 +102,82 @@ export const iceFeature: ClientFeatureFactory = (d) => {
       t += dt;
       float.position.y = 0.05 + Math.sin(t * 1.6) * 0.06;
       ring.scale.setScalar(1 + 0.06 * Math.sin(t * 3));
-      const w = d.wire<number[]>('ice');
-      if (w === sig) return;
-      sig = w;
-      const n = Math.min(MAX, Math.floor((w?.length ?? 0) / 3));
-      for (let k = 0; k < n; k++) {
-        const i = w![k * 3], j = w![k * 3 + 1], left = w![k * 3 + 2];
-        const f = Math.min(1, left / ICE_FADE);
-        v.set((i + 0.5) * ICE_CELL, ICE_Y - 0.08, (j + 0.5) * ICE_CELL);
-        s.set(0.55 + 0.45 * f, 1, 0.55 + 0.45 * f);
-        tiles.setMatrixAt(k, m4.compose(v, q, s));
+      const w = d.wire<IceWire>('ice');
+      // the spell-ice tiles
+      if (w !== sig) {
+        sig = w;
+        const cells = w?.cells ?? [];
+        const n = Math.min(MAX, Math.floor(cells.length / 3));
+        for (let k = 0; k < n; k++) {
+          const i = cells[k * 3], j = cells[k * 3 + 1], left = cells[k * 3 + 2];
+          const f = Math.min(1, left / ICE_FADE);
+          v.set((i + 0.5) * ICE_CELL, ICE_Y - 0.08, (j + 0.5) * ICE_CELL);
+          s.set(0.55 + 0.45 * f, 1, 0.55 + 0.45 * f);
+          tiles.setMatrixAt(k, m4.compose(v, q, s));
+        }
+        tiles.count = n;
+        tiles.instanceMatrix.needsUpdate = true;
       }
-      tiles.count = n;
-      tiles.instanceMatrix.needsUpdate = true;
+      // the night sheet
+      const target = w?.night ? 1 : 0;
+      shown += Math.sign(target - shown) * Math.min(Math.abs(target - shown), dt / 2.5);
+      sheetMat.opacity = 0.96 * shown;
+      if (pulse > 0) {
+        pulse = Math.max(0, pulse - dt);
+        sheetMat.emissiveIntensity = 0.55 * (pulse / 1.2) * shown;
+      } else sheetMat.emissiveIntensity = 0;
+      sheet.visible = shown > 0.01;
+      // 降雪: fall over the frozen lake, fade with the sheet
+      const snowing = shown > 0.5;
+      snow.visible = snowing;
+      if (snowing) {
+        (snow.material as THREE.PointsMaterial).opacity = 0.85 * shown;
+        const p = snowGeo.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < SNOW_N; i++) {
+          let y = p.getY(i) - snowVel[i] * dt;
+          if (y < 0) {
+            y = 10 + Math.random() * 2;
+            const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * LAKE_WATER.r;
+            p.setX(i, LAKE_WATER.x + Math.cos(a) * r);
+            p.setZ(i, LAKE_WATER.z + Math.sin(a) * r);
+          }
+          // drift sideways a little
+          p.setX(i, p.getX(i) + Math.sin(t * 0.7 + i) * dt * 0.4);
+          p.setY(i, y);
+        }
+        p.needsUpdate = true;
+      }
+      // 滑行轨迹: a fading streak behind you while you skate
+      const me = d.myPos();
+      const skating = !!(me && w?.night && overWater(me.x, me.z));
+      trail.visible = skating || trailAge[trailHead] < 3;
+      if (skating) {
+        const dx = me.x - lastTrail.x, dz = me.z - lastTrail.z;
+        if (dx * dx + dz * dz > 0.5) {
+          const p = trailGeo.attributes.position as THREE.BufferAttribute;
+          p.setXYZ(trailHead * 2, lastTrail.x, ICE_Y + 0.05, lastTrail.z);
+          p.setXYZ(trailHead * 2 + 1, me.x, ICE_Y + 0.05, me.z);
+          p.needsUpdate = true;
+          trailAge[trailHead] = 0;
+          trailHead = (trailHead + 1) % TRAIL_N;
+          lastTrail = { x: me.x, z: me.z };
+        }
+      } else if (me) lastTrail = { x: me.x, z: me.z };
+      // age the trail out
+      let trailAlive = false;
+      for (let i = 0; i < TRAIL_N; i++) {
+        if (trailAge[i] < 3) { trailAge[i] += dt; trailAlive = true; }
+      }
+      (trail.material as THREE.LineBasicMaterial).opacity = trailAlive ? 0.7 : 0;
+    },
+    fx(f) {
+      if (f.k !== 'freeze') return;
+      pulse = 1.2;
+      const w = d.wire<IceWire>('ice');
+      const frozen = !!w?.night;
+      d.floatText(LAKE_WATER.x, LAKE_WATER.z,
+        frozen ? L('❄ 黑湖结冰了', '❄ The Black Lake freezes') : L('冰化开了', 'The ice melts away'),
+        '#cfeaff', 5);
     },
   };
 };
