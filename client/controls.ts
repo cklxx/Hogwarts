@@ -17,8 +17,21 @@ export interface CCreature { i: string; k: CreatureKind; hp: number; m: number; 
 export interface CSnap { w: CWizard[]; c: CCreature[] }
 /** What a spell is for (World.privateState reads it off Spell.effects): harm aims at a foe, help at a friend or you, self needs no target. */
 export type SpellKind = 'harm' | 'help' | 'self';
-export interface CSlot { id: string; name: string; cd: number; kind?: SpellKind }
-export interface CMe { name: string; house: House; year: number; seals: number; ui: string[]; hotbar: (CSlot | null)[]; stunned: number; jailed: number }
+export interface CSlot { id: string; name: string; cd: number; kind?: SpellKind; mana?: number | null }
+
+/**
+ * The press buffer (the 2026-10-02 loop measure: 70 % of a mashing first-year's presses were refused — too fast, still
+ * recharging, out of mana — and each refusal was a red toast): a press that cannot go yet waits up to BUFFER_S and goes
+ * the moment it can; a held key keeps it waiting, so holding casts again and again. Pure, for tests: may slot `s` go
+ * now, given the local cooldowns since our own last sends (the server's reach us a tick later) and the mana we have?
+ */
+export const BUFFER_S = 0.6, GCD_S = 0.25;
+export function castGate(s: CSlot, mana: number | undefined, t: number, gcdUntil: number, readyAt: number): 'go' | 'cd' | 'mana' {
+  if (t < gcdUntil || t < readyAt || s.cd > 0.05) return 'cd';
+  if (s.mana != null && mana !== undefined && mana + 0.5 < s.mana) return 'mana';
+  return 'go';
+}
+export interface CMe { name: string; house: House; year: number; seals: number; ui: string[]; hotbar: (CSlot | null)[]; stunned: number; jailed: number; mana?: number }
 type Model = { root: THREE.Object3D };
 export type Rel = 'self' | 'ally' | 'hostile' | 'neutral';
 
@@ -38,6 +51,8 @@ export interface ControlsDeps {
   /** Live view of main.ts' camera orbit. */
   cam: { yaw: number; pitch: number; dist: number };
   toast: (text: string) => void;
+  /** Out of mana: the mana bar flashes (main.ts). */
+  flashMana?: () => void;
   panels: { book: () => void; menu: () => void; owl: (force?: boolean) => void; trunk: () => void };
   /** The player's agent as the HUD sees it (me.agent), or null before the first 'me'. */
   agent: () => AgentView | null;
@@ -293,7 +308,7 @@ export function createControls(d: ControlsDeps) {
   let lastGoto = 0;
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
   const fullCd = new Map<string, number>();
-  const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null }[] = [];
+  const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null; slot?: number }[] = [];
   let hotbarSig = '';
   /** A phone or tablet: no hover, a coarse pointer. (Touch laptops keep the mouse UI; their touches still work.) */
   const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -438,7 +453,7 @@ export function createControls(d: ControlsDeps) {
     // players crowding the spawn, never the pixies, and hit them); clicking a wizard still targets them
     const firstYear = (d.me()?.year ?? 1) <= 1;
     for (const k of allKeys()) {
-      if (!harmable(k) || (firstYear && wIdx.has(k))) continue;
+      if (!harmable(k) || (firstYear && wIdx.has(k)) || ghost(k)) continue;
       const q = model(k)!.root.position;
       const dist = Math.hypot(q.x - p.x, q.z - p.z);
       if (dist > range) continue;
@@ -485,8 +500,8 @@ export function createControls(d: ControlsDeps) {
   function chooseTarget(s: CSlot): string | null {
     const kind = kindOf(s);
     if (kind === 'harm') {
-      if (target && attackable(target) && distTo(target) <= 45 && (!topView || onScreen(model(target)!.root.position))) return target;
-      if (hovered && harmable(hovered) && distTo(hovered) <= 45) return hovered;
+      if (target && !ghost(target) && attackable(target) && distTo(target) <= 45 && (!topView || onScreen(model(target)!.root.position))) return target;
+      if (hovered && !ghost(hovered) && harmable(hovered) && distTo(hovered) <= 45) return hovered;
       const auto = hostilesAhead(HARM_RANGE, 42, true)[0] ?? null;
       if (auto) setTarget(auto);
       return auto;
@@ -505,11 +520,34 @@ export function createControls(d: ControlsDeps) {
     }
     return null;
   }
+  // the press buffer (castGate): one press waiting, the local cooldowns after our own sends
+  let queued: { i: number; at: number; opts: { at?: { x: number; z: number } }; why: 'cd' | 'mana' } | null = null;
+  let gcdUntil = 0, lowManaHint = 0;
+  const readyAt = new Map<string, number>();
+  /** Targets the server said are gone, and when: auto-aim skips them a few seconds (onCast). */
+  const ghosts = new Map<string, number>();
+  const ghost = (k: string) => { const t = ghosts.get(k); if (t === undefined) return false; if (now() - t > 4) { ghosts.delete(k); return false; } return true; };
+  function flushQueue() {
+    if (!queued) return;
+    const me = d.me(), s = me?.hotbar[queued.i];
+    if (!me || !s) { queued = null; return; }
+    const g = castGate(s, me.mana, now(), gcdUntil, readyAt.get(s.id) ?? 0);
+    if (g === 'go') { const q = queued; queued = null; castSlot(q.i, q.opts); return; }
+    queued.why = g;
+    if (now() - queued.at > BUFFER_S) {
+      // out of mana for a while: one quiet word (and the mana bar flashes), never a toast per press
+      if (g === 'mana' && now() - lowManaHint > 3) { lowManaHint = now(); d.toast(L('魔力不够了 —— 稍等一下；打中魔物会回一点', 'Out of mana: a moment — hitting a creature gives some back')); }
+      if (g === 'mana') d.flashMana?.();
+      queued = null;
+    }
+  }
   function castSlot(i: number, opts: { at?: { x: number; z: number } } = {}) {
     const me = d.me();
     if (!me) return;
     const s = me.hotbar[i];
     if (!s) { d.toast(L(`快捷栏 ${i + 1} 是空的 —— 按 B 打开咒语书，把咒语放进来。`, `Hotbar slot ${i + 1} is empty — press B to put a spell there.`)); return; }
+    const g = castGate(s, me.mana, now(), gcdUntil, readyAt.get(s.id) ?? 0);
+    if (g !== 'go') { if (queued?.i !== i) queued = { i, at: now(), opts, why: g }; else { queued.at = Math.max(queued.at, now() - BUFFER_S * 0.5); queued.opts = opts; } return; }
     const kind = kindOf(s);
     // a revive ignores where it is aimed (the server lifts its target, else whoever is nearest), so it always picks its own
     const revive = kind === 'help' && isRevive(s);
@@ -522,7 +560,8 @@ export function createControls(d: ControlsDeps) {
     const m = tgt ? model(tgt) : null;
     const p = m ? { x: m.root.position.x, z: m.root.position.z } : opts.at ?? fallbackAim();
     d.send({ t: 'cast', key: String(i + 1), x: p.x, z: p.z, target: tgt ?? undefined });
-    pendingCasts.push({ name: s.name, kind, target: tgt, targetKind: tgt ? (cIdx.get(tgt)?.k ?? (wIdx.has(tgt) ? 'wizard' : null)) : null });
+    gcdUntil = now() + GCD_S; readyAt.set(s.id, now() + 0.3 + (s.mana ?? 0) / 60); // (as the server sets them, World.cast)
+    pendingCasts.push({ name: s.name, kind, target: tgt, targetKind: tgt ? (cIdx.get(tgt)?.k ?? (wIdx.has(tgt) ? 'wizard' : null)) : null, slot: i });
     if (pendingCasts.length > 20) pendingCasts.shift();
     if (kind === 'harm') selected = i;
   }
@@ -785,6 +824,7 @@ export function createControls(d: ControlsDeps) {
    */
   let moveSig = '', moveSince = 0, driftOff = 0, promptW = 0;
   function update(dt: number) {
+    flushQueue();
     index();
     d.camera.updateMatrixWorld();
     const t = now();
@@ -1101,9 +1141,16 @@ export function createControls(d: ControlsDeps) {
   });
 
   // ------------------------------------------------------------------ server replies (routed from main.ts)
-  function onCast(r: { ok: boolean }) {
+  function onCast(r: { ok: boolean; error?: string }) {
     const c = pendingCasts.shift();
     if (r.ok && c) tutorial.notify('cast', c);
+    // the server says the one we are locked on to is gone (this screen still drew it): drop the lock, and the next
+    // press aims afresh — it used to keep every press on the ghost (the 2026-10-02 mash test: 16 presses, no hit)
+    if (!r.ok && c?.target && /^There is no "/.test(r.error ?? '')) {
+      if (target === c.target) target = null;
+      ghosts.set(c.target, now());
+      if (c.slot !== undefined) castSlot(c.slot); // (the press itself goes again, at whoever is really there; nothing was spent)
+    }
   }
   function onGoto(goal: { x: number; z: number } | null) {
     if (!dest) return;
