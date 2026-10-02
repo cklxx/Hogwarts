@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
-  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, CREATURE_HIT_CAP,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, NEWCOMER_PEACE_S, CREATURE_HIT_CAP,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource,
@@ -93,6 +93,8 @@ export { FRESH_SECONDS };
 const REVEAL_CHARM: Record<string, string> = Object.fromEntries(Object.entries(UI_CHARM_INFO).map(([k, v]) => [v.spell, k]));
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
+/** What a spell with a target flies past (World.inAim): tree trunks. */
+const AIM_PASSES = 'tree';
 /** placeName's order: the most specific zone wins. */
 const PLACE_ORDER: ZoneId[] = ['azkaban', 'erised', 'great_hall', 'seventh_floor', 'tomb', 'willow', 'dungeons', 'greenhouses', 'courtyard', 'pitch', 'hogsmeade', 'deep_forest', 'forest', 'lake_shore', 'grounds'];
 
@@ -815,7 +817,7 @@ export class World {
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
-      ui: [], seals: 0, wasMinister: false, npc: false, auras: [], tearsAt: 0,
+      ui: [], seals: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0, auras: [], tearsAt: 0,
       hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, agentPaused: false, agentSeen: null, goalBy: null,
       look: null, jinxLook: null,
     };
@@ -962,9 +964,11 @@ export class World {
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
     }
     // …or behind a wall, a tree, a rock: the bolt would only hit that (playtest round 3: four casts, 72 mana, nothing)
-    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inBlast(w.pos, this.entity(target)!.pos)) {
+    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inAim(w.pos, this.entity(target)!.pos)) {
       const t = this.entity(target)!;
-      return { ...fail(`Something stands between you and ${t.name}: no clear shot. Move for one. No mana spent. 你和 ${t.name} 之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
+      // (where it is now: between an agent's look and its cast the world moves on — say it, so no second look is needed)
+      const at = `(${Math.round(t.pos.x)}, ${Math.round(t.pos.z)}), ${dist(t.pos, w.pos).toFixed(1)} m`;
+      return { ...fail(`Something stands between you and ${t.name}, now at ${at}: no clear shot. Move for one. No mana spent. 你和 ${t.name}（现在在 ${at}）之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
     }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     if (!opts.dryRun && Math.hypot(aim.x - w.pos.x, aim.z - w.pos.z) > 0.1) w.facing = Math.atan2(aim.x - w.pos.x, -(aim.z - w.pos.z));
@@ -1269,6 +1273,14 @@ export class World {
   inBlast(from: Vec2, to: Vec2): boolean {
     return !this.solids.hitSegment(from.x, from.z, to.x, to.z);
   }
+  /**
+   * A spell with a target reaches it unless a wall or a building stands between: it weaves past tree trunks (the
+   * 2026-10-01 owner test: 「火打不到后面的怪物」 — in the forest one foe in eight within 25 m stood behind a trunk, and
+   * the cast at it was refused). A straight shot and a blast still stop at a tree.
+   */
+  inAim(from: Vec2, to: Vec2): boolean {
+    return !this.solids.hitSegment(from.x, from.z, to.x, to.z, undefined, 0, AIM_PASSES);
+  }
 
   reveal(w: Wizard, key: UiCharm) {
     this.fx({ k: 'reveal', x: w.pos.x, z: w.pos.z, h: w.handle });
@@ -1337,7 +1349,21 @@ export class World {
     const m = this.memeOf.get(w.id);
     if (m) m.still = this.now; // speaking is not lying flat
     this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${tz}` });
-    if (via !== 'npc') { this.chatEggs(w, t, via); for (const f of HOOKS.said) f.said(this, w, t); }
+    if (via !== 'npc') {
+      this.chatEggs(w, t, via);
+      for (const f of HOOKS.said) f.said(this, w, t);
+      // NPCs answer greetings: a nearby NPC wizard replies once (playtest: say was one-way)
+      if (!w.npc && /^(hi|hello|hey|嗨|你好|哈喽|hello!|hi!)/i.test(t.trim())) {
+        const near = [...this.nearWizards(w.pos, 12)].filter((n) => n.npc && n.id !== w.id && this.isActive(n) && dist(n.pos, w.pos) <= 12);
+        if (near.length && this.funRand() < 0.7) {
+          const npc = near[Math.floor(this.funRand() * near.length)];
+          const replies = ['Hello! 你好呀！', 'Hey there! 嗨！', 'Hi! 今天过得怎么样？', '哦，你好！', 'Hello, fellow wizard!'];
+          const reply = replies[Math.floor(this.funRand() * replies.length)];
+          // delay slightly so it doesn't look instant
+          setTimeout(() => { if (this.isActive(npc)) this.say(npc, reply, 'npc'); }, 800 + this.funRand() * 1200);
+        }
+      }
+    }
   }
 
   /**
@@ -2441,6 +2467,10 @@ export class World {
 
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
     if (w.st.rootedUntil > this.now) return;
+    // fast path: no keys, no goal, not mid-dodge — standing still. Skips the features' moveMult chain
+    // (safe: a stationary wizard returns below anyway; mult===0 only matters while moving, and the dodge
+    // has its own branch which we don't take here).
+    if (!w.goal && (w.st.dodgeUntil ?? 0) <= this.now && Math.hypot(w.input.dx, w.input.dz) < 0.01) return;
     let mult = 1; // the features' say (决斗俱乐部 holds you still through the bow, 魁地奇 lets you fly)
     for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
     if (mult === 0) return;
@@ -2499,6 +2529,20 @@ export class World {
     }
     if (w.goal) this.unstick(w, Math.hypot(bx - w.pos.x, bz - w.pos.z) / (speed * dt), dt);
     this.moved(w);
+    // exploration XP: first time within a zone's radius, grant XP (casual play earns too)
+    if (!w.npc && (!w.lastExploreAt || this.now - w.lastExploreAt > 2)) {
+      w.lastExploreAt = this.now;
+      for (const z of ZONES) {
+        if (w.visited.includes(z.id)) continue;
+        const r = z.r ?? 20;
+        if (Math.hypot(z.x - w.pos.x, z.z - w.pos.z) <= r) {
+          w.visited.push(z.id);
+          this.gainXp(w, 5);
+          this.emit('system', `🗺️ Discovered ${z.name}! +5 XP.`, { to: w.id, zh: `🗺️ 发现了${z.name}！+5 经验。` });
+          break;
+        }
+      }
+    }
   }
 
   /**
@@ -2581,7 +2625,7 @@ export class World {
         p.pos.x += (p.vel.x * dt) / steps;
         p.pos.z += (p.vel.z * dt) / steps;
         // the whole sub-step's path, not just where it ends: a fast bolt never tunnels through a thin wall
-        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z);
+        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z, undefined, 0, p.homing ? AIM_PASSES : undefined); // (one with a target weaves past trees: inAim)
         if (wall) {
           const t = this.solids.hitT;
           p.pos.x = ax + (p.pos.x - ax) * t;
@@ -2647,6 +2691,8 @@ export class World {
     const pickable = (c: Creature, e: { id: string; pos: Vec2 }) => {
       if (!this.canHarm(c.id, e.id) || !sameScene(c, e.pos)) return false;
       const w = this.wizards.get(e.id);
+      // (a newcomer is left alone by what they have not hurt: NEWCOMER_PEACE_S)
+      if (w && !w.npc && this.now - w.createdAt < NEWCOMER_PEACE_S && !(c.damageBy[w.id] > 0)) return false;
       return !w || w.year > 1 || (hunted.get(e.id) ?? 0) < NEWCOMER_PACK;
     };
     for (const c of [...this.creatures.values()]) {
@@ -3266,14 +3312,14 @@ export class World {
       handle: x.handle, name: x.name, house: x.house, year: x.year, hp: Math.round(x.hp), dist: round(dist(x.pos, w.pos)), x: round(x.pos.x), z: round(x.pos.z),
       title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
-      blocked: (this.canHarm(w.id, x.id) && !this.inBlast(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
+      blocked: (this.canHarm(w.id, x.id) && !this.inAim(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
       elderWand: this.flags.elderWandHolder === x.id || undefined,
       ...this.views(HOOKS.look, (f) => f.view.look(this, x)), // e.g. darkLord
     })).sort((a, b) => a.dist - b.dist);
     const creatures = [...this.nearCreatures(w.pos, r)].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
       id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
       canHarm: this.canHarm(w.id, c.id), auras: live(c.auras, this.now).map((a) => a.k),
-      blocked: (this.canHarm(w.id, c.id) && !this.inBlast(w.pos, c.pos)) || undefined,
+      blocked: (this.canHarm(w.id, c.id) && !this.inAim(w.pos, c.pos)) || undefined,
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
       // what it shrugs off (the troll: arcane ×0.6), and whether a school event brought it (playtest round 4)
@@ -3583,7 +3629,7 @@ export class World {
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {
-        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, wasMinister: false, npc: false,
+        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0,
         hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, look: null,
       };
       const wz: Wizard = {
