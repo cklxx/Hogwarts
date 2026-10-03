@@ -1677,3 +1677,90 @@ What changed:
 - **Tag declutter** (`client/main.ts`): every 6th frame; **bolt height** (`client/main.ts`): cached, resampled after 3 m.
 
 Verified: `tsc` clean, `test/props.test.ts` 11/11, browser smoke test renders with no errors (the new shaders compile). SwiftShader (~0.15 fps) cannot resolve the JS delta — the win is structural: ~3760 CPU particle updates and 2 full buffer uploads per frame are gone.
+
+## 2026-10-03 — flat-ground CPU cost and persistent name-tag decluttering
+
+`heightAt` now stops evaluating the flatness mask as soon as it reaches zero, and skips the five rolling-noise
+octaves on completely flat ground. Lake, mountain and island terms still run. Name-tag decluttering now keeps
+its hidden set between 100 ms refreshes: previously animation re-enabled those labels on the five frames
+between overlap checks. Changing the target refreshes the set immediately.
+
+Raw results, the benchmark scripts and reproduction commands are in
+[`playtest-logs/2026-10-03/perf/`](playtest-logs/2026-10-03/perf/README.md).
+Baseline: `4d968113a31b56b59c8b91215384244965968bd1`; the after build adds these terrain/label changes and the
+accompanying basic UI fixes. Environment: Node **24.19.0**, Chromium **151.0.7922.173**, Linux, SwiftShader.
+
+### Terrain CPU, eight regions
+
+Each region has 8,192 deterministic points (seed `20261003`). Each version runs seven alternating samples of
+163,840 calls; the table is median process CPU time (`process.cpuUsage`, user + system), not wall-clock time.
+The repeat run below confirmed the initial measurement. All **65,536 points were numerically identical** to
+the old implementation, maximum absolute difference **0**. Thirty saved height vectors around flat boundaries,
+the lake, forest, mountains and Azkaban also pass alongside the existing collision/view tests (68 tests total).
+
+| Region | Before, CPU ns/call | After, CPU ns/call | Reduction |
+|---|---:|---:|---:|
+| Spawn | 256 | 69 | 73.0% |
+| Castle | 260 | 127 | 51.0% |
+| Lake | 230 | 198 | 13.8% |
+| Forest | 233 | 192 | 17.7% |
+| Quidditch pitch | 223 | 90 | 59.6% |
+| Hogsmeade | 237 | 120 | 49.5% |
+| Highlands | 356 | 351 | 1.3% |
+| Azkaban | 195 | 194 | 0.7% |
+
+These are costs of one terrain query. They do not imply the same percentage improvement in frame time; the
+small differences outside flat areas are close to measurement noise.
+
+### Same-snapshot rendering check
+
+The first moving-world run increased draw calls, so a second check held the scene constant. Both builds used
+the same saved identities and positions, 20 connected stationary bots, 27 total wizards (including the viewer
+and the six NPCs actually created by `NPC_COUNT=12`), and 83 creatures. A benchmark-only preload freezes
+`World.tick` and `setInput`; the latter otherwise still changes facing. The real HTTP/WebSocket server and
+client remain in use. A fixed browser random seed also keeps procedural decorations identical.
+
+Settings: low quality, 1280×720, `dyn=0`, fixed `crowd` capture camera, two seconds without drawing to settle
+camera/LOD, four seconds warm-up, sixteen seconds sampled. Each build produced 17 measured frames. The complete
+protocol snapshots matched byte for byte; both SHA-256 witnesses are
+`7ae2842dd33e858cce2b1348ada538f144cb00f36e426495a6b9d7af92e99a9c`.
+
+| Per frame | Before | After |
+|---|---:|---:|
+| Total draw calls | 689.00 | 678.41 |
+| Triangles | 314,934.76 | 314,913.59 |
+| Shadow-map calls | 81.41 | 81.41 |
+| Main scene render calls, including its shadow work | 658.41 | 658.41 |
+| Screen overlay calls | 29.59 | 19.00 |
+| Actor drawables in end-of-run census | 350 | 338 |
+| Actor shadow casters | 85 | 85 |
+
+The shadow-map row is nested in the scene-render row and must not be added to it. Calls still alternate with
+shadow refreshes: before `{609, 770, 782}`, after `{597, 770}`. The scene and shadow work are identical; the
+reduction is the overlapping labels. The end-of-run census loses exactly 12 label quads (24 triangles), with
+no change in casters. This controlled case rules out the draw-call increase seen in the moving-world sample
+as a rendering regression for the same scene. It does not establish a universal draw-call reduction.
+
+### Moving-world results and limits
+
+The original A/B used low quality, 1280×720, `dyn=0`, 20 moving/casting bots, 10 of them near spawn,
+`NPC_COUNT=12`, four seconds warm-up and eight seconds per view. Each `--nodraw` window contains 480 frames:
+
+| No-draw CPU, ms/frame | Follow before → after | Crowd before → after |
+|---|---:|---:|
+| Total frame JS, excluding message/HUD callbacks | 1.49 → 1.42 | 1.54 → 1.64 |
+| Entity animation | 0.46 → 0.41 | 0.48 → 0.51 |
+| World/camera update | 0.21 → 0.15 | 0.20 → 0.15 |
+| Controls/features | 0.80 → 0.84 | 0.84 → 0.95 |
+
+Both no-draw runs maintained 60 Hz with no frame over 50 ms. Overall JS did **not** improve consistently.
+With drawing enabled, follow calls were 179 → 202 and crowd 637 → 727, but those windows contained only 15 and
+9 frames while entities and the follow camera continued moving. Those observations prompted the fixed-world
+check above; they are retained in `browser-dynamic.jsonl`, not silently discarded. Draw-enabled first frame
+was 19.37 → 19.62 s; the separately launched no-draw runs initially drew a frame at 19.30 → 18.90 s. These do
+not show a consistent loading improvement.
+
+SwiftShader rendered around 1–2 fps in these tests. Its software rasterization competes for CPU with the
+client, so neither this fps nor draw-enabled JS timing describes a player's hardware experience. The supported
+claims are lower flat-ground query cost, unchanged sampled terrain, stable name-tag suppression, and no
+same-scene increase in scene/shadow drawing. Real-GPU frame-time improvement remains unmeasured.

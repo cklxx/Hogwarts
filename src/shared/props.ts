@@ -66,7 +66,6 @@ export const PROP_RESPAWN_S = 60;
 export const PROP_R = 0.8;
 /** Breaking pays this much experience, at most PROP_BREAKS_PER_TERM times a term (RULES: rewards are capped). */
 export const PROP_BREAK_XP = 2, PROP_BREAKS_PER_TERM = 50;
-/** Waking a prop (lighting a brazier, freezing a basin…) pays this much experience. */
 /** A group woken together pays each wizard who woke one of its three (within its window) this, once a term. */
 export const PROP_GROUP_XP = 25, PROP_GROUP_GALLEONS = 2;
 /** A whizbang's blast hurts wild creatures this much (fire). */

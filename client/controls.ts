@@ -1131,6 +1131,7 @@ export function createControls(d: ControlsDeps) {
     yaw: () => d.cam.yaw,
     slotOf: (name) => (d.me()?.hotbar.findIndex((s) => s?.name === name) ?? -1),
     openMenu: () => d.panels.menu(),
+    closeMenu: () => { $('#menu').hidden = true; },
     openBook: () => d.panels.book(),
     tempus: () => castOnSelf('Tempus'),
     openOwl: () => d.panels.owl(true),
@@ -1234,6 +1235,7 @@ interface TutorialDeps {
   yaw: () => number;
   slotOf: (spellName: string) => number;
   openMenu: () => void;
+  closeMenu: () => void;
   openBook: () => void;
   openOwl: () => void;
   pair: () => void;
@@ -1272,7 +1274,10 @@ function createTutorial(t: TutorialDeps) {
     if (b.dataset.act === 'tempus') t.tempus();
     if (b.dataset.act === 'pair') t.pair();
     if (b.dataset.act === 'owl') t.openOwl();
-    if (b.dataset.act === 'later') finish(true);
+    if (b.dataset.act === 'later') {
+      if (step === 5 || step === 6) { t.closeMenu(); step = 6; advance(); }
+      else finish(true);
+    }
     if (b.dataset.act === 'close') { doneUntil = 0; el.hidden = true; }
   });
 
@@ -1362,8 +1367,8 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'bottom',
-      short: () => L('骑<b>扫帚</b>飞（<b>M</b>），或走<b>飞路网</b>', 'Ride a <b>broom</b> (<b>M</b>), or take the <b>Floo</b>'),
-      line: () => L(`地图很大：按 <b>${key('M')}</b> 骑扫帚（2 倍速，城堡外），或站在<b>绿色火焰</b>旁说出地名走飞路网`, `The map is big: press <b>${key('M')}</b> for a broom (2× speed, outside the castle), or stand by a <b>green flame</b> and name a place for the Floo`),
+      short: () => L('站到<b>绿火</b>旁，点<b>手掌</b>选目的地', 'By a <b>green fire</b>, tap the <b>hand</b> to travel'),
+      line: () => L(`地图很大：按 <b>${key('M')}</b> 骑扫帚（2 倍速，城堡外），或站在<b>绿色火焰</b>旁按 <b>F</b> 选择目的地`, `The map is big: press <b>${key('M')}</b> for a broom (2× speed, outside the castle), or press <b>F</b> by a <b>green flame</b> to choose a Floo destination`),
       acts: () => `<button data-act="later" class="ghost">${L('知道了', 'Got it')}</button>`,
     },
   ];
@@ -1387,7 +1392,7 @@ function createTutorial(t: TutorialDeps) {
       } else el.hidden = true;
       return;
     }
-    // the last step (talk to your agent) only appears while an agent is connected
+    // The optional owl step needs an agent; tick skips it if the connection goes away.
     if (step === 6 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
     const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
@@ -1429,6 +1434,7 @@ function createTutorial(t: TutorialDeps) {
     }
     if (step === 4 && me.ui.includes('tempus')) { advance(); return; }
     if (step === 5 && t.agent()?.connected) { advance(); return; }
+    if (step === 6 && !t.agent()?.connected) { advance(); return; }
     render();
   }
   function notify(ev: 'cast' | 'book' | 'menu' | 'owl', c?: CastInfo) {

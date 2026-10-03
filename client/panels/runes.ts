@@ -22,7 +22,25 @@ export function waiting(r: Mine | null | undefined): RuneId | null {
 
 export const runesFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
   const card = ctx.el('div', 'runecard', (el) => { el.hidden = true; document.body.append(el); });
+  let codeOpen = false;
+  ctx.keep('code-open', () => codeOpen, (s) => { codeOpen = s; });
+  // Reserve only the card's real height. No layout reads in the HUD's 10 Hz update.
+  ctx.effect(() => {
+    if (typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--runecard-h', `${card.hidden ? 0 : Math.ceil(card.getBoundingClientRect().height)}px`);
+    });
+    ro.observe(card);
+    return () => { ro.disconnect(); document.documentElement.style.removeProperty('--runecard-h'); };
+  });
   card.addEventListener('click', (e) => {
+    const toggle = (e.target as HTMLElement).closest('button[data-code]');
+    if (toggle) {
+      codeOpen = !codeOpen;
+      toggle.setAttribute('aria-expanded', String(codeOpen));
+      card.querySelector<HTMLElement>('#runecard-code')!.hidden = !codeOpen;
+      return;
+    }
     const b = (e.target as HTMLElement).closest('button[data-spell]') as HTMLButtonElement | null;
     if (!b) return;
     d.send({ t: 'runes', rune: card.dataset.rune, spell: b.dataset.spell });
@@ -58,9 +76,14 @@ export const runesFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
       if (!k) return;
       const def = RUNES[k];
       card.dataset.rune = k;
-      card.innerHTML = `<b>✨ ${L(`新符文：${def.zh}`, `New rune: ${def.en}`)}</b><div>${esc(L(def.docZh, def.docEn))}</div>`
-        + `<code>${L('相当于在咒语里写：', 'worth this in Runes: ')}${esc(def.code)}</code>`
-        + `<div class="rc-row">${attacks.map((s) => `<button data-spell="${esc(s.id)}">${L(`装到「${esc(spellName(s.name))}」`, `Put on ${esc(s.name)}`)}</button>`).join('')}</div>`;
+      card.innerHTML = `<div class="rc-head"><b>✨ ${L(`新符文：${def.zh}`, `New rune: ${def.en}`)}</b>`
+        + `<button type="button" data-code aria-controls="runecard-code" aria-expanded="${codeOpen}">${L('符文代码', 'Rune code')}</button></div>`
+        + `<div class="rc-doc">${esc(L(def.docZh, def.docEn))}</div>`
+        + `<code id="runecard-code"${codeOpen ? '' : ' hidden'}>${L('相当于在咒语里写：', 'worth this in Runes: ')}${esc(def.code)}</code>`
+        + `<div class="rc-row">${attacks.map((s) => {
+          const label = esc(L(`装到「${spellName(s.name)}」`, `Put on ${s.name}`));
+          return `<button type="button" data-spell="${esc(s.id)}" aria-label="${label}" title="${label}"><span class="rc-full">${label}</span><span class="rc-short" aria-hidden="true">${L('装 ', 'Equip ')}${esc(spellName(s.name))}</span></button>`;
+        }).join('') || `<span class="hint">${L('先把攻击咒语放到快捷栏，就能装备符文', 'Add an attack spell to your hotbar to equip this rune')}</span>`}</div>`;
     },
     onMessage(msg) { return msg.t === 'runes'; },
   };

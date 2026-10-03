@@ -507,7 +507,7 @@ function apply(s: Snap) {
     let m = wizards.get(w.h);
     if (!m) {
       const p = parked.get(w.h);
-      if (p) { parked.delete(w.h); m = p.m; }
+      if (p) { parked.delete(w.h); m = p.m; hiddenTags.delete(m); }
       else {
         m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as WizardEntry;
         m.root.add(m.aura);
@@ -549,6 +549,7 @@ function apply(s: Snap) {
     let m = creatures.get(c.i);
     if (!m) {
       m = herdPool.get(c.k)?.pop();
+      if (m) hiddenTags.delete(m);
       if (!m) {
         m = Object.assign(makeCreature(c.k), { k: c.k, tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as CreatureEntry;
         m.root.add(m.aura);
@@ -783,6 +784,11 @@ const setStyle = (el: HTMLElement, k: string, v: string) => { if (el.style.getPr
 /** Longest cooldown seen per hotbar spell since it was last ready: the sweep's full circle. */
 const cdMax = new Map<string, number>();
 
+$('#clock').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-time]');
+  if (b?.dataset.time) shell?.say(b.dataset.time, PRIO.note);
+});
+
 function hud() {
   shell?.tick();
   if (!me || !snap) return;
@@ -800,7 +806,16 @@ function hud() {
   const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather);
   // (the motto is the default proclamation: only a Minister's own words take the corner — the quiet HUD)
   const procl = me.proclamation && me.proclamation !== SCHOOL_MOTTO ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
-  setHtml($('#clock'), has('tempus')
+  const timeLabel = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  const timeDetails = `${timeLabel} · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 ${fmtT(snap.term.left)}`, `term ${snap.term.n} · ${fmtT(snap.term.left)} left`)}`;
+  if (has('tempus') && phone) {
+    const clockEl = $('#clock');
+    if (!clockEl.querySelector('.phone-time')) setHtml(clockEl, '<button type="button" class="time veiled phone-time"><span class="num"></span></button>');
+    const b = clockEl.querySelector<HTMLButtonElement>('.phone-time')!;
+    const num = b.querySelector('.num')!;
+    if (num.textContent !== timeLabel) num.textContent = timeLabel;
+    if (b.dataset.time !== timeDetails) { b.dataset.time = timeDetails; b.setAttribute('aria-label', timeDetails); }
+  } else setHtml($('#clock'), has('tempus')
     ? `<div class="time veiled">${ic(snap.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</span></div>${procl}`
     : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
   // bottom-right: Homenum Revelio
@@ -1924,7 +1939,7 @@ function animWizard(w: WizardEntry, h: string) {
   // (a stunned wizard lies down: only the full model does that)
   w.far = !mine && !focused && d > FR.lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
   w.body.visible = !w.far;
-  w.label.show(focused || (!w.far && d < FR.lod.label));
+  w.label.show((focused || (!w.far && d < FR.lod.label)) && !hiddenTags.has(w));
   w.label.zoom(FR.tag);
   if (w.patronus.visible) {
     w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
@@ -1952,6 +1967,9 @@ function animWizard(w: WizardEntry, h: string) {
 type Tagged = { root: THREE.Object3D; label: { sprite: THREE.Sprite; show(on: boolean): void } };
 const tagsNow: { m: Tagged; d: number; x: number; y: number; hw: number; hh: number }[] = [];
 const tagV = new THREE.Vector3();
+let hiddenTags = new WeakSet<Tagged>();
+let nextTagRefresh = 0;
+let tagFocus: string | null = null;
 function declutterTags() {
   tagsNow.length = 0;
   const f = innerHeight / 2 / Math.tan((camera.fov * Math.PI) / 360);
@@ -1974,7 +1992,7 @@ function declutterTags() {
     for (let j = 0; j < i; j++) {
       const b = tagsNow[j];
       if (b.hw < 0 || Math.abs(a.x - b.x) > a.hw + b.hw || Math.abs(a.y - b.y) > a.hh + b.hh) continue;
-      a.m.label.show(false); a.hw = -1; break;
+      hiddenTags.add(a.m); a.m.label.show(false); a.hw = -1; break;
     }
   }
 }
@@ -1987,7 +2005,7 @@ function animCreature(c: CreatureEntry, i: string) {
   const focused = i === FR.focus;
   // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
   c.root.visible = focused || d < FR.lod.anim;
-  c.label.show(focused || d < FR.lod.label);
+  c.label.show((focused || d < FR.lod.label) && !hiddenTags.has(c));
   c.label.zoom(FR.tag);
   if (c.root.visible) c.anim(clock);
   else if (d < FR.lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
@@ -2026,6 +2044,9 @@ function frame() {
   // (2.5D: the tag's 1.5 m shown TAG_PX tall on screen, whatever the zoom and the lens: size / (2 d tan(fov / 2)) of the height, d the camera's real distance — lens.ts brings it in)
   FR.tag = ctl.flat() ? Math.max(1, Math.min(3.2, ((phone ? 84 : 92) / innerHeight) * 2 * view.rig.arm * Math.tan((camera.fov * Math.PI) / 360) / 1.5)) : 1;
   FR.focus = ctl.targetKey();
+  // Retain the overlap decision between refreshes; animation must not re-show culled tags.
+  const refreshTags = now >= nextTagRefresh || tagFocus !== FR.focus;
+  if (refreshTags) { hiddenTags = new WeakSet(); nextTagRefresh = now + 100; tagFocus = FR.focus; }
   crowd.begin();
   parts.begin();
   wizards.forEach(animWizard);
@@ -2035,7 +2056,7 @@ function frame() {
   creatures.forEach(animCreature);
   herd.end();
   // (the overlap test is O(n²): 10 Hz is plenty for hiding stacked name tags)
-  if (frameNo % 6 === 0) declutterTags();
+  if (refreshTags) declutterTags();
   bolts.forEach(animBolt);
   boltBatch.update(bolts.values());
   fxm.update(dt);
@@ -2104,7 +2125,8 @@ function frame() {
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();
-  R.renderer.shadowMap.needsUpdate = fullDetail || (++frameNo & 1) === 1;
+  frameNo++;
+  R.renderer.shadowMap.needsUpdate = fullDetail || (frameNo & 1) === 1;
   R.render();
   probe.end('render', tp);
   if (snap) probe.mark('firstFrame');

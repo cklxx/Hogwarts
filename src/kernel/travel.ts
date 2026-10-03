@@ -14,7 +14,7 @@ import { inMatch } from './duelclub.js';
 import type { Feature } from './feature.js';
 import { qdOnTeam } from './quidditch.js';
 import type { Wizard } from './types.js';
-import { CASTLE, inCastle } from './wheel.js';
+import { inCastle } from './wheel.js';
 import type { World } from './world.js';
 
 declare module './world.js' {
@@ -77,7 +77,7 @@ export function broom(world: World, wid: string, on?: boolean) {
   if (!want) { dismount(world, w); return { riding: false }; }
   if (riding) return { riding: true };
   // the precinct, not only the roofed halls: the courtyard counts (playtest round 4 read "indoors" while onGrounds was true)
-  if (inCastle(w.pos)) throw new Error(`No brooms inside the castle precinct — the courtyard, the Great Hall, the greenhouses: walk out past its edge first (z > ${CASTLE.z1}, or |x| > ${CASTLE.x1}). 城堡范围内（庭院、礼堂、温室都算）不能骑扫帚：先走出去（z > ${CASTLE.z1}，或 |x| > ${CASTLE.x1}）。`);
+  if (inCastle(w.pos)) throw new Error('城堡范围内（庭院、礼堂、温室）不能骑扫帚，请先走到城堡外。 No brooms within the castle precinct (courtyard, Great Hall or greenhouses); walk outside first.');
   const why = busy(world, w, BROOM_HURT_S);
   if (why) throw new Error(why);
   const left = (world.travel.mountAt.get(wid) ?? -1e9) + BROOM_MOUNT_CD_S - world.now;

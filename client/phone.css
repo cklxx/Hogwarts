@@ -3,7 +3,8 @@
 body.phone { --pt: max(8px, env(safe-area-inset-top)); --pbar: 48px; }
 
 /* ---- top: your card · the clock · the drawer · the owl, then one message line */
-body.phone #topleft { left: 16px !important; top: var(--pt) !important; right: auto !important; width: auto !important; max-width: calc(100vw - 180px) !important; }
+body.phone #topleft { left: 16px !important; top: var(--pt) !important; right: auto !important; width: auto !important; max-width: calc(100vw - 210px) !important; }
+body.phone #me { min-width: 0; max-width: 100%; box-sizing: border-box; }
 body.phone #topright { left: auto !important; right: 116px !important; top: calc(var(--pt) + 4px) !important; width: auto !important; margin: 0 !important; }
 body.phone #topright > :not(#clock) { display: none !important; }
 body.phone #agentbox { top: var(--pt) !important; right: 8px !important; }
@@ -41,6 +42,21 @@ body.phone #tutorial .tut-acts { margin-left: 0 !important; }
 body.phone #tutorial .tut-acts button:not(.tut-skip) { padding: 3px 10px; font-size: 14px; }
 body.phone #tutorial[data-over] { bottom: auto !important; top: var(--pt) !important; }
 
+/* New runes stay until equipped, in a compact row above the thumbs. The coach mark reserves the real card height. */
+body.phone #runecard { left: 8px; right: 8px; width: auto; max-width: none; bottom: calc(var(--bars-h, 150px) + 152px); transform: none;
+  max-height: calc(100dvh - var(--bars-h, 150px) - 232px); overflow: auto; overscroll-behavior: contain;
+  padding: 5px 8px 8px; font-size: 14px; line-height: 1.35; text-align: left; }
+body.phone #runecard .rc-head { gap: 4px; }
+body.phone #runecard b { min-width: 0; font-size: 16px; margin: 0; }
+body.phone #runecard button { min-height: 44px; min-width: 44px; padding: 4px 6px; font-size: 14px; }
+body.phone #runecard .rc-doc { margin: 0 0 6px; }
+body.phone #runecard .rc-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+body.phone #runecard .rc-row > .hint { grid-column: 1 / -1; }
+body.phone #runecard .rc-full { display: none; }
+body.phone #runecard .rc-short { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.phone #runecard code { max-height: min(96px, 12dvh); overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+body.phone:has(#runecard:not([hidden])) #tutorial:not([data-over]) { bottom: calc(var(--bars-h, 150px) + 160px + var(--runecard-h, 140px)) !important; }
+
 /* ---- the drawer: 现在 (goal, event, duel / Quidditch slips, lessons, House Cup) · 消息 · 更多 */
 #pdrawer { position: fixed; z-index: 8; left: 8px; right: 8px; top: calc(var(--pt) + var(--pbar) + 4px); bottom: calc(var(--bars-h, 150px) + 8px); overflow: auto; overscroll-behavior: contain; padding: 12px 14px; }
 #pdrawer > .x { position: absolute; top: 4px; right: 4px; }
@@ -62,3 +78,9 @@ body.phone #tutorial[data-over] { bottom: auto !important; top: var(--pt) !impor
 body.phone #pdrawer #quests:not([hidden]) { display: block !important; }
 /* the selected spell's name floats over the hotbar on a desktop; on a phone it sat under the roll button */
 body.phone #hotbar > div.sel > span { display: none !important; }
+
+/* Tempus must fit between the identity card and the two top buttons. Tap for weather and term details. */
+body.phone #topright { width: 72px !important; }
+body.phone #clock { width: 72px; }
+body.phone #clock .phone-time { box-sizing: border-box; width: 72px; min-height: 44px; padding: 2px 4px; justify-content: center; }
+body.phone #clock .phone-time .num { font-size: 18px; }

@@ -1,0 +1,9 @@
+{
+  "nameRight": 196,
+  "clockLeft": 202,
+  "gap": 6,
+  "clockText": "23:11",
+  "nodeStable": true,
+  "clickedClock": true,
+  "screenshot": "screenshots/phone-clock-after.png"
+}
