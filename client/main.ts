@@ -19,6 +19,7 @@ import { createEffects } from './effects';
 import { createBoltBatch } from './bolts';
 import { createHerd } from './herd';
 import { createDynRes } from './dynres';
+import { FrameMetrics, rendererName } from './frame-metrics';
 import { instanceAlike } from './instancer';
 import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
@@ -301,16 +302,17 @@ probe.mark('quality');
  */
 const FRAME_MIN_MS = handheld && !capturing ? 12 : 0;
 /**
- * Frames on the player's own GPU (this box only has a software renderer): the last 15 s of frame intervals go to the
+ * Visible rendered-frame pacing (not GPU execution time): the last 15 s of intervals go to the
  * server's playtest metrics (kernel/metrics.ts `fps`, scripts/playtest/report.ts) as p50 / p95, with the render scale,
  * the quality and the GPU's name — the numbers "卡" is argued from.
  */
-const frameMs: number[] = [];
-const gpuName = (() => { try { const gl = R.renderer.getContext(); return String(gl.getParameter(gl.RENDERER) ?? ''); } catch { return ''; } })();
+const frameMetrics = new FrameMetrics();
+const gpuName = rendererName(R.renderer.getContext());
+document.addEventListener('visibilitychange', () => frameMetrics.reset());
 setInterval(() => {
-  if (!snap || frameMs.length < 30 || document.hidden) { frameMs.length = 0; return; }
-  const s = frameMs.splice(0).sort((a, b) => a - b), at = (p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
-  send({ t: 'metrics', fps: { p50: at(0.5), p95: at(0.95), scale: R.scale, q: quality, dpr: devicePixelRatio, gpu: gpuName } });
+  if (!snap || document.hidden) { frameMetrics.reset(); return; }
+  const sample = frameMetrics.take();
+  if (sample) send({ t: 'metrics', fps: { ...sample, scale: R.scale, q: quality, dpr: devicePixelRatio, gpu: gpuName } });
 }, 15000);
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
 const weatherUniforms = { uTime: { value: 0 }, uFall: { value: 30 }, uSize: { value: 0.15 }, uScale: { value: 500 } };
@@ -2035,7 +2037,7 @@ function frame() {
   // (a hit-stop slows the world's motion to a crawl for its few frames; the camera and the HUD keep real time)
   const dt = stopT > 0 ? dtReal * 0.08 : dtReal;
   stopT -= dtReal;
-  if (snap) { dyn?.frame(now - prev); if (frameMs.length < 4000) frameMs.push(now - prev); }
+  if (snap) { dyn?.frame(now - prev); frameMetrics.frame(now, !document.hidden); }
   prev = now;
   clock += dt;
   FR.k = 1 - Math.exp(-dt * 12);
