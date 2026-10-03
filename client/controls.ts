@@ -1303,7 +1303,7 @@ function createTutorial(t: TutorialDeps) {
     return `<span class="dir"><span class="arrow" style="transform:rotate(${(a + t.yaw()).toFixed(2)}rad)">↑</span>${L(`大礼堂 ${Math.round(d)} 米`, `Great Hall ${Math.round(d)} m`)}</span>`;
   }
   /** One short line per step, placed beside the control it talks about (`at`); the help panel (H) has the long version. */
-  /** `short`: a phone's line (手机壳: one line of a dozen characters, beside the thumb, client/phone.ts). */
+  /** `short`: a phone's concise action prompt (wraps when needed, client/phone.css). */
   type Step = { at: 'bottom' | 'topleft' | 'topright'; line: () => string; short?: () => string; acts?: () => string; live?: () => string };
   const STEPS: Step[] = [
     {
@@ -1385,7 +1385,7 @@ function createTutorial(t: TutorialDeps) {
   function render() {
     if (step < 0) {
       if (doneUntil > now()) {
-        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
+        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><button class="tut-skip" data-act="close" aria-label="${L('关闭引导', 'Close tutorial')}"><svg class="ic"><use href="#i-x"/></svg></button>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
         place('bottom');
         el.hidden = false;
@@ -1395,7 +1395,7 @@ function createTutorial(t: TutorialDeps) {
     // The optional owl step needs an agent; tick skips it if the connection goes away.
     if (step === 6 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
-    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
+    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}</span>${X}`;
     if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
     // never behind an open panel: above it instead
     place(s.at);

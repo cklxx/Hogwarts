@@ -3348,7 +3348,7 @@ export class World {
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
       // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
       ...revealView(this, w),
-      ...this.views(HOOKS.here, (f) => f.view.here(this, w)), // what stands round you (the props)
+      ...this.views(HOOKS.here, (f) => f.view.here(this, w, r)), // what stands round you (the props)
     };
   }
 

@@ -165,9 +165,9 @@ export const PROPS_FEATURE: Feature = {
   },
   view: {
     key: 'props',
-    // MCP look: the props within 25 m, what each wants, and its state
-    here(world, x) {
-      const s = world.props, here = near(x.pos, 25, []);
+    // MCP look: respect a smaller requested radius, preserving the default 25 m prop cap.
+    here(world, x, radius = 25) {
+      const s = world.props, here = near(x.pos, Math.min(radius, 25), []);
       if (!here.length) return undefined;
       return here.map((p) => {
         const d = PROP_DEFS[p.kind];
