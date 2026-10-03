@@ -1,0 +1,37 @@
+FINAL CORRECTION — production build gap found and fixed
+
+Initial commit32469fd (root integrationcef328c) passed raw-source DOM checks but FAILED actual built-game verification. The CSS minifier emitted `body.phone #prompt{border-color:var(--paper2);border-image:}`: the empty shorthand was invalid, so the original edge.svg survived. The original report below is intermediate source-CSS evidence only, not a final production success. No original evidence has been deleted.
+
+Final remote product commit6b20ea2 (local efb9527 / development 7cd61eb, same product tree) replaces the shorthand with `border-image-source:none` and documents why. Production artifact now contains `body.phone #prompt{border-color:var(--paper2);border-image-source:none}`. Final tsc,80files/813tests and build passed (logs *-final.log).
+
+The reusable fixture now supports FIXTURE_BUILT=1: it reads dist/index.html and serves only dist CSS/assets, removing scripts/modulepreloads so no world/WebGL starts. FIXTURE_CSS can substitute the preserved failed-production.css for a red control. Built red control:320English SwiftShader short→long→hide/reveal; computed source remainsedge.svg, long sample129/290 at rightmostlightx164. Final built after:12cases,320/390/900,zh/en,default/SwiftShader; every mobile long/revealed sample matches the normal reference and source is none; desktop retainsedge.svg. English320 long267/290, revealed269/290; Chinese320 long189/212, revealed191/212. All12 preserve x/width/height versus original before, have zero text clipping/errors, and deliver the fixture tap. Desktop4 retain decoration; the existing desktop SwiftShader Chinese render defect remains outside scope.
+
+Two additional final BUILT theme checks (320English SwiftShader night/contrast) pass short→long→reveal without clipping or click failure, preserving appropriate ink/border colors. Final compact evidence is built-summary.json; detailed built-*.json remain local. Archive the reusable fixture plus built-summary.json and this report. Selected minimal final figure pair: built-before-swiftshader-320-en-long.png and built-after-swiftshader-320-en-long.png; optional final Chinese built-after-swiftshader-390-zh-revealed.png. These are DOM figures, not actual world play. Actual production game outcomes belong to separate player evidence.
+
+Reproduce after build:
+FIXTURE_ROOT=/path/to/worktree FIXTURE_OUT=/tmp/floo FIXTURE_BUILT=1 FIXTURE_MODE=built-after node fixture.mjs
+Replay failed bundle with FIXTURE_CSS=/path/to/failed-production.css FIXTURE_PROFILES=swiftshader FIXTURE_WIDTHS=320 FIXTURE_LANGS=en.
+
+----- Intermediate raw-source investigation retained below -----
+
+Round 13 — mobile interaction prompt paper readability
+
+Product: client/phone.css only. body.phone #prompt disables border-image and sets border-color:var(--paper2). Original 7px solid border geometry, backgrounds, shadows, animation, text, transform and actions remain. This covers all mobile interaction prompts, not only Floo. Desktop keeps torn edges.
+
+Pure DOM fixture: prompt-fixture.mjs uses actual index/CSS/fonts from FIXTURE_ROOT; no main.ts/world/WebGL. FIXTURE_ROOT, FIXTURE_OUT, FIXTURE_MODE, CHROMIUM and PLAYWRIGHT_CORE configurable. Optional FIXTURE_PROFILES, FIXTURE_WIDTHS, FIXTURE_LANGS and FIXTURE_THEME narrow replay. Each page starts with short Read a page/阅读书页, changes to actual Floo label, hides for two frames then reveals, retaining bob animation and controls' auto-width/left clamp; raw coordinate tap verifies fixture click routing only.
+
+before and after: each 12 cases, 320/390x844 phones plus 900x600 desktop, Chinese/English, default Chromium and ANGLE SwiftShader launch flags. All 12 case pairs retain x/width/height/right in short/long/revealed states (animation y intentionally varies). No Range text clipping; all 12 taps delivered before and after. Desktop 4 pairs preserve border-image/background/color exactly. Original desktop SwiftShader Chinese baseline still has missing paper; this mobile-only patch does not claim to fix desktop.
+
+Mobile after: all 8 cases have complete paper at long and revealed, matching default-profile reference. SwiftShader English320 long sample improves 129/290 -> 267/290 (revealed269/290); Chinese320 long improves0/212 ->189/212 (revealed191/212). These are narrow screenshot scanlines excluding border, not WCAG contrast scores; ink/texture make counts less than full width. English prompt remains317.828125x46.5625; Chinese239.78125x46.5625. Selected before/after screenshots visibly confirm full backing under all text.
+
+Additional after theme checks: 320 English SwiftShader night and contrast, one each, short→long→hidden/revealed. Both no clipping, clicks1/1, background visually intact. Border follows night#26221d and contrast#fffaf0; night ink remains light. No light-pixel threshold applied to night.
+
+Prior causal isolation: 16-case border-image x box-shadow x original/solid background x320/390 matrix: all8 border-image cases missing paper; all8 none cases intact. Stretch/repeat/space preserve failure under SwiftShader (6/6); default6/6 normal. Pseudo-element edge likewise fails under SwiftShader and can cover text; rejected. Constant CSS is essential: late will-change appeared helpful but initial+label-switch did not. No rendering-internal root cause or hardware GPU/FPS claim.
+
+This fixture is independent from real game testing: no actual travel network/hand action/server, combat, world occlusion or native phone GPU. Real game candidate checks belong in the separate player report. The product tradeoff is a rectangular paper-colored edge on mobile prompts; desktop decoration stays.
+
+Artifacts: summary.json is compact case+pixel+geometry evidence; before.json/after.json/night.json/contrast.json are local detailed measurements, not necessary to archive. Keep only before-swiftshader-320-en-long.png, after-swiftshader-320-en-long.png, before-swiftshader-390-zh-revealed.png and after-swiftshader-390-zh-revealed.png as selected images.
+
+Validation complete: npx tsc --noEmit passed; npx vitest run passed80files/813tests; npx vite build passed. Product commit32469fd4362ff8041c4c60ccb2da9f212b0b9683 on codex/floo-readability; no push. Local logs tsc.log/vitest.log/build.log. Only client/phone.css committed; fixture/report remain/tmp.
+
+Archive note: only the built-before/built-after English320 image pair is included. Older source-only figures and optional Chinese images are not archived. Source JSON results remain as intermediate evidence. Actual gameplay is reported separately.
