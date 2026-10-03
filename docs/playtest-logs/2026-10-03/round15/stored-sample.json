@@ -1,0 +1,15 @@
+[
+  {
+    "name": "TelemetryBirchFifteen",
+    "fps": {
+      "p50": 755,
+      "p95": 5000,
+      "scale": 1,
+      "q": "high",
+      "dpr": 1,
+      "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftSh",
+      "samples": 7,
+      "seconds": 12.86
+    }
+  }
+]
