@@ -1,0 +1,20 @@
+{
+  "walkingTo": "Hagrid's Hut",
+  "distance": 15,
+  "etaSeconds": 2,
+  "blurb": "Rock cakes available. Teeth not guaranteed.",
+  "route": {
+    "currentTarget": {
+      "x": -76,
+      "z": 12
+    },
+    "destination": {
+      "x": 95,
+      "z": 34
+    },
+    "continues": true,
+    "estimateScope": "current_segment",
+    "estimateBasis": "straight_line_at_base_speed",
+    "note": "距离和时间仅估计到当前段终点，穿过场景后继续，不是全程；未计绕路、扫帚、暂停或其他速度变化，最终落脚点可能因障碍调整。Distance and time estimate this segment only, not the whole journey; walking continues after crossing. Detours, brooms, pauses and other speed changes are excluded; the final endpoint may be adjusted around obstacles."
+  }
+}

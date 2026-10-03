@@ -1,0 +1,39 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vite.config.ts:8:21). Use `import.meta.dirname` instead
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+vite v8.3.1 building client environment for production...
+`output.codeSplitting.groups[1].name` is a function. Set `output.codeSplitting.groups[1].debugName` so the bundler timing report can identify this group.
+transforming...
+✓ 124 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/hot.json                                     2.24 kB │ gzip:   0.60 kB
+dist/index.html                                  56.56 kB │ gzip:  18.42 kB
+dist/assets/shared-rERC3gP8.css                 150.51 kB │ gzip:  28.14 kB
+dist/assets/rolldown-runtime-DRPhZlUk.js          0.27 kB │ gzip:   0.22 kB
+dist/assets/feat-panels-ward-DO2Xh-uJ.js          0.59 kB │ gzip:   0.47 kB
+dist/assets/feat-panels-lawless-CdumNu8q.js       0.66 kB │ gzip:   0.43 kB
+dist/assets/feat-panels-dark-Dmqe-dP6.js          1.39 kB │ gzip:   0.84 kB
+dist/assets/feat-panels-encounters-P4Yu4YCZ.js    1.88 kB │ gzip:   1.16 kB
+dist/assets/feat-panels-quests-Bsva13Kr.js        1.91 kB │ gzip:   1.10 kB
+dist/assets/feat-panels-chat-CEu3qsqQ.js          2.67 kB │ gzip:   1.64 kB
+dist/assets/feat-panels-runes-NAED0Smp.js         2.69 kB │ gzip:   1.50 kB
+dist/assets/feat-loot3d-pcA3z3rg.js               2.86 kB │ gzip:   1.58 kB
+dist/assets/feat-chem3d-DfqD-rFs.js               2.93 kB │ gzip:   1.59 kB
+dist/assets/feat-panels-seals-HH78XACr.js         3.05 kB │ gzip:   1.74 kB
+dist/assets/feat-panels-travel-gBGpiXmT.js        3.18 kB │ gzip:   2.00 kB
+dist/assets/feat-panels-duel-BkqIPZNs.js          3.27 kB │ gzip:   1.88 kB
+dist/assets/feat-panels-darkmark-6ZeKZcXw.js      3.66 kB │ gzip:   2.08 kB
+dist/assets/feat-ice3d-BPJjdQ1l.js                3.95 kB │ gzip:   2.03 kB
+dist/assets/feat-scenes3d-BFjxqU5Y.js             4.25 kB │ gzip:   2.19 kB
+dist/assets/feat-panels-quidditch-CLII5C7X.js     4.36 kB │ gzip:   2.36 kB
+dist/assets/feat-panels-study-7ZsUqsLV.js         5.38 kB │ gzip:   2.67 kB
+dist/assets/feat-ui-BZr7-99G.js                   6.60 kB │ gzip:   3.37 kB
+dist/assets/feat-panels-trunk-D99CnE7z.js         8.28 kB │ gzip:   3.76 kB
+dist/assets/feat-panels-da-BFkdWVI5.js            8.89 kB │ gzip:   4.02 kB
+dist/assets/feat-props3d-BXAICVg8.js              9.35 kB │ gzip:   3.89 kB
+dist/assets/index-LMzD7aBm.js                    84.24 kB │ gzip:  34.71 kB
+dist/assets/shared-ChnB8IhH.js                  425.30 kB │ gzip: 174.73 kB
+dist/assets/vendor-BCfEtZ1y.js                  680.09 kB │ gzip: 175.85 kB
+
+✓ built in 320ms

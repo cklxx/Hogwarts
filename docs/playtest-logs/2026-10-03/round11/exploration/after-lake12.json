@@ -1,0 +1,310 @@
+{
+  "you": {
+    "x": -82,
+    "z": 26,
+    "facing": 2.4,
+    "place": "Black Lake Shore",
+    "safeZone": false,
+    "onGrounds": true,
+    "lawless": false
+  },
+  "time": {
+    "hour": 5.7,
+    "night": true,
+    "weather": "clear",
+    "remark": {
+      "zh": "夜深了。黑湖边的摄魂怪出来了——带好守护神。",
+      "en": "Late at night. The Dementors are out by the lake. Bring a Patronus."
+    }
+  },
+  "wizards": [],
+  "creatures": [
+    {
+      "id": "c53sel",
+      "kind": "dementor",
+      "name": "Dementor",
+      "faction": "hostile",
+      "canHarm": true,
+      "auras": [],
+      "hp": 150,
+      "maxHp": 150,
+      "dist": 6.2,
+      "x": -88.2,
+      "z": 25.7,
+      "weakTo": []
+    },
+    {
+      "id": "c53tlr",
+      "kind": "inferius",
+      "name": "Inferius",
+      "faction": "hostile",
+      "canHarm": true,
+      "auras": [],
+      "hp": 90,
+      "maxHp": 90,
+      "dist": 8,
+      "x": -85.8,
+      "z": 33,
+      "weakTo": [
+        "fire",
+        "light"
+      ]
+    },
+    {
+      "id": "c535uj",
+      "kind": "inferius",
+      "name": "Inferius",
+      "faction": "hostile",
+      "canHarm": true,
+      "auras": [],
+      "hp": 90,
+      "maxHp": 90,
+      "dist": 8.1,
+      "x": -80.9,
+      "z": 34,
+      "weakTo": [
+        "fire",
+        "light"
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "lake",
+      "name": "The Black Lake",
+      "dist": 5.7,
+      "x": -86,
+      "z": 30
+    },
+    {
+      "id": "tomb",
+      "name": "Dumbledore's Tomb",
+      "dist": 30.1,
+      "x": -52,
+      "z": 28
+    },
+    {
+      "id": "dungeons",
+      "name": "Dungeon Stair",
+      "dist": 69.8,
+      "x": -50,
+      "z": -36
+    },
+    {
+      "id": "courtyard",
+      "name": "The Courtyard",
+      "dist": 95,
+      "x": 0,
+      "z": -22
+    },
+    {
+      "id": "seventh_floor",
+      "name": "Seventh-Floor Corridor",
+      "dist": 97.8,
+      "x": -32,
+      "z": -58
+    }
+  ],
+  "yourHits": [],
+  "schoolEvent": null,
+  "chests": [],
+  "chestHint": {
+    "en": "Reeds on the Black Lake shore",
+    "zh": "黑湖岸边的芦苇丛",
+    "distance": "within 80 m",
+    "distanceZh": "80 米内",
+    "bearing": "NE"
+  },
+  "elderWand": "resting in Dumbledore's tomb (-52, 28)",
+  "tempus": {
+    "clock": "05:42",
+    "night": true,
+    "weather": "clear",
+    "term": 8,
+    "termSecondsLeft": 412,
+    "proclamation": "Draco dormiens nunquam titillandus."
+  },
+  "revelio": {
+    "year": 2,
+    "galleons": 46,
+    "reputation": 0,
+    "seals": "0/4",
+    "title": "Apprentice",
+    "nextTitle": {
+      "title": "Wizard",
+      "how": "Reach year 3."
+    }
+  },
+  "darkCorners": [
+    {
+      "section": "pointMe",
+      "lights": "the bottom-left corner: a radar that always points north",
+      "cast": "Point Me"
+    },
+    {
+      "section": "homenum",
+      "lights": "the bottom-right corner: everyone near you",
+      "cast": "Homenum Revelio",
+      "fromYear": 3
+    }
+  ],
+  "props": [
+    {
+      "id": "lake-bush-15",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -91.7,
+      "z": 19.6,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-bush-17",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -90.1,
+      "z": 20.4,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-puddle-4",
+      "kind": "puddle",
+      "zh": "水洼",
+      "x": -85.7,
+      "z": 26.9,
+      "state": "rest",
+      "hint": "站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发 / step in and you are wet: then lightning conducts, ice freezes, fire steams"
+    },
+    {
+      "id": "lake-ice-8",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -83.1,
+      "z": 34.5,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "lake-ice-9",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -84.2,
+      "z": 33.4,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "lake-4",
+      "kind": "crate",
+      "zh": "木箱",
+      "x": -78,
+      "z": 22,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "lake-ice-10",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -74.2,
+      "z": 20.2,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "lake-ice-11",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -73.7,
+      "z": 21.7,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "bench-lake-2",
+      "kind": "bench",
+      "zh": "长椅",
+      "x": -79,
+      "z": 18,
+      "state": "rest",
+      "hint": "坐下歇会儿 / sit and rest a while"
+    },
+    {
+      "id": "lake-5",
+      "kind": "barrel",
+      "zh": "木桶",
+      "x": -76,
+      "z": 24,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "lake-7",
+      "kind": "whizbang",
+      "zh": "韦斯莱烟火桶",
+      "x": -74,
+      "z": 30,
+      "state": "rest",
+      "hint": "火一碰就炸，炸到旁边的东西和魔物 / fire sets it off: it blasts what stands near"
+    },
+    {
+      "id": "road1-lamp-1-1",
+      "kind": "lamppost",
+      "zh": "路灯",
+      "x": -75,
+      "z": 25,
+      "state": "rest",
+      "hint": "夜里会自己亮起 / lights itself at night"
+    },
+    {
+      "id": "sign-lake",
+      "kind": "signpost",
+      "zh": "路牌",
+      "x": -74,
+      "z": 28,
+      "state": "rest",
+      "hint": "指着附近的地名 / points to nearby places"
+    },
+    {
+      "id": "bench-lake-1",
+      "kind": "bench",
+      "zh": "长椅",
+      "x": -74,
+      "z": 30,
+      "state": "rest",
+      "hint": "坐下歇会儿 / sit and rest a while"
+    },
+    {
+      "id": "lake-puddle-3",
+      "kind": "puddle",
+      "zh": "水洼",
+      "x": -79.4,
+      "z": 36.6,
+      "state": "rest",
+      "hint": "站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发 / step in and you are wet: then lightning conducts, ice freezes, fire steams"
+    }
+  ],
+  "chem": {
+    "states": [
+      {
+        "id": "c53tlr",
+        "state": "wet"
+      },
+      {
+        "id": "c535uj",
+        "state": "wet"
+      },
+      {
+        "id": "c53ga",
+        "state": "wet"
+      }
+    ],
+    "reactions": "wet: fire → 蒸发 vaporize ×1.5, ice → 冻结 freeze, lightning → 感电 conduct (arcs to the other wet), a stunner → 滑倒 slip, light → 彩虹 rainbow heal; frozen: any hit → 碎冰 shatter ×2"
+  },
+  "ice": {
+    "ice": "shore-frozen",
+    "zh": "湖面冻上了，去滑两圈吧（小心摄魂怪）",
+    "en": "The lake is frozen over — go skate (mind the Dementors)"
+  }
+}
