@@ -427,7 +427,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     const fog = scene.fog as THREE.FogExp2;
     fog.color.copy(su.uHorizon.value).lerp(su.uMid.value, 0.2);
     if (weather === 'rain') fog.color.multiplyScalar(0.75);
-    fog.density = 0.0019 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
+    fog.density = 0.0025 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
     setVec(shared.fogSunDir, sunDir);
     setVec(shared.fogSunColor, c1.copy(su.uSunColor.value).multiplyScalar((0.15 + 0.5 * dusk) * (clear ? 1 : 0.3)));
     setVec(shared.fogSkyColor, c1.copy(su.uMid.value).sub(fog.color).multiplyScalar(0.35));
@@ -479,7 +479,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     if (weather === 'fog') tmp.lerp(new THREE.Color(0x9a9a9a), 0.6);
     const fog = scene.fog as THREE.FogExp2;
     fog.color.copy(tmp);
-    fog.density = 0.0022 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
+    fog.density = 0.0029 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
     su.rayleigh.value = weather === 'clear' ? 1.6 : 0.6;
     su.turbidity.value = weather === 'clear' ? 5 : 14;
     preetham!.visible = dayFactor > 0.02;

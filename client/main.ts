@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { LANDMARKS, OBSTACLES } from '../src/shared/map';
+import { FIREPLACES } from '../src/shared/travel';
 import { createDecor, type Look } from './decor';
 import { createFx } from './fx';
 import { createWatch } from './watch';
@@ -201,8 +202,8 @@ const candles = instanceAlike(scene, scene.children.filter((o) => o.name === 'ca
 // UI scale: boxes (--u) follow the window (1600x900 = 1), text (--t) shrinks half as much so it stays readable;
 // phones keep their own layout (1). The 界面大小 setting in the Owl Post multiplies it (小 0.85 / 标准 1 / 大 1.15).
 const UI_KEY = 'hogwarts.ui';
-const uiSizes = { s: 0.85, m: 1, l: 1.15 } as const;
-let uiSize: keyof typeof uiSizes = (() => { try { const v = localStorage.getItem(UI_KEY); return v === 's' || v === 'l' ? v : 'm'; } catch { return 'm'; } })();
+const uiSizes = { s: 0.85, m: 1, l: 1.15, xl: 1.35 } as const;
+let uiSize: keyof typeof uiSizes = (() => { try { const v = localStorage.getItem(UI_KEY); return v === 's' || v === 'l' || v === 'xl' ? v : 'm'; } catch { return 'm'; } })();
 function applyUiScale() {
   const phone = innerWidth < 820 || innerHeight < 500;
   const base = phone ? 1 : Math.max(0.66, Math.min(1.1, Math.min(innerWidth / 1600, innerHeight / 900)));
@@ -312,9 +313,27 @@ setInterval(() => {
   send({ t: 'metrics', fps: { p50: at(0.5), p95: at(0.95), scale: R.scale, q: quality, dpr: devicePixelRatio, gpu: gpuName } });
 }, 15000);
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
+const weatherUniforms = { uTime: { value: 0 }, uFall: { value: 30 }, uSize: { value: 0.15 }, uScale: { value: 500 } };
 const weatherPts = new THREE.Points(
   new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 3000 * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 40 : (Math.random() - 0.5) * 120)), 3)),
-  new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.8 }),
+  // the fall is integrated in the vertex shader (y = (y0 - fall * t) mod 40): the CPU never touches a live drop
+  new THREE.ShaderMaterial({
+    uniforms: weatherUniforms,
+    transparent: true, depthWrite: false,
+    vertexShader: `uniform float uTime; uniform float uFall; uniform float uSize; uniform float uScale;
+      void main() {
+        vec3 p = position;
+        p.y = mod(p.y - uTime * uFall, 40.0);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = min(64.0, uSize * uScale / max(0.2, -mv.z));
+      }`,
+    fragmentShader: `void main() {
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        if (d > 1.0) discard;
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 0.8 * (1.0 - d * d));
+      }`,
+  }),
 );
 weatherPts.visible = false;
 scene.add(weatherPts);
@@ -341,7 +360,7 @@ const creatures = new Map<string, CreatureEntry>();
 const actors = new THREE.Group();
 actors.name = 'actors';
 scene.add(actors);
-const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
+const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number; gy?: number; gx?: number; gz?: number }>();
 const phone = matchMedia('(hover: none) and (pointer: coarse)').matches;
 /** 手机壳 (client/phone.ts): on a phone one owner lays out the screen, and every line of words goes through its queue. */
 const shell = phone ? createPhoneShell() : null;
@@ -890,6 +909,14 @@ function drawMinimap() {
   }
   for (const c2 of snap.c) { const [a, b] = P(c2.x, c2.z); g.fillStyle = '#a3262a'; g.fillRect(a - 1.5, b - 1.5, 3, 3); }
   for (const w of snap.w) { const [a, b] = P(w.x, w.z); g.fillStyle = w.h === myHandle ? '#2a1b0f' : '#' + HOUSE_COLORS[w.ho].toString(16).padStart(6, '0'); g.beginPath(); g.arc(a, b, w.h === myHandle ? 4 : 3, 0, 7); g.fill(); }
+  // Floo fireplaces: green flame dots so new players can find the network
+  g.fillStyle = '#1a7a3a';
+  for (const f of FIREPLACES) {
+    const [a, b] = P(f.x, f.z);
+    if (a < 0 || a > 220 || b < 0 || b > 220) continue;
+    g.beginPath(); g.arc(a, b, 4, 0, 7); g.fill();
+    g.fillStyle = '#1a7a3a'; // reset (arc doesn't change it, but be safe)
+  }
   g.fillStyle = '#3a2716'; g.font = '600 13px "LXGW WenKai", Georgia, serif';
   for (const l of LANDMARKS) { const [a, b] = P(l.x, l.z); if (a > 0 && a < 220 && b > 0 && b < 220) g.fillText(l.name, a + 3, b); }
   fun.drawMinimap(g, P); // the event's marker (and Filch's round)
@@ -989,7 +1016,7 @@ function menuInfo(url?: string) {
     <p class="op-registry">${L('你的登记号', 'Your registry number')}: <code>${esc(account.registry || '—')}</code><br/><span class="hint">${L('登记号是魔法部的公开记录，猫头鹰凭它投递包裹。', 'Your registry number is a public Ministry record: owls deliver parcels by it.')}</span></p>
     <p id="op-msg" class="hint"></p>
     <div class="op-foot"><span>${L('语言 Language', 'Language 语言')} <button id="lang-zh" class="${lang === 'zh' ? '' : 'ghost'}">中文</button> <button id="lang-en" class="${lang === 'en' ? '' : 'ghost'}">English</button></span>
-    <span>${L('界面大小', 'UI size')} ${(['s', 'm', 'l'] as const).map((k) => `<button data-ui="${k}" class="${uiSize === k ? '' : 'ghost'}">${L({ s: '小', m: '标准', l: '大' }[k], { s: 'Small', m: 'Normal', l: 'Large' }[k])}</button>`).join(' ')}</span>
+    <span>${L('界面大小', 'UI size')} ${(['s', 'm', 'l', 'xl'] as const).map((k) => `<button data-ui="${k}" class="${uiSize === k ? '' : 'ghost'}">${L({ s: '小', m: '标准', l: '大', xl: '特大' }[k], { s: 'Small', m: 'Normal', l: 'Large', xl: 'X-Large' }[k])}</button>`).join(' ')}</span>
     <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div>`;
   $('#lang-zh').onclick = () => setLang('zh');
   $('#lang-en').onclick = () => setLang('en');
@@ -1965,10 +1992,16 @@ function animCreature(c: CreatureEntry, i: string) {
   if (c.root.visible) c.anim(clock);
   else if (d < FR.lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
 }
-function animBolt(b: THREE.Object3D & { tx?: number; tz?: number }) {
+function animBolt(b: THREE.Object3D & { tx?: number; tz?: number; gy?: number; gx?: number; gz?: number }) {
   b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, FR.k * 2);
   b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, FR.k * 2);
-  b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
+  // the ground height is FBM noise: resample only after the bolt has travelled 3 m
+  const dx = b.position.x - (b.gx ?? 1e9), dz = b.position.z - (b.gz ?? 1e9);
+  if (b.gy === undefined || dx * dx + dz * dz > 9) {
+    b.gy = heightAt(b.position.x, b.position.z);
+    b.gx = b.position.x; b.gz = b.position.z;
+  }
+  b.position.y = 1.3 + b.gy;
   particles.trail(b, b.position, b.userData.color ?? 0xffffff);
   const spin = b.children[0];
   if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
@@ -2001,7 +2034,8 @@ function frame() {
   herd.begin();
   creatures.forEach(animCreature);
   herd.end();
-  declutterTags();
+  // (the overlap test is O(n²): 10 Hz is plenty for hiding stacked name tags)
+  if (frameNo % 6 === 0) declutterTags();
   bolts.forEach(animBolt);
   boltBatch.update(bolts.values());
   fxm.update(dt);
@@ -2032,12 +2066,13 @@ function frame() {
     for (const m of world.nightGlow) m.emissiveIntensity = (0.35 + 3.2 * night) * look.glow;
     decor.update(look, R.day, clock, dt);
     weatherPts.visible = snap.weather === 'rain' || snap.weather === 'snow';
+    const pScale = R.renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    decor.pointScale(pScale);
     if (weatherPts.visible) {
-      const pos = weatherPts.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const fall = snap.weather === 'rain' ? 30 : 3;
-      for (let i = 0; i < pos.count; i++) { let y = pos.getY(i) - fall * dt; if (y < 0) y += 40; pos.setY(i, y); }
-      pos.needsUpdate = true;
-      (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
+      weatherUniforms.uTime.value = clock;
+      weatherUniforms.uFall.value = snap.weather === 'rain' ? 30 : 3;
+      weatherUniforms.uSize.value = snap.weather === 'rain' ? 0.08 : 0.2;
+      weatherUniforms.uScale.value = pScale;
     }
     let nearWillow = false;
     if (!snap.willowCalm) for (const w of wizards.values()) { const x = w.root.position.x - 45, z = w.root.position.z; if (x * x + z * z < 81) { nearWillow = true; break; } }

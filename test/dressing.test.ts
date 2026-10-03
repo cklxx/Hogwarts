@@ -129,7 +129,8 @@ describe('dressing: what each kind does (every one of them)', () => {
       const w = mk();
       const a = wiz(w, `Lamp ${g.id}`, ms[0]);
       const xp = a.xp;
-      touch(w, ms[0], 'fire', a.id); touch(w, ms[1], 'light', a.id); touch(w, ms[2], 'fire', a.id);
+      const wakes = PROP_DEFS[g.kind].wakes ?? 'fire';
+      touch(w, ms[0], wakes, a.id); touch(w, ms[1], wakes, a.id); touch(w, ms[2], wakes, a.id);
       expect(a.xp, g.id).toBeGreaterThan(xp);
     }
   });

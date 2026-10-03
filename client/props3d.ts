@@ -53,6 +53,38 @@ function body(k: PropKind): THREE.BufferGeometry {
     case 'rune': return painted([[at(new THREE.BoxGeometry(0.55, 1.3, 0.35), 0, 0.65, 0), 0x7c7f88], [at(new THREE.BoxGeometry(0.6, 0.12, 0.4), 0, 1.33, 0), 0x6a6d75], [at(new THREE.PlaneGeometry(0.3, 0.5), 0, 0.8, 0.176), 0x4f5a78]]);
     case 'basin': return painted([[at(new THREE.CylinderGeometry(0.62, 0.5, 0.4, 14, 1, true), 0, 0.2, 0), 0x8d8a82], [at(new THREE.CircleGeometry(0.58, 14).rotateX(-Math.PI / 2), 0, 0.32, 0), 0x2f5e8f]]);
     case 'crystal': return painted([[at(new THREE.OctahedronGeometry(0.28).scale(0.7, 1.9, 0.7), 0, 0.55, 0), 0xcfc4ff], [at(new THREE.OctahedronGeometry(0.2).scale(0.7, 1.6, 0.7).rotateZ(0.5), 0.25, 0.3, 0.05), 0xb7a8f5], [at(new THREE.OctahedronGeometry(0.17).scale(0.7, 1.5, 0.7).rotateZ(-0.6), -0.22, 0.26, -0.06), 0xdcd3ff]]);
+    // 路灯: flared base, tapered pole with collars, glass housing with cap and finial (~90 tris)
+    case 'lamppost': return painted([
+      [at(new THREE.CylinderGeometry(0.18, 0.26, 0.32, 8), 0, 0.16, 0), 0x2b2b30],
+      [at(new THREE.CylinderGeometry(0.06, 0.10, 2.6, 6), 0, 1.6, 0), 0x2b2b30],
+      [at(new THREE.TorusGeometry(0.10, 0.025, 4, 8).rotateX(Math.PI / 2), 0, 0.95, 0), 0x3d3d45],
+      [at(new THREE.TorusGeometry(0.085, 0.022, 4, 8).rotateX(Math.PI / 2), 0, 2.25, 0), 0x3d3d45],
+      [at(new THREE.BoxGeometry(0.36, 0.44, 0.36), 0, 3.12, 0), 0x2b2b30],
+      [at(new THREE.BoxGeometry(0.28, 0.34, 0.28), 0, 3.12, 0), 0xffd88a],
+      [at(new THREE.ConeGeometry(0.28, 0.20, 4).rotateY(Math.PI / 4), 0, 3.44, 0), 0x2b2b30],
+      [at(new THREE.SphereGeometry(0.05, 6, 4), 0, 3.58, 0), 0x3d3d45],
+    ]);
+    // 路牌: weathered post with two directional arms (~40 tris)
+    case 'signpost': return painted([
+      [at(new THREE.CylinderGeometry(0.07, 0.10, 2.3, 6), 0, 1.15, 0), 0x6b4a2e],
+      [at(new THREE.BoxGeometry(0.95, 0.20, 0.06).rotateY(0.35), 0.1, 1.92, 0), 0x7d5a38],
+      [at(new THREE.BoxGeometry(0.20, 0.20, 0.06).rotateY(0.35 + Math.PI / 4), 0.52, 1.92, -0.14), 0x7d5a38],
+      [at(new THREE.BoxGeometry(0.75, 0.18, 0.06).rotateY(-0.55), -0.08, 1.62, 0), 0x6b4a2e],
+      [at(new THREE.BoxGeometry(0.18, 0.18, 0.06).rotateY(-0.55 + Math.PI / 4), -0.42, 1.62, 0.12), 0x6b4a2e],
+      [at(new THREE.SphereGeometry(0.09, 6, 4), 0, 2.34, 0), 0x4a3320],
+    ]);
+    // 长椅: slatted seat and back, iron frames (~70 tris)
+    case 'bench': return painted([
+      [at(new THREE.BoxGeometry(1.8, 0.06, 0.18), 0, 0.45, -0.20), 0x7d5a38],
+      [at(new THREE.BoxGeometry(1.8, 0.06, 0.18), 0, 0.45, 0.0), 0x7d5a38],
+      [at(new THREE.BoxGeometry(1.8, 0.06, 0.18), 0, 0.45, 0.20), 0x7d5a38],
+      [at(new THREE.BoxGeometry(1.8, 0.14, 0.06).rotateX(-0.15), 0, 0.78, -0.34), 0x6b4a2e],
+      [at(new THREE.BoxGeometry(1.8, 0.14, 0.06).rotateX(-0.15), 0, 0.98, -0.37), 0x6b4a2e],
+      [at(new THREE.BoxGeometry(0.08, 0.45, 0.55), -0.80, 0.225, 0), 0x2b2b30],
+      [at(new THREE.BoxGeometry(0.08, 0.45, 0.55), 0.80, 0.225, 0), 0x2b2b30],
+      [at(new THREE.BoxGeometry(0.06, 0.06, 0.62), -0.85, 0.68, -0.05), 0x2b2b30],
+      [at(new THREE.BoxGeometry(0.06, 0.06, 0.62), 0.85, 0.68, -0.05), 0x2b2b30],
+    ]);
   }
 }
 /** What an awake one shows, and its colour (additive, so the bloom catches it). */
@@ -63,6 +95,7 @@ const GLOW: Partial<Record<PropKind, { geo: () => THREE.BufferGeometry; color: n
   crystal: { geo: () => at(new THREE.OctahedronGeometry(0.4).scale(0.8, 1.9, 0.8), 0, 0.6, 0), color: 0xfff1b8 },
   lantern: { geo: () => at(new THREE.SphereGeometry(0.42, 10, 8), 0, 1.86, 0), color: 0xffc060 },
   cauldron: { geo: () => at(new THREE.CylinderGeometry(0.4, 0.4, 0.12, 14), 0, 0.98, 0), color: 0x7dff7a },
+  lamppost: { geo: () => at(new THREE.SphereGeometry(0.30, 10, 8), 0, 3.12, 0), color: 0xffc060 },
 };
 
 /** The hover line over a prop: its name and what it wants. */
@@ -86,6 +119,8 @@ const CLAIM_R = 1.3;
 const TILE = 24;
 /** Things you can touch read a size larger than life (the 2.5D camera hangs 24 m up) and a touch brighter. */
 const SIZE = 1.35;
+/** Kinds too small for their shadow to matter: they skip the shadow map (docs/PERF.md 2026-10-03). */
+const NO_SHADOW: Set<PropKind> = new Set(['mushroom', 'web', 'pumpkin', 'pot', 'ice', 'hay']);
 /** A faint ring on the ground under each kind that wakes, in its element's colour: this one does something. */
 const RING: Partial<Record<PropKind, number>> = { brazier: 0xff9a3c, rune: 0x6ab4ff, basin: 0xa8e8ff, crystal: 0xffe6a0, lantern: 0xffb24a, cauldron: 0x7de07a };
 
@@ -103,7 +138,21 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   const ringGeo = new THREE.RingGeometry(0.62, 0.8, 24).rotateX(-Math.PI / 2).translate(0, 0.06, 0);
   const ringMat = new Map(kinds.filter((k) => RING[k]).map((k) => [k, new THREE.MeshBasicMaterial({ color: RING[k], transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })]));
   const glowGeo = new Map(kinds.filter((k) => GLOW[k]).map((k) => [k, GLOW[k]!.geo()]));
-  const glowMat = new Map(kinds.filter((k) => GLOW[k]).map((k) => [k, new THREE.MeshBasicMaterial({ color: GLOW[k]!.color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })]));
+  // the flames and charges breathe in the vertex shader (a scale pulsation): the CPU never rewrites a live matrix
+  const glowTime = { value: 0 };
+  const glowMat = new Map(kinds.filter((k) => GLOW[k]).map((k) => {
+    const gm = new THREE.MeshBasicMaterial({ color: GLOW[k]!.color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    gm.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = glowTime;
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          float gph = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
+          transformed *= 1.0 + 0.08 * sin(uTime * 9.0 + gph);
+        #endif`);
+    };
+    gm.customProgramCacheKey = () => 'prop-glow';
+    return [k, gm] as [PropKind, THREE.MeshBasicMaterial];
+  }));
   interface Bucket { k: PropKind; list: Prop[]; m: THREE.InstancedMesh; g?: THREE.InstancedMesh; r?: THREE.InstancedMesh }
   const byKey = new Map<string, Prop[]>();
   for (const p of PROPS) { const key = `${p.kind}|${Math.floor(p.x / TILE)},${Math.floor(p.z / TILE)}`; (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(p); }
@@ -111,7 +160,7 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   for (const [key, list] of byKey) {
     const k = list[0].kind;
     const m = new THREE.InstancedMesh(geo.get(k)!, PROP_DEFS[k].wets ? wetMat : mat, list.length);
-    m.name = `props:${key}`; m.castShadow = !PROP_DEFS[k].wets; m.receiveShadow = true;
+    m.name = `props:${key}`; m.castShadow = !PROP_DEFS[k].wets && !NO_SHADOW.has(k); m.receiveShadow = true;
     list.forEach((p, i) => m.setMatrixAt(i, place(p, true)));
     m.computeBoundingSphere();
     const b: Bucket = { k, list, m };
@@ -142,14 +191,12 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   let hovered: Prop | null = null, hoverAt = 0, t = 0;
 
   let sig = '';
-  let awake = new Set<string>();
   function apply() {
     const w = d.wire<{ b?: Record<string, number>; a?: Record<string, number> }>('props');
     const b = w?.b ?? {}, a = w?.a ?? {};
     const next = `${Object.keys(b).sort().join()}|${Object.keys(a).sort().join()}`;
     if (next === sig) return;
     sig = next;
-    awake = new Set(Object.keys(a));
     for (const { list, m, g, r } of buckets) {
       list.forEach((p, i) => { m.setMatrixAt(i, place(p, !(p.id in b))); if (g) g.setMatrixAt(i, place(p, p.id in a && !(p.id in b))); if (r) r.setMatrixAt(i, place(p, !(p.id in a))); });
       m.instanceMatrix.needsUpdate = true;
@@ -172,14 +219,7 @@ export const propsFeature: ClientFeatureFactory = (d) => {
     frame(dt) {
       t += dt;
       apply();
-      // the flames and charges breathe
-      for (const { list, g } of buckets) {
-        if (!awake.size) break;
-        if (!g) continue;
-        let any = false;
-        list.forEach((p, i) => { if (awake.has(p.id)) { g.setMatrixAt(i, place(p, true, 1 + 0.08 * Math.sin(t * 9 + i * 1.7))); any = true; } });
-        if (any) g.instanceMatrix.needsUpdate = true;
-      }
+      glowTime.value = t;
       if (hovered && t - hoverAt > 0.2) hovered = null;
       sign.visible = !!hovered;
       if (hovered) {

@@ -1511,6 +1511,20 @@ No frame-rate claim (SwiftShader).
   The water shader's mirror shows only the sky at grazing angles. Worth a look with the art pass.
 - No frame-rate claim (SwiftShader).
 
+## 2026-10-02 — the night freeze + skating (merged into the `ice` feature, `wf/ice-merge`)
+
+On top of the ice road: at night the whole lake freezes (`iceNight`, flipped by the 1 Hz sweep),
+and any ice skates 25% faster (`moveMult`) with a glide (`stepLate`: let go and the last velocity
+carries on, decaying; it digs in when a walk goal completes so you stop at the float). `onIce` is
+the one predicate both use; `walkOn` needs no change. The thaw at dawn reuses the melt handler.
+Isolated cost at 1 000 wizards: `moveMult` 0.044 ms/tick, `stepLate` ~0.03 ms/tick while skating.
+The snapshot's `ice` wire is `{ night, cells }` now; the client draws the night sheet (one painted
+`paintedIce` disc, one draw call, faded over 2.5 s) plus the road's tiles.
+
+A `moveWizard` fast path: a wizard with no keys, no goal and no dodge in progress returns before
+the four-hook `moveMult` chain. Idle `moveWizard` for 1 000 wizards: 0.173 ms → 0.030 ms per tick
+(the chain alone, measured in isolation). No frame-rate claim (SwiftShader).
+
 ## 2026-10-01 — dressing, seven new prop kinds, drops (`wf/dress`)
 
 The owner: 「内容太少了……丰富内容元素」. Things to do per screen of open ground, at 571 m² per 16:9 screen: props,
@@ -1641,3 +1655,25 @@ What changed:
 - **Ghost targets**: the server says the target is gone ("There is no …") when this screen still draws it. The lock is dropped, auto-aim, lock and hover all skip that id for 4 s, and the press goes again at whoever is really there. Nothing was spent.
 
 The browser A/B (30 s mash on the lawn, SwiftShader, about 1 fps) cannot measure hits. The page log shows all 14 sends between 26.9 and 48.8 s, and all 9 replies in one burst at 58.4 s: the starved main thread runs key events first and WebSocket messages last, so the client never sees a pixie fall. Only the toasts count from it (before: a red ghost toast; after: none). Hit counts come from the kernel loop above and `test/castgate.test.ts` (a 60 s mash lands > 1.5 × what mana alone pays for).
+
+## 2026-10-03 — client CPU: particles to the GPU (`wf/ice`)
+
+The owner: 「客户端性能优化下」. A census at spawn (high quality, `?perf=1`) showed the shadow map doing ~60% of all draw calls (157 prop buckets casting), and code review found the per-frame CPU particle loops. All ambient particle motion now integrates in the vertex shader; the CPU never touches a live particle.
+
+| per frame before | after |
+|---|---|
+| weather: 3000 × getY/setY + buffer upload | 3 uniform writes |
+| fireflies: 500 × setXYZ (1500 sin/cos) + upload | 2 uniform writes |
+| lanterns: 260 × getY/setY/getX + upload | 2 uniform writes |
+| prop glow breathe: N_awake × matrix compose (Vector3 alloc + FBM heightAt each) + full buffer upload | 1 uniform write |
+| name-tag declutter: O(n²) every frame | O(n²) every 6th frame |
+| bolt ground height: FBM heightAt per bolt per frame | resampled after 3 m of travel |
+
+What changed:
+- **Weather** (`client/main.ts`): `PointsMaterial` → `ShaderMaterial`; `y = mod(y0 − fall·t, 40)` in the vertex shader; `uTime/uFall/uSize/uScale` uniforms.
+- **Fireflies, lanterns** (`client/decor.ts`): same treatment; each mote's phase comes from a hash of its seed position, so no extra attributes. The glow sprite textures are kept as `uMap`.
+- **Prop glow breathing** (`client/props3d.ts`): `onBeforeCompile` injects `transformed *= 1 + 0.08·sin(uTime·9 + phase)`; instance matrices are now written only when awake/broken state changes.
+- **Small props skip the shadow map** (`client/props3d.ts`): mushroom, web, pumpkin, pot, ice, hay — their shadows were invisible at 2.5D distance.
+- **Tag declutter** (`client/main.ts`): every 6th frame; **bolt height** (`client/main.ts`): cached, resampled after 3 m.
+
+Verified: `tsc` clean, `test/props.test.ts` 11/11, browser smoke test renders with no errors (the new shaders compile). SwiftShader (~0.15 fps) cannot resolve the JS delta — the win is structural: ~3760 CPU particle updates and 2 full buffer uploads per frame are gone.

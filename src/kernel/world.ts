@@ -817,7 +817,7 @@ export class World {
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
-      ui: [], seals: 0, wasMinister: false, npc: false, auras: [], tearsAt: 0,
+      ui: [], seals: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0, auras: [], tearsAt: 0,
       hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, agentPaused: false, agentSeen: null, goalBy: null,
       look: null, jinxLook: null,
     };
@@ -1349,7 +1349,21 @@ export class World {
     const m = this.memeOf.get(w.id);
     if (m) m.still = this.now; // speaking is not lying flat
     this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${tz}` });
-    if (via !== 'npc') { this.chatEggs(w, t, via); for (const f of HOOKS.said) f.said(this, w, t); }
+    if (via !== 'npc') {
+      this.chatEggs(w, t, via);
+      for (const f of HOOKS.said) f.said(this, w, t);
+      // NPCs answer greetings: a nearby NPC wizard replies once (playtest: say was one-way)
+      if (!w.npc && /^(hi|hello|hey|嗨|你好|哈喽|hello!|hi!)/i.test(t.trim())) {
+        const near = [...this.nearWizards(w.pos, 12)].filter((n) => n.npc && n.id !== w.id && this.isActive(n) && dist(n.pos, w.pos) <= 12);
+        if (near.length && this.funRand() < 0.7) {
+          const npc = near[Math.floor(this.funRand() * near.length)];
+          const replies = ['Hello! 你好呀！', 'Hey there! 嗨！', 'Hi! 今天过得怎么样？', '哦，你好！', 'Hello, fellow wizard!'];
+          const reply = replies[Math.floor(this.funRand() * replies.length)];
+          // delay slightly so it doesn't look instant
+          setTimeout(() => { if (this.isActive(npc)) this.say(npc, reply, 'npc'); }, 800 + this.funRand() * 1200);
+        }
+      }
+    }
   }
 
   /**
@@ -2451,10 +2465,20 @@ export class World {
     if (this.memeOf.size > this.wizards.size) for (const id of this.memeOf.keys()) if (!this.wizards.has(id)) this.memeOf.delete(id);
   }
 
+  /** Shared by walking and ice momentum so both obey feature movement locks. */
+  movementMult(w: Wizard): number {
+    let mult = 1;
+    for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
+    return mult;
+  }
+
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
     if (w.st.rootedUntil > this.now) return;
-    let mult = 1; // the features' say (决斗俱乐部 holds you still through the bow, 魁地奇 lets you fly)
-    for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
+    // fast path: no keys, no goal, not mid-dodge — standing still. Skips the features' moveMult chain
+    // (safe: a stationary wizard returns below anyway; mult===0 only matters while moving, and the dodge
+    // has its own branch which we don't take here).
+    if (!w.goal && (w.st.dodgeUntil ?? 0) <= this.now && Math.hypot(w.input.dx, w.input.dz) < 0.01) return;
+    const mult = this.movementMult(w);
     if (mult === 0) return;
     if ((w.st.dodgeUntil ?? 0) > this.now) {
       // 翻滚闪避: the dash overrides the keys and any walk while it lasts
@@ -2511,6 +2535,20 @@ export class World {
     }
     if (w.goal) this.unstick(w, Math.hypot(bx - w.pos.x, bz - w.pos.z) / (speed * dt), dt);
     this.moved(w);
+    // exploration XP: first time within a zone's radius, grant XP (casual play earns too)
+    if (!w.npc && (!w.lastExploreAt || this.now - w.lastExploreAt > 2)) {
+      w.lastExploreAt = this.now;
+      for (const z of ZONES) {
+        if (w.visited.includes(z.id)) continue;
+        const r = z.r ?? 20;
+        if (Math.hypot(z.x - w.pos.x, z.z - w.pos.z) <= r) {
+          w.visited.push(z.id);
+          this.gainXp(w, 5);
+          this.emit('system', `🗺️ Discovered ${z.name}! +5 XP.`, { to: w.id, zh: `🗺️ 发现了${z.name}！+5 经验。` });
+          break;
+        }
+      }
+    }
   }
 
   /**
@@ -3597,7 +3635,7 @@ export class World {
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {
-        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, wasMinister: false, npc: false,
+        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0,
         hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, look: null,
       };
       const wz: Wizard = {

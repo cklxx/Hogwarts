@@ -9,7 +9,7 @@
 import type { Element } from './constants.js';
 import { DRESSING, DRESSING_GROUPS } from './dressing.js';
 
-export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'web' | 'hay' | 'bush' | 'mushroom' | 'ice' | 'brazier' | 'rune' | 'basin' | 'crystal' | 'lantern' | 'cauldron' | 'puddle';
+export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'web' | 'hay' | 'bush' | 'mushroom' | 'ice' | 'brazier' | 'rune' | 'basin' | 'crystal' | 'lantern' | 'cauldron' | 'puddle' | 'lamppost' | 'signpost' | 'bench';
 export interface PropDef {
   zh: string; en: string;
   /** Any hurting spell breaks it (back after PROP_RESPAWN_S). */
@@ -52,6 +52,9 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   lantern: { zh: '灯笼', en: 'lantern', wakes: 'fire', also: 'light', secs: 60, quench: 'ice', hintZh: '用火或光点亮；三盏一起亮有奖励', hintEn: 'light it with fire or light; three lit at once pays' },
   cauldron: { zh: '坩埚', en: 'cauldron', wakes: 'fire', secs: 20, brews: true, hintZh: '用火煮：煮出一瓶药水', hintEn: 'heat it with fire: it brews a potion' },
   puddle: { zh: '水洼', en: 'puddle', wets: true, hintZh: '站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发', hintEn: 'step in and you are wet: then lightning conducts, ice freezes, fire steams' },
+  lamppost: { zh: '路灯', en: 'lamppost', hintZh: '夜里会自己亮起', hintEn: 'lights itself at night' },
+  signpost: { zh: '路牌', en: 'signpost', hintZh: '指着附近的地名', hintEn: 'points to nearby places' },
+  bench: { zh: '长椅', en: 'bench', hintZh: '坐下歇会儿', hintEn: 'sit and rest a while' },
 };
 
 export interface Prop { id: string; kind: PropKind; x: number; z: number; group?: string }
@@ -63,6 +66,7 @@ export const PROP_RESPAWN_S = 60;
 export const PROP_R = 0.8;
 /** Breaking pays this much experience, at most PROP_BREAKS_PER_TERM times a term (RULES: rewards are capped). */
 export const PROP_BREAK_XP = 2, PROP_BREAKS_PER_TERM = 50;
+/** Waking a prop (lighting a brazier, freezing a basin…) pays this much experience. */
 /** A group woken together pays each wizard who woke one of its three (within its window) this, once a term. */
 export const PROP_GROUP_XP = 25, PROP_GROUP_GALLEONS = 2;
 /** A whizbang's blast hurts wild creatures this much (fire). */

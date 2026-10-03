@@ -1255,7 +1255,7 @@ function createTutorial(t: TutorialDeps) {
   const load = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
   const save = (v: string) => { try { localStorage.setItem(KEY, v); } catch { /* private mode */ } };
   const saved = load();
-  let step = saved === 'done' ? -1 : Math.max(0, Math.min(6, Number(saved) || 0));
+  let step = saved === 'done' ? -1 : Math.max(0, Math.min(7, Number(saved) || 0));
   // after the tutorial the H-help button goes (H still opens it): the quiet HUD
   document.body.classList.toggle('tut-done', step === -1);
   let start: { x: number; z: number } | null = null;
@@ -1359,6 +1359,12 @@ function createTutorial(t: TutorialDeps) {
       short: () => L('给 Agent <b>写一句</b>', '<b>Write</b> to your agent'),
       line: () => L(`${t.touch ? '点<b>写信</b>' : `按 ${key('O')}`} 给你的 Agent 写一句话（只有你们俩看得见）`, `${t.touch ? 'Tap <b>Write</b>' : key('O')} to write your agent a line (only the two of you see it)`),
       acts: () => `<button data-act="owl">${L('写信', 'Write')}</button> <button data-act="later" class="ghost">${L('跳过', 'Skip')}</button>`,
+    },
+    {
+      at: 'bottom',
+      short: () => L('骑<b>扫帚</b>飞（<b>M</b>），或走<b>飞路网</b>', 'Ride a <b>broom</b> (<b>M</b>), or take the <b>Floo</b>'),
+      line: () => L(`地图很大：按 <b>${key('M')}</b> 骑扫帚（2 倍速，城堡外），或站在<b>绿色火焰</b>旁说出地名走飞路网`, `The map is big: press <b>${key('M')}</b> for a broom (2× speed, outside the castle), or stand by a <b>green flame</b> and name a place for the Floo`),
+      acts: () => `<button data-act="later" class="ghost">${L('知道了', 'Got it')}</button>`,
     },
   ];
 

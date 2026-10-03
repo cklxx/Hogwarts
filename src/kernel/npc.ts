@@ -23,6 +23,8 @@ export const PERSONAS: Persona[] = [
   { name: 'Hannah Abbott', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['greenhouses', 'courtyard', 'hagrid'], lines: NPC_LINES['Hannah Abbott'] },
   { name: 'Padma Patil', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['great_hall', 'seventh_floor', 'courtyard', 'lake'], lines: NPC_LINES['Padma Patil'] },
   { name: 'Gregory Goyle', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'pitch'], lines: NPC_LINES['Gregory Goyle'] },
+  { name: 'Madam Rosmerta', house: 'Hufflepuff', favourite: 'Aguamenti', patrol: ['hogsmeade', 'road'], lines: NPC_LINES['Madam Rosmerta'] ?? [] },
+  { name: 'Ambrosius Flume', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['hogsmeade', 'lake_shore'], lines: NPC_LINES['Ambrosius Flume'] ?? [] },
 ];
 
 /**

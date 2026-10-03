@@ -25,6 +25,7 @@ export const QUESTS: readonly QuestDef[] = [
   { id: 'reflect', n: 1, zh: '用盔甲护身完美反弹一次', en: 'Reflect a spell with a well-timed Protego', count: (w) => w.stats.reflects ?? 0 },
   { id: 'event', n: 1, zh: '在校园事件里为学院拿分', en: 'Earn house points in a school event', count: (w) => w.cup?.src.events ?? 0 },
   { id: 'quidditch', n: 1, zh: '打一场魁地奇并为学院拿分', en: 'Earn house points in a Quidditch match', count: (w) => w.cup?.src.quidditch ?? 0 },
+  { id: 'skate', n: 50, zh: '在结冰的黑湖上滑行 50 米（夜里湖面会结冰）', en: 'Skate 50 m on the frozen Black Lake (it freezes at night)', count: (w) => w.stats.skate ?? 0 },
 ];
 const BY_ID = new Map(QUESTS.map((q) => [q.id, q]));
 

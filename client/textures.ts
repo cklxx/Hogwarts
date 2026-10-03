@@ -665,6 +665,48 @@ export function paintedMoon() {
   return t;
 }
 
+/** A painted ice sheet: pale blue-white with drifting snow dust, crack veins and a soft marbled wash. */
+export function paintedIce() {
+  const S = 512;
+  const [c, g] = canvas(S);
+  // base wash: pale ice blue, a touch deeper toward the rim
+  const base = g.createRadialGradient(S / 2, S / 2, S * 0.1, S / 2, S / 2, S * 0.55);
+  base.addColorStop(0, '#dceef7');
+  base.addColorStop(0.7, '#c3dfee');
+  base.addColorStop(1, '#a9cde4');
+  g.fillStyle = base;
+  g.fillRect(0, 0, S, S);
+  // marbled wash: broad soft strokes of white and deeper blue
+  for (let i = 0; i < 40; i++) {
+    const x = rnd() * S, y = rnd() * S, r = S * (0.04 + rnd() * 0.12);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    const white = rnd() < 0.6;
+    gr.addColorStop(0, white ? 'rgba(255,255,255,0.16)' : 'rgba(120,170,210,0.14)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+  // crack veins: jagged white-blue polylines wandering across the sheet
+  for (let i = 0; i < 14; i++) {
+    let x = rnd() * S, y = rnd() * S, a = rnd() * Math.PI * 2;
+    g.strokeStyle = `rgba(240,250,255,${0.35 + rnd() * 0.3})`;
+    g.lineWidth = 1 + rnd() * 1.6;
+    g.beginPath(); g.moveTo(x, y);
+    const segs = 6 + Math.floor(rnd() * 8);
+    for (let s = 0; s < segs; s++) {
+      a += (rnd() - 0.5) * 1.1;
+      const len = S * (0.03 + rnd() * 0.06);
+      x += Math.cos(a) * len; y += Math.sin(a) * len;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  // snow dust: soft white speckles
+  speckle(g, S, 900, 0.10);
+  const t = tex(c);
+  return t;
+}
+
 /** The world's surface materials in the current STYLE. */
 export function makeMaterials() {
   return STORYBOOK ? storybookMaterials() : realMaterials();

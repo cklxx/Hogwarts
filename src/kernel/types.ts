@@ -131,7 +131,9 @@ export interface Wizard {
   titles: string[];
   stats: { stuns: number; stunned: number; creatures: number; casts: number; forged: number; reflects?: number; dodges?: number;
     /** Spells forged (forge_spell, copies and forks); `forged` counts items. */
-    spells?: number };
+    spells?: number;
+    /** Metres skated on the Black Lake ice (the ice feature's daily quest). */
+    skate?: number };
   st: WizardStatus;
   cooldowns: Record<string, number>;
   globalCd: number;
@@ -159,6 +161,10 @@ export interface Wizard {
   wasMinister: boolean;
   /** Server-driven non-player wizard. */
   npc: boolean;
+  /** Landmark ids already discovered (exploration XP, once each). */
+  visited: string[];
+  /** World time of last exploration check (throttle). */
+  lastExploreAt: number;
   auras: Aura[];
   /** Per-wizard cooldown for phoenix tears. */
   tearsAt: number;
@@ -322,7 +328,9 @@ export interface Fx {
     /** a magic reaction (kernel/chem.ts): h = its id */
     | 'react'
     /** something picked up off the ground (kernel/loot.ts): h = its kind, n = how much */
-    | 'loot';
+    | 'loot'
+    /** the Black Lake freezing over or thawing (kernel/ice.ts): at the lake's centre */
+    | 'freeze';
   x: number;
   z: number;
   r?: number;

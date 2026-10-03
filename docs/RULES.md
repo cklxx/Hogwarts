@@ -43,7 +43,7 @@
 | 校园事件同时最多一件，奖励只发一次 | `src/kernel/wheel.ts` | TLA+ `EventWheel` |
 | 场景道具：打碎东西每人每学期最多 50 次给经验（每次 2）；一组三个同时点亮，每个出了力的人每组每学期只拿一次奖励（25 经验 + 2 加隆）；烟火桶只伤野生魔物、不伤巫师；带目标的魔弹不会被路边的箱子吃掉 | `src/kernel/props.ts`（`PROP_BREAKS_PER_TERM`、`paid`） | `test/props.test.ts` |
 | 掉落：打碎的东西 35% 掉一件（冰块必掉、坩埚煮出药水），加隆每人每学期最多 60 个，魔力和生命只补到上限；地上最多 160 件、40 秒消失 | `src/kernel/loot.ts`（`LOOT_GALLEONS_PER_TERM`） | `test/dressing.test.ts` |
-| 冰路：冰只在湖面上结、25 秒化掉；化的时候站在上面的人一定被送回最近的岸边（不会卡在水里）；没有冰时走不进湖 | `src/kernel/ice.ts`（`sweep`）、`Solids.walkOn` | `test/ice.test.ts` |
+| 冰路：法术冰只在湖面上结、25 秒化掉；夜冰覆盖整湖、天亮化掉；脚下已无任何冰时一定被送回最近的岸边（不会卡在水里）；没有冰时走不进湖；滑行遵守定身和移动禁令，传送不计滑行距离 | `src/kernel/ice.ts`（`sweep`）、`Solids.walkOn` | `test/ice.test.ts` |
 | 反射只还手：对巫师，只有对方 30 秒内打中你或朝你放了咒语才算交手（你误伤别人不算）；附身期间你自己身体的反射暂停 | `src/kernel/reflexes.ts`（`fighting`） | `test/agents.test.ts`、`test/round4.test.ts` |
 | 战斗回蓝：只有巫师亲手打中野生魔物（不是巫师、召唤物、NPC 施法）才回 6 点魔力，每人每秒最多 10 点，只补到上限；符文连锁、导电、超载、烟火桶不算；考试沙盒（回蓝为 0）里没有 | `src/kernel/focus.ts`（`FOCUS_REFUND`、`FOCUS_MAX_PER_S`） | `test/castgate.test.ts` |
 | 锁定了目标的咒语绕过树干（只有墙和建筑挡得住）；直射和范围法术照旧被树挡；look 的 blocked 用同一条规则 | `World.inAim`（`src/kernel/world.ts`） | `test/lockon.test.ts`、`test/lookcast.test.ts` |
