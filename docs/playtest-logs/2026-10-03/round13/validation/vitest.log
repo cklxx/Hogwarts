@@ -1,0 +1,12 @@
+
+ RUN  v5.0.2 /workspace/hogwarts-floo-readability
+
+
+ Test Files  80 passed (80)
+      Tests  813 passed (813)
+   Start at  05:46:46
+   Duration  47.81s (tests 82%, import 15%, transform 3%)
+
+    Isolate  80 workers spawned · ~102ms startup each (spawn + environment, per file)
+             at least ~2.61s faster with isolate: false — reuses workers across files instead of one per file
+

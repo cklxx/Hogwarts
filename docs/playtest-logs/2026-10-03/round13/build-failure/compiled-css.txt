@@ -1,0 +1,3 @@
+Failed build: local b93393e / remote cef328c
+Asset: dist/assets/shared-DPTWA1DO.css
+body.phone #prompt{border-color:var(--paper2);border-image:}
