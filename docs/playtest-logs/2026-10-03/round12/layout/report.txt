@@ -1,0 +1,31 @@
+Round12 手机符文装备标签 — 纯 DOM 夹具报告
+
+基线 main a2b548c；远程实现 d3afe89（同代码树：本地根提交423839e、开发提交09785bc）。
+产品仅 client/phone.css 一条 body.phone #runecard .rc-short 规则：取消单行省略，允许 normal / overflow-wrap:anywhere，并设 min-width:0。仍为三列、原按钮、单次点击装备；不改桌面规则或内核。
+
+这是纯 DOM 验证，不是真实游玩：复用 round11 的原 index/CSS/字体、createTutorial、runesFeature。新增真实中文 spellName 映射；模拟世界输入、3/8教程、142px底栏，无 WebGL / WebSocket / 战斗。关闭动画测稳态。点击只证实发出对应装备消息，不证明服务器装备成功；截图中按钮灰色是点击后disabled、蓝色为触摸高亮。
+
+保存的手机对照：80组 = 5尺寸 × 2语言 × 2名称集 × 折叠/代码展开 × 无教程/3/8。
+尺寸：320×568、320×640、320×844、360×740、390×844。
+名称：标准 Stupefy / Incendio / Aguamenti（中文用实际译名），及合法40字符无空格中英文自定义名、较长标准名和带空格名字。
+
+判据：逐字符 Range 在 label和button矩形内；对卡片按24px间隔滚动，汇总每个字符是否曾完整进入卡片可视矩形。不是仅检查span的overflow样式。每例实际tap三个按钮并检查消息spell与卡片仍可见；末三帧测教程/卡片高度稳定。
+
+before：240个按钮中176个的字符Range越界，滚动也读不全。
+after：字符裁切0、滚动后不可读0、手机小于44×44按钮0、卡/教程/核心控件重叠0、尺寸不稳定0、错误tap消息0、pageerror0。240次单击全部发送对应spell。
+
+320标准按钮：中文44→44px，英文44→44.375px；三列各约91.33px。中文标准没有不必要增高。
+320×568+教程3/8：教程y64–182，卡y190–274、高84；保留8px间距。40字中文按钮行171.6875px、40字英文98.9375px，因此最短屏需要滚动逐段读全；不声称所有长名字能同时完整出现在84px窗口。
+
+另有900×600中英文桌面对照两例：card与所有按钮bbox逐项完全相同，标签完整可读。桌面按钮原高28.1875px保持不变；44px结论仅针对手机。
+
+验证：tsc --noEmit、80文件813tests、vite build通过。独立review无阻断。
+
+归档建议仅3图：
+- before-320x844-en-standard-code.png
+- after-320x844-en-standard-code.png
+- after-320x640-en-long-code.png
+JSON：before.json / after.json / 对应summary；desktop-before.json / desktop-after.json。详细字符Range仅在before失败例的折叠无教程配置保留，成功例没有Range数组。
+脚本：rune-labels-fixture.mjs；归档重跑方法见 ../layout.md。
+复用：FIXTURE_ROOT=/目标仓库 FIXTURE_OUT=/tmp/rune-layout FIXTURE_MODE=after PLAYWRIGHT_CORE=/path/playwright-core/index.mjs CHROMIUM=/usr/bin/chromium node docs/playtest-logs/2026-10-03/round12/layout/rune-labels-fixture.mjs
+桌面抽查再加 FIXTURE_DESKTOP=1。

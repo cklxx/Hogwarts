@@ -1,0 +1,25 @@
+Round12 Floo 背景缺失诊断 — 未修复，不含产品改动
+
+真实320×844游戏再次复现背景右半缺失。文字/元素bbox正常、opacity1、无遮挡；参见play_desktop的安全metrics及截图。纯DOM原index/CSS/字体、不启动世界或WebGL后，只要使用相同Chromium启动参数，也能复现：
+--no-sandbox --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader --ignore-gpu-blocklist
+先前默认flags纯DOM完整，不能据其否定实游异常。
+
+因果区分：
+- 原bob动画，初始直接长文、短→长、hidden→显示、移动后扩展、2D canvas重画：同类缺失均能出现。故短文缓存不是必要条件，世界/WebGL不是必要条件。
+- 320px时，浅底常在x165附近停止；390px可整段底色缺失。文字/元素宽317.828125px保持正确。
+- background-color纸底、去SVG仅留opaque gradient、显式background-size、0.01px重绘位移都未稳健修复。
+- 固定318px宽恢复；显式317.828125px宽、max-content/fit-content未恢复。数值取整相关，但不据此认定浏览器内部根因，不引入JS尺寸补丁。
+- 长文已绘制后临时will-change:transform，在320px曾恢复完整底色；从初始常驻并经过164.96875→317.828125px文案变化，则320/390仍失败。默认flags两宽均完整，几何未变。
+- 最后限定8例：animation:none + translate:none（常驻/临时）在320/390都未修；常驻will-change:transform + animation:none + translate:none，320左半仍暗、390仍缺底。长文后临时加组合则两宽看似恢复，不能当可部署CSS方案。
+
+结论：未找到稳定的纯CSS修复，本轮只交付符文标签改动，Floo缺陷保留。证据支持异常与特定软件渲染/合成路径、亚像素宽度及绘制历史有关；不声称确定底层Chrome根因，不声称物理手机/GPU已验证，不声明FPS收益。没有修改产品文件。
+
+精简结果：fixture-summary.json（仅宽度、variant、浅色背景采样范围）。
+像素指标不是对比度分数：在提示框top+11px横向采样，排除左右14px，RGB红>140且绿>100计浅色像素；文字/纹理会减少计数，结合实际截图判读。
+
+建议归档仅两张反例：
+fixture-390-static-will-change-fails.png（常驻will-change在标签变化后仍缺底）
+fixture-320-static-no-animation-fails.png（常驻组合仍只右半有底）
+
+已执行可复用脚本：layer-fixture.mjs（原bob、control vs常驻will-change、320/390；PROFILE=default可对照默认flags）
+final-fixture.mjs（最后去bob常驻/临时组合8例，320/390，保留原transform）。脚本只在/tmp输出，原页面移除main.ts，无游戏输入或WebGL。所有诊断浏览器已关闭。
