@@ -62,7 +62,7 @@ body.phone #runecard .rc-doc { margin: 0 0 6px; }
 body.phone #runecard .rc-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 body.phone #runecard .rc-row > .hint { grid-column: 1 / -1; }
 body.phone #runecard .rc-full { display: none; }
-body.phone #runecard .rc-short { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.phone #runecard .rc-short { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 body.phone #runecard code { max-height: min(96px, 12dvh); overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
 body.phone:has(#runecard:not([hidden])) #tutorial:not([data-over]) { bottom: calc(var(--bars-h, 150px) + 160px + var(--runecard-h, 140px)) !important; }
 /* The card scrolls within the remaining space below the complete tutorial and the top controls.
