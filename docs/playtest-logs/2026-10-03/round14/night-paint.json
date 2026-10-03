@@ -1,0 +1,64 @@
+[
+  {
+    "profile": "swiftshader",
+    "width": 900,
+    "lang": "zh",
+    "theme": "night",
+    "states": {
+      "long": {
+        "light": 0,
+        "total": 218,
+        "ratio": 0,
+        "width": 245.3125,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 0,
+        "total": 218,
+        "ratio": 0,
+        "width": 245.3125,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#26221d",
+    "borderColor": "rgb(38, 34, 29)",
+    "ink": "rgb(239, 227, 200)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 900,
+    "lang": "en",
+    "theme": "night",
+    "states": {
+      "long": {
+        "light": 0,
+        "total": 298,
+        "ratio": 0,
+        "width": 325.875,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 0,
+        "total": 298,
+        "ratio": 0,
+        "width": 325.875,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#26221d",
+    "borderColor": "rgb(38, 34, 29)",
+    "ink": "rgb(239, 227, 200)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  }
+]

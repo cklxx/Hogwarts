@@ -1,0 +1,498 @@
+[
+  {
+    "profile": "swiftshader",
+    "width": 320,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 189,
+        "total": 212,
+        "ratio": 0.8915094339622641,
+        "width": 239.78125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 191,
+        "total": 212,
+        "ratio": 0.9009433962264151,
+        "width": 239.78125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 320,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 267,
+        "total": 290,
+        "ratio": 0.9206896551724137,
+        "width": 317.828125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 269,
+        "total": 290,
+        "ratio": 0.9275862068965517,
+        "width": 317.828125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 390,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 189,
+        "total": 212,
+        "ratio": 0.8915094339622641,
+        "width": 239.78125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 191,
+        "total": 212,
+        "ratio": 0.9009433962264151,
+        "width": 239.78125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 390,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 267,
+        "total": 290,
+        "ratio": 0.9206896551724137,
+        "width": 317.828125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 269,
+        "total": 290,
+        "ratio": 0.9275862068965517,
+        "width": 317.828125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 900,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 900,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 276,
+        "total": 298,
+        "ratio": 0.9261744966442953,
+        "width": 325.875,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 1280,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "swiftshader",
+    "width": 1280,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 320,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 189,
+        "total": 212,
+        "ratio": 0.8915094339622641,
+        "width": 239.78125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 190,
+        "total": 212,
+        "ratio": 0.8962264150943396,
+        "width": 239.78125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 320,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 267,
+        "total": 290,
+        "ratio": 0.9206896551724137,
+        "width": 317.828125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 268,
+        "total": 290,
+        "ratio": 0.9241379310344827,
+        "width": 317.828125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 390,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 189,
+        "total": 212,
+        "ratio": 0.8915094339622641,
+        "width": 239.78125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 191,
+        "total": 212,
+        "ratio": 0.9009433962264151,
+        "width": 239.78125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 390,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 267,
+        "total": 290,
+        "ratio": 0.9206896551724137,
+        "width": 317.828125,
+        "height": 46.5625
+      },
+      "revealed": {
+        "light": 269,
+        "total": 290,
+        "ratio": 0.9275862068965517,
+        "width": 317.828125,
+        "height": 46.5625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 900,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 900,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 1280,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 1280,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgb(231, 212, 168)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": true,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  }
+]

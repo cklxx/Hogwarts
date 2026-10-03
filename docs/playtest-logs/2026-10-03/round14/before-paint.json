@@ -1,0 +1,126 @@
+[
+  {
+    "profile": "swiftshader",
+    "width": 900,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 0,
+        "total": 218,
+        "ratio": 0,
+        "width": 245.3125,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 0,
+        "total": 218,
+        "ratio": 0,
+        "width": 245.3125,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgba(0, 0, 0, 0)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": false,
+    "layoutPass": true,
+    "borderPass": false,
+    "clicked": true,
+    "errors": [],
+    "pass": false
+  },
+  {
+    "profile": "swiftshader",
+    "width": 900,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 277,
+        "total": 298,
+        "ratio": 0.9295302013422819,
+        "width": 325.875,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgba(0, 0, 0, 0)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": false,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 900,
+    "lang": "zh",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 196,
+        "total": 218,
+        "ratio": 0.8990825688073395,
+        "width": 245.3125,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgba(0, 0, 0, 0)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": false,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  },
+  {
+    "profile": "default",
+    "width": 900,
+    "lang": "en",
+    "theme": "parchment",
+    "states": {
+      "long": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      },
+      "revealed": {
+        "light": 275,
+        "total": 298,
+        "ratio": 0.9228187919463087,
+        "width": 325.875,
+        "height": 46.390625
+      }
+    },
+    "paper2": "#e7d4a8",
+    "borderColor": "rgba(0, 0, 0, 0)",
+    "ink": "rgb(42, 27, 15)",
+    "paintPass": true,
+    "layoutPass": true,
+    "borderPass": false,
+    "clicked": true,
+    "errors": [],
+    "pass": true
+  }
+]
