@@ -1,0 +1,12 @@
+
+ RUN  v5.0.2 /workspace/hogwarts-rune-labels
+
+
+ Test Files  80 passed (80)
+      Tests  813 passed (813)
+   Start at  05:11:44
+   Duration  47.09s (tests 83%, import 14%, transform 2%)
+
+    Isolate  80 workers spawned · ~102ms startup each (spawn + environment, per file)
+             at least ~2.61s faster with isolate: false — reuses workers across files instead of one per file
+
