@@ -1009,7 +1009,8 @@ function menuInfo(url?: string) {
   const switchKey = esc(shell?.keys?.switch ?? 'Ctrl+Shift+S');
   const bridge = shell?.claudeCode ?? `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
   const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
-  $('#menu').innerHTML = `<h2>${ic('letter')}<span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button class="x" data-close="menu" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+  $('#menu').innerHTML = `<h2>${ic('letter')}<span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button type="button" class="x" data-close="menu" title="${L('关闭（Esc）', 'Close (Esc)')}" aria-label="${L('关闭猫头鹰邮递，回到城堡', 'Close Owl Post and return to the castle')}"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></h2>
+    <div class="op-body">
     <section class="op-first">
       <h3>${ic('owl')}${L('连接你的 Agent', 'Connect your agent')}</h3>
       <div id="op-pair"></div>
@@ -1032,7 +1033,7 @@ function menuInfo(url?: string) {
     <p id="op-msg" class="hint"></p>
     <div class="op-foot"><span>${L('语言 Language', 'Language 语言')} <button id="lang-zh" class="${lang === 'zh' ? '' : 'ghost'}">中文</button> <button id="lang-en" class="${lang === 'en' ? '' : 'ghost'}">English</button></span>
     <span>${L('界面大小', 'UI size')} ${(['s', 'm', 'l', 'xl'] as const).map((k) => `<button data-ui="${k}" class="${uiSize === k ? '' : 'ghost'}">${L({ s: '小', m: '标准', l: '大', xl: '特大' }[k], { s: 'Small', m: 'Normal', l: 'Large', xl: 'X-Large' }[k])}</button>`).join(' ')}</span>
-    <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div>`;
+    <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div></div>`;
   $('#lang-zh').onclick = () => setLang('zh');
   $('#lang-en').onclick = () => setLang('en');
   document.querySelectorAll<HTMLButtonElement>('#menu [data-ui]').forEach((b) => { b.onclick = () => {
@@ -2202,4 +2203,3 @@ const warmed = (async () => {
   await warmed;
   frame();
 })();
-

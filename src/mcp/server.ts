@@ -491,7 +491,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('wait', {
     title: 'Let time pass',
-    description: 'Wait up to 45 seconds of game time, returning early when the condition is met ("owl": your human wrote to you). Returns what changed: health, mana, position, arrival, and new events (each with `from` for owls). Use it instead of polling look/whoami in a loop.',
+    description: 'Wait up to 45 seconds of game time, returning early when the condition is met ("owl": your human wrote to you). Returns what changed: health, mana, position, arrival, and new events (each with `from` for owls). For until:"arrived", reason is arrived only when the observed walk ends at its destination; idle means no walk was active at the start (it may already have finished), interrupted means it stopped short, unconfirmed means a scene crossing ended before its final route could be observed, and knocked_out means you are down. Use it instead of polling look/whoami in a loop.',
     inputSchema: {
       seconds: z.number().min(0.5).max(LISTEN_MAX_S).optional().describe(`default: ${LISTEN_MAX_S} with until (it returns early), else 5`),
       until: z.enum(['time', 'arrived', 'hurt', 'event', 'mana_full', 'owl', 'incoming', 'chat']).optional().describe('return early on this condition (default: time); incoming = a hostile spell is flying at you (the reply says from whom and in how many seconds: time to dodge, or have a ward up); chat = someone speaks to you (a whisper, your house, those near you, or your name said aloud) — then read everything with inbox'),
@@ -501,7 +501,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const wid = acting();
     const w = wid ? world.wizards.get(wid) : undefined;
     if (!w) return fail(UNBOUND_HELP);
-    const start = { t: world.now, hp: w.hp, mana: w.mana, x: w.pos.x, z: w.pos.z, ev: world.events.at(-1)?.id ?? 0, walking: !!w.goal };
+    const start = { t: world.now, hp: w.hp, mana: w.mana, x: w.pos.x, z: w.pos.z, ev: world.events.at(-1)?.id ?? 0, walking: !!w.goal, stunned: w.stats.stunned };
     // the kernel's wake contract: public events but your own chat, private events to you, never your own owls
     const mine = () => world.inboxFor(w.id, start.ev);
     const fromHuman = (e: WorldEvent) => e.type === 'owl' && e.from === 'player' && !isConfirmAnswer(w.owlbox, e.owl?.re);
@@ -509,13 +509,32 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     // whatever you wait for, a wait never sleeps through your own knock-out (playtest round 2: "hp 6 -> 0" on the way to a troll)
     const maxHp = () => world.privateState(w.id).maxHp;
     const downAtStart = w.st.stunnedUntil > 0;
-    const danger = () => (!downAtStart && w.st.stunnedUntil > 0 ? 'knocked_out' : w.hp < start.hp - 5 && w.hp <= maxHp() * 0.3 ? 'danger' : null);
+    const danger = () => ((w.st.stunnedUntil > 0 && (!downAtStart || until === 'arrived')) || w.stats.stunned > start.stunned ? 'knocked_out' : w.hp < start.hp - 5 && w.hp <= maxHp() * 0.3 ? 'danger' : null);
+    // No walk at entry is not evidence of either arrival or failure: CLI calls can use fresh sessions.
+    // Track the live route's endpoint during this wait, including replans and onward scene journeys.
+    // A gate is only an intermediate goal; never call stopping at it arrival at the final destination.
+    let destination = world.via.get(w.id)?.to ?? w.goal;
+    let observedFinalRoute = !world.via.has(w.id);
+    const arrival = () => {
+      if (w.st.jailedUntil > 0) return 'interrupted';
+      if (w.goal) {
+        observedFinalRoute = !world.via.has(w.id);
+        destination = world.via.get(w.id)?.to ?? w.goal;
+        return null;
+      }
+      if (!start.walking) return 'idle';
+      if (world.via.has(w.id)) return 'interrupted';
+      if (destination && Math.hypot(w.pos.x - destination.x, w.pos.z - destination.z) < 1) return 'arrived';
+      // A short final leg can finish between polls, and its legal endpoint can differ from via.to
+      // (e.g. a solid building). No kernel lifecycle history is available here: do not invent failure.
+      return observedFinalRoute ? 'interrupted' : 'unconfirmed';
+    };
     // Lee Jordan's commentary does not wake someone who is not playing (it drowned every other event)
     const wakes = (e: WorldEvent) => e.type !== 'quidditch' || qdOnTeam(world, w.id) || e.to === w.id;
     const done = () => {
       if (danger()) return true;
       switch (until) {
-        case 'arrived': return !w.goal; // not walking at all: nothing to wait for (playtest round 4 waited the full time)
+        case 'arrived': return arrival() !== null;
         case 'hurt': return w.hp < start.hp - 0.5;
         case 'event': return mine().some(wakes);
         case 'owl': return mine().some(fromHuman);
@@ -533,13 +552,16 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     world.touch(w.id);
     const r1 = (n: number) => Math.round(n * 10) / 10;
     const evs = mine();
+    const reason = danger() ?? (until === 'arrived' ? arrival() ?? 'time' : done() ? until : 'time');
     return out({
-      waited: r1(world.now - start.t), reason: danger() ?? (done() ? until : 'time'),
+      waited: r1(world.now - start.t), reason,
       ...(danger() ? { warning: danger() === 'knocked_out' ? 'You were knocked out: the Hospital Wing has you for a while.' : 'Low health: heal (Episkey), shield, or get away before you go on.' } : {}),
       hp: `${Math.round(start.hp)} -> ${Math.round(w.hp)}`, mana: `${Math.round(start.mana)} -> ${Math.round(w.mana)}`,
       moved: r1(Math.hypot(w.pos.x - start.x, w.pos.z - start.z)), at: { x: r1(w.pos.x), z: r1(w.pos.z), place: world.placeName(w.pos) },
       walking: !!w.goal, state: world.whoami(w.id).state,
-      ...(until === 'arrived' && !start.walking ? { note: 'You were not walking: move_to first, then wait until:"arrived".' } : {}),
+      ...(reason === 'idle' ? { note: '当前没有行走，可能已在本次等待前结束；用 look 确认位置。No walk is in progress; it may have finished before this wait. Use look to check your position.' } : {}),
+      ...(reason === 'interrupted' ? { note: '行走在到达目标前中断；请检查位置和状态后再决定路线。The walk stopped before reaching its observed destination. Check your position and state before choosing a route.' } : {}),
+      ...(reason === 'unconfirmed' ? { note: '跨场景后的行走已结束，但未观察到最后一段的实际终点；用 look 确认位置。The cross-scene walk ended before its final route could be observed. Use look to confirm your position.' } : {}),
       ...(until === 'incoming' ? { incoming: world.incoming(w.id) } : {}),
       events: evs.slice(-20).map(agentEvent),
       ...(evs.some(fromHuman) ? { owls: 'Your human wrote to you: call listen to read (and acknowledge) their owls.' } : {}),

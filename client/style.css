@@ -635,6 +635,11 @@ html:lang(zh) #book .fld input#sp-inc:placeholder-shown { font-family: var(--cjk
 #helppanel .row { justify-content: flex-end; margin-top: calc(14px * var(--u)); }
 
 #board, #menu { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(640px * var(--u)), calc(100vw - calc(28px * var(--u)))); max-height: 86vh; }
+/* Owl Post keeps its exit above a separately scrolling body, even halfway through setup instructions. */
+#menu { display: flex; flex-direction: column; overflow: hidden; }
+#menu > h2 { flex: none; }
+#menu > h2 .x { flex: none; min-width: 44px; min-height: 44px; }
+#menu > .op-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(91, 64, 41, .45) transparent; }
 #board table { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
 #board td, #board th { padding: calc(5px * var(--u)) calc(8px * var(--u)); border-bottom: calc(1px * var(--u)) solid var(--hair); text-align: left; }
 #board td:is(:first-child, :nth-child(5), :nth-child(6)) { font-family: var(--latin); font-weight: 700; font-size: calc(17px * var(--t)); font-feature-settings: 'lnum' 1, 'tnum' 1; }
@@ -903,6 +908,7 @@ body.observing #view { outline: 3px solid color-mix(in srgb, var(--indigo) 55%, 
 /* the coach mark over an open panel sits at the top: the spellbook and the seals make room under it (--tut-over, main.ts trackBars) */
 body:has(#tutorial[data-over]:not([hidden])) #book { top: calc(var(--tut-over, calc(48px * var(--u))) + calc(8px * var(--u))); height: min(calc(680px * var(--u)), calc(100vh - var(--tut-over, calc(48px * var(--u))) - calc(24px * var(--u)))); }
 body:has(#tutorial[data-over]:not([hidden])) #seals { top: calc(var(--tut-over, calc(48px * var(--u))) + calc(8px * var(--u))); }
+body:has(#tutorial[data-over]:not([hidden])) #menu { top: calc(var(--tut-over, 48px) + 8px); transform: translateX(-50%); max-height: calc(100dvh - var(--tut-over, 48px) - 16px); }
 /* a portrait phone: the top pieces stack under your card instead of overlaying it (--stack-n, main.ts trackBars) */
 @media (max-width: 520px) {
   body #cupstrip { top: calc(var(--tl-bottom, calc(84px * var(--u))) + calc(6px * var(--u))); }
