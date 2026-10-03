@@ -1,0 +1,12 @@
+
+ RUN  v5.0.2 /workspace/Hogwarts
+
+
+ Test Files  78 passed (78)
+      Tests  794 passed (794)
+   Start at  02:35:54
+   Duration  123.81s (tests 85%, import 14%, transform 2%)
+
+    Isolate  78 workers spawned · ~85ms startup each (spawn + environment, per file)
+             at least ~6.56s faster with isolate: false — reuses workers across files instead of one per file
+
