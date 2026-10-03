@@ -15,7 +15,7 @@
  *    cauldron woken by fire brews a potion beside it;
  * State goes out as the snapshot's `props` (only what is not at rest), and MCP look lists the props within 25 m.
  */
-import { IGNITE_R, PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROP_WAKE_XP, PROPS, WHIZBANG_POWER, type Prop } from '../shared/props.js';
+import { IGNITE_R, PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROPS, WHIZBANG_POWER, type Prop } from '../shared/props.js';
 import type { Element } from '../shared/constants.js';
 import { LOOT_PCT, LOOT_WEIGHTS, type LootKind } from '../shared/loot.js';
 import { drop } from './loot.js';
@@ -92,7 +92,6 @@ export function touch(world: World, p: Prop, element: Element, by: string, depth
   if (def.brews && !s.awake.has(p.id)) drop(world, p, 'potion');
   s.awake.set(p.id, { until: world.now + (def.secs ?? 30), by });
   world.fx({ k: 'hit', x: p.x, z: p.z, e: element });
-  if (w && !w.npc) world.gainXp(w, PROP_WAKE_XP);
   if (p.group) solve(world, p.group);
   return true;
 }

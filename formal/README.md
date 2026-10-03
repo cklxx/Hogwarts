@@ -74,3 +74,14 @@ The bridge is (1) the conformance vectors and (2) the randomized re-check of the
 against the real `World.canHarm`. Timing (continuous physics, AI steering) is not modelled.
 
 Tool versions used: TLA+ Tools 2.0 (2026-03-02), Lean 4.33.0.
+
+### Night ice integration (PR #11)
+
+Night ice extends walkable water until dawn; spell ice retains its own expiry.
+The continuous skating and shore collision geometry are outside the models above.
+`test/ice.test.ts` checks both kinds of thaw, movement locks, arrival braking and
+teleport exclusion against the real kernel. Walking and skating share
+`World.movementMult`, so feature movement locks also stop residual momentum.
+The merge removes uncapped per-hit prop wake XP and retains the existing
+once-per-group-per-term reward ledger (`test/props.test.ts`). No proved invariant
+or conformance vector is relaxed by this integration.

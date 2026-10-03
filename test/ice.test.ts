@@ -3,9 +3,10 @@
  * you walk out on it (keys or a walk ordered onto it); it melts and the water puts you back ashore. Every shore spot
  * the float can be reached from is walked.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { XP_FOR_YEAR } from '../src/kernel/progression.js';
-import { freeze, onIce } from '../src/kernel/ice.js';
+import { freeze, ICE_FEATURE, onIce } from '../src/kernel/ice.js';
+import { DUEL_FEATURE } from '../src/kernel/duelclub.js';
 import { World } from '../src/kernel/world.js';
 import type { Wizard } from '../src/kernel/types.js';
 import { STATIC_COLLIDERS } from '../src/shared/layout.js';
@@ -99,6 +100,120 @@ const tick = (w: World, s: number) => { for (let i = 0; i < Math.round(s * 20); 
 const ICE_PT = { x: -110, z: 40 };
 
 describe('ice: the night freeze', () => {
+  it('walks from the shore to the float at night without a spell bridge', () => {
+    for (const start of [...SHORE, { x: -87.5, z: 39.8 }]) {
+      const w = nightWorld();
+      tick(w, 1.2);
+      const a = wiz(w, 'Night Walker', start);
+      w.moved(a);
+      w.setGoal(a.id, { x: FLOAT.x, z: FLOAT.z }, 'player');
+      tick(w, 10);
+      expect(Math.hypot(a.pos.x - FLOAT.x, a.pos.z - FLOAT.z)).toBeLessThan(REACH_R);
+      expect(a.goal).toBeNull();
+    }
+  });
+  function skater() {
+    const w = nightWorld();
+    const a = w.enroll('Regression Skater').wizard;
+    a.connections = 1;
+    tick(w, 1.2);
+    a.pos = { ...ICE_PT };
+    w.moved(a);
+    return { w, a };
+  }
+
+  it.each([false, true])('dawn sends a stationary skater ashore even with unrelated spell ice: %s', (spellIce) => {
+    const { w, a } = skater();
+    if (spellIce) freeze(w, { x: -130, z: 40 }, 2);
+    w.clock = { at: w.now, hour: 10 };
+    tick(w, 1.2);
+    expect(overWater(a.pos.x, a.pos.z)).toBe(false);
+    expect(w.chem.wet.get(a.id)).toBeGreaterThan(w.now);
+  });
+
+  it('dawn leaves a skater on surviving spell ice, then sends them ashore when it expires', () => {
+    const { w, a } = skater();
+    freeze(w, a.pos, 2);
+    w.clock = { at: w.now, hour: 10 };
+    tick(w, 1.2);
+    expect(a.pos).toEqual(ICE_PT);
+    tick(w, ICE_S);
+    expect(overWater(a.pos.x, a.pos.z)).toBe(false);
+  });
+
+  it('glides after releasing the keys, but rooting stops it and clears its momentum', () => {
+    const { w, a } = skater();
+    w.setInput(a.id, 1, 0);
+    tick(w, 0.5);
+    w.setInput(a.id, 0, 0);
+    const x = a.pos.x;
+    tick(w, 0.1);
+    expect(a.pos.x).toBeGreaterThan(x);
+    a.st.rootedUntil = w.now + 10;
+    const rootedAt = { ...a.pos };
+    tick(w, 0.5);
+    expect(a.pos).toEqual(rootedAt);
+    a.st.rootedUntil = 0;
+    tick(w, 0.5);
+    expect(a.pos).toEqual(rootedAt);
+  });
+
+  it('a feature holding movement still also stops the glide', () => {
+    const { w, a } = skater();
+    w.setInput(a.id, 1, 0);
+    tick(w, 0.5);
+    w.setInput(a.id, 0, 0);
+    const at = { ...a.pos };
+    const hold = vi.spyOn(DUEL_FEATURE, 'moveMult').mockReturnValue(0);
+    try {
+      tick(w, 0.5);
+      expect(a.pos).toEqual(at);
+    } finally { hold.mockRestore(); }
+    tick(w, 0.5);
+    expect(a.pos).toEqual(at);
+  });
+
+  it('a dodge does not add old glide velocity or leave a new glide behind', () => {
+    const { w, a } = skater();
+    w.setInput(a.id, 1, 0);
+    tick(w, 0.5);
+    w.setInput(a.id, 0, 0);
+    expect(w.dodge(a.id, 0, 1).ok).toBe(true);
+    const x = a.pos.x;
+    tick(w, 0.5);
+    expect(a.pos.x).toBe(x);
+    const afterRoll = { ...a.pos };
+    tick(w, 0.5);
+    expect(a.pos).toEqual(afterRoll);
+  });
+
+  it('teleporting across ice grants no skating distance and clears old momentum', () => {
+    const { w, a } = skater();
+    w.setInput(a.id, 1, 0);
+    tick(w, 0.5);
+    w.setInput(a.id, 0, 0);
+    const skated = a.stats.skate;
+    a.pos = { x: -130, z: 40 };
+    w.moved(a);
+    tick(w, 0.5);
+    expect(a.stats.skate).toBe(skated);
+    expect(a.pos).toEqual({ x: -130, z: 40 });
+  });
+
+  it('a teleport during a tick cannot become momentum or quest progress', () => {
+    const { w, a } = skater();
+    const skated = a.stats.skate ?? 0;
+    ICE_FEATURE.step!(w, 0.05);
+    a.pos = { x: -130, z: 40 };
+    w.moved(a);
+    w.setInput(a.id, 1, 0);
+    ICE_FEATURE.stepLate!(w, 0.05);
+    expect(a.stats.skate ?? 0).toBe(skated);
+    w.setInput(a.id, 0, 0);
+    tick(w, 0.5);
+    expect(a.pos).toEqual({ x: -130, z: 40 });
+  });
+
   it('freezes at night and thaws at dawn, announcing both', () => {
     const w = nightWorld();
     expect(w.iceNight).toBe(false);

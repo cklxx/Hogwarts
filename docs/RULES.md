@@ -20,7 +20,7 @@
 | 规则 | 在哪里强制 | 证明 / 测试 |
 |---|---|---|
 | 安全区里谁也伤不到谁；被击晕的人不能再挨打 | `World.canHarm` | TLA+ `Hostility`（`SafeZonesAreSafe`、`StunnedUntouchable`） |
-| 新入学的巫师有保护期；恶咒和诅咒包裹碰不到新人和 NPC | `NEWCOMER_WARD`、`src/kernel/hex.ts` | TLA+ `Hex`（`FreshAndNpcImmune`） |
+| 新入学的巫师有保护期：入学 5 分钟内野生魔物不主动找你（只有你打过的会还手），3 分钟内魔物伤害减 30%；恶咒和诅咒包裹碰不到新人和 NPC | `NEWCOMER_PEACE_S`、`NEWCOMER_WARD`、`src/kernel/hex.ts` | `test/playability.test.ts`、TLA+ `Hex`（`FreshAndNpcImmune`） |
 | 恶咒永远不能把人打到昏迷，也不能让人永远不能动、永远说不了话 | `hexDot`、沉默冷却 | Lean `hex_dot_never_stuns`、`always_moves`；TLA+ `Hex`（`MovableAlways`、`SilenceNeverPermanent`） |
 | 属性再怎么被削也有下限（生命、法力、速度、伤害） | `src/kernel/progression.ts` | Lean `hp_floor`、`mana_floor`、`speed_floor`、`power_pos` |
 | 决斗俱乐部里只有对手之间能互相伤害：2v2 的队友互相打不到，出局的人碰不到也不会被碰，外人不能打、不能治 | `World.canHarm` 的决斗分支（`duelFoes`） | TLA+ `Hostility`（`DuelMutual`、`DuelTeammates`、`DuelIsolated`） |
@@ -42,7 +42,12 @@
 | 校园事件刷出的魔物打一、二年级只用一半的原始力量（不吃事件加成） | `World.damage`（`EVENT_EASY_YEAR`） | `test/round8.test.ts` |
 | 校园事件同时最多一件，奖励只发一次 | `src/kernel/wheel.ts` | TLA+ `EventWheel` |
 | 场景道具：打碎东西每人每学期最多 50 次给经验（每次 2）；一组三个同时点亮，每个出了力的人每组每学期只拿一次奖励（25 经验 + 2 加隆）；烟火桶只伤野生魔物、不伤巫师；带目标的魔弹不会被路边的箱子吃掉 | `src/kernel/props.ts`（`PROP_BREAKS_PER_TERM`、`paid`） | `test/props.test.ts` |
-| 冰路：冰只在湖面上结、25 秒化掉；化的时候站在上面的人一定被送回最近的岸边（不会卡在水里）；没有冰时走不进湖 | `src/kernel/ice.ts`（`sweep`）、`Solids.walkOn` | `test/ice.test.ts` |
+| 掉落：打碎的东西 35% 掉一件（冰块必掉、坩埚煮出药水），加隆每人每学期最多 60 个，魔力和生命只补到上限；地上最多 160 件、40 秒消失 | `src/kernel/loot.ts`（`LOOT_GALLEONS_PER_TERM`） | `test/dressing.test.ts` |
+| 冰路：法术冰只在湖面上结、25 秒化掉；夜冰覆盖整湖、天亮化掉；脚下已无任何冰时一定被送回最近的岸边（不会卡在水里）；没有冰时走不进湖；滑行遵守定身和移动禁令，传送不计滑行距离 | `src/kernel/ice.ts`（`sweep`）、`Solids.walkOn` | `test/ice.test.ts` |
+| 反射只还手：对巫师，只有对方 30 秒内打中你或朝你放了咒语才算交手（你误伤别人不算）；附身期间你自己身体的反射暂停 | `src/kernel/reflexes.ts`（`fighting`） | `test/agents.test.ts`、`test/round4.test.ts` |
+| 战斗回蓝：只有巫师亲手打中野生魔物（不是巫师、召唤物、NPC 施法）才回 6 点魔力，每人每秒最多 10 点，只补到上限；符文连锁、导电、超载、烟火桶不算；考试沙盒（回蓝为 0）里没有 | `src/kernel/focus.ts`（`FOCUS_REFUND`、`FOCUS_MAX_PER_S`） | `test/castgate.test.ts` |
+| 锁定了目标的咒语绕过树干（只有墙和建筑挡得住）；直射和范围法术照旧被树挡；look 的 blocked 用同一条规则 | `World.inAim`（`src/kernel/world.ts`） | `test/lockon.test.ts`、`test/lookcast.test.ts` |
+| 锁定的目标优先：`(enemies r)` 把你点名的目标排在第一个，按「第一个敌人」写的咒语打你锁定的人 | `src/kernel/magic.ts` | `test/lockon.test.ts` |
 | 遭遇：每个遭遇每人每学期只开一次门（三选一）；符文最高 3 级，满了门里只剩加隆和研习；佐科后院的小精灵出不了院子（离中心 3.8 米），院子里每一处都在某个烟火桶的火星范围内 | `src/kernel/encounters.ts`（`done`、`doorsFor`）、`CreatureDef.also.leash` | `test/encounters.test.ts` |
 | 符文零件：每种每人只给一次；一个咒语只装一个；符文多打出来的魔弹 / 跳跃 / 爆炸带 `rune` 标记，不会再触发符文（不会自己连锁放大）；NPC 不带符文 | `src/kernel/runes.ts`（`grantRune`、`RUNE_TAG`） | `test/runes.test.ts` |
 | 施法是原子的：法力不够就整段不生效，也不扣法力；法力永远不为负 | `src/kernel/magic.ts` | TLA+ `CastTxn`，Lean `commit_spends_exactly`、`fizzle_is_free` |

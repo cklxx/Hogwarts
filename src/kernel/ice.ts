@@ -94,14 +94,36 @@ const skatersOf = (world: World) => {
   return m;
 };
 
+/** Sample before movement: teleports between ticks must not become skating velocity or quest progress. */
+function prepareGlide(world: World) {
+  const st = skatersOf(world);
+  if (!world.iceNight && !world.ice.size) { st.clear(); return; }
+  for (const id of st.keys()) {
+    const w = world.wizards.get(id);
+    if (!w || !world.isActive(w) || !onIce(world, w.pos.x, w.pos.z)) st.delete(id);
+  }
+  for (const w of world.nearWizards(LAKE_WATER, LAKE_WATER.r + ICE_CELL * 2)) {
+    if (!world.isActive(w) || !onIce(world, w.pos.x, w.pos.z)) continue;
+    const s = st.get(w.id);
+    if (!s || Math.hypot(w.pos.x - s.px, w.pos.z - s.pz) > 1e-6) {
+      st.set(w.id, { px: w.pos.x, pz: w.pos.z, vx: 0, vz: 0, hadGoal: !!w.goal });
+    }
+  }
+}
+
 /** The glide: a wizard on ice who lets go keeps their last velocity, decaying. */
 function glide(world: World, dt: number) {
   const st = skatersOf(world);
-  for (const w of world.wizards.values()) {
-    let s = st.get(w.id);
-    const icy = onIce(world, w.pos.x, w.pos.z) && world.isActive(w);
-    if (!icy) { if (s) st.delete(w.id); continue; }
-    if (!s) { s = { px: w.pos.x, pz: w.pos.z, vx: 0, vz: 0, hadGoal: false }; st.set(w.id, s); }
+  for (const [id, s] of st) {
+    const w = world.wizards.get(id);
+    if (!w || !onIce(world, w.pos.x, w.pos.z) || !world.isActive(w)
+      || w.st.rootedUntil > world.now || world.dodging(id)) { st.delete(id); continue; }
+    const mult = world.movementMult(w);
+    if (mult <= 0) { st.delete(id); continue; }
+    // A mid-tick teleport or water collision is not skating. Allow the movement system's sideways unstick.
+    const haste = w.st.hasteUntil > world.now ? w.st.hasteMult : 1;
+    const maxStep = world.rules.physics.moveSpeed * world.derivedOf(w).speedMult * haste * mult * dt * 2;
+    if (Math.hypot(w.pos.x - s.px, w.pos.z - s.pz) > maxStep + 1e-6) { st.delete(id); continue; }
     const driving = Math.hypot(w.input.dx, w.input.dz) >= 0.01 || !!w.goal;
     if (driving) {
       s.vx = (w.pos.x - s.px) / dt; s.vz = (w.pos.z - s.pz) / dt;
@@ -122,7 +144,7 @@ function glide(world: World, dt: number) {
     }
     // the daily quest counts metres skated on the sheet
     const skated = Math.hypot(w.pos.x - s.px, w.pos.z - s.pz);
-    if (skated > 1e-6) w.stats.skate = (w.stats.skate ?? 0) + skated;
+    if (skated > 1e-6 && onIce(world, w.pos.x, w.pos.z)) w.stats.skate = (w.stats.skate ?? 0) + skated;
     s.px = w.pos.x; s.pz = w.pos.z;
   }
 }
@@ -132,7 +154,10 @@ export const ICE_FEATURE: Feature = {
   init(world) {
     world.ice = new Map();
     world.iceNight = false;
-    world.solids.walkOn = (x, z) => onIce(world, x, z);
+    // A walker's centre reaches the water collider 0.5 m before the shoreline. Let that
+    // rim bear them too, otherwise collision pushes every step back before onIce becomes true.
+    world.solids.walkOn = (x, z) => (world.iceNight
+      && Math.hypot(x - LAKE_WATER.x, z - LAKE_WATER.z) < LAKE_WATER.r + 0.5) || onIce(world, x, z);
     world.solids.bridge = (from, to) => iceWay(world, from, to);
   },
   bolt(world, p) {
@@ -141,6 +166,7 @@ export const ICE_FEATURE: Feature = {
   blast(world, _by, at, r, element) {
     if (element === 'ice' && overWater(at.x, at.z)) freeze(world, at, r);
   },
+  step(world) { prepareGlide(world); },
   stepLate(world, dt) {
     if (world.iceNight || world.ice.size > 0) glide(world, dt);
   },
@@ -150,6 +176,7 @@ export const ICE_FEATURE: Feature = {
   sweep(world) {
     // the night freeze: the whole lake holds while it is night
     const night = world.isNight();
+    let melted = world.iceNight && !night;
     if (night !== world.iceNight) {
       world.iceNight = night;
       if (night) {
@@ -162,8 +189,6 @@ export const ICE_FEATURE: Feature = {
       world.fx({ k: 'freeze', x: LAKE_WATER.x, z: LAKE_WATER.z });
     }
     // spell ice melting underfoot
-    if (!world.ice.size) return;
-    let melted = false;
     for (const [k, t] of world.ice) if (t <= world.now) { world.ice.delete(k); melted = true; }
     if (!melted) return;
     // whoever stood on what melted: in the water — soaked, and out on the nearest shore
@@ -175,6 +200,7 @@ export const ICE_FEATURE: Feature = {
       w.goal = null; w.route = []; w.goalBy = null;
       world.solids.resolve(w.pos, 0.5);
       world.moved(w);
+      skaters.get(world)?.delete(w.id);
     }
   },
   // the browser: the night flag and the frozen squares as [i, j, seconds left, …]
@@ -199,7 +225,7 @@ export const ICE_FEATURE: Feature = {
           ? { ice: 'frozen', zh: '湖面结冰了，可以走上去，比走路快 25%，松开按键会滑行一段', en: 'The lake is frozen: walkable, 25% faster, and you glide when you let go' }
           : { ice: 'water', zh: '黑湖的湖水（夜里会结冰，冰咒也能冻出路）', en: 'The Black Lake (freezes at night; ice spells freeze a path)' };
       }
-      return icy
+      return world.iceNight
         ? { ice: 'shore-frozen', zh: '湖面冻上了，去滑两圈吧（小心摄魂怪）', en: 'The lake is frozen over — go skate (mind the Dementors)' }
         : { ice: 'shore', zh: '黑湖。夜里湖面会结冰，冰咒也能冻出一条路', en: 'The Black Lake. It freezes at night, and ice spells freeze a path' };
     },

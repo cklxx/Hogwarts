@@ -2465,14 +2465,20 @@ export class World {
     if (this.memeOf.size > this.wizards.size) for (const id of this.memeOf.keys()) if (!this.wizards.has(id)) this.memeOf.delete(id);
   }
 
+  /** Shared by walking and ice momentum so both obey feature movement locks. */
+  movementMult(w: Wizard): number {
+    let mult = 1;
+    for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
+    return mult;
+  }
+
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
     if (w.st.rootedUntil > this.now) return;
     // fast path: no keys, no goal, not mid-dodge — standing still. Skips the features' moveMult chain
     // (safe: a stationary wizard returns below anyway; mult===0 only matters while moving, and the dodge
     // has its own branch which we don't take here).
     if (!w.goal && (w.st.dodgeUntil ?? 0) <= this.now && Math.hypot(w.input.dx, w.input.dz) < 0.01) return;
-    let mult = 1; // the features' say (决斗俱乐部 holds you still through the bow, 魁地奇 lets you fly)
-    for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
+    const mult = this.movementMult(w);
     if (mult === 0) return;
     if ((w.st.dodgeUntil ?? 0) > this.now) {
       // 翻滚闪避: the dash overrides the keys and any walk while it lasts

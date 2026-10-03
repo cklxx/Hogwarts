@@ -92,7 +92,15 @@ export function execute(world: World, w: Wizard, program: Node[], ctx: CastConte
     query: (name, args, at) => {
       switch (name) {
         // benign creatures are never 'enemies' (so area spells don't curse you by accident); target them explicitly if you must
-        case 'enemies': return world.around(w.pos, args[0] as number, (e) => world.canHarm(w.id, e.id) && !world.isBenign(e.id), w.id).map((e) => ref(e.id));
+        // the foe you named comes first (then the rest, nearest first): a spell written as (first (enemies r)) goes
+        // for whom you locked on to, not whoever stands nearer (the 2026-10-01 playtest: 4 agents locked Mia in a
+        // 2v2 and their own spells hit Seamus, who stood in front)
+        case 'enemies': {
+          const out = world.around(w.pos, args[0] as number, (e) => world.canHarm(w.id, e.id) && !world.isBenign(e.id), w.id).map((e) => e.id);
+          const named = ctx.target && out.indexOf(ctx.target);
+          if (named && named > 0) { out.splice(named, 1); out.unshift(ctx.target!); }
+          return out.map((id) => ref(id));
+        }
         case 'fallen': return world.fallen(w.pos, args[0] as number, w.id).map((x) => ref(x.id));
         case 'summons': return [...world.creatures.values()].filter((c) => c.owner === w.id).map((c) => ref(c.id));
         case 'afflicted': return world.afflicted((args[0] as { id: string }).id);
