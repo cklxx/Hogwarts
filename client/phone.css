@@ -19,9 +19,6 @@ body.phone #agentbox { top: var(--pt) !important; right: 8px !important; }
 #pmsg.act::after { content: ' ›'; color: var(--wax); font-weight: 700; }
 /* the locked target: one compact row under the message line */
 body.phone #target { top: calc(var(--pt) + var(--pbar) + 44px) !important; left: 50% !important; right: auto !important; transform: translateX(-50%) !important; max-width: 70vw !important; max-height: 46px; overflow: hidden; }
-/* Keep mobile prompts' paper intact. Use the longhand: the current minifier drops `none` from border-image. */
-body.phone #prompt { border-image-source: none; border-color: var(--paper2); }
-
 /* ---- middle: no words. The pieces that used to sit here are in the drawer, the message line, or gone on a phone */
 body.phone :is(#banner, #toast, #lore, #minimap, #feed, #owlpop) { display: none !important; }
 body.phone:not(.chat-open) #chatlog { display: none !important; }
