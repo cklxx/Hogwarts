@@ -435,7 +435,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   // ---------------------------------------------------------------- acting in the world
   register('look', {
     title: 'Look around',
-    description: 'Nearby wizards (by public handle), creatures (by id, with weaknesses), landmarks, time of day and weather. The HUD corners your reveal charms have lit appear as sections: tempus (clock, term), revelio (your own measure), pointMe (a north-up text radar), homenum (who is near, with compass bearings); darkCorners says which charm lights the rest.',
+    description: 'Nearby wizards (by public handle), creatures (by id, with weaknesses), landmarks, time of day and weather. radius 限制人物、魔物与道具；道具最多显示 min(radius, 25) 米内（默认 25 米），地标仍列最近五个。 radius limits wizards, creatures and props; props are capped at 25 m (min(radius, 25), default 25 m), while landmarks remain the nearest five. The HUD corners your reveal charms have lit appear as sections: tempus (clock, term), revelio (your own measure), pointMe (a north-up text radar), homenum (who is near, with compass bearings); darkCorners says which charm lights the rest.',
     inputSchema: { radius: z.number().min(1).max(80).optional() },
     annotations: { readOnlyHint: true },
   }, me((wid, a: { radius?: number }) => {
@@ -476,7 +476,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('move_to', {
     title: 'Walk somewhere',
-    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. The grounds are scenes walled in by mist (the castle; the lake, the forest with Hagrid's hut, the Quidditch pitch, Hogsmeade): a place in another scene is reached through its gate in the courtyard or, when that scene lies past an edge (the castle's west edge: the lake; east: the forest; -z: the pitch; +z: Hogsmeade), through that edge; move_to walks you there, through and on (whoami.scene lists the gates where you are). A point in the mist itself (3 m or more past the edge; nearer, only to the edge) walks you to the edge that way and through it; walking by hand into the mist for a moment also takes you through. Walking takes real time (~7 m/s): follow with wait(until:"arrived"). Refused while your human is steering.`,
+    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. The grounds are scenes walled in by mist (the castle; the lake, the forest with Hagrid's hut, the Quidditch pitch, Hogsmeade): a place in another scene is reached through its gate in the courtyard or, when that scene lies past an edge (the castle's west edge: the lake; east: the forest; -z: the pitch; +z: Hogsmeade), through that edge; move_to walks you there, through and on (whoami.scene lists the gates where you are). A point in the mist itself (3 m or more past the edge; nearer, only to the edge) walks you to the edge that way and through it; walking by hand into the mist for a moment also takes you through. Walking takes real time (~7 m/s): follow with wait(until:"arrived"). distance/etaSeconds 仅按基础步速与直线距离估计当前段；route 给出当前终点和后续目的地，不是全程耗时。 distance and etaSeconds estimate only the current segment, in a straight line at base walking speed; route shows its target and onward destination, not a total journey ETA. Refused while your human is steering.`,
     inputSchema: { landmark: z.string().optional(), x: z.number().optional(), z: z.number().optional() },
   }, me((wid, a: { landmark?: string; x?: number; z?: number }) => {
     const l = a.landmark ? landmarkById(a.landmark) : undefined;
@@ -486,7 +486,17 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const w = world.wizards.get(wid)!;
     const g = world.setGoal(wid, goal, 'agent')!;
     const d = Math.hypot(g.x - w.pos.x, g.z - w.pos.z);
-    return { walkingTo: l?.name ?? g, distance: Math.round(d), etaSeconds: Math.round(d / world.rules.physics.moveSpeed), blurb: l?.blurb };
+    const via = world.via.get(wid);
+    return {
+      walkingTo: l?.name ?? g, distance: Math.round(d), etaSeconds: Math.round(d / world.rules.physics.moveSpeed), blurb: l?.blurb,
+      route: {
+        currentTarget: { ...g }, destination: { ...(via?.to ?? g) }, continues: !!via,
+        estimateScope: 'current_segment', estimateBasis: 'straight_line_at_base_speed',
+        note: via
+          ? '距离和时间仅估计到当前段终点，穿过场景后继续，不是全程；未计绕路、扫帚、暂停或其他速度变化，最终落脚点可能因障碍调整。Distance and time estimate this segment only, not the whole journey; walking continues after crossing. Detours, brooms, pauses and other speed changes are excluded; the final endpoint may be adjusted around obstacles.'
+          : '距离和时间按到当前终点的直线与基础步速估计，未计绕路、扫帚、暂停或其他速度变化；终点已按可走位置调整。Distance and time use the straight line to the current endpoint at base walking speed, excluding detours, brooms, pauses and other speed changes; the endpoint is adjusted to a walkable position.',
+      },
+    };
   }));
 
   register('wait', {

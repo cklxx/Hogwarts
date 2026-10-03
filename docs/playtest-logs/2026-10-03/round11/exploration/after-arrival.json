@@ -1,0 +1,52 @@
+{
+  "waited": 18.1,
+  "reason": "arrived",
+  "hp": "109 -> 115",
+  "mana": "108 -> 120",
+  "moved": 174.1,
+  "at": {
+    "x": 94.7,
+    "z": 37,
+    "place": "The Forbidden Forest"
+  },
+  "walking": false,
+  "state": "in the world",
+  "events": [
+    {
+      "id": 38,
+      "type": "system",
+      "text": "Through the mist: the castle.",
+      "private": true
+    },
+    {
+      "id": 39,
+      "type": "quidditch",
+      "text": "🎙 Lee Jordan: Ouch — a Bludger on Gregory Goyle!",
+      "private": false
+    },
+    {
+      "id": 40,
+      "type": "system",
+      "text": "The ice on the Black Lake melts away with the dawn.",
+      "private": false
+    },
+    {
+      "id": 41,
+      "type": "quidditch",
+      "text": "🎙 Lee Jordan: Gregory Goyle (guest for Ravenclaw) scores! Ravenclaw 50 – 0 Hufflepuff.",
+      "private": false
+    },
+    {
+      "id": 42,
+      "type": "chat",
+      "text": "Hannah Abbott: Mind the Devil's Snare!",
+      "private": false
+    },
+    {
+      "id": 43,
+      "type": "system",
+      "text": "Through the mist: the Forbidden Forest.",
+      "private": true
+    }
+  ]
+}

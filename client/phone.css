@@ -32,15 +32,24 @@ body.phone #touchbar button { width: 52px !important; height: 52px !important; }
 body.phone #touchbar :is(#tb-more, #tb-zin, #tb-zout) { display: none !important; }
 body.phone #tb-roll { left: auto !important; top: auto !important; right: 12px !important; bottom: calc(var(--bars-h, 150px) + 12px) !important; width: 64px !important; height: 64px !important; }
 body.phone #stick:not(.on) { top: calc(100dvh - var(--bars-h, 150px) - 76px) !important; }
-/* the coach mark: one line just above the thumbs (topleft / topright steps too) */
-body.phone #tutorial { left: 8px !important; right: 8px !important; top: auto !important; bottom: calc(var(--bars-h, 150px) + 152px) !important; transform: none !important; width: auto !important; max-width: none !important; flex-wrap: nowrap !important; padding: 3px 6px !important; }
+/* The coach mark keeps complete actions readable; short steps share a row with their button.
+   Live directions and multiple actions get their own row, without shrinking touch targets. */
+body.phone #tutorial { left: 8px !important; right: 8px !important; top: auto !important; bottom: calc(var(--bars-h, 150px) + 152px) !important; transform: none !important; width: auto !important; max-width: none !important; padding: 3px 6px !important;
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto 44px; gap: 4px 6px; }
 body.phone #tutorial::after { display: none !important; }
-body.phone #tutorial .tut-line { flex: 1 1 auto !important; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-body.phone #tutorial .tut-live .dir { margin-left: .4em; }
-body.phone #tutorial .tut-n { min-width: 28px; height: 28px; font-size: 12px; }
+body.phone #tutorial .tut-line { font-size: 15px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; text-wrap: pretty; }
+body.phone #tutorial .tut-live:not(:empty) { display: block; }
+body.phone #tutorial .tut-live .dir { margin-left: 0; white-space: normal; }
+body.phone #tutorial .tut-n { min-width: 28px; height: 28px; padding: 0; font-size: 12px; }
 body.phone #tutorial .tut-acts { margin-left: 0 !important; }
+body.phone #tutorial .tut-acts:empty { display: none; }
+body.phone #tutorial button { min-width: 44px; min-height: 44px; }
+body.phone #tutorial > .tut-skip { grid-column: 4; grid-row: 1; }
 body.phone #tutorial .tut-acts button:not(.tut-skip) { padding: 3px 10px; font-size: 14px; }
-body.phone #tutorial[data-over] { bottom: auto !important; top: var(--pt) !important; }
+body.phone #tutorial:has(.tut-live:not(:empty), .tut-acts button:nth-child(2)) { grid-template-columns: 28px minmax(0, 1fr) 44px; }
+body.phone #tutorial:has(.tut-live:not(:empty), .tut-acts button:nth-child(2)) .tut-acts { grid-column: 2 / -1; grid-row: 2; justify-content: flex-end; flex-wrap: wrap; }
+body.phone #tutorial:has(.tut-live:not(:empty), .tut-acts button:nth-child(2)) > .tut-skip { grid-column: 3; }
+body.phone #tutorial[data-over] { bottom: auto !important; top: calc(var(--pt) + var(--pbar) + 8px) !important; }
 
 /* New runes stay until equipped, in a compact row above the thumbs. The coach mark reserves the real card height. */
 body.phone #runecard { left: 8px; right: 8px; width: auto; max-width: none; bottom: calc(var(--bars-h, 150px) + 152px); transform: none;
@@ -56,6 +65,9 @@ body.phone #runecard .rc-full { display: none; }
 body.phone #runecard .rc-short { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.phone #runecard code { max-height: min(96px, 12dvh); overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
 body.phone:has(#runecard:not([hidden])) #tutorial:not([data-over]) { bottom: calc(var(--bars-h, 150px) + 160px + var(--runecard-h, 140px)) !important; }
+/* The card scrolls within the remaining space below the complete tutorial and the top controls.
+   Tutorial height depends only on its width/text, so this cap cannot feed back into its measured size. */
+body.phone:has(#tutorial:not([hidden]):not([data-over])) #runecard { max-height: max(64px, calc(100dvh - var(--bars-h, 150px) - 160px - var(--pt) - var(--pbar) - 8px - max(var(--tut-h, 0px), var(--tut-b, 0px)))); }
 
 /* ---- the drawer: 现在 (goal, event, duel / Quidditch slips, lessons, House Cup) · 消息 · 更多 */
 #pdrawer { position: fixed; z-index: 8; left: 8px; right: 8px; top: calc(var(--pt) + var(--pbar) + 4px); bottom: calc(var(--bars-h, 150px) + 8px); overflow: auto; overscroll-behavior: contain; padding: 12px 14px; }

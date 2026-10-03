@@ -1,0 +1,403 @@
+{
+  "you": {
+    "x": -82,
+    "z": 26,
+    "facing": 2.6,
+    "place": "Black Lake Shore",
+    "safeZone": false,
+    "onGrounds": true,
+    "lawless": false
+  },
+  "time": {
+    "hour": 6.8,
+    "night": false,
+    "weather": "clear",
+    "remark": {
+      "zh": "天刚亮。猫头鹰正从猫头鹰棚里飞出去送早报。",
+      "en": "Dawn. The owls are leaving the Owlery with the morning post."
+    }
+  },
+  "wizards": [],
+  "creatures": [],
+  "landmarks": [
+    {
+      "id": "lake",
+      "name": "The Black Lake",
+      "dist": 5.7,
+      "x": -86,
+      "z": 30
+    },
+    {
+      "id": "tomb",
+      "name": "Dumbledore's Tomb",
+      "dist": 30.1,
+      "x": -52,
+      "z": 28
+    },
+    {
+      "id": "dungeons",
+      "name": "Dungeon Stair",
+      "dist": 69.8,
+      "x": -50,
+      "z": -36
+    },
+    {
+      "id": "courtyard",
+      "name": "The Courtyard",
+      "dist": 95,
+      "x": 0,
+      "z": -22
+    },
+    {
+      "id": "seventh_floor",
+      "name": "Seventh-Floor Corridor",
+      "dist": 97.8,
+      "x": -32,
+      "z": -58
+    }
+  ],
+  "yourHits": [],
+  "schoolEvent": {
+    "id": "curfew",
+    "x": -18.5,
+    "z": -47.9,
+    "dist": 97.4,
+    "more": "school_events"
+  },
+  "chests": [],
+  "chestHint": {
+    "en": "Reeds on the Black Lake shore",
+    "zh": "黑湖岸边的芦苇丛",
+    "distance": "within 80 m",
+    "distanceZh": "80 米内",
+    "bearing": "NE"
+  },
+  "elderWand": "resting in Dumbledore's tomb (-52, 28)",
+  "tempus": {
+    "clock": "06:47",
+    "night": false,
+    "weather": "clear",
+    "term": 6,
+    "termSecondsLeft": 72,
+    "proclamation": "Draco dormiens nunquam titillandus."
+  },
+  "revelio": {
+    "year": 2,
+    "galleons": 46,
+    "reputation": 1,
+    "seals": "0/4",
+    "title": "Apprentice",
+    "nextTitle": {
+      "title": "Wizard",
+      "how": "Reach year 3."
+    }
+  },
+  "darkCorners": [
+    {
+      "section": "pointMe",
+      "lights": "the bottom-left corner: a radar that always points north",
+      "cast": "Point Me"
+    },
+    {
+      "section": "homenum",
+      "lights": "the bottom-right corner: everyone near you",
+      "cast": "Homenum Revelio",
+      "fromYear": 3
+    }
+  ],
+  "props": [
+    {
+      "id": "lake-puddle-2",
+      "kind": "puddle",
+      "zh": "水洼",
+      "x": -99.3,
+      "z": 10.8,
+      "state": "rest",
+      "hint": "站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发 / step in and you are wet: then lightning conducts, ice freezes, fire steams"
+    },
+    {
+      "id": "lake-bush-15",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -91.7,
+      "z": 19.6,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-bush-16",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -93.5,
+      "z": 19.6,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-bush-17",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -90.1,
+      "z": 20.4,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-barrel-18",
+      "kind": "barrel",
+      "zh": "木桶",
+      "x": -82.1,
+      "z": 8.5,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "lake-barrel-19",
+      "kind": "barrel",
+      "zh": "木桶",
+      "x": -82.8,
+      "z": 9.7,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "lake-puddle-4",
+      "kind": "puddle",
+      "zh": "水洼",
+      "x": -85.7,
+      "z": 26.9,
+      "state": "rest",
+      "hint": "站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发 / step in and you are wet: then lightning conducts, ice freezes, fire steams"
+    },
+    {
+      "id": "lake-ice-8",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -83.1,
+      "z": 34.5,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "lake-ice-9",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -84.2,
+      "z": 33.4,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "lake-3",
+      "kind": "basin",
+      "zh": "水盆",
+      "x": -83,
+      "z": 48,
+      "group": "lake-ice",
+      "state": "rest",
+      "groupLit": "0/3",
+      "wakes": "ice",
+      "hint": "用冰冻住；三个同时冻着有奖励 / freeze it with ice; all three at once pays"
+    },
+    {
+      "id": "lake-6",
+      "kind": "crate",
+      "zh": "木箱",
+      "x": -79,
+      "z": 5,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "lake-4",
+      "kind": "crate",
+      "zh": "木箱",
+      "x": -78,
+      "z": 22,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "lake-ice-10",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -74.2,
+      "z": 20.2,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "lake-ice-11",
+      "kind": "ice",
+      "zh": "冰块",
+      "x": -73.7,
+      "z": 21.7,
+      "state": "rest",
+      "hint": "打碎它：里面一定冻着东西 / break it: something is always frozen inside"
+    },
+    {
+      "id": "bench-lake-2",
+      "kind": "bench",
+      "zh": "长椅",
+      "x": -79,
+      "z": 18,
+      "state": "rest",
+      "hint": "坐下歇会儿 / sit and rest a while"
+    },
+    {
+      "id": "lake-5",
+      "kind": "barrel",
+      "zh": "木桶",
+      "x": -76,
+      "z": 24,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "lake-7",
+      "kind": "whizbang",
+      "zh": "韦斯莱烟火桶",
+      "x": -74,
+      "z": 30,
+      "state": "rest",
+      "hint": "火一碰就炸，炸到旁边的东西和魔物 / fire sets it off: it blasts what stands near"
+    },
+    {
+      "id": "road1-lamp-1-1",
+      "kind": "lamppost",
+      "zh": "路灯",
+      "x": -75,
+      "z": 25,
+      "state": "rest",
+      "hint": "夜里会自己亮起 / lights itself at night"
+    },
+    {
+      "id": "sign-lake",
+      "kind": "signpost",
+      "zh": "路牌",
+      "x": -74,
+      "z": 28,
+      "state": "rest",
+      "hint": "指着附近的地名 / points to nearby places"
+    },
+    {
+      "id": "bench-lake-1",
+      "kind": "bench",
+      "zh": "长椅",
+      "x": -74,
+      "z": 30,
+      "state": "rest",
+      "hint": "坐下歇会儿 / sit and rest a while"
+    },
+    {
+      "id": "lake-puddle-3",
+      "kind": "puddle",
+      "zh": "水洼",
+      "x": -79.4,
+      "z": 36.6,
+      "state": "rest",
+      "hint": "站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发 / step in and you are wet: then lightning conducts, ice freezes, fire steams"
+    },
+    {
+      "id": "lake-bush-12",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -76,
+      "z": 38.1,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-bush-13",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -75.2,
+      "z": 39.7,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-bush-14",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -74.3,
+      "z": 37.4,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "lake-1",
+      "kind": "basin",
+      "zh": "水盆",
+      "x": -80,
+      "z": 45,
+      "group": "lake-ice",
+      "state": "rest",
+      "groupLit": "0/3",
+      "wakes": "ice",
+      "hint": "用冰冻住；三个同时冻着有奖励 / freeze it with ice; all three at once pays"
+    },
+    {
+      "id": "lake-2",
+      "kind": "basin",
+      "zh": "水盆",
+      "x": -77,
+      "z": 48,
+      "group": "lake-ice",
+      "state": "rest",
+      "groupLit": "0/3",
+      "wakes": "ice",
+      "hint": "用冰冻住；三个同时冻着有奖励 / freeze it with ice; all three at once pays"
+    },
+    {
+      "id": "road1b-lamp-1-2",
+      "kind": "lamppost",
+      "zh": "路灯",
+      "x": -75,
+      "z": 50,
+      "state": "rest",
+      "hint": "夜里会自己亮起 / lights itself at night"
+    },
+    {
+      "id": "castle-bush-17",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -60.4,
+      "z": 19.7,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "castle-bush-18",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -59.8,
+      "z": 18,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "castle-bush-19",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -61.5,
+      "z": 17.5,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    },
+    {
+      "id": "castle-bush-20",
+      "kind": "bush",
+      "zh": "灌木",
+      "x": -59.1,
+      "z": 16.4,
+      "state": "rest",
+      "hint": "火一碰就烧，连着旁边的灌木和干草 / fire sets it alight, and the bushes and hay by it"
+    }
+  ],
+  "ice": {
+    "ice": "shore",
+    "zh": "黑湖。夜里湖面会结冰，冰咒也能冻出一条路",
+    "en": "The Black Lake. It freezes at night, and ice spells freeze a path"
+  }
+}

@@ -1,0 +1,1263 @@
+{
+  "viewport": {
+    "width": 320,
+    "height": 844
+  },
+  "device": "Chromium touch emulation, SwiftShader, not physical phone",
+  "readOnlyGeometryAndTouchCompletion": [
+    {
+      "at": "2026-10-03T04:02:55.276Z",
+      "action": "/bounds",
+      "result": [
+        {
+          "id": "hotbar",
+          "hidden": false,
+          "rect": {
+            "x": 28,
+            "y": 744,
+            "width": 264,
+            "height": 62,
+            "top": 744,
+            "right": 292,
+            "bottom": 806,
+            "left": 28
+          },
+          "client": [
+            264,
+            62
+          ],
+          "scroll": [
+            265,
+            62
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "1\n2\n3\n4\n5\n6"
+        },
+        {
+          "id": "tutorial",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 476,
+            "width": 304,
+            "height": 70,
+            "top": 476,
+            "right": 312,
+            "bottom": 546,
+            "left": 8
+          },
+          "client": [
+            284,
+            50
+          ],
+          "scroll": [
+            284,
+            50
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "2/8\nTap a pixie (or ), then 1\n↑pixie 8 m"
+        },
+        {
+          "id": "tut-line",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 490.75,
+            "width": 188,
+            "height": 40.5,
+            "top": 490.75,
+            "right": 246,
+            "bottom": 531.25,
+            "left": 58
+          },
+          "client": [
+            188,
+            41
+          ],
+          "scroll": [
+            188,
+            43
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "Tap a pixie (or ), then 1\n↑pixie 8 m"
+        },
+        {
+          "id": "tut-live",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 511,
+            "width": 188,
+            "height": 20.25,
+            "top": 511,
+            "right": 246,
+            "bottom": 531.25,
+            "left": 58
+          },
+          "client": [
+            188,
+            20
+          ],
+          "scroll": [
+            188,
+            23
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "↑pixie 8 m"
+        },
+        {
+          "id": "tut-acts",
+          "hidden": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "stick",
+          "hidden": false,
+          "rect": {
+            "x": 16,
+            "y": 566,
+            "width": 112,
+            "height": 112,
+            "top": 566,
+            "right": 128,
+            "bottom": 678,
+            "left": 16
+          },
+          "client": [
+            108,
+            108
+          ],
+          "scroll": [
+            108,
+            108
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "touchbar",
+          "hidden": false,
+          "rect": {
+            "x": 178,
+            "y": 556,
+            "width": 130,
+            "height": 130,
+            "top": 556,
+            "right": 308,
+            "bottom": 686,
+            "left": 178
+          },
+          "client": [
+            130,
+            130
+          ],
+          "scroll": [
+            130,
+            130
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "pmsg",
+          "hidden": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "nowrap",
+            "overflow": "hidden"
+          },
+          "text": ""
+        },
+        {
+          "id": "runecard",
+          "hidden": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "auto"
+          },
+          "text": ""
+        }
+      ]
+    },
+    {
+      "at": "2026-10-03T04:03:34.037Z",
+      "action": "/bounds",
+      "result": [
+        {
+          "id": "hotbar",
+          "hidden": false,
+          "rect": {
+            "x": 28,
+            "y": 744,
+            "width": 264,
+            "height": 62,
+            "top": 744,
+            "right": 292,
+            "bottom": 806,
+            "left": 28
+          },
+          "client": [
+            264,
+            62
+          ],
+          "scroll": [
+            265,
+            62
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "1\n2\n3\n4\n5\n6"
+        },
+        {
+          "id": "tutorial",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 273,
+            "width": 304,
+            "height": 118,
+            "top": 273,
+            "right": 312,
+            "bottom": 391,
+            "left": 8
+          },
+          "client": [
+            284,
+            98
+          ],
+          "scroll": [
+            284,
+            98
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "3/8\nTo the Great Hall (safe)\n↑Great Hall 49 m\nTake me there"
+        },
+        {
+          "id": "tut-line",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 287.75,
+            "width": 188,
+            "height": 40.5,
+            "top": 287.75,
+            "right": 246,
+            "bottom": 328.25,
+            "left": 58
+          },
+          "client": [
+            188,
+            41
+          ],
+          "scroll": [
+            188,
+            41
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "To the Great Hall (safe)\n↑Great Hall 49 m"
+        },
+        {
+          "id": "tut-live",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 308,
+            "width": 188,
+            "height": 20.25,
+            "top": 308,
+            "right": 246,
+            "bottom": 328.25,
+            "left": 58
+          },
+          "client": [
+            188,
+            20
+          ],
+          "scroll": [
+            188,
+            21
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "↑Great Hall 49 m"
+        },
+        {
+          "id": "tut-acts",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 334,
+            "width": 238,
+            "height": 44,
+            "top": 334,
+            "right": 296,
+            "bottom": 378,
+            "left": 58
+          },
+          "client": [
+            238,
+            44
+          ],
+          "scroll": [
+            238,
+            44
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "Take me there"
+        },
+        {
+          "id": "stick",
+          "hidden": false,
+          "rect": {
+            "x": 16,
+            "y": 566,
+            "width": 112,
+            "height": 112,
+            "top": 566,
+            "right": 128,
+            "bottom": 678,
+            "left": 16
+          },
+          "client": [
+            108,
+            108
+          ],
+          "scroll": [
+            108,
+            108
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "touchbar",
+          "hidden": false,
+          "rect": {
+            "x": 178,
+            "y": 556,
+            "width": 130,
+            "height": 130,
+            "top": 556,
+            "right": 308,
+            "bottom": 686,
+            "left": 178
+          },
+          "client": [
+            130,
+            130
+          ],
+          "scroll": [
+            130,
+            130
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "pmsg",
+          "hidden": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "nowrap",
+            "overflow": "hidden"
+          },
+          "text": ""
+        },
+        {
+          "id": "runecard",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 399.21875,
+            "width": 304,
+            "height": 146.78125,
+            "top": 399.21875,
+            "right": 312,
+            "bottom": 546,
+            "left": 8
+          },
+          "client": [
+            302,
+            145
+          ],
+          "scroll": [
+            302,
+            145
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "auto"
+          },
+          "text": "✨ New rune: Split\nRune code\nthe bolt goes out as three, fanned (60% power each)\nEquip Stupefy\nEquip Incendio\nEquip Aguamenti"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-03T04:03:47.237Z",
+      "action": "/bounds",
+      "result": [
+        {
+          "id": "hotbar",
+          "hidden": false,
+          "rect": {
+            "x": 28,
+            "y": 744,
+            "width": 264,
+            "height": 62,
+            "top": 744,
+            "right": 292,
+            "bottom": 806,
+            "left": 28
+          },
+          "client": [
+            264,
+            62
+          ],
+          "scroll": [
+            265,
+            62
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "1\n2\n3\n4\n5\n6"
+        },
+        {
+          "id": "tutorial",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 234,
+            "width": 304,
+            "height": 118,
+            "top": 234,
+            "right": 312,
+            "bottom": 352,
+            "left": 8
+          },
+          "client": [
+            284,
+            98
+          ],
+          "scroll": [
+            284,
+            98
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "3/8\nTo the Great Hall (safe)\n↑Great Hall 48 m\nTake me there"
+        },
+        {
+          "id": "tut-line",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 248.75,
+            "width": 188,
+            "height": 40.5,
+            "top": 248.75,
+            "right": 246,
+            "bottom": 289.25,
+            "left": 58
+          },
+          "client": [
+            188,
+            41
+          ],
+          "scroll": [
+            188,
+            41
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "To the Great Hall (safe)\n↑Great Hall 48 m"
+        },
+        {
+          "id": "tut-live",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 269,
+            "width": 188,
+            "height": 20.25,
+            "top": 269,
+            "right": 246,
+            "bottom": 289.25,
+            "left": 58
+          },
+          "client": [
+            188,
+            20
+          ],
+          "scroll": [
+            188,
+            21
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "↑Great Hall 48 m"
+        },
+        {
+          "id": "tut-acts",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 295,
+            "width": 238,
+            "height": 44,
+            "top": 295,
+            "right": 296,
+            "bottom": 339,
+            "left": 58
+          },
+          "client": [
+            238,
+            44
+          ],
+          "scroll": [
+            238,
+            44
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "Take me there"
+        },
+        {
+          "id": "stick",
+          "hidden": false,
+          "rect": {
+            "x": 16,
+            "y": 566,
+            "width": 112,
+            "height": 112,
+            "top": 566,
+            "right": 128,
+            "bottom": 678,
+            "left": 16
+          },
+          "client": [
+            108,
+            108
+          ],
+          "scroll": [
+            108,
+            108
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "touchbar",
+          "hidden": false,
+          "rect": {
+            "x": 178,
+            "y": 556,
+            "width": 130,
+            "height": 130,
+            "top": 556,
+            "right": 308,
+            "bottom": 686,
+            "left": 178
+          },
+          "client": [
+            130,
+            130
+          ],
+          "scroll": [
+            130,
+            130
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "pmsg",
+          "hidden": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "nowrap",
+            "overflow": "hidden"
+          },
+          "text": ""
+        },
+        {
+          "id": "runecard",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 360.84375,
+            "width": 304,
+            "height": 185.15625,
+            "top": 360.84375,
+            "right": 312,
+            "bottom": 546,
+            "left": 8
+          },
+          "client": [
+            302,
+            183
+          ],
+          "scroll": [
+            302,
+            183
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "auto"
+          },
+          "text": "✨ New rune: Split\nRune code\nthe bolt goes out as three, fanned (60% power each)\nworth this in Runes: (bolt (rotate aim -18) …) (bolt (rotate aim 18) …)\nEquip Stupefy\nEquip Incendio\nEquip Aguamenti"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-03T04:05:06.144Z",
+      "action": "/bounds",
+      "result": [
+        {
+          "id": "hotbar",
+          "hidden": false,
+          "rect": {
+            "x": 28,
+            "y": 744,
+            "width": 264,
+            "height": 62,
+            "top": 744,
+            "right": 292,
+            "bottom": 806,
+            "left": 28
+          },
+          "client": [
+            264,
+            62
+          ],
+          "scroll": [
+            265,
+            62
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "1\n2\n3\n4\n5\n6"
+        },
+        {
+          "id": "tutorial",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 428,
+            "width": 304,
+            "height": 118,
+            "top": 428,
+            "right": 312,
+            "bottom": 546,
+            "left": 8
+          },
+          "client": [
+            284,
+            98
+          ],
+          "scroll": [
+            284,
+            98
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "6/8\nConnect your AI agent\nGet a code\nLater"
+        },
+        {
+          "id": "tut-line",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 452.875,
+            "width": 188,
+            "height": 20.25,
+            "top": 452.875,
+            "right": 246,
+            "bottom": 473.125,
+            "left": 58
+          },
+          "client": [
+            188,
+            20
+          ],
+          "scroll": [
+            188,
+            20
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "Connect your AI agent"
+        },
+        {
+          "id": "tut-live",
+          "hidden": false,
+          "rect": {
+            "x": 217.703125,
+            "y": 453.875,
+            "width": 0,
+            "height": 18,
+            "top": 453.875,
+            "right": 217.703125,
+            "bottom": 471.875,
+            "left": 217.703125
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "tut-acts",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 489,
+            "width": 238,
+            "height": 44,
+            "top": 489,
+            "right": 296,
+            "bottom": 533,
+            "left": 58
+          },
+          "client": [
+            238,
+            44
+          ],
+          "scroll": [
+            238,
+            44
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "Get a code\nLater"
+        },
+        {
+          "id": "stick",
+          "hidden": false,
+          "rect": {
+            "x": 16,
+            "y": 566,
+            "width": 112,
+            "height": 112,
+            "top": 566,
+            "right": 128,
+            "bottom": 678,
+            "left": 16
+          },
+          "client": [
+            108,
+            108
+          ],
+          "scroll": [
+            108,
+            108
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "touchbar",
+          "hidden": false,
+          "rect": {
+            "x": 178,
+            "y": 556,
+            "width": 130,
+            "height": 130,
+            "top": 556,
+            "right": 308,
+            "bottom": 686,
+            "left": 178
+          },
+          "client": [
+            130,
+            130
+          ],
+          "scroll": [
+            130,
+            130
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "pmsg",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 60,
+            "width": 304,
+            "height": 31.75,
+            "top": 60,
+            "right": 312,
+            "bottom": 91.75,
+            "left": 8
+          },
+          "client": [
+            304,
+            32
+          ],
+          "scroll": [
+            684,
+            32
+          ],
+          "style": {
+            "whiteSpace": "nowrap",
+            "overflow": "hidden"
+          },
+          "text": "✨ A new sense settles into the top-right corner: the time, and the term. (MCP: look.tempus)"
+        },
+        {
+          "id": "runecard",
+          "hidden": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "auto"
+          },
+          "text": "✨ New rune: SplitRune codethe bolt goes out as three, fanned (60% power each)worth this in Runes: (bolt (rotate aim -18) …) (bolt (rotate aim 18) …)Put on StupefyEquip StupefyPut on IncendioEquip IncendioPut on AguamentiEquip Aguamenti"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-03T04:05:36.673Z",
+      "action": "/bounds",
+      "result": [
+        {
+          "id": "hotbar",
+          "hidden": false,
+          "rect": {
+            "x": 28,
+            "y": 744,
+            "width": 264,
+            "height": 62,
+            "top": 744,
+            "right": 292,
+            "bottom": 806,
+            "left": 28
+          },
+          "client": [
+            264,
+            62
+          ],
+          "scroll": [
+            265,
+            62
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "1\n2\n3\n4\n5\n6"
+        },
+        {
+          "id": "tutorial",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 459.25,
+            "width": 304,
+            "height": 86.75,
+            "top": 459.25,
+            "right": 312,
+            "bottom": 546,
+            "left": 8
+          },
+          "client": [
+            284,
+            67
+          ],
+          "scroll": [
+            284,
+            67
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "8/8\nBy a green fire, tap the hand to travel\nGot it"
+        },
+        {
+          "id": "tut-line",
+          "hidden": false,
+          "rect": {
+            "x": 58,
+            "y": 472.25,
+            "width": 119.578125,
+            "height": 60.75,
+            "top": 472.25,
+            "right": 177.578125,
+            "bottom": 533,
+            "left": 58
+          },
+          "client": [
+            120,
+            61
+          ],
+          "scroll": [
+            120,
+            61
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "By a green fire, tap the hand to travel"
+        },
+        {
+          "id": "tut-live",
+          "hidden": false,
+          "rect": {
+            "x": 97.921875,
+            "y": 513.75,
+            "width": 0,
+            "height": 18,
+            "top": 513.75,
+            "right": 97.921875,
+            "bottom": 531.75,
+            "left": 97.921875
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "tut-acts",
+          "hidden": false,
+          "rect": {
+            "x": 183.578125,
+            "y": 480.625,
+            "width": 62.421875,
+            "height": 44,
+            "top": 480.625,
+            "right": 246,
+            "bottom": 524.625,
+            "left": 183.578125
+          },
+          "client": [
+            62,
+            44
+          ],
+          "scroll": [
+            62,
+            44
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": "Got it"
+        },
+        {
+          "id": "stick",
+          "hidden": false,
+          "rect": {
+            "x": 16,
+            "y": 566,
+            "width": 112,
+            "height": 112,
+            "top": 566,
+            "right": 128,
+            "bottom": 678,
+            "left": 16
+          },
+          "client": [
+            108,
+            108
+          ],
+          "scroll": [
+            108,
+            108
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "touchbar",
+          "hidden": false,
+          "rect": {
+            "x": 178,
+            "y": 556,
+            "width": 130,
+            "height": 130,
+            "top": 556,
+            "right": 308,
+            "bottom": 686,
+            "left": 178
+          },
+          "client": [
+            130,
+            130
+          ],
+          "scroll": [
+            130,
+            130
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "visible"
+          },
+          "text": ""
+        },
+        {
+          "id": "pmsg",
+          "hidden": false,
+          "rect": {
+            "x": 8,
+            "y": 60,
+            "width": 304,
+            "height": 31.75,
+            "top": 60,
+            "right": 312,
+            "bottom": 91.75,
+            "left": 8
+          },
+          "client": [
+            304,
+            32
+          ],
+          "scroll": [
+            634,
+            32
+          ],
+          "style": {
+            "whiteSpace": "nowrap",
+            "overflow": "hidden"
+          },
+          "text": "🧌 The troll wanders off, unimpressed. Parting words: \"Bring more friends next time.\""
+        },
+        {
+          "id": "runecard",
+          "hidden": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "client": [
+            0,
+            0
+          ],
+          "scroll": [
+            0,
+            0
+          ],
+          "style": {
+            "whiteSpace": "normal",
+            "overflow": "auto"
+          },
+          "text": "✨ New rune: SplitRune codethe bolt goes out as three, fanned (60% power each)worth this in Runes: (bolt (rotate aim -18) …) (bolt (rotate aim 18) …)Put on StupefyEquip StupefyPut on IncendioEquip IncendioPut on AguamentiEquip Aguamenti"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-03T04:06:06.933Z",
+      "action": "/finish",
+      "result": {
+        "completedText": "✦\nAll set. Enjoy!",
+        "tappedClose": true,
+        "hidden": true
+      }
+    }
+  ]
+}

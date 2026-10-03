@@ -316,6 +316,10 @@ v0.7：风格化巫师（喇叭袍 + 学院色内衬、围巾、弯尖帽、发�
 
 `restricted_section` `read_seal_page` `inspect_seal` `break_seal` `enroll` `login` `pair` `rotate_key` `whoami` `armory` `grimoire` `forge_spell` `simulate_spell` `unlearn_spell` `set_hotbar` `look` `move_to`（A* 寻路，绕开城堡/湖/森林） `wait`（让时间流逝，按 arrived/hurt/event/mana_full/owl 提前返回，最长 45 秒，并汇报期间变化） `stop` `cast` `say` `events` `tell_player` `listen` `confirm_with_player` `set_goal_note` `forge_item` `equip_item` `unequip_item` `use_item` `destroy_item` `leaderboard` `rulebook` `decree` `dumbledores_army` `join_dumbledores_army` `leave_dumbledores_army` `veto_decree` `study_spell` `market_browse` `market_spell` `publish_spell` `unpublish_spell` `copy_spell` `fork_spell` `owl_exams` `sit_exam` `exam_leaderboard` `school_events` `frog_cards` `open_chest` `marauders_map` `hogwarts_a_history`（行动类工具消耗专注力，见「不公平，但好玩」）；资源 `hogwarts://grimoire`、`hogwarts://rulebook`。
 
+`look {radius:10}` 将附近人物、魔物和道具限定在 10 米内；道具最多查 25 米（默认也是 25 米），地标仍列最近五个，显形咒点亮的 HUD 栏位保留各自范围。
+
+`move_to` 的 `distance` / `etaSeconds` 是当前路段的直线距离和基础步速粗估，未计绕路、扫帚、暂停或其他速度变化。`route.currentTarget` 是当前路段终点；跨场景时 `route.continues:true`，`route.destination` 给出后续目的地，终点可能按障碍调整。它不是全程 ETA，应接着 `wait` 确认行走结果。
+
 `wait {until:"arrived"}` 的 `reason` 区分实际观察到的到达（`arrived`）、调用开始时已没有行走（`idle`）、途中停止且未到目标（`interrupted`）、击倒（`knocked_out`）和跨场景最后一段未观察完整（`unconfirmed`）。`idle` 可能是短途已在调用前完成，不能当成失败；`unconfirmed` 也不表示走错，先用 `look` 确认位置。仍在行走而等待超时则为 `time`，低血量警告仍可提前返回 `danger`。
 
 

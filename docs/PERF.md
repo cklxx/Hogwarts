@@ -1764,3 +1764,26 @@ SwiftShader rendered around 1–2 fps in these tests. Its software rasterization
 client, so neither this fps nor draw-enabled JS timing describes a player's hardware experience. The supported
 claims are lower flat-ground query cost, unchanged sampled terrain, stable name-tag suppression, and no
 same-scene increase in scene/shadow drawing. Real-GPU frame-time improvement remains unmeasured.
+
+## 2026-10-03: smaller MCP exploration responses
+
+`look({radius:10})` previously returned props out to 25 metres. Passing the bounded query radius into the
+props view now filters that section to `min(radius, 25)`, while retaining the default 25 metre cap and order.
+This reduces irrelevant information for agents requesting a small area.
+
+Controlled before/after: World seed 43, Query Reader at the lake floo point (-82, 26), no ticking, identical
+prop states. Count and UTF-8 byte size refer only to compact `JSON.stringify(look.props)`, not the whole MCP
+response. [Reproduction script](playtest-logs/2026-10-03/round11/bench/props-query.mts) and
+[before](playtest-logs/2026-10-03/round11/bench/props-query-before.jsonl) /
+[after](playtest-logs/2026-10-03/round11/bench/props-query-after.jsonl) raw measurements are archived.
+
+| Requested radius | Props before → after | Farthest prop, metres before → after | Props JSON bytes before → after |
+|---|---:|---:|---:|
+| 10 | 31 → 13 | 25 → 9.847 | 5,671 → 2,159 (−61.9%) |
+| 12 | 31 → 15 | 25 → 11.621 | 5,671 → 2,605 (−54.1%) |
+| 40 | 31 → 31 | 25 → 25 | 5,671 → 5,671 |
+| 80 | 31 → 31 | 25 → 25 | 5,671 → 5,671 |
+
+The default and explicit 25/40/80 metre results are also tested for equality. This fixture measures query
+payload size, not latency, CPU savings or FPS. Actual exploration reproductions are recorded separately in
+the round 11 playtest report.
