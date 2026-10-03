@@ -75,7 +75,7 @@ describe('MCP: what a wizard has read, and waiting', () => {
     const t0 = Date.now();
     const r = await (await mcp(w, a.id))('wait', { seconds: 5, until: 'arrived' });
     expect(Date.now() - t0).toBeLessThan(1500);
-    expect(r.v).toMatchObject({ reason: 'arrived', note: expect.stringMatching(/not walking/) });
+    expect(r.v).toMatchObject({ reason: 'idle', note: expect.stringMatching(/No walk is in progress/) });
   });
 
   it('batch: two casts back to back both go (the wand arm\'s pause is waited out), and the example is {"calls":[…]}', async () => {
