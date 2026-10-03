@@ -38,7 +38,7 @@ export interface PlayerMetrics {
   view?: '25d' | 'top' | 'follow';
   /** The browser's frames on the player's own device, last reported (every 15 s): frame interval p50 / p95 (ms),
    *  the 3D render scale and quality it settled on, the screen's pixel ratio and the GPU's name as WebGL gives it. */
-  fps?: { p50: number; p95: number; scale: number; q: string; dpr: number; gpu: string };
+  fps?: { p50: number; p95: number; scale: number; q: string; dpr: number; gpu: string; samples?: number; seconds?: number };
 }
 
 declare module './world.js' {
@@ -119,6 +119,8 @@ export const METRICS_FEATURE: Feature = {
     if (f && typeof f === 'object') {
       const n = (v: unknown, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(hi, Math.round(v * 100) / 100)) : 0);
       m.fps = { p50: n(f.p50, 5000), p95: n(f.p95, 5000), scale: n(f.scale, 4), q: f.q === 'low' ? 'low' : 'high', dpr: n(f.dpr, 8), gpu: String(f.gpu ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, 80) };
+      if (typeof f.samples === 'number' && Number.isFinite(f.samples)) m.fps.samples = Math.floor(n(f.samples, 4000));
+      if (typeof f.seconds === 'number' && Number.isFinite(f.seconds)) m.fps.seconds = n(f.seconds, 600);
     }
     return null;
   },
