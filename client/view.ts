@@ -3,6 +3,7 @@ import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { HALL_ROOF, INTERIORS, STATIC_COLLIDERS, STATUE_SPOTS, interiorAt, signedDistance, statueViewSolid, viewSolids, type ViewSolid } from '../src/shared/layout';
 import { captureActive } from './capture';
 import { heightAt } from './terrain';
+import { LENS } from './lens';
 
 /**
  * The third-person view, kept clear of the world (docs/COLLISION.md, "The camera"):
@@ -264,7 +265,17 @@ export interface RigInput {
   /** A phone: pressed short, rise over the player (up to looking straight down) rather than go over the shoulder,
    *  whose close-up is a hat filling a portrait screen (the 2026-09-30 phone playtest). */
   overhead?: boolean;
+  /** 2.5D (controls.ts setView): the camera hangs at a fixed angle high over you and never meets a wall (what stands
+   *  between is cut away and x-rayed instead), so it never snaps in, swings or climbs. */
+  fixed?: boolean;
 }
+
+/** 2.5D: the cut-out round you (metres; always on there, view.ts place). */
+const FLAT_CUT_R = 2.6;
+/** 2.5D: what dissolves of the high things in front of you (a dither share), and above what height over your feet (m). */
+const CANOPY = [0.65, 3.2] as const;
+/** 2.5D: the camera looks at a point this high over your feet (your middle: you sit in the centre of the picture). */
+export const FIXED_LOOK_Y = 1.0;
 
 const ease = (dt: number, rate: number) => 1 - Math.exp(-dt * rate);
 /** The arm is checked against the ground at this many points, and keeps this far above it. */
@@ -315,6 +326,17 @@ export class CameraRig {
     // indoors: higher and closer
     this.room = interiorAt(x, z);
     this.indoor += ((this.room >= 0 ? 1 : 0) - this.indoor) * ease(dt, INDOOR_RATE);
+    if (i.fixed) {
+      // 2.5D: straight out along the arm, only kept above the hillside; the roof of the room you are in dissolves as
+      // before (scene.ts), and whatever else is between is cut away around you (the fade below)
+      // (lens.ts: in to dist / k at the lens's pitch — the wider lens from there frames you as `dist` did)
+      const arm = i.dist / LENS.k, cp = Math.cos(LENS.pitch), p = this.pos;
+      p.x = x + Math.sin(yaw) * cp * arm; p.z = z + Math.cos(yaw) * cp * arm;
+      p.y = Math.max(y + FIXED_LOOK_Y + Math.sin(LENS.pitch) * arm, i.ground(p.x, p.z) + 1.5);
+      this.look.x = x; this.look.y = y + FIXED_LOOK_Y; this.look.z = z;
+      this.arm = arm; this.lift = this.shoulder = this.rise = 0;
+      return;
+    }
     const pIn = INDOOR_PITCH[0] + ((Math.min(1.3, Math.max(0.1, i.pitch)) - 0.1) / 1.2) * (INDOOR_PITCH[1] - INDOOR_PITCH[0]);
     const pitch = i.pitch + (pIn - i.pitch) * this.indoor;
     const want = i.dist + (Math.min(i.dist, INDOOR_DIST) - i.dist) * this.indoor;
@@ -405,9 +427,11 @@ export class CameraRig {
  *   cam:   xyz: the camera the cut-outs were worked out for (other passes, like the lake's mirror, are left alone);
  *          w: tan(fov / 2).
  *   res:   x, y: drawing-buffer size (px); z, w: the camera's near and far.
+ *   canopy: 2.5D — x: how much of whatever is nearer the camera than you and higher than y metres over your feet
+ *          dissolves (tree crowns, the tops of walls: the whole screen, not just round you), y: that height.
  */
 const vec4 = () => ({ x: 0, y: 0, z: 0, w: 0 });
-export const FADE = { A: vec4(), B: vec4(), depth: vec4(), cam: vec4(), res: vec4() };
+export const FADE = { A: vec4(), B: vec4(), depth: vec4(), cam: vec4(), res: vec4(), canopy: vec4() };
 
 /**
  * The whole fade, in GLSL, run at the top of the fragment shader of every material with the VIEW_FADE define.
@@ -424,6 +448,7 @@ uniform vec4 viewFadeB;
 uniform vec4 viewFadeDepth;
 uniform vec4 viewFadeCam;
 uniform vec4 viewFadeRes;
+uniform vec4 viewFadeCanopy;
 uniform float viewFadeSelf;
 float viewFadeBayer2( vec2 a ) { a = floor( a ); return fract( a.x / 2.0 + a.y * a.y * 0.75 ); }
 float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
@@ -445,6 +470,8 @@ float viewFadeCut( vec4 c, float depth, float feet, float d, float y ) {
 		float vfY = cameraPosition.y + ( vec4( vfV, 0.0 ) * viewMatrix ).y;
 		float vfCut = max( viewFadeCut( viewFadeA, viewFadeDepth.x, viewFadeDepth.z, vfD, vfY ), viewFadeCut( viewFadeB, viewFadeDepth.y, viewFadeDepth.w, vfD, vfY ) );
 		viewFadeK = max( viewFadeK, vfCut * 0.86 );
+		// 2.5D canopy: high and in front of you, anywhere on screen
+		viewFadeK = max( viewFadeK, viewFadeCanopy.x * step( viewFadeDepth.z + viewFadeCanopy.y, vfY ) * ( 1.0 - smoothstep( viewFadeDepth.x - 3.0, viewFadeDepth.x - 1.0, vfD ) ) );
 	}
 	#ifndef VIEW_FADE_ALPHA
 	if ( viewFadeK > 0.0 && viewFadeK > viewFadeBayer2( 0.5 * gl_FragCoord.xy ) * 0.25 + viewFadeBayer2( gl_FragCoord.xy ) ) discard;
@@ -482,7 +509,7 @@ export function installViewFade() {
   for (const lib of Object.values(THREE.ShaderLib)) Object.assign(lib.uniforms, fadeUniforms());
 }
 /** The fade's uniforms: the shared cut-outs, and the material's own dissolve (a number: three.js copies it per material). */
-const fadeUniforms = () => ({ viewFadeA: { value: FADE.A }, viewFadeB: { value: FADE.B }, viewFadeDepth: { value: FADE.depth }, viewFadeCam: { value: FADE.cam }, viewFadeRes: { value: FADE.res }, viewFadeSelf: { value: 0 } });
+const fadeUniforms = () => ({ viewFadeA: { value: FADE.A }, viewFadeB: { value: FADE.B }, viewFadeDepth: { value: FADE.depth }, viewFadeCam: { value: FADE.cam }, viewFadeRes: { value: FADE.res }, viewFadeCanopy: { value: FADE.canopy }, viewFadeSelf: { value: 0 } });
 
 /**
  * A copy of `m` that dissolves by itself on the same dither (a Great Hall roof that fades as you step in): set
@@ -576,6 +603,8 @@ export interface ViewDeps {
   cam: { yaw: number; pitch: number; dist: number };
   /** A phone (CameraRig `overhead`). */
   overhead?: boolean;
+  /** 2.5D (CameraRig `fixed`; controls.ts). */
+  fixed?: () => boolean;
 }
 
 const ALLY_RANGE = 12, MAX_ALLIES = 4;
@@ -695,7 +724,7 @@ export function createView(d: ViewDeps) {
     tick++;
     const s = d.snap();
     world.setStatues(s?.look?.statues.length ?? 0);
-    rin.overhead = d.overhead; rin.x = feet.x; rin.y = feet.y; rin.z = feet.z; rin.yaw = d.cam.yaw; rin.pitch = d.cam.pitch; rin.dist = d.cam.dist; rin.dt = dt;
+    rin.overhead = d.overhead; rin.fixed = d.fixed?.() ?? false; rin.x = feet.x; rin.y = feet.y; rin.z = feet.z; rin.yaw = d.cam.yaw; rin.pitch = d.cam.pitch; rin.dist = d.cam.dist; rin.dt = dt;
     rig.update(rin);
     c.position.set(rig.pos.x, rig.pos.y, rig.pos.z);
     // your own name plate would fill the screen from close up: it fades out under 5 m
@@ -712,7 +741,11 @@ export function createView(d: ViewDeps) {
 
     // what hides the player, and the locked target
     const me = d.myHandle();
-    const occA = !capture && (rig.hides(feet.x, feet.y + 1.1, feet.z) || rig.hides(feet.x, feet.y + 1.9, feet.z));
+    // (2.5D: always — the cut only takes what is nearer the camera than you and above your feet, and the lens's nearer
+    // camera puts tree crowns between it and you that the view solids do not model: the 2026-10-01 forest shot showed
+    // you as an x-ray under a solid crown)
+    const flat = d.fixed?.() ?? false;
+    const occA = !capture && (flat || rig.hides(feet.x, feet.y + 1.1, feet.z) || rig.hides(feet.x, feet.y + 1.9, feet.z));
     const tk = d.target();
     const tm = tk ? model(tk) : undefined;
     const tp = tm?.root.position;
@@ -720,7 +753,8 @@ export function createView(d: ViewDeps) {
     const k = 1 - Math.exp(-dt / 0.07);
     fadeA += ((occA ? 1 : 0) - fadeA) * k;
     fadeB += ((occB ? 1 : 0) - fadeB) * k;
-    cutout(FADE.A, feet, fadeA, 1.9, 0);
+    cutout(FADE.A, feet, fadeA, flat ? FLAT_CUT_R : 1.9, 0);
+    FADE.canopy.x = flat && !capture ? CANOPY[0] : 0; FADE.canopy.y = CANOPY[1];
     if (tp) cutout(FADE.B, tp, fadeB, tm && d.creatures.has(tk!) ? 2.4 : 1.9, 1); else FADE.B.w = 0;
     stats.occA = occA; stats.occB = occB;
 
@@ -754,6 +788,15 @@ export function createView(d: ViewDeps) {
     stats.max = Math.max(stats.max, ms);
   }
 
+  /**
+   * Where level of detail is measured from (main.ts): the camera, but never further out than `near` along the arm —
+   * a 2.5D camera hangs ~30 m up, and the wizards round you should not turn into the far crowd for it.
+   */
+  function eye(out: THREE.Vector3, near = 11) {
+    const L = rig.look, p = rig.pos, dx = p.x - L.x, dy = p.y - L.y, dz = p.z - L.z, l = Math.hypot(dx, dy, dz) || 1, k = Math.min(1, near / l);
+    return out.set(L.x + dx * k, L.y + dy * k, L.z + dz * k);
+  }
+
   if (typeof location !== 'undefined' && /[?&](debug=view|capture=1)\b/.test(location.search)) {
     (globalThis as unknown as { __view: unknown }).__view = {
       cam: d.cam,
@@ -773,7 +816,8 @@ export function createView(d: ViewDeps) {
    * anything else stops it. Visible: the head or the chest ray gets through. `old`: the camera as it was before
    * view.ts (no arm, no fading), for comparison.
    */
-  function audit(n = 200, seed = 1, old = false) {
+  /** `flat`: the 2.5D camera instead, with this lens (lens.ts; fov in degrees), at FLAT_DIST and a random 45° turn. */
+  function audit(n = 200, seed = 1, old = false, flat?: { k: number; pitch: number; fov: number; dist: number }) {
     let r = seed >>> 0 || 1;
     const rnd = () => ((r = (Math.imul(r, 48271) >>> 0) % 2147483647) / 2147483647);
     const faded = (m: THREE.Material) => m.defines?.VIEW_FADE !== undefined;
@@ -790,7 +834,9 @@ export function createView(d: ViewDeps) {
       if (Array.isArray(mat) || mat.transparent || !(faded(mat) || terrain.has(m))) return;
       targets.push(m);
     });
-    const cam = new THREE.PerspectiveCamera(d.camera.fov, d.camera.aspect, d.camera.near, d.camera.far);
+    const cam = new THREE.PerspectiveCamera(flat?.fov ?? d.camera.fov, d.camera.aspect, d.camera.near, d.camera.far);
+    const was = { ...LENS };
+    if (flat) Object.assign(LENS, { k: flat.k, pitch: flat.pitch });
     const ray = new THREE.Raycaster();
     const R = HALL_ROOF_BOX;
     const u = vec4(), dep = vec4(), hitV = new THREE.Vector3(), dir = new THREE.Vector3(), proj = new THREE.Vector3();
@@ -808,9 +854,9 @@ export function createView(d: ViewDeps) {
       const [x, z] = area[2](0);
       if (STATIC_COLLIDERS.some((c) => c.h > 0 && signedDistance(c, x, z) < 0.5)) continue;
       const y = heightAt(x, z);
-      const yaw = rnd() * Math.PI * 2, pitch = 0.1 + rnd() * 1.0, dist = 3.5 + rnd() * rnd() * 20;
+      const yaw = flat ? Math.floor(rnd() * 8) * (Math.PI / 4) : rnd() * Math.PI * 2, pitch = 0.1 + rnd() * 1.0, dist = flat ? flat.dist : 3.5 + rnd() * rnd() * 20;
       const rg = new CameraRig(world);
-      for (let k = 0; k < 90; k++) rg.update({ x, y, z, yaw, pitch, dist, dt: 1 / 60, ground: heightAt });
+      for (let k = 0; k < 90; k++) rg.update({ x, y, z, yaw, pitch, dist, dt: 1 / 60, ground: heightAt, fixed: !!flat });
       if (old) {
         rg.pos.x = x + Math.sin(yaw) * Math.cos(pitch) * dist; rg.pos.z = z + Math.cos(yaw) * Math.cos(pitch) * dist;
         rg.pos.y = Math.max(y + PIVOT_Y + Math.sin(pitch) * dist, heightAt(rg.pos.x, rg.pos.z) + 1.5);
@@ -819,9 +865,9 @@ export function createView(d: ViewDeps) {
       cam.position.set(rg.pos.x, rg.pos.y, rg.pos.z);
       cam.lookAt(rg.look.x, rg.look.y, rg.look.z);
       cam.updateMatrixWorld();
-      const gate = !old && (rg.hides(x, y + 1.1, z) || rg.hides(x, y + 1.9, z));
+      const gate = !old && (!!flat || rg.hides(x, y + 1.1, z) || rg.hides(x, y + 1.9, z));
       d.renderer.getDrawingBufferSize(size);
-      cutout(u, { x, y, z }, gate ? 1 : 0, 1.9, 0, cam, dep);
+      cutout(u, { x, y, z }, gate ? 1 : 0, flat ? FLAT_CUT_R : 1.9, 0, cam, dep);
       const inside = interiorAt(x, z) === 0;
       const through = (py: number, fade: boolean) => {
         hitV.set(x, y + py, z);
@@ -852,8 +898,9 @@ export function createView(d: ViewDeps) {
       const ba = (out.byArea[area[0]] ??= [0, 0]); ba[0]++; ba[1] += ok ? 1 : 0;
       if (!ok && out.misses.length < 20) out.misses.push({ area: area[0], x: +x.toFixed(1), z: +z.toFixed(1), yaw: +yaw.toFixed(2), pitch: +pitch.toFixed(2), dist: +dist.toFixed(1), cam: [+rg.pos.x.toFixed(1), +rg.pos.y.toFixed(1), +rg.pos.z.toFixed(1)], gate, head: head.what, at: head.at });
     }
+    Object.assign(LENS, was);
     return { ...out, pct: +((100 * out.visible) / out.n).toFixed(1), pctNoFade: +((100 * out.visibleNoFade) / out.n).toFixed(1), meshes: targets.length, ms: Math.round(performance.now() - t0) };
   }
 
-  return { place, rig, world, stats };
+  return { place, eye, rig, world, stats };
 }

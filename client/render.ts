@@ -8,17 +8,12 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { loadEnvironments } from './assets';
 import { captureCamera, captureFocus } from './capture';
+import { OVERLAY } from './layers';
+import { BASE_FOV, fovFor, flatLens, LENS } from './lens';
+export { fovFor, FLAT_FOV, FLAT_H_FOV } from './lens';
 import { gradedOutputPass } from './post';
 import { STORYBOOK, glowSprite, paintedClouds, paintedMoon } from './textures';
 
-/** The camera's vertical field of view; a portrait screen widens it for at least PORTRAIT_H_FOV across (up to PORTRAIT_V_MAX). */
-const BASE_FOV = 55, PORTRAIT_H_FOV = 60, PORTRAIT_V_MAX = 88;
-/** The vertical field of view for a screen of this width ÷ height (pure, for tests). */
-export function fovFor(aspect: number): number {
-  if (aspect >= 1) return BASE_FOV;
-  const need = (2 * Math.atan(Math.tan((PORTRAIT_H_FOV * Math.PI) / 360) / aspect) * 180) / Math.PI;
-  return Math.min(PORTRAIT_V_MAX, Math.max(BASE_FOV, need));
-}
 
 export interface Looks { skyTint: string; sunIntensity: number; fogDensity: number; glow: number }
 
@@ -203,10 +198,15 @@ function cloudLayer() {
  */
 export function createRenderer(canvas: HTMLCanvasElement) {
   if (STORYBOOK) installStorybookShading();
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  // no multisampling on the canvas: the scene is multisampled in the composer's target, and the canvas only takes the
+  // output pass and the overlay (a second MSAA buffer there was memory and bandwidth for nothing)
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  /** The canvas: the screen's pixels (up to 2x). The scene renders at `scale` (setScale) and is upscaled into it. */
+  const outRatio = Math.min(2, devicePixelRatio);
+  let scale = outRatio;
+  renderer.setPixelRatio(outRatio);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // (three r18x dropped PCFSoft: it fell back to this with a warning)
   renderer.toneMapping = STORYBOOK ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -326,12 +326,20 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.45, 1.1);
   composer.addPass(bloom);
   const grade = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, tint: { value: new THREE.Color(1, 1, 1) }, saturation: { value: 1.08 }, vignette: { value: 0.32 }, uStory: { value: STORYBOOK ? 1 : 0 } },
+    uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1, 1) }, uSharp: { value: 0 }, tint: { value: new THREE.Color(1, 1, 1) }, saturation: { value: 1.08 }, vignette: { value: 0.32 }, uStory: { value: STORYBOOK ? 1 : 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform sampler2D tDiffuse; uniform vec3 tint; uniform float saturation; uniform float vignette; uniform float uStory; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform float uSharp; uniform vec3 tint; uniform float saturation; uniform float vignette; uniform float uStory; varying vec2 vUv;
       float h21( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
       void main(){
         vec4 c = texture2D(tDiffuse, vUv);
+        // upscaling from a lower render scale: sharpen, held to the neighbourhood's own range so it cannot ring
+        // (the idea of FSR 1's RCAS; four taps of the source)
+        if (uSharp > 0.0) {
+          vec3 n = texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb, s = texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb;
+          vec3 e = texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb, w = texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb;
+          vec3 lo = min(c.rgb, min(min(n, s), min(e, w))), hi = max(c.rgb, max(max(n, s), max(e, w)));
+          c.rgb = clamp(c.rgb + (c.rgb - 0.25 * (n + s + e + w)) * uSharp, lo, hi);
+        }
         float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
         c.rgb = mix(vec3(l), c.rgb, saturation) * tint;
         if (uStory > 0.5) {
@@ -366,15 +374,23 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const c1 = new THREE.Color(), c2 = new THREE.Color();
   const WHITE = new THREE.Color(1, 1, 1);
   let dayFactor = 1;
+  /** The 2.5D lens is on (setLens). */
+  let flat = false;
 
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
     composer.setSize(innerWidth, innerHeight);
+    grade.uniforms.uTexel.value.set(1 / Math.max(1, Math.floor(innerWidth * scale)), 1 / Math.max(1, Math.floor(innerHeight * scale)));
+    // the lower the scene's scale against the screen's, the more it is sharpened (none at 1:1)
+    grade.uniforms.uSharp.value = Math.min(0.8, Math.max(0, outRatio / scale - 1) * 0.8);
     bloom.resolution.set(innerWidth / 2, innerHeight / 2);
     camera.aspect = innerWidth / innerHeight;
     // a portrait phone: the vertical field of view widens so the horizontal one stays near PORTRAIT_H_FOV (at 55° a
     // 390×844 screen saw 27° across — "I can't see anyone"), up to PORTRAIT_V_MAX
-    camera.fov = fovFor(camera.aspect);
+    // (2.5D: the wider lens from nearer that frames you as the long one did, lens.ts)
+    const lens = flatLens(camera.aspect);
+    LENS.k = flat ? lens.k : 1; LENS.pitch = lens.pitch;
+    camera.fov = flat ? lens.fov : fovFor(camera.aspect);
     camera.updateProjectionMatrix();
   }
 
@@ -391,15 +407,17 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     moon.position.copy(focus).addScaledVector(moonDir, 200);
     moon.target.position.copy(focus);
     // by day the "moon" light is the cool fill from the side away from the sun
-    moon.intensity = (0.3 * dayFactor + 1.2 * night * night) * look.sunIntensity * (clear ? 1 : 0.7);
+    moon.intensity = (0.3 * dayFactor + 1.7 * night * night) * look.sunIntensity * (clear ? 1 : 0.7);
     moon.color.set(0x9db8ff).lerp(c1.set(0x8aa6ff), night);
     // sky light takes the painted sky's own colour: blue by day, rose-lavender at dusk, deep blue at night
-    hemi.intensity = (0.5 + 0.2 * dayFactor + 0.3 * dusk) * (0.35 + 0.65 * dayFactor) * (clear ? 1 : 1.2);
+    // (the night floor 0.35 → 0.6, the moon 1.2 → 1.7, the image light 0.25 → 0.4: the 2026-10-01 phone playtest could not
+    // tell the lake shore from the path at night — docs/PERF.md has the luminance before and after)
+    hemi.intensity = (0.5 + 0.2 * dayFactor + 0.3 * dusk) * (0.6 + 0.4 * dayFactor) * (clear ? 1 : 1.2);
     hemi.color.copy(su.uMid.value).lerp(su.uZenith.value, 0.3);
     hemi.color.multiplyScalar(1 / Math.max(1e-4, hemi.color.r, hemi.color.g, hemi.color.b)).lerp(WHITE, 0.35);
     hemi.groundColor.set(0x1a1826).lerp(c1.set(0x6b5a3a), dayFactor).lerp(c2.set(0x8a5a44), dusk * 0.5);
     scene.environment = night > 0.6 ? env.night : dusk > 0.45 ? env.dusk : env.day;
-    scene.environmentIntensity = 0.25 + 0.15 * dayFactor;
+    scene.environmentIntensity = 0.4;
     // rim light on characters: the key light's colour, from its side
     setVec(shared.storyKeyDir, dayFactor > 0.35 ? sunDir : moonDir);
     c1.copy(sun.color).multiplyScalar(0.35 + 0.45 * dusk).lerp(c2.set(0x8fb0ff).multiplyScalar(0.5), night);
@@ -420,7 +438,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     moonSprite.material.opacity = Math.max(0, 1 - dayFactor * 1.4);
     if (painted) painted.position.copy(camera.position);
 
-    renderer.toneMappingExposure = 1.1 - 0.2 * dayFactor;
+    renderer.toneMappingExposure = 1.35 - 0.45 * dayFactor; // (night 1.1 → 1.35, day 0.9 as before)
     // clouds: white with lilac shade by day; peach tops and violet bellies at dusk; moonlit blue at night
     clouds.position.x = (performance.now() / 1000) * 3 % 2400;
     const cu = storyClouds!.mat.uniforms;
@@ -515,18 +533,36 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         if (b) { l.position.set(b.x, b.y ?? 1.5, b.z); l.color.setHex(b.color); }
       });
     },
-    /** Low quality: 1x pixels, smaller shadow map, no bloom pass. Used on weak GPUs (auto-detected) or ?q=low. */
+    /** The scene's render scale (pixels per CSS pixel; the canvas keeps the screen's, up to 2x): dynres.ts drives it. */
+    setScale(r: number) {
+      scale = Math.min(outRatio, r);
+      composer.setPixelRatio(scale); // the HDR target is what is really rendered
+      resize();
+    },
+    get scale() { return scale; },
+    /** 2.5D's lens (lens.ts flatLens), or the follow camera's. */
+    setLens(on: boolean) { if (flat !== on) { flat = on; resize(); } },
+    outRatio,
+    /** Low quality: smaller shadow map, no bloom pass (the render scale is dynres.ts's). Weak GPUs (auto-detected) or ?q=low. */
     setQuality(q: 'low' | 'high') {
       const low = q === 'low';
-      const ratio = low ? 0.75 : Math.min(2, devicePixelRatio);
-      renderer.setPixelRatio(ratio);
-      composer.setPixelRatio(ratio); // the HDR target is what is really rendered; scale it too
       sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
       sun.shadow.map?.dispose();
       sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
       bloom.enabled = !low;
       resize();
     },
-    render() { if (!captureCamera(camera)) composer.render(); },
+    render() {
+      if (captureCamera(camera)) return;
+      composer.render();
+      // the overlay (layers.ts): sharp text at the canvas's own resolution, over the finished frame
+      const bg = scene.background, clear = renderer.autoClear;
+      scene.background = null; renderer.autoClear = false;
+      camera.layers.set(OVERLAY);
+      renderer.setRenderTarget(null);
+      renderer.render(scene, camera);
+      camera.layers.set(0);
+      scene.background = bg; renderer.autoClear = clear;
+    },
   };
 }

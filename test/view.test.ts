@@ -3,9 +3,10 @@
  * world (src/shared/layout.ts viewSolids), leaves the open-space camera exactly as it was, climbs or goes over
  * the shoulder when pressed against a wall, and knows when you are indoors.
  */
+import { sceneAt } from '../src/shared/scenes';
 import { describe, expect, it } from 'vitest';
 import { heightAt } from '../client/terrain.js';
-import { CameraRig, HARD_ONLY, INDOOR_DIST, INDOOR_PITCH, LOOK_Y, MARGIN, PIVOT_Y, ViewWorld, WITH_SOFT, type RigInput } from '../client/view.js';
+import { CameraRig, HARD_ONLY, SKIP_THIN, INDOOR_DIST, INDOOR_PITCH, LOOK_Y, MARGIN, PIVOT_Y, ViewWorld, WITH_SOFT, type RigInput } from '../client/view.js';
 import { HALL_CANDLES, INTERIORS, STATIC_COLLIDERS, colliderOf, interiorAt, signedDistance, viewSolids } from '../src/shared/layout.js';
 import { OBSTACLES, mulberry32 } from '../src/shared/map.js';
 
@@ -238,8 +239,9 @@ describe('the spring arm', () => {
     let n = 0, forest = 0, worst = 0;
     while (n < 1500) {
       const inForest = n % 3 === 0;
-      const x = inForest ? 165 + (rnd() - 0.5) * 150 : (rnd() - 0.5) * 300, z = inForest ? 15 + (rnd() - 0.5) * 150 : -30 + (rnd() - 0.5) * 360;
-      if (STATIC_COLLIDERS.some((c) => c.h > 0 && signedDistance(c, x, z) < 0.45)) continue;
+      const x = inForest ? 118 + (rnd() - 0.5) * 76 : (rnd() - 0.5) * 300, z = inForest ? 20 + (rnd() - 0.5) * 64 : -30 + (rnd() - 0.5) * 360;
+      // (where a wizard can stand: inside a scene — src/shared/scenes.ts — and clear of everything)
+      if (!sceneAt(x, z) || STATIC_COLLIDERS.some((c) => c.h > 0 && signedDistance(c, x, z) < 0.45)) continue;
       n++;
       if (inForest) forest++;
       const rig = new CameraRig(world);
@@ -247,9 +249,10 @@ describe('the spring arm', () => {
       settle(rig, i, 0.5, heightAt, n % 2 === 0); // every other one a phone (overhead)
       expect(insideHard(world, rig.pos.x, rig.pos.y, rig.pos.z, rig.room), `${JSON.stringify(i)} -> ${JSON.stringify(rig.pos)}`).toEqual([]);
       worst = Math.max(worst, headAngle(rig, x, i.y, z));
-      // and it does not look through a hard wall at the player's head
+      // and it does not look through a hard wall at the player's head (a post or a hoop pole may stand between: those
+      // fade, by design — view.ts "it passes behind posts and poles and lets them fade")
       const hx = x, hy = i.y + PIVOT_Y, hz = z;
-      expect(world.cast(rig.pos.x, rig.pos.y, rig.pos.z, hx, hy, hz, 0, HARD_ONLY, rig.room), JSON.stringify(i)).toBe(1);
+      expect(world.cast(rig.pos.x, rig.pos.y, rig.pos.z, hx, hy, hz, 0, SKIP_THIN, rig.room), JSON.stringify(i)).toBe(1);
     }
     expect(forest).toBeGreaterThan(400);
     expect(worst).toBeLessThan(14.5); // you are always in the picture

@@ -25,14 +25,16 @@ export function chatRows(lines: readonly ChatEv[], tab: ChatTab, zh: boolean) {
   });
 }
 
-export const chatFeature: ClientFeatureFactory = (): ClientFeature => {
+export const chatFeature: ClientFeatureFactory = (_d, ctx): ClientFeature => {
   const lines: ChatEv[] = [];
   const unread: Record<ChatTab, number> = { all: 0, house: 0, near: 0, dm: 0, da: 0 };
   let tab: ChatTab = 'all', open = false, dirty = true;
+  // kept across a hot update (client/context.ts): the conversation, what is unread, the tab and whether it is open
+  ctx.keep('log', () => ({ lines, unread, tab, open }), (s) => { lines.push(...s.lines); Object.assign(unread, s.unread); tab = s.tab; open = s.open; });
   const el = document.createElement('div');
   el.id = 'chatlog';
   el.innerHTML = `<div class="cl-tabs" role="tablist">${TABS.map(([k, zh, en]) => `<button data-tab="${k}" role="tab">${L(zh, en)}<i></i></button>`).join('')}<button class="cl-fold" title="${L('收起 / 展开', 'Fold / unfold')}">▾</button></div><div class="cl-body" aria-live="polite"></div>`;
-  document.body.append(el);
+  document.body.append(ctx.own(el));
   const body = el.querySelector('.cl-body') as HTMLElement;
   const box = () => document.getElementById('chat') as HTMLInputElement | null;
   const start = (prefill: string) => { const b = box(); if (!b) return; b.hidden = false; b.value = prefill; b.focus(); b.setSelectionRange(prefill.length, prefill.length); };

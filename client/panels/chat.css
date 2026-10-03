@@ -21,3 +21,6 @@
 
 /* not on the entry gate: nothing to chat about before you are in */
 body:has(#gate:not([hidden])) #chatlog { display: none; }
+/* the quiet HUD (2026-09-30): folded and not pointed at, the log shows only its first tab (with the unread count) and
+   the fold button */
+#chatlog:not(.open):not(:hover) .cl-tabs button[data-tab]:not(:first-child) { display: none; }

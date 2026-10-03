@@ -135,6 +135,56 @@ describe('附身: possession', () => {
     expect(w.events.some((e) => e.to === a.id && e.text.includes('wears off'))).toBe(true);
   });
 
+  it('your own hit on someone does not make your reflexes hunt them; their hit on you does', () => {
+    const w = mk();
+    const a = join(w, 'Claude Quill', 'Ravenclaw', 100, 100), pal = join(w, 'Cedric Pal', 'Hufflepuff', 104, 100);
+    a.mana = 1e6;
+    setReflexes(w, a.id, [{ when: 'enemy_near', do: 'cast', spell: 'Stupefy', range: 10 }]);
+    w.damage(a.id, pal.id, 1, 'arcane'); // (your splash catches a friend)
+    const hp = pal.hp;
+    run(w, 4);
+    expect(pal.hp).toBe(hp);
+    w.damage(pal.id, a.id, 1, 'arcane'); // they strike you: now it is a fight
+    run(w, 4);
+    expect(pal.hp).toBeLessThan(hp);
+  });
+
+  it('when it wears off, the next MCP result says so before anything acts as you (the 2026-10-01 NPC playtest)', async () => {
+    const w = mk();
+    const a = join(w, 'Claude Quill', 'Ravenclaw', 100, 100), n = join(w, 'Hannah Npc', 'Hufflepuff', 140, 100, 5, true);
+    const server = createMcpServer(w, { wizardId: a.id, baseUrl: 'http://x' });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await server.connect(st);
+    const c = new Client({ name: 'test', version: '0' });
+    await c.connect(ct);
+    const raw = async (name: string, args: Record<string, unknown> = {}) => ((await c.callTool({ name, arguments: args })) as { content: { text: string }[] }).content.map((x) => x.text);
+    await raw('possess', { op: 'take', target: n.handle });
+    expect((await raw('whoami')).join()).toContain('Hannah Npc');
+    w.possess.npcs.get(n.id)!.until = w.now; // (it runs out)
+    run(w, 0.1);
+    const next = await raw('whoami');
+    expect(next[0]).toMatch(/附身 Hannah Npc 已经结束/);
+    expect(next.join()).toContain('Claude Quill');
+    expect((await raw('whoami'))[0]).not.toMatch(/附身/); // once
+  });
+
+  it('while you play a vessel your own body fights on its own no more: its reflexes wait until you are back', () => {
+    const w = mk();
+    const a = join(w, 'Claude Quill', 'Ravenclaw', 100, 100), n = join(w, 'Hannah Npc', 'Hufflepuff', 140, 100, 5, true);
+    const foe = join(w, 'Draco Foe', 'Slytherin', 104, 100);
+    a.mana = 1e6;
+    setReflexes(w, a.id, [{ when: 'enemy_near', do: 'cast', spell: 'Stupefy', range: 10 }]);
+    possessNpc(w, a.id, n.handle);
+    const hp = foe.hp;
+    w.damage(foe.id, a.id, 1, 'arcane'); // (a fight: enemy_near now counts them)
+    run(w, 4);
+    expect(foe.hp).toBe(hp);
+    release(w, a.id);
+    w.damage(foe.id, a.id, 1, 'arcane');
+    run(w, 4);
+    expect(foe.hp).toBeLessThan(hp);
+  });
+
   it('a creature: walks where told (never far from its lair), attacks only whom it may, roars; if it falls it is over', () => {
     const w = mk();
     const a = join(w, 'Claude Quill', 'Ravenclaw', 100, 100), foe = join(w, 'Draco Foe', 'Slytherin', 120, 120);

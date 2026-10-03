@@ -96,7 +96,7 @@ describe('the Dark Arts', () => {
     w.rules.magic.bannedPrimitives = ['morsmordre'];
     expect(() => cast(w, a, '(morsmordre)')).toThrow(/banned/); // refused at the forge, like any banned primitive
     w.rules.magic.bannedPrimitives = [];
-    a.pos = { x: 205, z: 35 }; // the deep forest
+    a.pos = { x: 143, z: 38 }; // the deep forest
     w.cupGain(a, 10, 'creatures');
     const pts = a.cup!.pts;
     expect(cast(w, a, '(morsmordre)').ok).toBe(true);

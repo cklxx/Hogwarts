@@ -429,6 +429,19 @@ function handleClient(ws: WebSocket, wid: string, m: ClientMsg) {
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, handleProtocols: pickProtocol });
 const clients = new Map<WebSocket, string>();
+// 客户端热更新 (client/hot.ts): a new client build in dist/ (npm run build, no restart) is told to every open page;
+// only when it has held still for two looks (a build in progress rewrites dist/ file by file)
+{
+  let told = buildId(DIST), seen = told;
+  setInterval(() => {
+    const b = buildId(DIST);
+    if (b !== seen) { seen = b; return; }
+    if (b === told || b === 'dev') return;
+    told = b;
+    const msg = JSON.stringify({ t: 'build', build: b });
+    for (const ws of clients.keys()) { try { ws.send(msg); } catch { /* closing */ } }
+  }, 3000).unref();
+}
 http.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname !== '/ws') return socket.destroy();

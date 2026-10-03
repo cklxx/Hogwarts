@@ -284,6 +284,7 @@ describe('creatures of the Forest', () => {
   it('Acromantula bites are venomous; fire burns; ice chills; a decree can switch elements off', () => {
     const w = mk();
     const a = join(w, 'Ron Weasley');
+    a.createdAt = -1e6; // (past a newcomer's peace: NEWCOMER_PEACE_S)
     const s = creature(w, 'spider', 61, 60);
     s.attackCd = 0;
     run(w, 0.1);

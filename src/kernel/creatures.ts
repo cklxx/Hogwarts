@@ -11,17 +11,18 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   pixie: {
     kind: 'pixie', name: 'Cornish Pixie', faction: 'hostile', hp: 24, speed: 5.5, damage: 4, range: 1.6, cooldown: 1.0, aggro: 7, radius: 0.35,
     xp: 12, rep: 1, galleons: 1, weak: { ice: 2 }, spawn: { x: 12, z: 10, r: 18, max: 6 }, // the lawn just south of the courtyard: a first-year's first target is ~20 m away (it was ~60), and not a swarm
+    also: [{ x: 14, z: 139, r: 3.5, max: 5, leash: 3.8 }], // loose from Zonko's, kept in its yard: every spot there is within a spark of a whizbang (src/shared/encounters.ts)
     lore: 'Electric blue, eight inches high, and mischievous. Lockhart released a cage of them once. Freezing charms work.',
   },
   snare: {
     kind: 'snare', name: "Devil's Snare", faction: 'hostile', hp: 60, speed: 0, damage: 5, range: 3.5, cooldown: 1.2, aggro: 3.5, radius: 1.2,
-    xp: 10, rep: 1, galleons: 1, weak: { fire: 2, light: 3 }, spawn: { x: 41, z: -24, r: 12, max: 4 },
+    xp: 10, rep: 1, galleons: 1, weak: { fire: 2, light: 3 }, spawn: { x: 41, z: -26, r: 8, max: 4 },
     ranged: { range: 48, power: 7, cooldown: 2.2, element: 'arcane', kind: 'bolt', provoked: true },
     lore: 'Roots anything that lingers, and flings thorns at whoever burns it from afar. Fire or sunlight.',
   },
   spider: {
     kind: 'spider', name: 'Acromantula', faction: 'hostile', hp: 80, speed: 5, damage: 8, range: 2, cooldown: 1.3, aggro: 16, radius: 0.9,
-    xp: 40, rep: 4, galleons: 4, weak: { fire: 1.8 }, spawn: { x: 185, z: 18, r: 48, max: 10 }, bite: { aura: 'poison', secs: 4, mag: 3 },
+    xp: 40, rep: 4, galleons: 4, weak: { fire: 1.8 }, spawn: { x: 135, z: 30, r: 14, max: 8 }, bite: { aura: 'poison', secs: 4, mag: 3 },
     ranged: { range: 16, power: 0, cooldown: 6, element: 'arcane', kind: 'root', secs: 1.2 },
     lore: "Aragog's descendants. Their bite is venomous. Hagrid would like you to know they are misunderstood.",
   },
@@ -33,17 +34,17 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   dementor: {
     kind: 'dementor', name: 'Dementor', faction: 'hostile', hp: 150, speed: 4, damage: 6, range: 6, cooldown: 1, aggro: 25, radius: 0.8,
-    xp: 90, rep: 10, galleons: 0, weak: {}, allDamage: 0.25, nightOnly: true, flying: true, spawn: { x: -110, z: 40, r: 72, max: 5 },
+    xp: 90, rep: 10, galleons: 0, weak: {}, allDamage: 0.25, nightOnly: true, flying: true, spawn: { x: -100, z: 30, r: 10, max: 5 }, // inside the lake's scene (src/shared/scenes.ts), over the water
     lore: 'They drain the happiness out of the air. Expecto Patronum.',
   },
   inferius: {
     kind: 'inferius', name: 'Inferius', faction: 'hostile', hp: 90, speed: 2.8, damage: 9, range: 1.8, cooldown: 1.4, aggro: 12, radius: 0.6,
-    xp: 55, rep: 6, galleons: 3, weak: { fire: 3, light: 1.5 }, nightOnly: true, spawn: { x: -110, z: 40, r: 64, max: 4 }, bite: { aura: 'chill', secs: 2, mag: 0.4 },
+    xp: 55, rep: 6, galleons: 3, weak: { fire: 3, light: 1.5 }, nightOnly: true, spawn: { x: -88, z: 42, r: 8, max: 4 }, bite: { aura: 'chill', secs: 2, mag: 0.4 },
     lore: 'A corpse bewitched to do a Dark wizard\'s bidding. Their hands are cold as the lake. They fear fire and light.',
   },
   unicorn: {
     kind: 'unicorn', name: 'Unicorn', faction: 'benign', hp: 120, speed: 6, damage: 0, range: 0, cooldown: 99, aggro: 5, radius: 0.9,
-    xp: 0, rep: -50, galleons: 0, weak: {}, spawn: { x: 175, z: 5, r: 55, max: 2 }, grace: { radius: 8, mag: 2 },
+    xp: 0, rep: -50, galleons: 0, weak: {}, spawn: { x: 120, z: -2, r: 9, max: 2 }, grace: { radius: 8, mag: 2 },
     lore: 'Pure and swift. To stand near one is to heal; to harm one is to live a cursed life from that moment.',
   },
   phoenix: {

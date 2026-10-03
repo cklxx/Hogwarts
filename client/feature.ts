@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { FeatureContext } from './context';
 
 /**
  * A feature in the browser (the client half of src/kernel/feature.ts): the Duelling Club's slip and G key, Quidditch's
@@ -21,7 +22,7 @@ export interface ClientDeps {
   myHouse: () => string | null;
   myPos: () => { x: number; z: number } | null;
   camYaw: () => number;
-  /** A wizard's display name / model position / facing / model root, by handle. */
+  /** A wizard's display name / model position / facing / model root, by handle (rootOf: a creature's too, by id). */
   nameOf: (handle: string | undefined) => string;
   posOf: (handle: string) => THREE.Vector3 | null;
   facingOf: (handle: string) => number;
@@ -35,6 +36,12 @@ export interface ClientDeps {
   loadDraft: (name: string, source: string, note: string) => void;
   /** Cast one of your spells on yourself (Finite Incantatem, Revelio, …) as the hotbar would. */
   castOnSelf: (spell: string) => void;
+  /** A word floating up from a place (the damage numbers' kind), the camera's jolt, and a hit-stop (seconds). */
+  floatText: (x: number, z: number, text: string, color: string, lift?: number) => void;
+  shake: (amount: number) => void;
+  hitStop: (secs: number) => void;
+  /** A burst of sparks at a place, in a colour. */
+  sparks: (x: number, z: number, color: number, count: number) => void;
   /** Every client feature (built once; for the ones that look across the others, like the 界面 layout). */
   features: () => readonly ClientFeature[];
 }
@@ -77,6 +84,13 @@ export interface ClientFeature {
   menu?(): string;
   /** Every frame: the feature's things in the 3D world. */
   frame?(dt: number): void;
+  /** Something of this feature's on the ground at (x, z) that a click or tap casts the chosen spell at (its point), or
+   *  null; `hover`: the pointer is only over it (show what it is). */
+  claim?(x: number, z: number, hover: boolean): { x: number; z: number } | null;
+  /** What stands under (x, z) when the terrain there is `h`: a feature's own ground (the lake's ice), else h. */
+  ground?(x: number, z: number, h: number): number;
+  /** Every visual effect the world sends (after main.ts drew its own): a reaction's name, say. */
+  fx?(f: { k: string; x: number; z: number; r?: number; e?: string; h?: string; n?: number }): void;
   /** Metres above the ground this wizard's model rides now (Quidditch brooms). */
   lift?(handle: string): number;
   /** Added to the scene once. */
@@ -85,4 +99,5 @@ export interface ClientFeature {
   widgets?: readonly ClientWidget[];
 }
 
-export type ClientFeatureFactory = (d: ClientDeps) => ClientFeature;
+/** A feature's factory: its lasting side effects go through `ctx` (client/context.ts), so a hot update can undo them. */
+export type ClientFeatureFactory = (d: ClientDeps, ctx: FeatureContext) => ClientFeature;

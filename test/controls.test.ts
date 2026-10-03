@@ -25,7 +25,8 @@ describe('spell kinds (smart casting in the browser)', () => {
     const bar = w.privateState(wizard.id).hotbar;
     expect(bar[0]).toMatchObject({ name: 'Stupefy', kind: 'harm' });
     expect(bar.find((s) => s?.name === 'Episkey')).toMatchObject({ kind: 'help' });
-    expect(bar.find((s) => s?.name === 'Tempus')).toMatchObject({ kind: 'self' });
+    // (Aguamenti, the first-years' water, took a slot: Tempus is cast from its HUD corner; Lumos stays)
+    expect(bar.find((s) => s?.name === 'Lumos')).toMatchObject({ kind: 'self' });
   });
 });
 
@@ -174,5 +175,78 @@ describe('a portrait phone sees wider (render.ts fovFor)', () => {
     const across = (2 * Math.atan(Math.tan((v * Math.PI) / 360) * a) * 180) / Math.PI;
     expect(v).toBeLessThanOrEqual(88);
     expect(across).toBeGreaterThan(45);
+  });
+});
+
+describe('2.5D (controls.ts FLAT_*, view.ts CameraRig fixed, render.ts FLAT_FOV)', () => {
+  it('the first view is 2.5D unless follow was chosen; ?view= wins; the old 俯视 maps to it', async () => {
+    const { firstView } = await import('../client/controls.js');
+    expect(firstView(null, null)).toBe(true);
+    expect(firstView(null, 'follow')).toBe(false);
+    expect(firstView(null, '25d')).toBe(true);
+    expect(firstView('follow', '25d')).toBe(false);
+    expect(firstView('top', 'follow')).toBe(true);
+  });
+  it('turns in 45° steps; zooms within FLAT_ZOOM', async () => {
+    const { snapYaw, YAW_STEP, FLAT_ZOOM } = await import('../client/controls.js');
+    expect(snapYaw(0.3)).toBe(0);
+    expect(snapYaw(0.5)).toBeCloseTo(YAW_STEP);
+    expect(snapYaw(-2.5)).toBeCloseTo(-3 * YAW_STEP);
+    expect(clampDist(3, true)).toBe(FLAT_ZOOM[0]);
+    expect(clampDist(99, true)).toBe(FLAT_ZOOM[1]);
+  });
+  it('the fixed camera hangs straight out along its arm, looks at you, and never snaps in on a wall', async () => {
+    const { CameraRig, ViewWorld, FIXED_LOOK_Y } = await import('../client/view.js');
+    const { viewSolids } = await import('../src/shared/layout.js');
+    const { FLAT_PITCH, FLAT_DIST } = await import('../client/controls.js');
+    const flat = () => 0;
+    const rig = new CameraRig(new ViewWorld(viewSolids(flat)));
+    // right against the Great Hall's south wall (a follow camera there snaps in or climbs)
+    const at = { x: 0, y: 0, z: -41.5 };
+    for (let i = 0; i < 30; i++) rig.update({ ...at, yaw: 0, pitch: FLAT_PITCH, dist: FLAT_DIST, dt: 1 / 60, ground: flat, fixed: true });
+    const d = Math.hypot(rig.pos.x - rig.look.x, rig.pos.y - rig.look.y, rig.pos.z - rig.look.z);
+    expect(d).toBeCloseTo(FLAT_DIST, 5);
+    expect(rig.look).toEqual({ x: 0, y: FIXED_LOOK_Y, z: -41.5 });
+    expect(Math.asin((rig.pos.y - rig.look.y) / d)).toBeCloseTo(FLAT_PITCH, 5);
+  });
+  it('the long lens: 30° on a wide screen, at least 32° across on a portrait phone', async () => {
+    const { fovFor, FLAT_FOV, FLAT_H_FOV } = await import('../client/render.js');
+    expect(fovFor(16 / 9, FLAT_FOV, FLAT_H_FOV)).toBe(30);
+    const a = 390 / 844, v = fovFor(a, FLAT_FOV, FLAT_H_FOV);
+    const across = (2 * Math.atan(Math.tan((v * Math.PI) / 360) * a) * 180) / Math.PI;
+    expect(across).toBeCloseTo(32, 0);
+    expect(v).toBeLessThan(fovFor(a));
+  });
+  it('lens.ts: on a wide screen a wider lens from nearer frames you as the long one did; a phone keeps its own', async () => {
+    const { flatLens, fovFor, FLAT_FOV, FLAT_H_FOV, LENS_V_MAX, LENS_PITCH } = await import('../client/lens.js');
+    const tan = (deg: number) => Math.tan((deg * Math.PI) / 360);
+    for (const a of [16 / 9, 4 / 3, 21 / 9, 390 / 844, 1]) {
+      const l = flatLens(a);
+      // the player's framing: (dist / k) · tan(fov / 2) = dist · tan(long lens / 2)
+      expect(tan(l.fov) / l.k).toBeCloseTo(tan(fovFor(a, FLAT_FOV, FLAT_H_FOV)), 9);
+      expect(l.fov).toBeLessThanOrEqual(Math.max(LENS_V_MAX, fovFor(a, FLAT_FOV, FLAT_H_FOV)) + 1e-9);
+      expect(l.pitch).toBeGreaterThanOrEqual(LENS_PITCH[0]);
+      expect(l.pitch).toBeLessThanOrEqual(LENS_PITCH[1]);
+      // the top of the picture is still ground (below the horizon)
+      expect(l.pitch - (l.fov * Math.PI) / 360).toBeGreaterThan(0.3);
+    }
+    expect(flatLens(16 / 9).k).toBeCloseTo(1.5, 5);
+    expect(flatLens(16 / 9).pitch).toBeCloseTo(0.8, 2);
+    expect(flatLens(390 / 844)).toMatchObject({ k: 1, pitch: LENS_PITCH[1] });
+  });
+  it('the fixed camera goes in to dist / k at the lens pitch', async () => {
+    const { CameraRig, ViewWorld } = await import('../client/view.js');
+    const { LENS } = await import('../client/lens.js');
+    const { viewSolids } = await import('../src/shared/layout.js');
+    const flat = () => 0;
+    const rig = new CameraRig(new ViewWorld(viewSolids(flat)));
+    Object.assign(LENS, { k: 1.5, pitch: 0.8 });
+    try {
+      rig.update({ x: 0, y: 0, z: 20, yaw: 0, pitch: 0.92, dist: 24, dt: 1 / 60, ground: flat, fixed: true });
+      const d = Math.hypot(rig.pos.x - rig.look.x, rig.pos.y - rig.look.y, rig.pos.z - rig.look.z);
+      expect(d).toBeCloseTo(16, 5);
+      expect(rig.arm).toBeCloseTo(16, 5);
+      expect(Math.asin((rig.pos.y - rig.look.y) / d)).toBeCloseTo(0.8, 5);
+    } finally { Object.assign(LENS, { k: 1, pitch: 0.92 }); }
   });
 });

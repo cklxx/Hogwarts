@@ -10,7 +10,7 @@ export const ZH_CREATURE: Record<string, string> = {
 };
 
 export const ZH_SPELL: Record<string, string> = {
-  Stupefy: '昏昏倒地', Incendio: '火焰熊熊', Protego: '盔甲护身', Episkey: '愈合如初', Lumos: '荧光闪烁',
+  Stupefy: '昏昏倒地', Incendio: '火焰熊熊', Aguamenti: '清水如泉', Protego: '盔甲护身', Episkey: '愈合如初', Lumos: '荧光闪烁',
   Tempus: '时间显现', Revelio: '原形立现', Expelliarmus: '除你武器', Glacius: '冰冻三尺', Depulso: '退散消失',
   Ferula: '绷带缠绕', 'Finite Incantatem': '咒立停', Serpensortia: '乌龙出洞', 'Point Me': '给我指路',
   'Expecto Patronum': '呼神护卫', 'Petrificus Totalus': '统统石化', Bombarda: '霹雳爆炸', Rennervate: '快快复苏',

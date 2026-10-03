@@ -23,7 +23,8 @@ import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
 import { PANELS, agentView, isSubmitEnter, pageKey, agoText, createControls, routeChat, solo, tokenFromUrl, type AgentInfo, type AgentView, type HexState } from './controls';
 import { TEMPLATES, agentAsk, agentPrompt, downAdvice, nextGoal, optionLock, optionOpen, tplClamp, tplDefaults, type Down, type Goal, type TplValue } from './play';
-import { PAIR_TTL_S, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
+import { PAIR_TTL_S, SCHOOL_MOTTO, WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
+import { headline } from './panels/logic';
 import { SnapDecoder } from '../src/shared/snapwire';
 import { TIPS } from '../src/lore/memes';
 import { ELEMENT_ICON, feedIcon, houseIcon, ic, isLatin, spellIcon } from './ink';
@@ -31,14 +32,16 @@ import * as probe from './perf';
 import { createMarket } from './market';
 import { createPanels, type FamiliarState, type FocusView } from './panels';
 import { createFun } from './panels/fun';
-import { CLIENT_FEATURES, renderTop } from './features';
+import { CLIENT_FEATURES, renderTop, setFeatureHot } from './features';
+import { createHot } from './hot';
+import { FeatureHost } from './context';
 import type { ClientFeature } from './feature';
 import { createFunWorld } from './funworld';
 import { PRIO, createPhoneShell } from './phone';
 import type { CupSnap, EvSnap, FunMe } from './funlogic';
 
 // ------------------------------------------------------------------ protocol types (mirror of World.snapshot)
-interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string }
+interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; g?: string; /** 梗牌 (kernel/memetags.ts) */ mm?: string }
 interface SC { i: string; k: CreatureKind; x: number; z: number; f: number; hp: number; m: number; o?: string; s: string; b?: 1 }
 interface SP { i: string; k: string; x: number; z: number; e: Element }
 interface Fx { k: string; x: number; z: number; r?: number; e?: Element; h?: string; n?: number; pts?: number[] }
@@ -165,6 +168,7 @@ const canvas = $<HTMLCanvasElement>('#view');
 probe.mark('script');
 const R = createRenderer(canvas);
 probe.attach(R.renderer, R.scene);
+probe.setScaleOf(() => R.scale);
 probe.mark('renderer');
 // Shader errors are checked in development only: the check reads the compile status back from the GPU,
 // which waits for every command queued before it (a stall per program, and it defeats parallel compiling).
@@ -182,7 +186,7 @@ const decor = createDecor(scene, world.bannerSpots);
 {
   const sun = new THREE.Vector3(0.4, 0.6, 0.3).normalize(), at = new THREE.Vector3();
   const b = mergeStatic(scene, worldRoots, (step) => {
-    for (const [t, hour, x, z] of [[0, 3.2, 0, -56], [6.1, 9.7, 0, 0], [13.9, 15.1, 120, 90], [27.3, 21.4, -110, 40]]) {
+    for (const [t, hour, x, z] of [[0, 3.2, 0, -56], [6.1, 9.7, 0, 0], [13.9, 15.1, 120, 90], [27.3, 21.4, -118, 40]]) {
       world.tick(t, 0.05, t > 10, sun, { hour, banner: t > 10 ? 'Gryffindor' : null, focus: at.set(x, 0, z) });
       step();
     }
@@ -231,7 +235,9 @@ const herd = createHerd(scene);
  * beyond, with a few metres of hysteresis), name tags nearer than `label` (and always on your target),
  * creatures drawn nearer than `creature` and animated nearer than `anim`.
  */
-const LOD = { high: { mid: 22, wizard: 42, label: 45, creature: 170, anim: 70 }, low: { mid: 14, wizard: 24, label: 30, creature: 110, anim: 45 } };
+// ('low' is a phone's: its top-down camera stands ~15 m above you, so the full models and the name tags reach further
+// than they did for the old close follow camera — 2026-09-30, the wizard next to you was a blob)
+const LOD = { high: { mid: 22, wizard: 42, label: 45, creature: 170, anim: 70 }, low: { mid: 18, wizard: 32, label: 40, creature: 110, anim: 45 } };
 // the offline promo renderer (?capture=1 without the ?perf=1 probe, which only steers the camera) draws every
 // model in full, as does the lake's mirror and the shadow map every frame
 const fullDetail = new URLSearchParams(location.search).get('capture') === '1' && !probe.PERF;
@@ -242,17 +248,26 @@ let quality: 'low' | 'high' = startQuality;
 const params = new URLSearchParams(location.search);
 const capturing = params.get('capture') === '1';
 /**
- * Dynamic resolution (dynres.ts) within each quality's range: 'high' renders at up to the screen's pixel
- * ratio (at most 2) and may go down to 60 % of 1x; 'low' between 0.5 and 0.75. The promo
- * capture keeps the fixed ratio.
+ * The scene's render scale (pixels per CSS pixel), by dynamic resolution (dynres.ts) within each quality's range. The
+ * canvas, the name tags and the rest of the text stay at the screen's resolution (render.ts, layers.ts), and the
+ * upscaled scene is sharpened, so a low scale softens the world, not the words. 'high': up to the screen's (at most
+ * 2x), down to 0.7x; 'low': 0.6-1x, a phone 0.75-1.5x. The promo capture keeps a fixed scale.
  */
-const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? [0.5, 0.75] : [0.6 * Math.min(1, devicePixelRatio), Math.min(2, devicePixelRatio)]);
+const coarse = matchMedia('(hover: none) and (pointer: coarse)').matches;
+const ratioRange = (q: 'low' | 'high'): [number, number] => (q === 'low' ? (coarse ? [0.75, Math.min(1.5, devicePixelRatio)] : [0.6, 1]) : [0.7, R.outRatio]);
 const dyn = capturing ? null : createDynRes({
   min: ratioRange(quality)[0], max: ratioRange(quality)[1],
-  apply: (r) => { R.renderer.setPixelRatio(r); R.composer.setPixelRatio(r); R.resize(); },
+  apply: (r) => R.setScale(r),
+  // still slow at the lowest scale: then (and only then, never on the loading's first hitches) the lighter pipeline
+  onFloor: () => {
+    if (quality !== 'high' || forcedQ) return;
+    applyQuality('low');
+    toast(L('画质已自动调低，画面更流畅（地址后加 ?q=high 可强制高画质）。', 'Graphics quality lowered for smoother play (add ?q=high to force).'));
+  },
 });
 const applyQuality = (q: 'low' | 'high') => {
-  quality = q; R.setQuality(q); world.setQuality(q); lighterLake(); dyn?.range(...ratioRange(q));
+  quality = q; R.setQuality(q); world.setQuality(q); lighterLake();
+  if (dyn) dyn.range(...ratioRange(q)); else R.setScale(q === 'low' ? 0.75 : R.outRatio);
   // multisampling: 4x at 'high', 2x at 'low' (half the resolve bandwidth; weak GPUs are fill-bound)
   const samples = q === 'low' ? 2 : 4;
   for (const rt of [R.composer.renderTarget1, R.composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
@@ -279,7 +294,23 @@ function lighterLake() {
 }
 applyQuality(quality);
 probe.mark('quality');
-const perf = { frames: 0, time: 0, done: !!forcedQ || startQuality === 'low' };
+/**
+ * A phone draws at most ~60 frames a second (a 120 Hz screen asks for twice that: twice the GPU work and the heat,
+ * for motion the thumb cannot tell apart — the frame cap mobile games ship with).
+ */
+const FRAME_MIN_MS = handheld && !capturing ? 12 : 0;
+/**
+ * Frames on the player's own GPU (this box only has a software renderer): the last 15 s of frame intervals go to the
+ * server's playtest metrics (kernel/metrics.ts `fps`, scripts/playtest/report.ts) as p50 / p95, with the render scale,
+ * the quality and the GPU's name — the numbers "卡" is argued from.
+ */
+const frameMs: number[] = [];
+const gpuName = (() => { try { const gl = R.renderer.getContext(); return String(gl.getParameter(gl.RENDERER) ?? ''); } catch { return ''; } })();
+setInterval(() => {
+  if (!snap || frameMs.length < 30 || document.hidden) { frameMs.length = 0; return; }
+  const s = frameMs.splice(0).sort((a, b) => a - b), at = (p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+  send({ t: 'metrics', fps: { p50: at(0.5), p95: at(0.95), scale: R.scale, q: quality, dpr: devicePixelRatio, gpu: gpuName } });
+}, 15000);
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
 const weatherPts = new THREE.Points(
   new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 3000 * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 40 : (Math.random() - 0.5) * 120)), 3)),
@@ -343,7 +374,7 @@ function connect() {
     }
     probe.end('parse', tp);
     probe.wsMessage(typeof m.data === 'string' ? m.data.length : (m.data as ArrayBuffer).byteLength, msg.t === 'snap');
-    for (const f of observers) f.observe!(msg); // features that follow what others asked for (the trunk reads every armory)
+    for (const f of feats) f.observe?.(msg); // features that follow what others asked for (the trunk reads every armory)
     if (pn.onMessage(msg)) return; // the panels' own replies (client/panels)
     if (watch.onMessage(msg)) return; // 看 Agent 玩 (client/watch.ts)
     if (msg.t === 'welcome') {
@@ -358,6 +389,7 @@ function connect() {
       onBuild(msg.build);
       if (msg.pair?.code) onPairCode(msg.pair);
     }
+    else if (msg.t === 'build') onBuild(msg.build); // the server saw a new client build in dist/ (no restart)
     else if (msg.t === 'snap') { if (!snap) { setTimeout(() => veil(false), 600); probe.mark('firstSnap'); } const ta = probe.begin(); apply(msg.s); probe.end('apply', ta); }
     else if (msg.t === 'me') { me = msg.s; myHandle = (msg.s as { actAs?: { handle: string } }).actAs?.handle ?? ownHandle; }
     else if (msg.t === 'evs') for (const e of msg.es) { fun.onEvent(e); for (const f of feats) f.onEvent?.(e, true); feed(e, true); }
@@ -365,7 +397,9 @@ function connect() {
     else if (msg.t === 'cast') {
       if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
       ctl.onCast(msg.r);
-      if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
+      // (too fast / still recharging / short of mana: the press buffer waits those out, controls.ts castGate — a refusal
+      // that slips past it still says nothing: a red line per mashed key was most of what a fight showed)
+      if (!msg.r.ok && !/retry_after=|not enough mana|^There is no "/.test(msg.r.error ?? '')) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
       else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
     }
     else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); market.onBook(); }
@@ -418,10 +452,11 @@ type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number
 type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number; /** hp / max at the last snapshot */ hpr?: number };
 /** A creature that vanishes at or under this share of its hp was brought down, not out of sight. */
 const KILL_HPR = 0.35;
-/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame). */
+/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame);
+ *  a feature may stand it on its own ground (ClientFeature.ground). */
 const groundOf = (e: Grounded) => {
   const p = e.root.position;
-  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; e.gy = heightAt(p.x, p.z); }
+  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; let h = heightAt(p.x, p.z); for (const f of feats) if (f.ground) h = f.ground(p.x, p.z, h); e.gy = h; }
   return e.gy!;
 };
 const parked = new Map<string, { m: WizardEntry; at: number }>();
@@ -439,6 +474,12 @@ const closeToMe = (x: number, z: number, r: number) => { const p = wizards.get(m
 const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 let shakeAmp = 0;
 const shake = (a: number) => { if (!reduceMotion) shakeAmp = Math.max(shakeAmp, a); };
+/**
+ * 命中停顿 (hit-stop; "Juice it or lose it", "The Art of Screenshake"): for a few frames after a hit near you the world's
+ * motion — interpolation, animation, particles — nearly stops, the camera does not; 40–90 ms sells the weight of a hit.
+ */
+let stopT = 0;
+const hitStop = (s: number) => { if (!reduceMotion) stopT = Math.max(stopT, s); };
 
 function apply(s: Snap) {
   snap = s;
@@ -463,7 +504,7 @@ function apply(s: Snap) {
     m.seen = g;
     m.tx = w.x; m.tz = w.z; m.tf = w.f;
     const extra = badges(w.h) + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
-    m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra);
+    m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra, w.mm);
     setAuraRing(m.aura, w.s, clock);
     m.shield.visible = w.s.includes('S');
     m.glow.intensity = w.s.includes('L') ? 30 : 0;
@@ -555,7 +596,13 @@ function spawnFx(f: Fx) {
   const gy = heightAt(f.x, f.z);
   const P = particles;
   switch (f.k) {
-    case 'hit': P.sparks(f.x, gy + 1.2, f.z, col, 16 + Math.min(40, (f.n ?? 4) * 2)); if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0')); if (f.h === myHandle) shake(Math.min(0.35, 0.05 + (f.n ?? 4) * 0.015)); break;
+    case 'hit':
+      P.sparks(f.x, gy + 1.2, f.z, col, 16 + Math.min(40, (f.n ?? 4) * 2));
+      if (f.n) floatText(f.x, f.z, String(f.n), f.h === myHandle ? '#ff6b6b' : '#' + col.toString(16).padStart(6, '0'));
+      // the weight of a hit: on you a shake by its size; near you a small one; a hit-stop either way
+      if (f.h === myHandle) { shake(Math.min(0.35, 0.05 + (f.n ?? 4) * 0.015)); hitStop(0.07); }
+      else if (closeToMe(f.x, f.z, 14)) { shake(Math.min(0.12, 0.02 + (f.n ?? 4) * 0.006)); hitStop(0.045); }
+      break;
     // 决斗手感 (World.dodge / tryReflect / clashSpells)
     case 'dodge': P.puff(f.x, gy + 0.3, f.z, { count: 10, color: 0x8a7a64, speed: 2.2, size: 0.6, life: 0.6, drag: 3, grow: 2, radius: 0.4 }); break;
     case 'reflect':
@@ -603,6 +650,8 @@ function spawnFx(f: Fx) {
     case 'reveal': ring(f.x, f.z, 0xffe9a0, 0.3, 3, 0.8, 1.2); P.motes(f.x, gy, f.z, 0xffe9a0, 30); break;
     case 'seal': column(f.x, f.z, 0xd4af37, 2); ring(f.x, f.z, 0xd4af37, 0.5, 5, 1.5); P.fountain(f.x, gy, f.z, 0xd4af37, 120); break;
   }
+  // the features' own (a reaction's name: client/chem3d.ts)
+  for (const ft of feats) ft.fx?.(f);
   // the caster's wand arm rises and strikes; the tip flashes at the strike (see frame)
   if (f.k === 'cast' && f.h) {
     const w = wizards.get(f.h);
@@ -643,11 +692,14 @@ function banner(text: string, type = 'system') {
   if (shell) { shell.say(text, PRIO.news); return; }
   // one big thing in the centre at a time: while the House Cup ceremony or a card reveal holds it, news goes to the feed
   if (fun.claimsCentre()) { feedLine(text, type); return; }
+  // (the quiet HUD: the centre gets a one-line headline for a few seconds; the whole text goes to the feed)
   const b = $('#banner');
-  b.textContent = text;
+  const h = headline(text);
+  b.textContent = h;
   b.classList.remove('out');
   b.hidden = false;
-  bannerT = 7;
+  bannerT = 3.5;
+  if (h !== text) feedLine(text, type);
 }
 /** A line for you alone (an error, a note from a cast): one at a time, above the hotbar, then gone. */
 let toastTimer = 0;
@@ -661,17 +713,29 @@ function onBuild(b: unknown) {
   if (typeof b !== 'string' || !b || b === 'dev') return;
   if (!firstBuild) { firstBuild = b; return; }
   if (b === firstBuild || document.getElementById('update-note')) return;
+  // 客户端热更新 (client/hot.ts): only features changed → swap them in the running page; else the note below
+  void hot.update().then((r) => {
+    console.info('hot update:', JSON.stringify(r));
+    if (r.kind === 'page') { reloadNote(); return; }
+    firstBuild = b;
+    if (r.kind === 'hot') { renderTop(feats); toast(L(`界面已热更新：${r.keys.length} 个插件`, `Hot update: ${r.keys.length} feature(s)`)); }
+  });
+}
+function reloadNote() {
+  if (document.getElementById('update-note')) return;
   const n = document.createElement('div');
   n.id = 'update-note';
   n.setAttribute('role', 'status');
   n.innerHTML = `<span>${L('游戏已更新（空闲 1 分钟后自动刷新）', 'The game was updated (reloads after a minute idle)')}</span> <button type="button">${L('刷新', 'Reload')}</button>`;
-  n.querySelector('button')!.onclick = () => location.reload();
+  // the features' kept state rides over the reload (FeatureHost.persist: sessionStorage, read once by the next page)
+  const reload = () => { host.persist(); location.reload(); };
+  n.querySelector('button')!.onclick = reload;
   document.body.appendChild(n);
   // reload by itself only when it costs nothing: the tab is in the background, or a minute without input with no
   // panel open (a spell half-written in the book, an owl being typed) — never in the middle of a fight
   setInterval(() => {
     const open = PANELS.some((id) => !document.getElementById(id)?.hidden) || !chatBox.hidden;
-    if (document.hidden || (!open && performance.now() - lastActivity > 60_000)) location.reload();
+    if (document.hidden || (!open && performance.now() - lastActivity > 60_000)) reload();
   }, 5000);
 }
 function toast(text: string) {
@@ -715,7 +779,8 @@ function hud() {
   const h = snap.hour;
   const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
   const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather);
-  const procl = me.proclamation ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
+  // (the motto is the default proclamation: only a Minister's own words take the corner — the quiet HUD)
+  const procl = me.proclamation && me.proclamation !== SCHOOL_MOTTO ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
   setHtml($('#clock'), has('tempus')
     ? `<div class="time veiled">${ic(snap.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</span></div>${procl}`
     : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
@@ -744,6 +809,7 @@ function hud() {
     // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
     el.classList.toggle('sel', i === ctl.selected);
     el.classList.toggle('empty', !s);
+    el.classList.toggle('poor', !!s && s.mana != null && me!.mana + 0.5 < s.mana); // (not enough mana for it now)
     const kind = s?.kind ?? '';
     if (el.dataset.kind !== kind) el.dataset.kind = kind;
     setText(el.children[0], s ? spellName(s.name) : '·');
@@ -778,7 +844,7 @@ function hud() {
   fun.hud();
   renderTop(feats); // the Dark Lord's ribbon, the lawless zone, the veto card, the joint Patronus (client/features.ts)
   for (const f of feats) f.hud?.();
-  trackBars();
+  watchBars();
 }
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
 function meCard(me: Me, revealed: boolean) {
@@ -797,6 +863,8 @@ const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
   setStyle(b.children[0] as HTMLElement, 'width', `${Math.max(0, Math.min(100, (v / Math.max(1, max)) * 100)).toFixed(2)}%`);
   setText(b.children[1], text);
+  // (the numbers only when it is not full: a full bar says so by itself — the quiet HUD)
+  b.classList.toggle('full', v >= max);
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -1239,9 +1307,25 @@ function renderAgentBox() {
   }
   if (html !== lastAgentHtml) { (el.querySelector('.ab-card') as HTMLElement).innerHTML = html; lastAgentHtml = html; }
 }
-/** The bottom stack's height, so toasts, the chat line and the coach mark sit just above it (read by hud() at 10 Hz). */
+/**
+ * The bottom stack's height, so toasts, the chat line and the coach mark sit just above it, and the top stack's
+ * edges. Measured when something in them changes size (a ResizeObserver: its callback runs after layout, so reading
+ * the rects costs nothing), not by reading them at the end of every HUD tick (that forced a layout ten times a second,
+ * right after the HUD's writes). Writing the edges moves the pieces below: measured once more on the next frame.
+ */
 let barsH = -1, tlBottom = -1;
+const BAR_IDS = ['bars', 'topleft', 'cupstrip', 'target', 'pn-top', 'tutorial'];
+const barsSeen = new WeakSet<HTMLElement>();
+let barsAgain = false;
+const barsRO = typeof ResizeObserver === 'function' ? new ResizeObserver(() => trackBars()) : null;
+function watchBars() {
+  if (!barsRO) { trackBars(); return; }
+  for (const id of BAR_IDS) { const e = document.getElementById(id); if (e && !barsSeen.has(e)) { barsSeen.add(e); barsRO.observe(e); } }
+}
+new MutationObserver(() => trackBars()).observe($('#tutorial'), { attributes: true, attributeFilter: ['hidden', 'data-at', 'data-over'] });
+addEventListener('resize', () => trackBars());
 function trackBars() {
+  const before = `${barsH},${tlBottom},${stackSig},${tutH},${tutB},${tutOver}`;
   const h = Math.round(innerHeight - $('#bars').getBoundingClientRect().top);
   if (h !== barsH && h > 0) { barsH = h; document.documentElement.style.setProperty('--bars-h', `${h}px`); }
   const tl = Math.round($('#topleft').getBoundingClientRect().bottom);
@@ -1261,6 +1345,8 @@ function trackBars() {
   if (bh !== tutB) { tutB = bh; document.documentElement.style.setProperty('--tut-b', `${bh}px`); }
   const oh = !tut.hidden && tut.dataset.over ? Math.round(tut.getBoundingClientRect().bottom) : 0;
   if (oh !== tutOver) { tutOver = oh; document.documentElement.style.setProperty('--tut-over', `${oh}px`); }
+  // something moved: the pieces placed from it moved too — measure again after the next layout
+  if (!barsAgain && `${barsH},${tlBottom},${stackSig},${tutH},${tutB},${tutOver}` !== before) { barsAgain = true; requestAnimationFrame(() => requestAnimationFrame(() => { barsAgain = false; trackBars(); })); }
 }
 let tutH = -1, tutOver = -1, tutB = -1, stackSig = '';
 $('#agentbox').addEventListener('click', (e) => {
@@ -1630,7 +1716,8 @@ function toggleMenu() {
 probe.mark("preControls");
 const ctl = createControls({
   canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,
-  snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast,
+  snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast, lens: (f: boolean) => R.setLens(f),
+  flashMana: () => { const m = document.querySelector('#bars .mana'); if (!m) return; m.classList.remove('flash'); void (m as HTMLElement).offsetWidth; m.classList.add('flash'); },
   cam: {
     get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; },
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
@@ -1640,6 +1727,7 @@ const ctl = createControls({
   agent: agentNow,
   pair: pairNow,
   // the features' (a page of a seal at its landmark, a fireplace, …: client/features.ts), then 隐藏宝箱: F at a closed chest opens it
+  claim: (x, z, hover) => { for (const f of feats) { const c = f.claim?.(x, z, hover); if (c) return c; } return null; },
   extraAction: () => {
     for (const f of feats) { const a = f.action?.(); if (a) return a; }
     const p = wizards.get(myHandle)?.root.position;
@@ -1662,24 +1750,27 @@ const pn = createPanels({ send, me: () => me, agentConnected: () => !!agentNow()
 const fun = createFun({ send, toast, me: () => me, snap: () => snap, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw, solo, walkTo: (x, z) => ctl.walkTo(x, z) });
 // the features (client/features.ts: the Dark Lord, the DA, 偷师, the Restricted Section, the Duelling Club, Quidditch, …),
 // all built from the same deps
-const feats: ClientFeature[] = CLIENT_FEATURES.map((mk) => mk({
+const host = new FeatureHost({
   send, toast,
   wire: <T,>(key: string) => (snap as Record<string, unknown> | null)?.[key] as T | undefined,
   me: () => me as Record<string, any> | null, now: () => snap?.t ?? 0,
   myHandle: () => myHandle, observing: () => watch.observing(), myHouse: () => me?.house ?? null, myPos: () => wizards.get(myHandle)?.root.position ?? null, camYaw: () => camYaw,
   nameOf: (h) => snap?.w.find((w) => w.h === h)?.n ?? '?',
-  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? null,
+  posOf: (h) => wizards.get(h)?.root.position ?? null, facingOf: (h) => wizards.get(h)?.body.rotation.y ?? 0, rootOf: (h) => wizards.get(h)?.root ?? creatures.get(h)?.root ?? null,
   solo, spells: () => bookSpells, wantSpells, openBook: () => { if ($('#book').hidden) toggleBook(true); }, loadDraft, features: () => feats, castOnSelf: (spell) => ctl.castOnSelf(spell),
-}));
+  floatText: (x, z, text, color, lift) => floatText(x, z, text, color, lift), shake, hitStop, sparks: (x, z, color, count) => particles.sparks(x, heightAt(x, z) + 1.2, z, color, count),
+}, scene);
+for (const [key, mk] of CLIENT_FEATURES) host.add(key, mk);
+/** The running features: one array, a hot update swaps entries in place (client/context.ts, client/hot.ts). */
+const feats: ClientFeature[] = host.list;
+const hot = createHot(host);
+// npm run dev: Vite's HMR swaps an edited feature module the same way (client/features.ts)
+setFeatureHot((key, mk) => { if (host.reload(key, mk)) renderTop(feats); });
 renderTop(feats);
-const observers = feats.filter((f) => f.observe);
-const badgers = feats.filter((f) => f.badge);
 /** The features' marks beside a wizard's name (☠ the Dark Lord): text for the name tag, markup for the parchment. */
-const badges = (h: string, html?: boolean) => { let s = ''; for (const f of badgers) s += f.badge!(h, html); return s; };
-const lifters = feats.filter((f) => f.lift);
+const badges = (h: string, html?: boolean) => { let s = ''; for (const f of feats) if (f.badge) s += f.badge(h, html); return s; };
 const funWorld = createFunWorld();
 scene.add(funWorld.group);
-for (const f of feats) if (f.group) scene.add(f.group);
 /** What a chest held (the card itself arrives as its own event and flips over). */
 function onChest(r: { whereZh?: string; where?: string; housePoints?: number; galleons?: number; card?: string; fragment?: { zh: string; en: string; source: string }; left?: number }) {
   const parts: string[] = [];
@@ -1690,7 +1781,7 @@ function onChest(r: { whereZh?: string; where?: string; housePoints?: number; ga
   if (r.fragment) loadDraft(L('宝箱里的残页', 'Page from a chest'), r.fragment.source, L(r.fragment.zh, r.fragment.en));
 }
 // the camera keeps out of walls, fades what hides you, x-rays you and your allies (view.ts)
-const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), overhead: phone, cam: {
+const view = createView({ scene, camera, renderer: R.renderer, ground: [world.ground], wizards, creatures, myHandle: () => myHandle, snap: () => snap, target: () => ctl.lockedTarget(), overhead: phone, fixed: () => ctl.flat(), cam: {
   get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; }, get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; }, get dist() { return camDist; }, set dist(v: number) { camDist = v; } } });
 // ------------------------------------------------------------------ chat: the line appears on Enter and goes away when it is empty
 const chatBox = $<HTMLInputElement>('#chat');
@@ -1787,24 +1878,27 @@ const litPool: { x: number; y: number; z: number; color: number; d: number }[] =
  * closures made every frame, Map entries, Math.hypot and doubles passed around all allocate, and these run for
  * every wizard, creature and bolt every frame (docs/PERF.md, "GC").
  */
-const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null };
+/** (eye: where level of detail is measured from — view.ts eye: the camera, or in 2.5D a point on its arm near you) */
+// (tag: how much the name tags grow — 2.5D keeps them one size on screen, however far the camera hangs)
+const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null, eye: new THREE.Vector3(), tag: 1 };
 function animWizard(w: WizardEntry, h: string) {
   const px = w.root.position.x, pz = w.root.position.z;
   w.root.position.x += (w.tx - w.root.position.x) * FR.k;
   w.root.position.z += (w.tz - w.root.position.z) * FR.k;
   let lift = 0;
-  for (const f of lifters) lift += f.lift!(h); // 魁地奇: riders fly
+  for (const f of feats) if (f.lift) lift += f.lift(h); // 魁地奇: riders fly
   w.root.position.y = groundOf(w) + lift;
   const turn = Math.atan2(Math.sin(-w.tf - w.body.rotation.y), Math.cos(-w.tf - w.body.rotation.y));
   w.body.rotation.y += turn * Math.min(1, FR.dt * 14);
   const mx = w.root.position.x - px, mz = w.root.position.z - pz;
   const speed = FR.dt > 0 ? Math.sqrt(mx * mx + mz * mz) / FR.dt : 0;
-  const d = w.root.position.distanceTo(camera.position);
+  const d = w.root.position.distanceTo(FR.eye);
   const mine = h === myHandle, focused = h === FR.focus;
   // (a stunned wizard lies down: only the full model does that)
   w.far = !mine && !focused && d > FR.lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
   w.body.visible = !w.far;
   w.label.show(focused || (!w.far && d < FR.lod.label));
+  w.label.zoom(FR.tag);
   if (w.patronus.visible) {
     w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
     particles.trail(w.patronus, w.patronus.getWorldPosition(tmpTip), 0xcfe4ff, 0.35);
@@ -1862,11 +1956,12 @@ function animCreature(c: CreatureEntry, i: string) {
   c.root.position.z += (c.tz - c.root.position.z) * FR.k;
   c.root.position.y = groundOf(c);
   c.root.rotation.y = -c.tf;
-  const d = c.root.position.distanceTo(camera.position);
+  const d = c.root.position.distanceTo(FR.eye);
   const focused = i === FR.focus;
   // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
   c.root.visible = focused || d < FR.lod.anim;
   c.label.show(focused || d < FR.lod.label);
+  c.label.zoom(FR.tag);
   if (c.root.visible) c.anim(clock);
   else if (d < FR.lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
 }
@@ -1880,24 +1975,23 @@ function animBolt(b: THREE.Object3D & { tx?: number; tz?: number }) {
 }
 function frame() {
   requestAnimationFrame(frame);
+  const now = performance.now();
+  if (now - prev < FRAME_MIN_MS) return;
   probe.frameBegin();
   let tp = probe.begin();
-  const now = performance.now();
-  const dt = Math.min(0.1, (now - prev) / 1000);
-  if (snap) dyn?.frame(now - prev);
+  const dtReal = Math.min(0.1, (now - prev) / 1000);
+  // (a hit-stop slows the world's motion to a crawl for its few frames; the camera and the HUD keep real time)
+  const dt = stopT > 0 ? dtReal * 0.08 : dtReal;
+  stopT -= dtReal;
+  if (snap) { dyn?.frame(now - prev); if (frameMs.length < 4000) frameMs.push(now - prev); }
   prev = now;
   clock += dt;
-  if (!perf.done && snap) {
-    perf.frames++; perf.time += dt;
-    if (perf.time > 3) {
-      perf.done = true;
-      if (perf.time / perf.frames > 0.045 && quality === 'high') { applyQuality('low'); toast(L('画质已自动调低，画面更流畅（地址后加 ?q=high 可强制高画质）。', 'Graphics quality lowered for smoother play (add ?q=high to force).')); }
-    }
-  }
   FR.k = 1 - Math.exp(-dt * 12);
   FR.dt = dt;
   // level of detail from last frame's camera (it moves a fraction of a metre per frame)
   FR.lod = LOD[quality];
+  // (2.5D: the tag's 1.5 m shown TAG_PX tall on screen, whatever the zoom and the lens: size / (2 d tan(fov / 2)) of the height, d the camera's real distance — lens.ts brings it in)
+  FR.tag = ctl.flat() ? Math.max(1, Math.min(3.2, ((phone ? 84 : 92) / innerHeight) * 2 * view.rig.arm * Math.tan((camera.fov * Math.PI) / 360) / 1.5)) : 1;
   FR.focus = ctl.targetKey();
   crowd.begin();
   parts.begin();
@@ -1919,14 +2013,15 @@ function frame() {
   const my = wizards.get(myHandle);
   if (my) {
     const t = my.root.position;
-    view.place(t, dt); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
+    view.place(t, dtReal); // (view.ts: aims at t.y + 1.25, a little below the head, so the wizard sits above the dock)
+    view.eye(FR.eye);
     weatherPts.position.set(t.x, 0, t.z);
   }
   if (shakeAmp > 0.005) {
     // after the camera is placed, so the spring arm never learns the jolt
     camera.position.x += (Math.random() - 0.5) * shakeAmp;
     camera.position.y += (Math.random() - 0.5) * shakeAmp * 0.6;
-    shakeAmp *= Math.exp(-dt * 14);
+    shakeAmp *= Math.exp(-dtReal * 14);
   } else shakeAmp = 0;
 
   // lighting, sky and decorations from the hour, the weather and whatever the last Minister decreed
@@ -1968,7 +2063,7 @@ function frame() {
   R.setBoltLights(lit);
   probe.end('fx', tp); tp = probe.begin();
 
-  ctl.update(dt);
+  ctl.update(dtReal);
   funWorld.frame(dt, snap);
   for (const f of feats) f.frame?.(dt);
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
@@ -2024,6 +2119,8 @@ const warmed = (async () => {
   R.renderer.setRenderTarget(R.composer.renderTarget1);
   try { await R.renderer.compileAsync(scene, camera); } catch { /* compile on first use, as before */ }
   R.renderer.setRenderTarget(was);
+  // and the overlay's text (layers.ts), drawn on the canvas itself
+  try { await R.renderer.compileAsync(w.label.sprite, camera, scene); } catch { /* compile on first use */ }
   scene.remove(g);
   herd.begin(); herd.end();
   crowd.begin(); crowd.end(false);

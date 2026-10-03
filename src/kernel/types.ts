@@ -230,6 +230,8 @@ export interface CreatureDef {
    */
   ranged?: { range: number; power: number; cooldown: number; element: Element; kind: 'bolt' | 'root'; secs?: number; provoked?: boolean };
   spawn: { x: number; z: number; r: number; max: number };
+  /** More places it lives (each with its own count); `leash`: those born there never go further than that from it. */
+  also?: { x: number; z: number; r: number; max: number; leash?: number }[];
   lore: string;
 }
 
@@ -316,7 +318,11 @@ export type WireEvent = Omit<WorldEvent, 'who' | 'aud'>;
 export const visibleTo = (e: WorldEvent, wid: string) => (e.to ? e.to === wid : e.aud ? e.aud.includes(wid) : true);
 
 export interface Fx {
-  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal' | 'dodge' | 'reflect' | 'clash';
+  k: 'hit' | 'nova' | 'heal' | 'shield' | 'apparate' | 'patronus' | 'fizzle' | 'stun' | 'levelup' | 'willow' | 'cast' | 'azkaban' | 'chain' | 'storm' | 'stormhit' | 'reveal' | 'seal' | 'dodge' | 'reflect' | 'clash'
+    /** a magic reaction (kernel/chem.ts): h = its id */
+    | 'react'
+    /** something picked up off the ground (kernel/loot.ts): h = its kind, n = how much */
+    | 'loot';
   x: number;
   z: number;
   r?: number;

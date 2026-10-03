@@ -162,6 +162,11 @@ export class Solids {
   hitT = 0;
   private scratch: Vec2 = { x: 0, z: 0 };
 
+  /** Where water bears a walker (ice: src/kernel/ice.ts): a 'water' collider does not push out a circle centred there. */
+  walkOn: ((x: number, z: number) => boolean) | null = null;
+  /** The way over it to `to` (on it): a land point to walk to first (A*), then points on it; null if none. */
+  bridge: ((from: Vec2, to: Vec2) => Vec2[] | null) | null = null;
+
   get dynamic(): readonly Collider[] { return this.D.list; }
   setDynamic(cs: readonly Collider[]) { this.D.set(cs); this.version++; }
 
@@ -173,7 +178,11 @@ export class Solids {
       for (let j = j0; j <= j1; j++)
         for (let i = i0; i <= i1; i++) {
           const c = j * GW + i;
-          for (let k = cellStart[c], end = cellStart[c + 1]; k < end; k++) if (pushOut(S, cellItems[k], p, r)) moved = true;
+          for (let k = cellStart[c], end = cellStart[c + 1]; k < end; k++) {
+            const n = cellItems[k];
+            if (this.walkOn && S.list[n].style === 'water' && this.walkOn(p.x, p.z)) continue;
+            if (pushOut(S, n, p, r)) moved = true;
+          }
         }
     }
     const D = this.D;
@@ -196,11 +205,11 @@ export class Solids {
   }
 
   /**
-   * The first collider at least `minH` tall that the segment a→b touches, or null; hitT says where (0..1).
+   * The first collider at least `minH` tall that the segment a→b touches (not of style `pass`), or null; hitT says where (0..1).
    * Bolts use it so that nothing thin is tunnelled through, whatever their speed. With `grow` > 0 (at most
    * PAD) it sweeps a body that wide instead of a point (pathfinding's line-of-sight checks).
    */
-  hitSegment(ax: number, az: number, bx: number, bz: number, minH = BOLT_HEIGHT, grow = 0): Collider | null {
+  hitSegment(ax: number, az: number, bx: number, bz: number, minH = BOLT_HEIGHT, grow = 0, pass?: string): Collider | null {
     const dx = bx - ax, dz = bz - az;
     let best = Infinity, hit: Collider | null = null;
     const i0 = colX(Math.min(ax, bx) - grow), i1 = colX(Math.max(ax, bx) + grow), j0 = colZ(Math.min(az, bz) - grow), j1 = colZ(Math.max(az, bz) + grow);
@@ -211,7 +220,7 @@ export class Solids {
           const c = j * GW + i;
           for (let k = cellStart[c], end = cellStart[c + 1]; k < end; k++) {
             const n = cellItems[k];
-            if (S.H[n] < minH) continue;
+            if (S.H[n] < minH || (pass && S.list[n].style === pass)) continue;
             const t = segHit(S, n, ax, az, dx, dz, grow);
             if (t < best) { best = t; hit = S.list[n]; }
           }

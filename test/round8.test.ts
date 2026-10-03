@@ -191,6 +191,11 @@ describe('试玩指标 (kernel/metrics.ts)', () => {
     FEATURE_BY_ID.get('metrics')!.ws!(w, a.id, { tut: 4, touch: true });
     FEATURE_BY_ID.get('metrics')!.ws!(w, a.id, { tut: 2 });
     expect(m).toMatchObject({ tut: 4, touch: true });
+    // the device's own frames (client/main.ts, every 15 s): clamped, the GPU name printable and short
+    FEATURE_BY_ID.get('metrics')!.ws!(w, a.id, { fps: { p50: 16.7, p95: 1e9, scale: 1.5, q: 'low', dpr: 3, gpu: 'Adreno (TM) 650\u0000' + 'x'.repeat(200) } });
+    expect(m.fps).toMatchObject({ p50: 16.7, p95: 5000, scale: 1.5, q: 'low', dpr: 3 });
+    expect(m.fps!.gpu.startsWith('Adreno (TM) 650x')).toBe(true);
+    expect(m.fps!.gpu.length).toBe(80);
     const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
     expect(back.metrics.of.get(a.id)).toMatchObject({ name: 'Metric Kid', tut: 4, chats: 1, kill: m.kill });
   });

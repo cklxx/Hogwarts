@@ -34,8 +34,11 @@ export interface PlayerMetrics {
   online: number; sessions: number; lastOn: number;
   /** From the browser: the furthest tutorial step (1-based) and a coarse pointer. */
   tut?: number; touch?: boolean;
-  /** The camera the browser used last (the 俯视 experiment): 'top' or 'follow'. */
-  view?: 'top' | 'follow';
+  /** The camera the browser used last: '25d' (2.5D; 'top' in older saves: the old 俯视) or 'follow'. */
+  view?: '25d' | 'top' | 'follow';
+  /** The browser's frames on the player's own device, last reported (every 15 s): frame interval p50 / p95 (ms),
+   *  the 3D render scale and quality it settled on, the screen's pixel ratio and the GPU's name as WebGL gives it. */
+  fps?: { p50: number; p95: number; scale: number; q: string; dpr: number; gpu: string };
 }
 
 declare module './world.js' {
@@ -104,14 +107,19 @@ export const METRICS_FEATURE: Feature = {
     if (!data || typeof data !== 'object') return;
     for (const [id, m] of Object.entries(data as Record<string, PlayerMetrics>)) if (m && typeof m.t0 === 'number') world.metrics.of.set(id, { ...m, sys: m.sys ?? {}, lastOn: m.lastOn ?? m.t0 });
   },
-  // the browser: {t:'metrics', tut, touch} as the tutorial moves on
+  // the browser: {t:'metrics', tut, touch} as the tutorial moves on; {t:'metrics', fps} every 15 s
   ws(world, wid, msg) {
     const m = world.metrics.of.get(wid);
     if (!m) return null;
     const step = Number(msg.tut);
     if (Number.isInteger(step) && step > 0 && step <= 20) m.tut = Math.max(m.tut ?? 0, step);
     if (typeof msg.touch === 'boolean') m.touch = msg.touch;
-    if (msg.view === 'top' || msg.view === 'follow') m.view = msg.view;
+    if (msg.view === '25d' || msg.view === 'top' || msg.view === 'follow') m.view = msg.view;
+    const f = msg.fps as Record<string, unknown> | undefined;
+    if (f && typeof f === 'object') {
+      const n = (v: unknown, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(hi, Math.round(v * 100) / 100)) : 0);
+      m.fps = { p50: n(f.p50, 5000), p95: n(f.p95, 5000), scale: n(f.scale, 4), q: f.q === 'low' ? 'low' : 'high', dpr: n(f.dpr, 8), gpu: String(f.gpu ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, 80) };
+    }
     return null;
   },
 };

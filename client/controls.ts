@@ -17,8 +17,21 @@ export interface CCreature { i: string; k: CreatureKind; hp: number; m: number; 
 export interface CSnap { w: CWizard[]; c: CCreature[] }
 /** What a spell is for (World.privateState reads it off Spell.effects): harm aims at a foe, help at a friend or you, self needs no target. */
 export type SpellKind = 'harm' | 'help' | 'self';
-export interface CSlot { id: string; name: string; cd: number; kind?: SpellKind }
-export interface CMe { name: string; house: House; year: number; seals: number; ui: string[]; hotbar: (CSlot | null)[]; stunned: number; jailed: number }
+export interface CSlot { id: string; name: string; cd: number; kind?: SpellKind; mana?: number | null }
+
+/**
+ * The press buffer (the 2026-10-02 loop measure: 70 % of a mashing first-year's presses were refused — too fast, still
+ * recharging, out of mana — and each refusal was a red toast): a press that cannot go yet waits up to BUFFER_S and goes
+ * the moment it can; a held key keeps it waiting, so holding casts again and again. Pure, for tests: may slot `s` go
+ * now, given the local cooldowns since our own last sends (the server's reach us a tick later) and the mana we have?
+ */
+export const BUFFER_S = 0.6, GCD_S = 0.25;
+export function castGate(s: CSlot, mana: number | undefined, t: number, gcdUntil: number, readyAt: number): 'go' | 'cd' | 'mana' {
+  if (t < gcdUntil || t < readyAt || s.cd > 0.05) return 'cd';
+  if (s.mana != null && mana !== undefined && mana + 0.5 < s.mana) return 'mana';
+  return 'go';
+}
+export interface CMe { name: string; house: House; year: number; seals: number; ui: string[]; hotbar: (CSlot | null)[]; stunned: number; jailed: number; mana?: number }
 type Model = { root: THREE.Object3D };
 export type Rel = 'self' | 'ally' | 'hostile' | 'neutral';
 
@@ -38,13 +51,19 @@ export interface ControlsDeps {
   /** Live view of main.ts' camera orbit. */
   cam: { yaw: number; pitch: number; dist: number };
   toast: (text: string) => void;
+  /** Out of mana: the mana bar flashes (main.ts). */
+  flashMana?: () => void;
   panels: { book: () => void; menu: () => void; owl: (force?: boolean) => void; trunk: () => void };
   /** The player's agent as the HUD sees it (me.agent), or null before the first 'me'. */
   agent: () => AgentView | null;
   /** Open the Owl Post and mint a pairing code (tutorial step 5). */
   pair: () => void;
+  /** The view changed (2.5D on or off): the lens goes with it (render.ts setLens). */
+  lens?: (flat: boolean) => void;
   /** More things the action key (F) can do right here — a hidden chest to open (client/panels/fun.ts) — or null. */
   extraAction?: () => { label: string; x: number; z: number; y: number; act: () => void } | null;
+  /** A thing on the ground at (x, z) a click casts at (client/feature.ts `claim`: the props), or null. */
+  claim?: (x: number, z: number, hover: boolean) => { x: number; z: number } | null;
 }
 
 // ------------------------------------------------------------------ Owl Post helpers (pure; docs/AGENT_LINK.md §A.2, §C.1, §C.6; test/controls.test.ts)
@@ -133,23 +152,31 @@ export function wheelCam(e: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' |
 /** How to turn the camera, in the help and hints: a Mac trackpad has no right button to drag with. */
 export const LOOK_ZH = IS_MAC ? '右键或 Ctrl+拖动' : '右键拖动';
 export const LOOK_EN = IS_MAC ? 'right- or Ctrl+drag' : 'right-drag';
-/** 俯视: the camera's pitch and distance in the top-down view, and where the choice is remembered. */
-const TOP_PITCH = 1.15, TOP_DIST = 16, VIEW_KEY = 'hogwarts.view';
-/** The first view: `?view=top|follow` (a playtest group), else what was chosen last, else top-down on a phone
- *  (the 2026-09-30 Sonnet phone round, docs/PLAYTEST.md round 6: everyone who tried both, or guessed, preferred it;
- *  one follow player switched to it mid-game), follow elsewhere. */
-function firstView(touch: boolean): boolean {
-  const q = new URLSearchParams(location.search).get('view');
-  if (q === 'top' || q === 'follow') return q === 'top';
-  try { const v = localStorage.getItem(VIEW_KEY); if (v) return v === 'top'; } catch { /* private mode */ }
-  return touch;
+/**
+ * 2.5D (the owner, 2026-09-30: 「可以 2.5d？这个视角现在很不舒服」): the camera of Diablo, Hades, Don't Starve — a fixed
+ * angle, framed as a long lens (FLAT_FOV) from FLAT_DIST would frame you — client/lens.ts takes the camera in nearer
+ * with a wider lens and tips it lower (narrow near, wide far: more ground on screen) — following you without ever
+ * turning by itself; Q / E (or a drag, let go) turn it in 45° steps; the wheel / a pinch zooms within FLAT_ZOOM. It
+ * replaced the old 俯视 (1.15 rad from 16 m with a 55° lens: the fisheye look) and is the first view everywhere;
+ * the follow camera stays one toggle away (Z, the drawer's ◎). The key is new, so everyone starts in 2.5D once.
+ */
+export const FLAT_PITCH = 0.92, FLAT_DIST = 24, FLAT_ZOOM = [14, 44] as const, VIEW_KEY = 'hogwarts.view2';
+/** 2.5D turns in steps of this (45°). */
+export const YAW_STEP = Math.PI / 4;
+/** The nearest 2.5D heading to a yaw. */
+export const snapYaw = (y: number) => Math.round(y / YAW_STEP) * YAW_STEP;
+/** The first view: `?view=25d|follow` (`top`: 25d; a playtest group), else what was chosen last, else 2.5D. */
+export function firstView(q: string | null, stored: string | null): boolean {
+  if (q === '25d' || q === 'top' || q === 'follow') return q !== 'follow';
+  if (stored === '25d' || stored === 'follow') return stored === '25d';
+  return true;
 }
 /** Where a thumb starts the stick: left of this share of the width, below this share of the height. */
 const STICK_ZONE_X = 0.45, STICK_ZONE_Y = 0.55;
 /** What an iPhone needs for a full screen (Safari has no fullscreen for a page): the home-screen app. */
 const FULL_HINT = () => L('iPhone：点 Safari 的「分享」→「添加到主屏幕」，从主屏幕打开就是全屏。', 'iPhone: Safari’s Share → Add to Home Screen, then open it from there for a full screen.');
 /** Camera distance limits (the wheel, the pinch and the touch pinch share them). */
-export const clampDist = (v: number) => Math.max(3.5, Math.min(40, v));
+export const clampDist = (v: number, flat = false) => (flat ? Math.max(FLAT_ZOOM[0], Math.min(FLAT_ZOOM[1], v)) : Math.max(3.5, Math.min(40, v)));
 
 export interface AgentView { connected: boolean; client: string; ago: number | null; tool: string | null; goal: string | null; paused: boolean }
 /** An agent seen within this many seconds counts as connected when the server does not say how many MCP sessions there are. */
@@ -268,15 +295,20 @@ export function createControls(d: ControlsDeps) {
   const joy = { x: 0, y: 0 };
   let mx = -1e4, my = -1e4, mouseIn = false, overCanvas = false;
   let hovered: string | null = null;
+  /** A prop under the pointer (d.claim), when no one is. */
+  let claimed: { x: number; z: number } | null = null;
   let target: string | null = null;
   let selected = 0;
   let dragging = false, lastDrag = -1e9;
-  let topView = false; // 俯视 (setView)
+  let topView = false; // 2.5D (setView)
+  /** 2.5D: the heading the camera eases to (snapYaw), or null while it is dragged. */
+  let yawTo: number | null = null;
+  let qWas = false, eWas = false;
   let dest: { x: number; z: number; t: number; pending: boolean; lastMove: number; px: number; pz: number } | null = null;
   let lastGoto = 0;
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
   const fullCd = new Map<string, number>();
-  const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null }[] = [];
+  const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null; slot?: number }[] = [];
   let hotbarSig = '';
   /** A phone or tablet: no hover, a coarse pointer. (Touch laptops keep the mouse UI; their touches still work.) */
   const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -347,6 +379,11 @@ export function createControls(d: ControlsDeps) {
     out.x = ((v3.x + 1) / 2) * d.canvas.clientWidth; out.y = ((1 - v3.y) / 2) * d.canvas.clientHeight;
     return out;
   }
+  /** On screen (a margin in, at chest height), clear of the bottom HUD strip. */
+  function onScreen(p: { x: number; y: number; z: number }) {
+    v3.set(p.x, p.y + 1, p.z).project(d.camera);
+    return v3.z > -1 && v3.z < 1 && Math.abs(v3.x) < 0.96 && v3.y < 0.94 && v3.y > -0.8;
+  }
   function segDist(px: number, py: number, a: { x: number; y: number }, b: { x: number; y: number }) {
     const vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy;
     const t = l2 ? Math.max(0, Math.min(1, ((px - a.x) * vx + (py - a.y) * vy) / l2)) : 0;
@@ -389,12 +426,13 @@ export function createControls(d: ControlsDeps) {
     if (raycaster.ray.intersectPlane(groundPlane, hit)) return out.copy(hit);
     return null;
   }
-  /** Where a spell goes when it has no target: the cursor on the ground, else straight ahead of the camera. */
+  /** Where a spell goes when it has no target: the cursor on the ground, else the way you face (where you last walked:
+   *  on a phone a shot with no foe on screen used to fly up the screen, whichever way you were going). */
   function fallbackAim() {
     if (mouseIn && overCanvas) return { x: aim.x, z: aim.z };
     const p = myPos();
     if (!p) return { x: aim.x, z: aim.z };
-    return { x: p.x - Math.sin(d.cam.yaw) * 14, z: p.z - Math.cos(d.cam.yaw) * 14 };
+    return { x: p.x + Math.sin(facing) * 14, z: p.z - Math.cos(facing) * 14 };
   }
 
   // ------------------------------------------------------------------ targets
@@ -411,14 +449,22 @@ export function createControls(d: ControlsDeps) {
     const cp = d.camera.position;
     const fx = -Math.sin(d.cam.yaw), fz = -Math.cos(d.cam.yaw), cosMax = Math.cos((coneDeg * Math.PI) / 180);
     const out: { k: string; dist: number; wiz: number }[] = [];
+    // a first-year's Tab and auto-aim never pick a wizard (the 2026-10-01 phone playtest: 3 of 3 locked on to the
+    // players crowding the spawn, never the pixies, and hit them); clicking a wizard still targets them
+    const firstYear = (d.me()?.year ?? 1) <= 1;
     for (const k of allKeys()) {
-      if (!harmable(k)) continue;
+      if (!harmable(k) || (firstYear && wIdx.has(k)) || ghost(k)) continue;
       const q = model(k)!.root.position;
       const dist = Math.hypot(q.x - p.x, q.z - p.z);
       if (dist > range) continue;
-      const cx = q.x - cp.x, cz = q.z - cp.z, cl = Math.hypot(cx, cz);
-      const cos = cl > 0.01 ? (cx * fx + cz * fz) / cl : 1;
-      if (cos < cosMax && dist > closeAnyway) continue;
+      // 2.5D: exactly what is on screen, whichever side of you (the camera's forward cone missed foes below and beside
+      // you, and a wide cone reached behind the camera: 「索敌还是问题很大」); the follow camera: its forward cone
+      if (topView) { if (!onScreen(q)) continue; }
+      else {
+        const cx = q.x - cp.x, cz = q.z - cp.z, cl = Math.hypot(cx, cz);
+        const cos = cl > 0.01 ? (cx * fx + cz * fz) / cl : 1;
+        if (cos < cosMax && dist > closeAnyway) continue;
+      }
       out.push({ k, dist, wiz: beastsFirst && wIdx.has(k) ? 1 : 0 });
     }
     return out.sort((a, b) => a.wiz - b.wiz || a.dist - b.dist).map((x) => x.k);
@@ -430,7 +476,8 @@ export function createControls(d: ControlsDeps) {
     lastTab = t;
     const p = myPos();
     // wild creatures first: a newcomer's Tab should find the pixie, not a rival player
-    const list = topView ? hostilesAhead(30, 180, true) : hostilesAhead(45, 42, true); // 俯视: all round you is on screen
+    let list = topView ? hostilesAhead(30, 180, true) : hostilesAhead(45, 42, true);
+    if (!list.length) list = hostilesAhead(60, 180, true); // (nothing close: the nearest further out, any way you face) // 2.5D: all round you is on screen
     if (!list.length || !p) { d.toast(L(`前方没有可以攻击的目标。转动镜头（${LOOK_ZH} / Q E）再试试。`, `No foe ahead. Turn the camera (${LOOK_EN} / Q E) and try again.`)); return; }
     let next = list.find((k) => !tabbed.has(k) && k !== target);
     if (!next) { tabbed = new Set(); next = list.find((k) => k !== target) ?? list[0]; }
@@ -453,8 +500,8 @@ export function createControls(d: ControlsDeps) {
   function chooseTarget(s: CSlot): string | null {
     const kind = kindOf(s);
     if (kind === 'harm') {
-      if (target && attackable(target) && distTo(target) <= 45) return target;
-      if (hovered && harmable(hovered) && distTo(hovered) <= 45) return hovered;
+      if (target && !ghost(target) && attackable(target) && distTo(target) <= 45 && (!topView || onScreen(model(target)!.root.position))) return target;
+      if (hovered && !ghost(hovered) && harmable(hovered) && distTo(hovered) <= 45) return hovered;
       const auto = hostilesAhead(HARM_RANGE, 42, true)[0] ?? null;
       if (auto) setTarget(auto);
       return auto;
@@ -473,11 +520,34 @@ export function createControls(d: ControlsDeps) {
     }
     return null;
   }
+  // the press buffer (castGate): one press waiting, the local cooldowns after our own sends
+  let queued: { i: number; at: number; opts: { at?: { x: number; z: number } }; why: 'cd' | 'mana' } | null = null;
+  let gcdUntil = 0, lowManaHint = 0;
+  const readyAt = new Map<string, number>();
+  /** Targets the server said are gone, and when: auto-aim skips them a few seconds (onCast). */
+  const ghosts = new Map<string, number>();
+  const ghost = (k: string) => { const t = ghosts.get(k); if (t === undefined) return false; if (now() - t > 4) { ghosts.delete(k); return false; } return true; };
+  function flushQueue() {
+    if (!queued) return;
+    const me = d.me(), s = me?.hotbar[queued.i];
+    if (!me || !s) { queued = null; return; }
+    const g = castGate(s, me.mana, now(), gcdUntil, readyAt.get(s.id) ?? 0);
+    if (g === 'go') { const q = queued; queued = null; castSlot(q.i, q.opts); return; }
+    queued.why = g;
+    if (now() - queued.at > BUFFER_S) {
+      // out of mana for a while: one quiet word (and the mana bar flashes), never a toast per press
+      if (g === 'mana' && now() - lowManaHint > 3) { lowManaHint = now(); d.toast(L('魔力不够了 —— 稍等一下；打中魔物会回一点', 'Out of mana: a moment — hitting a creature gives some back')); }
+      if (g === 'mana') d.flashMana?.();
+      queued = null;
+    }
+  }
   function castSlot(i: number, opts: { at?: { x: number; z: number } } = {}) {
     const me = d.me();
     if (!me) return;
     const s = me.hotbar[i];
     if (!s) { d.toast(L(`快捷栏 ${i + 1} 是空的 —— 按 B 打开咒语书，把咒语放进来。`, `Hotbar slot ${i + 1} is empty — press B to put a spell there.`)); return; }
+    const g = castGate(s, me.mana, now(), gcdUntil, readyAt.get(s.id) ?? 0);
+    if (g !== 'go') { if (queued?.i !== i) queued = { i, at: now(), opts, why: g }; else { queued.at = Math.max(queued.at, now() - BUFFER_S * 0.5); queued.opts = opts; } return; }
     const kind = kindOf(s);
     // a revive ignores where it is aimed (the server lifts its target, else whoever is nearest), so it always picks its own
     const revive = kind === 'help' && isRevive(s);
@@ -490,7 +560,8 @@ export function createControls(d: ControlsDeps) {
     const m = tgt ? model(tgt) : null;
     const p = m ? { x: m.root.position.x, z: m.root.position.z } : opts.at ?? fallbackAim();
     d.send({ t: 'cast', key: String(i + 1), x: p.x, z: p.z, target: tgt ?? undefined });
-    pendingCasts.push({ name: s.name, kind, target: tgt, targetKind: tgt ? (cIdx.get(tgt)?.k ?? (wIdx.has(tgt) ? 'wizard' : null)) : null });
+    gcdUntil = now() + GCD_S; readyAt.set(s.id, now() + 0.3 + (s.mana ?? 0) / 60); // (as the server sets them, World.cast)
+    pendingCasts.push({ name: s.name, kind, target: tgt, targetKind: tgt ? (cIdx.get(tgt)?.k ?? (wIdx.has(tgt) ? 'wizard' : null)) : null, slot: i });
     if (pendingCasts.length > 20) pendingCasts.shift();
     if (kind === 'harm') selected = i;
   }
@@ -569,6 +640,7 @@ export function createControls(d: ControlsDeps) {
     // 翻滚闪避 (World.dodge): the way you are running, else straight ahead
     if (k === ' ') { e.preventDefault(); if (!e.repeat) roll(); return true; }
     if (k === 'h' || k === 'H' || k === '?') { if (!e.repeat) toggleHelp(); return true; }
+    if (k === 'z' || k === 'Z') { if (!e.repeat) toggleView(); return true; }
     keys.add(k.toLowerCase());
     return false;
   }
@@ -605,14 +677,14 @@ export function createControls(d: ControlsDeps) {
   d.canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const c = wheelCam(e);
-    d.cam.dist = clampDist(d.cam.dist + c.zoom);
+    d.cam.dist = clampDist(d.cam.dist + c.zoom * (topView ? 2.5 : 1), topView);
     if (c.yaw) { d.cam.yaw += c.yaw; lastDrag = now(); }
   }, { passive: false });
   // Safari / WKWebView report a trackpad pinch as gesture events (with a scale), not as ctrl+wheel
   let pinchFrom = 0;
   type Gesture = Event & { scale: number };
   d.canvas.addEventListener('gesturestart', (e) => { e.preventDefault(); pinchFrom = d.cam.dist; });
-  d.canvas.addEventListener('gesturechange', (e) => { e.preventDefault(); const s = (e as Gesture).scale; if (pinchFrom && s > 0) d.cam.dist = clampDist(pinchFrom / s); });
+  d.canvas.addEventListener('gesturechange', (e) => { e.preventDefault(); const s = (e as Gesture).scale; if (pinchFrom && s > 0) d.cam.dist = clampDist(pinchFrom / s, topView); });
   d.canvas.addEventListener('gestureend', (e) => { e.preventDefault(); pinchFrom = 0; });
 
   /** Left click / tap: a foe → target it and cast the attack spell; a friend → target it; the ground → walk there. Shift: cast at the ground. */
@@ -627,21 +699,25 @@ export function createControls(d: ControlsDeps) {
       if (harmable(k)) castSlot(selected);
       return;
     }
+    // a prop under the pointer (a crate, a brazier): the chosen spell at it
+    const c = d.claim?.(aim.x, aim.z, false);
+    if (c) { castSlot(selected, { at: c }); return; }
     if (walk) walkTo(aim.x, aim.z);
   }
 
   /**
-   * 俯视 (the view experiment, docs/PLAYTEST.md): the camera looks down on the wizard from high up — nearly 2D, the
-   * whole neighbourhood in sight, nothing between — its height locked (a drag only turns it). `?view=top|follow`
-   * picks one for a playtest group; the drawer's button toggles it; it is remembered and reported (kernel/metrics.ts).
+   * 2.5D or the follow camera (FLAT_PITCH above). `?view=25d|follow` picks one for a playtest group; Z and the drawer's
+   * button toggle it; it is remembered and reported (kernel/metrics.ts).
    */
   function setView(top: boolean, report = true) {
     topView = top;
-    try { localStorage.setItem(VIEW_KEY, top ? 'top' : 'follow'); } catch { /* private mode */ }
-    if (top) { d.cam.pitch = TOP_PITCH; d.cam.dist = TOP_DIST; } else { d.cam.pitch = touch ? 0.5 : 0.34; d.cam.dist = touch ? 13 : 8.5; }
+    try { localStorage.setItem(VIEW_KEY, top ? '25d' : 'follow'); } catch { /* private mode */ }
+    if (top) { d.cam.pitch = FLAT_PITCH; d.cam.dist = touch ? FLAT_DIST + 2 : FLAT_DIST; yawTo = snapYaw(d.cam.yaw); } else { d.cam.pitch = touch ? 0.5 : 0.34; d.cam.dist = touch ? 13 : 8.5; yawTo = null; }
+    d.lens?.(top);
     document.body.classList.toggle('topview', top);
-    if (report) d.send({ t: 'metrics', view: top ? 'top' : 'follow' });
+    if (report) d.send({ t: 'metrics', view: top ? '25d' : 'follow' });
   }
+  const toggleView = () => { setView(!topView); d.toast(topView ? L('2.5D 视角：固定角度，Q / E 转 45°', '2.5D view: a fixed angle, Q / E turn 45°') : L('跟随视角：镜头在身后', 'Follow view: the camera behind you')); };
 
   /** 翻滚闪避: the way you are pushing (keys or stick), else straight ahead. */
   function roll() { d.send({ t: 'dodge', dx: moveDx, dz: moveDz }); }
@@ -673,7 +749,7 @@ export function createControls(d: ControlsDeps) {
       e.preventDefault();
       if (e.touches.length === 2 && stickId === null) {
         const p = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        if (pinch) d.cam.dist = clampDist(d.cam.dist - (p - pinch) * 0.05);
+        if (pinch) d.cam.dist = clampDist(d.cam.dist - (p - pinch) * (topView ? 0.12 : 0.05), topView);
         pinch = p; lookMoved = true;
         return;
       }
@@ -711,9 +787,9 @@ export function createControls(d: ControlsDeps) {
     d.canvas.addEventListener('touchcancel', end);
     $('#tb-roll').addEventListener('touchstart', (e) => { e.preventDefault(); roll(); }, { passive: false });
     // the camera's reach on a phone (a pinch works too, but two thumbs are busy)
-    $('#tb-view').onclick = () => { setView(!topView); d.toast(topView ? L('俯视：看得更全', 'Top-down: see more around you') : L('跟随：镜头在身后', 'Follow: the camera behind you')); };
-    $('#tb-zin').onclick = () => { d.cam.dist = clampDist(d.cam.dist / 1.3); };
-    $('#tb-zout').onclick = () => { d.cam.dist = clampDist(d.cam.dist * 1.3); };
+    $('#tb-view').onclick = toggleView;
+    $('#tb-zin').onclick = () => { d.cam.dist = clampDist(d.cam.dist / 1.3, topView); };
+    $('#tb-zout').onclick = () => { d.cam.dist = clampDist(d.cam.dist * 1.3, topView); };
     const more = $('#tb-more'), extra = $('#tb-extra');
     const fold = (open: boolean) => { extra.hidden = !open; more.setAttribute('aria-expanded', String(open)); };
     more.onclick = () => fold(extra.hidden);
@@ -748,13 +824,24 @@ export function createControls(d: ControlsDeps) {
    */
   let moveSig = '', moveSince = 0, driftOff = 0, promptW = 0;
   function update(dt: number) {
+    flushQueue();
     index();
     d.camera.updateMatrixWorld();
     const t = now();
     const me = d.me();
-    // camera turn keys (turning by hand pauses the drift, like a right-drag)
-    if (keys.has('q')) { d.cam.yaw += dt * 1.8; lastDrag = t; }
-    if (keys.has('e')) { d.cam.yaw -= dt * 1.8; lastDrag = t; }
+    // camera turn keys (turning by hand pauses the drift, like a right-drag); 2.5D: a 45° step per press, eased
+    const q = keys.has('q'), e = keys.has('e');
+    if (topView) {
+      if (q && !qWas) yawTo = snapYaw(yawTo ?? d.cam.yaw) + YAW_STEP;
+      if (e && !eWas) yawTo = snapYaw(yawTo ?? d.cam.yaw) - YAW_STEP;
+      // a drag turns it freely; let go and it settles on the nearest step
+      if (dragging || t - lastDrag < 0.25) yawTo = null;
+      else { yawTo ??= snapYaw(d.cam.yaw); d.cam.yaw += (yawTo - d.cam.yaw) * Math.min(1, dt * 9); }
+    } else {
+      if (q) { d.cam.yaw += dt * 1.8; lastDrag = t; }
+      if (e) { d.cam.yaw -= dt * 1.8; lastDrag = t; }
+    }
+    qWas = q; eWas = e;
     // movement: WASD / arrows / joystick, camera-relative
     let kx = 0, kz = 0;
     if (keys.has('w') || keys.has('arrowup')) kz -= 1;
@@ -775,7 +862,7 @@ export function createControls(d: ControlsDeps) {
     if (moving && dest) clearDest();
     // after a moment on the same keys the camera drifts in behind the way you run; never while backing up, never for
     // a quick sidestep, never soon after you turned it yourself, and never for the joystick (the other thumb looks)
-    if (moving && !stick && kz <= 0 && t - moveSince > 0.7 && !dragging && t - lastDrag > 3) {
+    if (!topView && moving && !stick && kz <= 0 && t - moveSince > 0.7 && !dragging && t - lastDrag > 3) {
       const step = wrap(Math.atan2(-dx, -dz) - d.cam.yaw) * Math.min(1, dt * 0.55);
       d.cam.yaw += step;
       driftOff += step;
@@ -785,7 +872,8 @@ export function createControls(d: ControlsDeps) {
     if (mouseIn && overCanvas) {
       groundAt(mx, my, aim);
       hovered = pickAt(mx, my);
-    } else hovered = null;
+      claimed = hovered ? null : d.claim?.(aim.x, aim.z, true) ?? null;
+    } else { hovered = null; claimed = null; }
     if (target && (!model(target) || distTo(target) > 80)) target = null;
     if (hovered && !model(hovered)) hovered = null;
 
@@ -836,6 +924,12 @@ export function createControls(d: ControlsDeps) {
       mesh.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mm?.color) mm.color.setHex(col); });
     };
     ring(d.hoverRing, hovered && hovered !== target ? hovered : null, 1);
+    if (!d.hoverRing.visible && claimed) {
+      d.hoverRing.visible = true;
+      d.hoverRing.position.set(claimed.x, heightAt(claimed.x, claimed.z) + 0.1, claimed.z);
+      d.hoverRing.scale.setScalar(Math.max(1, d.camera.position.distanceTo(d.hoverRing.position) / 28));
+      d.hoverRing.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (mm?.color) mm.color.setHex(0xf2c94c); });
+    }
     ring(targetRing, target, 1);
     if (target && targetRing.visible) {
       targetRing.rotation.y = t * 1.2;
@@ -981,11 +1075,12 @@ export function createControls(d: ControlsDeps) {
       <p class="help-pillars">${L('<b>学院杯</b>：一学期的长度由服务器设定（顶部有倒计时），顶部是四个学院的比分和倒计时，最后 60 秒「决胜时刻」学院分翻倍；学期末礼堂换上冠军学院的旗帜。<b>校园事件</b>：每 3 分钟出一件事（巨怪、金色飞贼、宵禁、摄魂怪……），右上角的事件条告诉你去哪、做什么。', '<b>The House Cup</b>: the server sets the length of a term (the countdown is at the top); the four houses\' points and the countdown sit at the top, and the last 60 seconds count double; at term end the Great Hall hangs the winner\'s banners. <b>Events</b>: every 3 minutes something happens (a troll, the Golden Snitch, curfew, Dementors…); the slip under the clock says where to go and what to do.')}</p>
       <div class="cols"><div>
       <h3>${L('移动', 'Moving')}</h3><table>
-      ${row('W A S D', L('移动（相对镜头方向）；跑动时镜头会慢慢转到你身后', 'Move (relative to the camera); the camera drifts in behind you'))}
+      ${row('W A S D', L('移动（W 是屏幕上方）', 'Move (W is up the screen)'))}
       ${row(L('左键 地面', 'Click ground'), L('自动寻路走过去（地上会出现金色标记；按 WASD 取消）', 'Walk there by the shortest path (gold marker; WASD cancels)'))}
-      ${row(L(LOOK_ZH, LOOK_EN), L('转动视角（之后几秒镜头不会自动跟随）', 'Turn the camera (auto-follow pauses for a few seconds)'))}
+      ${row(L(LOOK_ZH, LOOK_EN), L('转动视角（2.5D 松手后停在最近的 45°）', 'Turn the camera (2.5D settles on the nearest 45°)'))}
       ${IS_MAC ? row(L('双指捏合 / 上下滑', 'Pinch / two-finger scroll'), L('拉近拉远；双指左右滑也能转视角', 'Zoom; a sideways two-finger swipe turns the camera too')) : ''}
-      ${row('Q / E', L('向左 / 向右转镜头', 'Turn the camera left / right'))}
+      ${row('Q / E', L('向左 / 向右转镜头（2.5D 下每次 45°）', 'Turn the camera left / right (45° steps in 2.5D)'))}
+      ${row('Z', L('切换 2.5D / 跟随视角', 'Switch 2.5D / follow view'))}
       ${row(L('滚轮', 'Wheel'), L('拉近 / 拉远', 'Zoom'))}
       </table>
       ${pillar('①', '打怪与决斗', 'Fight and duel', 'stupefy')}<table>
@@ -1029,7 +1124,7 @@ export function createControls(d: ControlsDeps) {
 
   // ------------------------------------------------------------------ first-run onboarding
   const tutorial = createTutorial({
-    report: (n) => d.send({ t: 'metrics', tut: n, touch, view: topView ? 'top' : 'follow' }),
+    report: (n) => d.send({ t: 'metrics', tut: n, touch, view: topView ? '25d' : 'follow' }),
     me: d.me, myPos, touch,
     creatures: () => [...cIdx.values()],
     creaturePos: (i) => d.creatures.get(i)?.root.position ?? null,
@@ -1037,6 +1132,7 @@ export function createControls(d: ControlsDeps) {
     slotOf: (name) => (d.me()?.hotbar.findIndex((s) => s?.name === name) ?? -1),
     openMenu: () => d.panels.menu(),
     openBook: () => d.panels.book(),
+    tempus: () => castOnSelf('Tempus'),
     openOwl: () => d.panels.owl(true),
     pair: () => d.pair(),
     agent: d.agent,
@@ -1045,9 +1141,16 @@ export function createControls(d: ControlsDeps) {
   });
 
   // ------------------------------------------------------------------ server replies (routed from main.ts)
-  function onCast(r: { ok: boolean }) {
+  function onCast(r: { ok: boolean; error?: string }) {
     const c = pendingCasts.shift();
     if (r.ok && c) tutorial.notify('cast', c);
+    // the server says the one we are locked on to is gone (this screen still drew it): drop the lock, and the next
+    // press aims afresh — it used to keep every press on the ghost (the 2026-10-02 mash test: 16 presses, no hit)
+    if (!r.ok && c?.target && /^There is no "/.test(r.error ?? '')) {
+      if (target === c.target) target = null;
+      ghosts.set(c.target, now());
+      if (c.slot !== undefined) castSlot(c.slot); // (the press itself goes again, at whoever is really there; nothing was spent)
+    }
   }
   function onGoto(goal: { x: number; z: number } | null) {
     if (!dest) return;
@@ -1063,7 +1166,8 @@ export function createControls(d: ControlsDeps) {
   }
 
   setupTouch();
-  if (firstView(touch)) setView(true, false); // reported with the tutorial's first step (metrics)
+  // (reported with the tutorial's first step: metrics)
+  { let stored: string | null = null; try { stored = localStorage.getItem(VIEW_KEY); } catch { /* private mode */ } setView(firstView(new URLSearchParams(location.search).get('view'), stored), false); }
   $('#prompt').onclick = () => doAction();
 
   return {
@@ -1073,6 +1177,8 @@ export function createControls(d: ControlsDeps) {
     targetKey: () => target ?? hovered,
     /** The locked target only (view.ts fades what hides it and x-rays it). */
     lockedTarget: () => target,
+    /** 2.5D is on (setView): view.ts fixes the camera, main.ts measures detail from near you. */
+    flat: () => topView,
     /** Walk there by the paths (a tap on an event slip). */
     walkTo: (x: number, z: number) => { lastGoto = 0; walkTo(x, z); },
     keydown, update, hud, castSlot, castKey, castOnSelf, clearTarget, toggleHelp,
@@ -1135,17 +1241,23 @@ interface TutorialDeps {
   walkTo: (x: number, z: number) => void;
   /** A big panel is open (the coach mark then moves above it instead of hiding behind it). */
   panelOpen: () => boolean;
+  /** Cast Tempus on yourself (the Tempus step's button). */
+  tempus: () => void;
   /** 试玩指标 (kernel/metrics.ts): the step reached, 1-based (0 when finished or skipped), and a coarse pointer. */
   report: (step: number) => void;
 }
 /** The door of the Great Hall faces the courtyard; walking to just inside it (shared/map.ts ZONES great_hall). */
 const HALL = { x: 0, z: -50 };
+/** The target button's own icon (the phone's 2×2 grid), for the tutorial's lines. */
+const TARGET_IC = '<svg class="ic"><use href="#i-target"/></svg>';
 function createTutorial(t: TutorialDeps) {
   const KEY = 'hogwarts.tutorial';
   const load = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
   const save = (v: string) => { try { localStorage.setItem(KEY, v); } catch { /* private mode */ } };
   const saved = load();
   let step = saved === 'done' ? -1 : Math.max(0, Math.min(6, Number(saved) || 0));
+  // after the tutorial the H-help button goes (H still opens it): the quiet HUD
+  document.body.classList.toggle('tut-done', step === -1);
   let start: { x: number; z: number } | null = null;
   let doneUntil = 0;
   let lastHtml = '';
@@ -1157,6 +1269,7 @@ function createTutorial(t: TutorialDeps) {
     if (b.dataset.act === 'menu') { t.openMenu(); notify('menu'); }
     if (b.dataset.act === 'book') t.openBook();
     if (b.dataset.act === 'hall') t.walkTo(HALL.x, HALL.z);
+    if (b.dataset.act === 'tempus') t.tempus();
     if (b.dataset.act === 'pair') t.pair();
     if (b.dataset.act === 'owl') t.openOwl();
     if (b.dataset.act === 'later') finish(true);
@@ -1197,7 +1310,7 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'bottom',
-      short: () => L('点 <b>◎</b> 选小精灵，再点 <b>1</b>', 'Tap <b>◎</b> for a pixie, then <b>1</b>'),
+      short: () => L(`点<b>小精灵</b>（或 ${TARGET_IC}）选它，再点 <b>1</b>`, `Tap a <b>pixie</b> (or ${TARGET_IC}), then <b>1</b>`),
       line: () => {
         const s = t.slotOf('Stupefy');
         const k = key(s >= 0 ? String(s + 1) : '1');
@@ -1229,8 +1342,10 @@ function createTutorial(t: TutorialDeps) {
         const s = t.slotOf('Tempus');
         return s >= 0
           ? L(`右上角还暗着 —— ${t.touch ? `点快捷栏第 ${s + 1} 格` : `按 ${key(String(s + 1))}`}施放<b>时间显现</b>点亮它`, `The top-right corner is dark: ${t.touch ? `tap hotbar slot ${s + 1}` : key(String(s + 1))} casts <b>Tempus</b> to light it`)
-          : L('右上角还暗着 —— 在咒语书里施放<b>时间显现</b>点亮它', 'The top-right corner is dark: cast <b>Tempus</b> from the spellbook');
+          : L('右上角还暗着 —— 点右上角的<b>沙漏</b>（或这里的按钮）施放<b>时间显现</b>点亮它', 'The top-right corner is dark: tap the <b>hourglass</b> there (or the button here) to cast <b>Tempus</b>');
       },
+      // (the 2026-10-01 phone playtest: 3 of 3 looked for Tempus in the spellbook, under its template, and stuck)
+      acts: () => `<button data-act="tempus">${L('施放', 'Cast')}</button>`,
     },
     {
       at: 'topleft',
@@ -1248,13 +1363,20 @@ function createTutorial(t: TutorialDeps) {
   ];
 
   const X = `<button class="tut-skip" data-act="skip" title="${L('跳过新手引导', 'Skip the tutorial')}" aria-label="${L('跳过新手引导', 'Skip the tutorial')}"><svg class="ic"><use href="#i-x"/></svg></button>`;
+  /** Where the coach mark sits — written only when it changes (each write woke main.ts's observer, which measured
+   *  the HUD again: ten layouts a second, and a panel that could shift under a finger mid-tap). */
+  function place(at: string) {
+    if (el.dataset.at !== at) el.dataset.at = at;
+    const over = t.panelOpen();
+    if (over && el.dataset.over !== '1') el.dataset.over = '1';
+    else if (!over && 'over' in el.dataset) delete el.dataset.over;
+  }
   function render() {
     if (step < 0) {
       if (doneUntil > now()) {
         const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
-        el.dataset.at = 'bottom';
-        if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;
+        place('bottom');
         el.hidden = false;
       } else el.hidden = true;
       return;
@@ -1264,9 +1386,8 @@ function createTutorial(t: TutorialDeps) {
     const s = STEPS[step];
     const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
     if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
-    el.dataset.at = s.at;
     // never behind an open panel: above it instead
-    if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;
+    place(s.at);
     const live = el.querySelector('.tut-live') as HTMLElement;
     const lv = s.live?.() ?? '';
     if (live.innerHTML !== lv) live.innerHTML = lv;
@@ -1284,6 +1405,7 @@ function createTutorial(t: TutorialDeps) {
   function finish(completed: boolean) {
     step = -1;
     save('done');
+    document.body.classList.add('tut-done');
     doneUntil = completed ? now() + 12 : 0;
     render();
   }

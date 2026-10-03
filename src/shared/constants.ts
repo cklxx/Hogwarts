@@ -37,7 +37,9 @@ export type EffectPrimitive = (typeof EFFECT_PRIMITIVES)[number];
  * Primitives a feature plugin brings (kernel/feature.ts `spells`): named here so the Rulebook can price and ban them
  * like the kernel's own (the schema is built before the plugins load). 黑魔法: kernel/dark.ts.
  */
-export const PLUGIN_PRIMITIVES = ['sectumsempra', 'fiendfyre', 'imperio', 'morsmordre'] as const;
+/** The school motto: the Rulebook's proclamation until a Minister writes one (the HUD shows only a real one). */
+export const SCHOOL_MOTTO = 'Draco dormiens nunquam titillandus.';
+export const PLUGIN_PRIMITIVES = ['sectumsempra', 'fiendfyre', 'imperio', 'morsmordre', 'aguamenti'] as const;
 export const SPELL_PRIMITIVES = [...EFFECT_PRIMITIVES, ...PLUGIN_PRIMITIVES] as const;
 export type SpellPrimitive = (typeof SPELL_PRIMITIVES)[number];
 
@@ -66,6 +68,9 @@ export const PAIR_TTL_S = 600;
 /** A new wizard's first minutes: creatures hit 30% softer (the Hogwarts nurses call it 新生护符). */
 export const NEWCOMER_WARD_S = 180;
 export const NEWCOMER_WARD = 0.3;
+/** For this long after enrolling, a wild creature goes only for a newcomer who has hurt it (the 2026-10-01 phone playtest:
+ *  new players were killed reading the tutorial and a rune's card, and swarmed by Dementors before the first lesson). */
+export const NEWCOMER_PEACE_S = 300;
 /** No wild creature's single blow takes more than this share of a wizard's maximum health (docs/RULES.md). */
 export const CREATURE_HIT_CAP = 0.4;
 /**
@@ -270,3 +275,6 @@ export const WARD_MAX_S = 3, WARD_CD_S = 8, WARD_MANA = 25;
 export const TERM_DEFAULT_S = 3600;
 /** The term length before TERM_DEFAULT_S: a save still on it (and no decree ever changed it) moves to the new default. */
 export const TERM_OLD_DEFAULT_S = 900;
+
+/** 翻滚闪避: a roll dashes this far (kernel/world.ts DODGE_S, DODGE_CD_S; the Duelling Club keeps it on the stage). */
+export const DODGE_DIST = 4.5;

@@ -2,7 +2,7 @@
 
 霍格沃茨：three.js 多人 3D 游戏，咒语就是代码（Runes），AI Agent 通过 MCP 入学来玩。界面中文优先。
 
-先读：`docs/PLAN.md`（接下来做什么、按什么顺序、怎么做）→ `docs/TODO.md`（每项的验收标准和遗留问题）→ `docs/RULES.md`（不能被打破的规则）→ `README.md`（玩法与架构）。
+先读：`docs/DESIGN.md`（设计方向：乘法而不是加法，先证明 30 秒好玩）→ `docs/PLAN.md`（接下来做什么、按什么顺序、怎么做）→ `docs/TODO.md`（每项的验收标准和遗留问题）→ `docs/RULES.md`（不能被打破的规则）→ `README.md`（玩法与架构）。
 
 ## 目录
 
@@ -22,6 +22,7 @@
 - **提交前必须全绿**：`npx tsc --noEmit && npx vitest run && npx vite build`。改了 `desktop/` 再跑 `cargo test --manifest-path desktop/src-tauri/Cargo.toml`。
 - **宪法**：`docs/RULES.md` 列出不能被打破的规则（密钥、公平、奖励上限、政治、Agent），每条都有代码位置和证明 / 测试。新功能不得违反；要加一条新的「不能破」，就写进去并配上证明或测试。
 - **新玩法写成插件**：内核一个 `Feature`（`src/kernel/feature.ts`）加进 `features.ts`，客户端一个 `ClientFeature` 加进 `client/features.ts`；不要在 `world.ts` / `mcp/server.ts` / `server/main.ts` / `client/main.ts` 里点名新玩法。状态用声明合并挂到 `World` 上，存档走 `save` / `load`。插件还可以带 Runes 原语（`spells`：名字先登记进 `src/shared/constants.ts` 的 `PLUGIN_PRIMITIVES`，规则书才能给它定价、禁用）。
+- **客户端插件能热更新**（`client/context.ts`、`client/hot.ts`，思路来自 cordis）：`ClientFeature` 的工厂拿到 `ctx`，留在页面上的东西都经过它——自己放进页面的元素 `ctx.own(el)`、挂在 `document`/`window`/页面固有元素上的监听 `ctx.on(...)`、定时器 `ctx.timeout/interval`、其余 `ctx.effect(() => undo)`；想在热更新和整页刷新后留住的状态（面板开合、已拿到的回复、聊天记录）用 `ctx.keep(名字, 存, 取, 版本)`，状态的形状变了就把版本加一。这样卸载时能撤干净，新构建只改了插件时浏览器原地换掉它，不刷新页面。新插件在 `client/features.ts` 里登记模块名，并同步 `import.meta.hot.accept` 的列表（`test/hot.test.ts` 会查）。
 - **改内核规则或常量**：同步更新 `formal/`（TLA+ 规格、Lean、`formal/vectors.json` / `test/formal.test.ts`），并跑 `formal/run.sh`。
 - **界面文字**用 `L('中文', 'English')`，中文在前；服务器事件带 `zh`。
 - **性能改动**先测后改，前后数字写进 `docs/PERF.md`（软件渲染的帧率只看方向，要写明）。

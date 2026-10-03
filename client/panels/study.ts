@@ -11,6 +11,13 @@ import type { StudyEntry } from './types';
  * 「抄进咒语书」 (forged into your book, credited to its author).
  */
 export interface StudyDeps {
+  /** The feature's context (client/context.ts) takes the elements this makes: gone when the feature is reloaded. */
+  own?: <T extends Element>(el: T) => T;
+  /** …and keeps its state across a hot update (FeatureContext.keep). */
+  keep?: <T>(name: string, save: () => T, load: (s: T) => void) => boolean;
+  /** …and its listener on the document and its timers (tests leave them out). */
+  on?: (t: EventTarget, type: string, fn: (e: Event) => void) => void;
+  timeout?: (fn: () => void, ms: number) => unknown;
   send: (o: unknown) => void;
   list: () => StudyEntry[];
   now: () => number;
@@ -31,6 +38,11 @@ export function createStudy(d: StudyDeps) {
   let lastBlock = '', lastSlip = '';
   /** 看源码 spends the spell's only study (kernel rule): the first click arms it, a second within 4 s reads. */
   let armed: { spell: string; from: string; until: number } | null = null;
+  d.keep?.('study', () => ({ told: [...told], primed, slip, slipLeft: slipUntil - performance.now(), armed: armed && { ...armed, until: armed.until - performance.now() } }), (s) => {
+    for (const t of s.told) told.add(t);
+    primed = s.primed; slip = s.slip; slipUntil = performance.now() + s.slipLeft;
+    armed = s.armed && { ...s.armed, until: performance.now() + s.armed.until };
+  });
 
   function act(spell: string, handle: string, copy: boolean) {
     const taken = d.spells().some((s) => s.name.toLowerCase() === spell.toLowerCase());
@@ -51,7 +63,7 @@ export function createStudy(d: StudyDeps) {
     const bar = document.getElementById('book-bar');
     if (!bar || document.getElementById('book')?.hidden) return;
     let b = document.getElementById('book-study');
-    if (!b) { b = document.createElement('div'); b.id = 'book-study'; bar.before(b); }
+    if (!b) { b = document.createElement('div'); b.id = 'book-study'; bar.before(b); d.own?.(b); }
     const now = d.now(), list = d.list();
     const html = list.length
       ? `<h4>${ic('eye')}${L('偷师', 'Study')} <small>${L('被别人的自创咒语打中后 120 秒，就能看透它', '120 s after another wizard\'s own spell hits you, you can see how it works')}</small></h4><ul>`
@@ -71,6 +83,7 @@ export function createStudy(d: StudyDeps) {
       el.id = 'studyslip';
       el.hidden = true;
       clock.after(el);
+      d.own?.(el);
     }
     if (!slip || performance.now() > slipUntil) { el.hidden = true; slip = null; lastSlip = ''; return; }
     const html = `<div class="ss-h">${ic('eye')}<b>${L('偷师', 'Study')}</b><button type="button" class="x" data-study="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></div>`
@@ -89,7 +102,7 @@ export function createStudy(d: StudyDeps) {
     renderSlip();
   }
 
-  document.addEventListener('click', (e) => {
+  (d.on ?? ((t, k, f) => t.addEventListener(k, f)))(document, 'click', (e: Event) => {
     const b = (e.target as HTMLElement).closest('[data-study]') as HTMLButtonElement | null;
     if (!b || b.disabled) return;
     if (b.dataset.study === 'close') { slip = null; renderSlip(); return; }
@@ -97,7 +110,7 @@ export function createStudy(d: StudyDeps) {
     if (b.dataset.study === 'read' && !(armed && armed.spell === spell && armed.from === from && performance.now() < armed.until)) {
       armed = { spell, from, until: performance.now() + 4000 };
       update();
-      setTimeout(update, 4100);
+      (d.timeout ?? setTimeout)(update, 4100);
       return;
     }
     armed = null;
@@ -124,9 +137,9 @@ export function createStudy(d: StudyDeps) {
 }
 
 /** 偷师 as a client feature (client/features.ts; src/kernel/unfair.ts STUDY_FEATURE). */
-export const studyFeature: ClientFeatureFactory = (d) => {
+export const studyFeature: ClientFeatureFactory = (d, ctx) => {
   let asked = -1e9;
-  const study = createStudy({
+  const study = createStudy({ own: (el) => ctx.own(el), keep: (n, s, l) => ctx.keep(n, s, l), on: (t, k, f) => { ctx.on(t, k, f); }, timeout: (f, ms) => ctx.timeout(f, ms),
     send: d.send, list: () => (d.me()?.studyable as StudyEntry[] | undefined) ?? [], now: d.now, spells: d.spells,
     openBook: d.openBook, loadDraft: d.loadDraft, toast: d.toast, mark: () => { asked = performance.now(); },
   });

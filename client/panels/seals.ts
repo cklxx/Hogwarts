@@ -21,10 +21,11 @@ interface Reply {
 
 const sealState = (st: string) => lang !== 'zh' ? st : st === 'broken' ? '已破解' : st === 'open to you' ? '向你敞开' : st.startsWith('needs year') ? `需要 ${st.slice(-1)} 年级` : '先破解上一道封印';
 
-export const sealsFeature: ClientFeatureFactory = (d) => {
+export const sealsFeature: ClientFeatureFactory = (d, ctx) => {
   const $ = (id: string) => document.getElementById(id)!;
   let seals: SealInfo[] | null = null;
   let tier = 1, asked = -1, lastRead = -1e9;
+  ctx.keep('seals', () => ({ seals, tier }), (s) => { seals = s.seals; tier = s.tier; });
   const me = () => d.me() as { seals: number; year: number; stunned?: number } | null;
   function render(r: Reply) {
     const { section, current } = r;

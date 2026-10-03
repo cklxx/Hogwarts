@@ -5,6 +5,7 @@
  * it after anything that changes it (a cast, a curse arriving, a purchase).
  */
 import { curseText, type HexState } from '../controls';
+import type { FeatureContext } from '../context';
 import type { ClientDeps, ClientFeature } from '../feature';
 import { L, lang, tr } from '../i18n';
 import { ic, itemIcon } from '../ink';
@@ -18,7 +19,7 @@ interface TrunkItem {
 interface TMe { name: string; year: number; galleons: number; hex?: HexState | null }
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 
-export function trunkFeature(d: ClientDeps): ClientFeature {
+export function trunkFeature(d: ClientDeps, ctx: FeatureContext): ClientFeature {
   const me = () => d.me() as TMe | null;
   const trunk = $('#trunk'), cursebar = $('#cursebar');
   /** When the trunk last asked the server for something: an 'err' right after is its. */
@@ -55,7 +56,7 @@ export function trunkFeature(d: ClientDeps): ClientFeature {
     fin.title = why ?? '';
     el.hidden = false;
   }
-  cursebar.addEventListener('click', (e) => {
+  ctx.on(cursebar, 'click', (e) => {
     const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
     if (!b || b.disabled) return;
     if (b.dataset.act === 'finite') d.castOnSelf('Finite Incantatem');
@@ -70,6 +71,10 @@ export function trunkFeature(d: ClientDeps): ClientFeature {
   let trunkMsg = '';
   let destroyArmed: string | null = null;
   let trunkRefetch = 0;
+  ctx.keep('trunk', () => ({ items: trunkItems, known: knownSpells && [...knownSpells], msg: trunkMsg, news: curseNews && { text: curseNews.text, left: curseNews.until - performance.now() } }), (s) => {
+    trunkItems = s.items; knownSpells = s.known && new Set(s.known); trunkMsg = s.msg;
+    curseNews = s.news && { text: s.news.text, until: performance.now() + s.news.left };
+  });
   /** The armory has arrived at least once (so an empty trunk really is empty). */
   let trunkKnown = false;
   let trunkOk = false;
@@ -140,7 +145,7 @@ export function trunkFeature(d: ClientDeps): ClientFeature {
     d.send({ t: 'book' });
     return true;
   }
-  trunk.addEventListener('click', (e) => {
+  ctx.on(trunk, 'click', (e) => {
     const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
     if (!b || b.disabled) return;
     const act = b.dataset.act;

@@ -13,6 +13,10 @@ import { DA_JOINT_WINDOW_S } from '../../src/shared/constants';
  * the vote card and the joint-Patronus badge in the top stack, the leaderboard's and the Owl Post's way in.
  */
 export interface DaDeps {
+  /** The feature's context (client/context.ts) takes the elements this makes: gone when the feature is reloaded. */
+  own?: <T extends Element>(el: T) => T;
+  /** …and keeps its state across a hot update (FeatureContext.keep). */
+  keep?: <T>(name: string, save: () => T, load: (s: T) => void) => boolean;
   send: (o: unknown) => void;
   live: () => DaView | null;
   solo: (el: HTMLElement) => void;
@@ -26,8 +30,10 @@ export function createDa(d: DaDeps) {
   el.className = 'sheet';
   el.hidden = true;
   document.getElementById('hud')!.append(el);
+  d.own?.(el);
   let reply: DaView | null = null;
   let msg = '', ok = false, last = '';
+  d.keep?.('reply', () => ({ reply, msg, ok }), (s) => { reply = s.reply; msg = s.msg; ok = s.ok; });
 
   /** The reply's extras over the live counts. */
   const view = (): DaView | null => {
@@ -127,11 +133,11 @@ export function createDa(d: DaDeps) {
 }
 
 /** Dumbledore's Army as a client feature (client/features.ts; src/kernel/unfair.ts DA_FEATURE). */
-export const daFeature: ClientFeatureFactory = (d) => {
+export const daFeature: ClientFeatureFactory = (d, ctx) => {
   let asked = -1e9, jointUntil = 0;
   const live = () => (d.me()?.da as (DaView & { jointBadge?: number }) | undefined) ?? null;
-  const da = createDa({ send: d.send, live, solo: d.solo, mark: () => { asked = performance.now(); }, toast: d.toast });
-  document.addEventListener('click', (e) => {
+  const da = createDa({ own: (el) => ctx.own(el), keep: (n, s, l) => ctx.keep(n, s, l), send: d.send, live, solo: d.solo, mark: () => { asked = performance.now(); }, toast: d.toast });
+  ctx.on(document, 'click', (e) => {
     if ((e.target as HTMLElement).closest('[data-da-open], [data-pn="da"]')) da.toggle(true);
   });
   return {

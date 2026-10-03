@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
-  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, CREATURE_HIT_CAP,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, NEWCOMER_PEACE_S, CREATURE_HIT_CAP,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource,
@@ -32,6 +32,7 @@ import { Solids, dist } from './physics.js';
 import { Separator } from './separation.js';
 import { statueCollider } from '../shared/layout.js';
 import { findPath } from './pathfind.js';
+import { edgeAt, edgeHop, nearEdge, SCENES, routeVia, sceneAt, type Gate } from '../shared/scenes.js';
 import { thinkNpcs } from './npc.js';
 import { closePairs, EntityMap } from './spatial.js';
 import { ZONE_BIT, maskOf, zoneIdsAt, zoneMask } from './zones.js';
@@ -45,7 +46,7 @@ import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, typ
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
 import { duelFoes, inFight, inMatch, sideOf } from './duelclub.js';
 import { spared, strikes } from './allies.js';
-import { AGENT_TOOL_COST, FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
+import { AGENT_TOOL_COST, FEATURE_SPELLS, FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
 import { bannedCastText, bannedListing, marketDecreeErrors, payRoyalty } from './market.js';
@@ -74,7 +75,8 @@ export const PLAYER_STEERING = 'Your human is steering right now; their hands on
  * DODGE_CD_S to breathe; a Protego raised at most PERFECT_PROTEGO_S before a bolt lands sends it back; two
  * wizards' spells within CLASH_R m of each other collide (checked only while there are ≤ CLASH_MAX in flight).
  */
-export const DODGE_DIST = 4.5, DODGE_S = 0.25, DODGE_CD_S = 2.5, PERFECT_PROTEGO_S = 0.35, CLASH_R = 0.9, CLASH_MAX = 400;
+export { DODGE_DIST };
+export const DODGE_S = 0.25, DODGE_CD_S = 2.5, PERFECT_PROTEGO_S = 0.35, CLASH_R = 0.9, CLASH_MAX = 400;
 /** Refusal for an agent's owl when the owlbox is full of its player's owls it has not read yet. */
 export const OWLBOX_UNREAD = 'Your owlbox is full of owls from your human that you have not read. Call listen first.';
 
@@ -83,7 +85,7 @@ const ONLINE_GRACE = 300;
 /** Tarantallegra: the legs pick a new wrong direction every DANCE_STEP_S, up to DANCE_MAX_RAD off course. */
 const DANCE_STEP_S = 0.4;
 const DANCE_MAX_RAD = 0.6;
-import { FRESH_SECONDS } from '../shared/constants.js';
+import { DODGE_DIST, FRESH_SECONDS } from '../shared/constants.js';
 import { UI_CHARM_INFO } from '../shared/reveal.js';
 import { revealView } from './reveal.js';
 export { FRESH_SECONDS };
@@ -91,6 +93,8 @@ export { FRESH_SECONDS };
 const REVEAL_CHARM: Record<string, string> = Object.fromEntries(Object.entries(UI_CHARM_INFO).map(([k, v]) => [v.spell, k]));
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
+/** What a spell with a target flies past (World.inAim): tree trunks. */
+const AIM_PASSES = 'tree';
 /** placeName's order: the most specific zone wins. */
 const PLACE_ORDER: ZoneId[] = ['azkaban', 'erised', 'great_hall', 'seventh_floor', 'tomb', 'willow', 'dungeons', 'greenhouses', 'courtyard', 'pitch', 'hogsmeade', 'deep_forest', 'forest', 'lake_shore', 'grounds'];
 
@@ -149,6 +153,8 @@ const NPC_NEWS_GAP_S = 30;
 const EVENT_EASY_YEAR = 2, EVENT_EASY_MULT = 0.5;
 /** At most this many wild creatures pick a first-year on their own at once (one that is hit keeps after them). */
 const NEWCOMER_PACK = 2;
+/** A wild creature hunts only in its home's scene (src/shared/scenes.ts); a summon goes where its owner goes. */
+const sameScene = (c: Creature, p: Vec2) => !!c.owner || sceneAt(c.home.x, c.home.z) === sceneAt(p.x, p.z);
 /** terms.ministerMinReputation's default before round 5 (restore moves an untouched one to today's default). */
 const MINISTER_OLD_DEFAULT = 100;
 
@@ -530,6 +536,7 @@ export class World {
    */
   private putStrike(e: Wizard | Creature, p: Vec2, r: number, limit: number): boolean {
     const ex = e.pos.x - p.x, ez = e.pos.z - p.z;
+    if (ex !== ex || ez !== ez) return false; // (a NaN coordinate: around decides — before the axis test, which a finite far axis would pass)
     if (ex > r || ex < -r || ez > r || ez < -r) return true; // farther than r along one axis (hypot ≥ each |axis|)
     const d = dist(e.pos, p);
     if (d !== d) return false;
@@ -957,9 +964,11 @@ export class World {
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
     }
     // …or behind a wall, a tree, a rock: the bolt would only hit that (playtest round 3: four casts, 72 mana, nothing)
-    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inBlast(w.pos, this.entity(target)!.pos)) {
+    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inAim(w.pos, this.entity(target)!.pos)) {
       const t = this.entity(target)!;
-      return { ...fail(`Something stands between you and ${t.name}: no clear shot. Move for one. No mana spent. 你和 ${t.name} 之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
+      // (where it is now: between an agent's look and its cast the world moves on — say it, so no second look is needed)
+      const at = `(${Math.round(t.pos.x)}, ${Math.round(t.pos.z)}), ${dist(t.pos, w.pos).toFixed(1)} m`;
+      return { ...fail(`Something stands between you and ${t.name}, now at ${at}: no clear shot. Move for one. No mana spent. 你和 ${t.name}（现在在 ${at}）之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
     }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     if (!opts.dryRun && Math.hypot(aim.x - w.pos.x, aim.z - w.pos.z) > 0.1) w.facing = Math.atan2(aim.x - w.pos.x, -(aim.z - w.pos.z));
@@ -1161,7 +1170,9 @@ export class World {
     if (ready > this.now) return { ok: false, error: `Still catching your breath: ${(ready - this.now).toFixed(1)}s. 还在喘气：${(ready - this.now).toFixed(1)} 秒。 retry_after=${Math.max(1, Math.ceil(ready - this.now))}` };
     let l = Math.hypot(dx, dz);
     if (!Number.isFinite(l) || l < 0.01) { dx = Math.sin(w.facing); dz = -Math.cos(w.facing); l = 1; }
-    w.st.dashDx = dx / l; w.st.dashDz = dz / l;
+    dx /= l; dz /= l;
+    for (const f of HOOKS.dodgeDir) { const d = f.dodgeDir(this, w, dx, dz); if (d) [dx, dz] = d; }
+    w.st.dashDx = dx; w.st.dashDz = dz;
     w.st.dodgeUntil = this.now + DODGE_S;
     w.st.dodgeReadyAt = this.now + DODGE_CD_S;
     // the walk goes on after the roll (moveWizard: the dash overrides it while it lasts). It used to be dropped, so a
@@ -1255,11 +1266,20 @@ export class World {
   nova(w: Wizard, radius: number, power: number, element: Element, tags: string[]) {
     this.fx({ k: 'nova', x: w.pos.x, z: w.pos.z, r: radius, e: element });
     for (const e of this.around(w.pos, radius, (e) => this.canHarm(w.id, e.id) && this.inBlast(w.pos, e.pos), w.id, 32)) this.damage(w.id, e.id, power, element, tags);
+    if (power > 0) for (const f of HOOKS.blast) f.blast(this, w.id, w.pos, radius, element, tags);
   }
 
   /** An area spell's blast reaches only what no wall stands in front of (the same test a bolt makes). */
   inBlast(from: Vec2, to: Vec2): boolean {
     return !this.solids.hitSegment(from.x, from.z, to.x, to.z);
+  }
+  /**
+   * A spell with a target reaches it unless a wall or a building stands between: it weaves past tree trunks (the
+   * 2026-10-01 owner test: 「火打不到后面的怪物」 — in the forest one foe in eight within 25 m stood behind a trunk, and
+   * the cast at it was refused). A straight shot and a blast still stop at a tree.
+   */
+  inAim(from: Vec2, to: Vec2): boolean {
+    return !this.solids.hitSegment(from.x, from.z, to.x, to.z, undefined, 0, AIM_PASSES);
   }
 
   reveal(w: Wizard, key: UiCharm) {
@@ -1284,6 +1304,7 @@ export class World {
       hit.add(cur);
       pts.push(e.pos.x, e.pos.z);
       this.damage(w.id, cur, p, element, tags);
+      for (const f of HOOKS.blast) f.blast(this, w.id, e.pos, 1.5, element, tags);
       p *= 0.7;
       const from = { ...e.pos };
       cur = this.around(from, 8, (x) => !hit.has(x.id) && strikes(this, w.id, first, x.id), w.id, 1)[0]?.id ?? ''; // never leaps to an ally (allies.ts)
@@ -1372,7 +1393,7 @@ export class World {
     if (!opts.dot) {
       // the features' say on a direct hit (the Dark Lord's ×1.15, the DA's joint Patronus, 偷师 remembering the spell)
       let m = 1;
-      for (const f of HOOKS.hit) m *= f.hit(this, by, sw, dstId, tags, true);
+      for (const f of HOOKS.hit) m *= f.hit(this, by, sw, dstId, tags, true, element);
       a *= (sw ? derived(sw, rb).power : 1) * m;
     }
     // elemental side effects (not from damage-over-time itself, so they never chain)
@@ -2088,6 +2109,8 @@ export class World {
     return Math.hypot(w.input.dx, w.input.dz) > 0.01 || (!!w.goal && w.goalBy === 'player') || this.now - (w.steerAt ?? -1e9) < PLAYER_GRACE_S;
   }
 
+  /** A walk into another scene, waiting on this side of its gate (src/shared/scenes.ts; the scenes Feature goes on). */
+  readonly via = new Map<string, { to: Vec2; by: 'player' | 'agent'; gate: Gate }>();
   /**
    * Walk to a point (A*), or stop with null. `by` says who asked: the MCP layer passes 'agent' for its
    * move_to and stop. An agent's walk is refused while it is paused (AGENT_PAUSED) and while the player is
@@ -2108,11 +2131,25 @@ export class World {
     w.route = [];
     w.goal = null;
     w.goalBy = null;
+    this.via.delete(w.id);
     if (!goal) return null;
     if (w.st.jailedUntil) throw new Error('The walls of Azkaban are thick.');
-    const to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
+    let to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
+    to = nearEdge(w.pos, to) ?? to;
+    // into the mist, or into the scene that lies past this edge: walk to the edge and through it (边缘出口); another
+    // scene: to its gate first; going through either walks on (the scenes Feature)
     this.syncSolids();
-    const route = findPath(w.pos, to, this.solids);
+    let hop = edgeHop(w.pos, to);
+    let route = hop ? findPath(w.pos, hop.at, this.solids) : null;
+    // (the path ends where the grid lets it: that is the crossing, if it is still at the edge; else the gates)
+    hop = hop && route?.length ? edgeAt(hop, route[route.length - 1]) : null;
+    if (!hop) { hop = routeVia(w.pos, to); route = null; }
+    if (!hop && sceneAt(w.pos.x, w.pos.z) && !sceneAt(to.x, to.z)) throw new Error(`(${Math.round(to.x)}, ${Math.round(to.z)}) is in the mist between the scenes: nobody walks there. Scenes: ${SCENES.map((s) => `${s.id} [${s.box.join(', ')}]`).join('; ')}. 那里在场景之间的雾里，走不过去。`);
+    if (hop) this.via.set(w.id, { to: sceneAt(to.x, to.z) ? to : hop.out, by, gate: hop });
+    route ??= findPath(w.pos, hop ? hop.at : to, this.solids);
+    // out onto water that bears you (Solids.walkOn, bridge: ice): the grid knows only land — to where it starts, then over it
+    const over = !hop && this.solids.walkOn?.(to.x, to.z) ? this.solids.bridge?.(w.pos, to) : null;
+    if (over) route = this.solids.walkOn!(w.pos.x, w.pos.z) ? over.slice(1) : [...(findPath(w.pos, over[0], this.solids) ?? []), ...over.slice(1)];
     this.stuck.delete(w.id);
     if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
     w.route = route;
@@ -2330,6 +2367,7 @@ export class World {
       for (const s of due) {
         this.fx({ k: 'stormhit', x: s.x, z: s.z, r: s.r, e: s.element });
         for (const e of this.around(s, s.r, (e) => this.canHarm(s.owner, e.id) && this.inBlast(s, e.pos), s.owner, 32)) this.damage(s.owner, e.id, s.power, s.element, s.tags);
+        if (s.power > 0) for (const f of HOOKS.blast) f.blast(this, s.owner, s, s.r, s.element, s.tags);
       }
     }
     this.stepProjectiles(dt);
@@ -2555,7 +2593,7 @@ export class World {
         p.pos.x += (p.vel.x * dt) / steps;
         p.pos.z += (p.vel.z * dt) / steps;
         // the whole sub-step's path, not just where it ends: a fast bolt never tunnels through a thin wall
-        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z);
+        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z, undefined, 0, p.homing ? AIM_PASSES : undefined); // (one with a target weaves past trees: inAim)
         if (wall) {
           const t = this.solids.hitT;
           p.pos.x = ax + (p.pos.x - ax) * t;
@@ -2594,7 +2632,7 @@ export class World {
     const w = this.wizards.get(id);
     const c = this.creatures.get(id);
     const caster = this.wizards.get(p.owner);
-    for (const f of HOOKS.hit) f.hit(this, p.owner, caster, id, p.tags, false); // (偷师: a root or a disarm is a hit too)
+    for (const f of HOOKS.hit) f.hit(this, p.owner, caster, id, p.tags, false, p.element); // (偷师: a root or a disarm is a hit too)
     if (p.kind === 'root') {
       if (w) w.st.rootedUntil = this.now + p.secs;
       if (c) c.rootedUntil = this.now + p.secs * (c.kind === 'troll' ? 0.5 : 1);
@@ -2618,9 +2656,11 @@ export class World {
     // (the 2026-09-30 phone playtest: a ring of pixies took a newcomer to 20 hp before they found the target button)
     const hunted = new Map<string, number>();
     for (const c of this.creatures.values()) if (c.target && !c.owner) hunted.set(c.target, (hunted.get(c.target) ?? 0) + 1);
-    const pickable = (c: Creature, e: { id: string }) => {
-      if (!this.canHarm(c.id, e.id)) return false;
+    const pickable = (c: Creature, e: { id: string; pos: Vec2 }) => {
+      if (!this.canHarm(c.id, e.id) || !sameScene(c, e.pos)) return false;
       const w = this.wizards.get(e.id);
+      // (a newcomer is left alone by what they have not hurt: NEWCOMER_PEACE_S)
+      if (w && !w.npc && this.now - w.createdAt < NEWCOMER_PEACE_S && !(c.damageBy[w.id] > 0)) return false;
       return !w || w.year > 1 || (hunted.get(e.id) ?? 0) < NEWCOMER_PACK;
     };
     for (const c of [...this.creatures.values()]) {
@@ -2646,7 +2686,7 @@ export class World {
       // hostile: keep a valid target (a wizard or someone's summon), else take the nearest in reach
       let t = c.target ? this.entity(c.target) : undefined;
       const provoked = (c.provokedUntil ?? 0) > this.now;
-      if (t && (!this.canHarm(c.id, t.id) || dist(t.pos, c.home) > (provoked ? PROVOKED_LEASH : 45) || dist(t.pos, c.pos) > (provoked ? PROVOKED_LEASH : def.aggro * 2.5))) { t = undefined; c.target = null; c.provokedUntil = 0; }
+      if (t && (!this.canHarm(c.id, t.id) || !sameScene(c, t.pos) || dist(t.pos, c.home) > (provoked ? PROVOKED_LEASH : 45) || dist(t.pos, c.pos) > (provoked ? PROVOKED_LEASH : def.aggro * 2.5))) { t = undefined; c.target = null; c.provokedUntil = 0; }
       if (!t && !c.driver) { // a possessed creature (possess.ts) goes for whom its driver names, no one else
         t = this.around(c.pos, def.aggro, (e) => pickable(c, e), c.id, 1)[0];
         if (t) { c.target = t.id; hunted.set(t.id, (hunted.get(t.id) ?? 0) + 1); }
@@ -2740,6 +2780,12 @@ export class World {
     c.pos.z += (dz / l) * s;
     c.facing = Math.atan2(dx, -dz);
     if (!CREATURES[c.kind].flying) this.solids.resolve(c.pos, CREATURES[c.kind].radius);
+    // and never out of their home's scene: the veil stops walkers, a flyer is held at its edge (the 2026-09-30 society
+    // playtest: the lake's Dementors flew over into the courtyard after anyone within their 25 m)
+    else if (!c.owner) { const s = sceneAt(c.home.x, c.home.z); if (s) { c.pos.x = clampN(c.pos.x, s.box[0], s.box[2]); c.pos.z = clampN(c.pos.z, s.box[1], s.box[3]); } }
+    // and one born at a leashed place stays within its leash (CreatureDef `also`)
+    const lp = !c.owner && CREATURES[c.kind].also?.find((p) => p.leash && Math.hypot(c.home.x - p.x, c.home.z - p.z) <= p.r + 1);
+    if (lp) { const ox = c.pos.x - lp.x, oz = c.pos.z - lp.z, o = Math.hypot(ox, oz); if (o > lp.leash!) { c.pos.x = lp.x + (ox / o) * lp.leash!; c.pos.z = lp.z + (oz / o) * lp.leash!; } }
     // wild creatures never wander into safe zones
     if (!c.owner && this.inSafe(c.pos)) { c.pos.x -= (dx / l) * s; c.pos.z -= (dz / l) * s; }
     this.moved(c);
@@ -2756,28 +2802,30 @@ export class World {
         for (const c of alive) if (!c.target || !rc.enabled[kind]) this.creatures.delete(c.id);
         continue;
       }
-      const max = Math.round(def.spawn.max * rc.spawnMultiplier);
-      if (alive.length >= max) continue;
-      if (def.rare && this.rng() > def.rare) continue;
-      for (let tries = 0; tries < 12; tries++) {
-        const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * def.spawn.r;
-        const p = { x: def.spawn.x + Math.cos(a) * r, z: def.spawn.z + Math.sin(a) * r };
-        const q = { ...p };
-        this.solids.resolve(q, def.radius);
-        if (!def.flying && dist(p, q) > 0.01) continue;
-        if (this.inSafe(p) || this.within(p, 'great_hall') || (def.faction === 'hostile' && this.within(p, 'courtyard'))) continue;
-        // never born already on top of someone: outside its own aggro reach of every wizard (playtest round 3: an
-        // acromantula appearing beside whoever walked into the forest)
-        const clear = Math.max(8, def.aggro + 2);
-        if (def.faction === 'hostile' && [...this.nearWizards(p, clear)].some((w) => this.isActive(w) && dist(w.pos, p) < clear)) continue;
-        const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
-        const c: Creature = {
-          id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,
-          wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: def.lifetime ? this.now + def.lifetime : 0,
-        };
-        this.creatures.set(c.id, c);
-        if (kind === 'phoenix') this.emit('creature', 'A phoenix sings somewhere over the grounds. Fawkes has come.', { zh: '场地上空某处传来凤凰的歌声。福克斯来了。' });
-        break;
+      for (const sp of def.also ? [def.spawn, ...def.also] : [def.spawn]) {
+        const max = Math.round(sp.max * rc.spawnMultiplier);
+        if ((def.also ? alive.filter((c) => Math.hypot(c.home.x - sp.x, c.home.z - sp.z) <= sp.r + 1).length : alive.length) >= max) continue;
+        if (def.rare && this.rng() > def.rare) continue;
+        for (let tries = 0; tries < 12; tries++) {
+          const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * sp.r;
+          const p = { x: sp.x + Math.cos(a) * r, z: sp.z + Math.sin(a) * r };
+          const q = { ...p };
+          this.solids.resolve(q, def.radius);
+          if (!def.flying && dist(p, q) > 0.01) continue;
+          if (this.inSafe(p) || this.within(p, 'great_hall') || (def.faction === 'hostile' && this.within(p, 'courtyard'))) continue;
+          // never born already on top of someone: outside its own aggro reach of every wizard (playtest round 3: an
+          // acromantula appearing beside whoever walked into the forest)
+          const clear = Math.max(8, def.aggro + 2);
+          if (def.faction === 'hostile' && [...this.nearWizards(p, clear)].some((w) => this.isActive(w) && dist(w.pos, p) < clear)) continue;
+          const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
+          const c: Creature = {
+            id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,
+            wander: null, lastHitBy: null, damageBy: {}, auras: [], owner: null, until: def.lifetime ? this.now + def.lifetime : 0,
+          };
+          this.creatures.set(c.id, c);
+          if (kind === 'phoenix') this.emit('creature', 'A phoenix sings somewhere over the grounds. Fawkes has come.', { zh: '场地上空某处传来凤凰的歌声。福克斯来了。' });
+          break;
+        }
       }
     }
   }
@@ -3232,14 +3280,14 @@ export class World {
       handle: x.handle, name: x.name, house: x.house, year: x.year, hp: Math.round(x.hp), dist: round(dist(x.pos, w.pos)), x: round(x.pos.x), z: round(x.pos.z),
       title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
-      blocked: (this.canHarm(w.id, x.id) && !this.inBlast(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
+      blocked: (this.canHarm(w.id, x.id) && !this.inAim(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
       elderWand: this.flags.elderWandHolder === x.id || undefined,
       ...this.views(HOOKS.look, (f) => f.view.look(this, x)), // e.g. darkLord
     })).sort((a, b) => a.dist - b.dist);
     const creatures = [...this.nearCreatures(w.pos, r)].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
       id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
       canHarm: this.canHarm(w.id, c.id), auras: live(c.auras, this.now).map((a) => a.k),
-      blocked: (this.canHarm(w.id, c.id) && !this.inBlast(w.pos, c.pos)) || undefined,
+      blocked: (this.canHarm(w.id, c.id) && !this.inAim(w.pos, c.pos)) || undefined,
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
       // what it shrugs off (the troll: arcane ×0.6), and whether a school event brought it (playtest round 4)
@@ -3262,6 +3310,7 @@ export class World {
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
       // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
       ...revealView(this, w),
+      ...this.views(HOOKS.here, (f) => f.view.here(this, w)), // what stands round you (the props)
     };
   }
 
@@ -3363,8 +3412,11 @@ export class World {
       if (w.npc) s += 'N';
       if (w.st.silencedUntil > this.now) s += 'Q';
       s += auraFlags(w.auras, this.now);
+      let mm: string | undefined;
+      for (const f of HOOKS.tag) { mm = f.tag(this, w); if (mm) break; }
       // g: the glamour (shared/glamour.ts glamourKey, e.g. "velvet:7a1f2b:d4af37:::"), absent for the house look
-      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text, g: glamourKey(lookOf(w, this.now)) };
+      // mm: the features' line under the name (梗牌: kernel/memetags.ts)
+      return { h: w.handle, n: w.name, ho: w.house, x: round(w.pos.x), z: round(w.pos.z), f: round(w.facing), hp: Math.round(w.hp), m: d.maxHp, y: w.year, t: this.title(w).zh, s, say: w.say?.text, g: glamourKey(lookOf(w, this.now)), ...(mm ? { mm } : {}) };
     });
     return {
       t: round(this.now), hour: round(this.hour()), night: this.isNight(), weather: this.rules.world.weather, term: { n: this.term.n, left: Math.max(0, Math.round(this.term.endsAt - this.now)) },
@@ -3614,7 +3666,12 @@ const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, 
 const HITS_KEPT = 8, HITS_SHOWN_S = 30;
 /** How near a hidden chest has to be before look shows it (about what a browser player would spot). */
 const CHEST_SIGHT = 12;
-const HARM_EFFECTS = new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova']);
-const HELP_EFFECTS = new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend']);
+// (and the features' primitives, by what they say they aim at: Aguamenti a foe, sectumsempra a foe, …; read on first
+// use — the feature registry and this module import each other)
+let AIMS: { harm: Set<string>; help: Set<string> } | null = null;
+const aims = () => (AIMS ??= {
+  harm: new Set(['bolt', 'disarm', 'root', 'push', 'chain', 'storm', 'nova', ...[...FEATURE_SPELLS.values()].filter((s) => s.aims === 'harm').map((s) => s.prim.name)]),
+  help: new Set(['heal', 'regen', 'shield', 'cleanse', 'revive', 'haste', 'mend', ...[...FEATURE_SPELLS.values()].filter((s) => s.aims === 'help').map((s) => s.prim.name)]),
+});
 export const spellKind = (effects: readonly string[]): 'harm' | 'help' | 'self' =>
-  effects.some((e) => HARM_EFFECTS.has(e)) ? 'harm' : effects.some((e) => HELP_EFFECTS.has(e)) ? 'help' : 'self';
+  effects.some((e) => aims().harm.has(e)) ? 'harm' : effects.some((e) => aims().help.has(e)) ? 'help' : 'self';

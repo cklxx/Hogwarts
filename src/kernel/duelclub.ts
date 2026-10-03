@@ -33,6 +33,7 @@ import { capsFor } from '../runes/primitives.js';
 import type { Feature } from './feature.js';
 import { qdOnTeam, qdPlaying } from './quidditch.js';
 import { stunPaysRep } from './progression.js';
+import { DODGE_DIST } from '../shared/constants.js';
 import type { World } from './world.js';
 import type { Projectile, Vec2, Wizard } from './types.js';
 
@@ -518,7 +519,7 @@ function spar(world: World, w: Wizard, m: DuelMatch) {
   const foes = m.sides[1 - sideOf(m, w.id)].filter((id) => !m.out[id]).map((id) => world.wizards.get(id)).filter((x): x is Wizard => !!x);
   const opp = foes.sort((p, q) => dist(p.pos, w.pos) - dist(q.pos, w.pos))[0];
   if (!opp) { if (w.goal) world.setGoal(w.id, null); return; }
-  const d = dist(opp.pos, w.pos), clear = world.inBlast(w.pos, opp.pos);
+  const d = dist(opp.pos, w.pos), clear = world.inAim(w.pos, opp.pos);
   if (d > DUEL_NPC_REACH || !clear) {
     // a spot nearer the foe, pulled toward the middle of the stage
     const k = Math.max(0, d - DUEL_NPC_REACH * 0.6) / (d || 1);
@@ -564,9 +565,28 @@ function creditReflect(world: World, w: Wizard, p: Projectile, from: string) {
   st.returned = (st.returned ?? 0) + v;
 }
 
+/**
+ * A duellist's roll stays on the stage (the 2026-09-30 society playtest: the duel reflex rolled Mia and Jake off it
+ * and into the Great Hall's safe zone — out of the match, twice). The roll's end must be inside the leash with a
+ * metre to spare and outside every safe zone; if it would not be, the opposite way, then either side, is tried;
+ * if none is, it is left alone (a roll nowhere is no better).
+ */
+function stageRoll(world: World, w: Wizard, dx: number, dz: number): [number, number] | null {
+  const m = world.duel.match;
+  if (!m || m.phase !== 'fight' || m.out[w.id] || ![...m.sides[0], ...m.sides[1]].includes(w.id)) return null;
+  const ok = (x: number, z: number) => {
+    const ex = w.pos.x + x * DODGE_DIST, ez = w.pos.z + z * DODGE_DIST;
+    return Math.hypot(ex - DUEL_STAGE.x, ez - DUEL_STAGE.z) <= DUEL_LEASH - 1 && !world.inSafe({ x: ex, z: ez });
+  };
+  if (ok(dx, dz)) return null;
+  for (const [x, z] of [[-dx, -dz], [-dz, dx], [dz, -dx]] as const) if (ok(x, z)) return [x, z];
+  return null;
+}
+
 export const DUEL_FEATURE: Feature = {
   id: 'duel',
   init(world) { world.duel = newDuelClub(); },
+  dodgeDir: stageRoll,
   step: stepDuelClub,
   wire: { key: 'du', get: duelWire },
   // only the term's reward ledger: caps and rematch gaps survive a restart; the queue and the match do not

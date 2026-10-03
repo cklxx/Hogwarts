@@ -3,6 +3,7 @@
  * (join / veto / joint spell), learning a spell that hit you (偷师), the lawless deep forest, and agent
  * concentration as a political knob. Plus: Expelliarmus ignores level, and none of it touches canHarm.
  */
+import { sceneAt, sceneById } from '../src/shared/scenes.js';
 import { describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -15,11 +16,11 @@ import {
   DA_JOINT_PCT, DA_JOINT_WINDOW_S, DA_QUORUM, DA_VETO_WINDOW_S, DARK_LORD_BROADCAST_S, DARK_LORD_MIN_REP, DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, LAWLESS_MULT,
   SILENCE_COOLDOWN_S, STEAL_CAP_PCT, STUDY_DELAY_S, STUDY_MEMORY_S, VICTIM_HEX_PER_10MIN,
 } from '../src/shared/constants.js';
-import { LAWLESS_ZONE, SPAWN, ZONES, inZone, mulberry32 } from '../src/shared/map.js';
+import { LAWLESS_ZONE, ZONES, inZone, mulberry32 } from '../src/shared/map.js';
 import type { Creature, Wizard } from '../src/kernel/types.js';
 import { daState, isDaMember, joinDA, leaveDA, reputationMedian, studySpell, studyable, updateDarkLord, vetoDecree } from '../src/kernel/unfair.js';
 
-const DEEP = { x: 205, z: 35 }; // the heart of the lawless zone
+const DEEP = { x: 143, z: 38 }; // the heart of the lawless zone
 function mk(seed = 5) {
   const w = new World({ seed, secret: 'x' });
   w.rules.creatures.spawnMultiplier = 0;
@@ -385,11 +386,13 @@ describe('learning from the strong (偷师)', () => {
 
 // ------------------------------------------------------------------ 无规则区
 describe('the lawless zone (无规则区)', () => {
-  it('is deep in the Forbidden Forest, far from spawn, never safe, never the grounds', () => {
+  it('is deep in the Forbidden Forest, its far corner from the gate, never safe, never the grounds', () => {
     const z = ZONES.find((x) => x.id === LAWLESS_ZONE)!;
     const forest = ZONES.find((x) => x.id === 'forest')!;
     expect(Math.hypot(z.x - forest.x, z.z - forest.z) + z.r!).toBeLessThan(forest.r!);
-    expect(Math.hypot(z.x - SPAWN.x, z.z - SPAWN.z) - z.r!).toBeGreaterThan(150);
+    const gate = sceneById('forest')!.gate!;
+    expect(Math.hypot(z.x - gate.x, z.z - gate.z) - z.r!).toBeGreaterThan(45);
+    expect(sceneAt(z.x, z.z)?.id).toBe('forest');
     const w = mk();
     expect(w.inLawless(DEEP)).toBe(true);
     expect(w.inSafe(DEEP)).toBe(false);

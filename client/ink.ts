@@ -8,7 +8,7 @@ export const ic = (id: string, cls = '') => `<svg class="ic${cls ? ' ' + cls : '
 
 /** The curriculum (src/lore/spells.ts), each with its own drawing. */
 const BUILTIN: Record<string, string> = {
-  Stupefy: 'stupefy', Incendio: 'incendio', Protego: 'protego', Episkey: 'episkey', Lumos: 'lumos', Tempus: 'tempus', Revelio: 'revelio',
+  Stupefy: 'stupefy', Incendio: 'incendio', Aguamenti: 'water', Protego: 'protego', Episkey: 'episkey', Lumos: 'lumos', Tempus: 'tempus', Revelio: 'revelio',
   Ferula: 'ferula', 'Finite Incantatem': 'finite', Serpensortia: 'snake', Rennervate: 'revive', Avis: 'bird', 'Vulnera Sanentur': 'heart',
   'Point Me': 'compass', 'Homenum Revelio': 'figures', Expelliarmus: 'expelliarmus', Glacius: 'ice', Depulso: 'depulso',
   'Expecto Patronum': 'patronus', 'Petrificus Totalus': 'chain', Bombarda: 'burst', 'Lumos Solem': 'light', Reducto: 'lightning',

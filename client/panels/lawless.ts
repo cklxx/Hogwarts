@@ -6,7 +6,7 @@ import type { ClientFeatureFactory } from '../feature';
 import { ic } from '../ink';
 import { LAWLESS_LABEL, esc } from './logic';
 
-export const lawlessFeature: ClientFeatureFactory = (d) => {
+export const lawlessFeature: ClientFeatureFactory = (d, ctx) => {
   const inside = () => !!d.me()?.lawless;
   let vignette: HTMLElement | null = null;
   return {
@@ -15,7 +15,7 @@ export const lawlessFeature: ClientFeatureFactory = (d) => {
     hud() {
       if (!vignette) {
         vignette = document.getElementById('lawless');
-        if (!vignette) { vignette = document.createElement('div'); vignette.id = 'lawless'; vignette.setAttribute('aria-hidden', 'true'); document.getElementById('hud')!.prepend(vignette); }
+        if (!vignette) { vignette = ctx.own(document.createElement('div')); vignette.id = 'lawless'; vignette.setAttribute('aria-hidden', 'true'); document.getElementById('hud')!.prepend(vignette); }
       }
       const on = inside();
       vignette.hidden = !on;
