@@ -1787,3 +1787,17 @@ response. [Reproduction script](playtest-logs/2026-10-03/round11/bench/props-que
 The default and explicit 25/40/80 metre results are also tested for equality. This fixture measures query
 payload size, not latency, CPU savings or FPS. Actual exploration reproductions are recorded separately in
 the round 11 playtest report.
+
+## 2026-10-04：石灰岩、胡桃木与飞路台材质（第 16 轮）
+
+实现 `0d185f5`、`8a174a2`；基线 `ff556bc`。这是材质调整，不新增灯光或模型部件。石墙与木板贴图尺寸不变；飞路台新增一张原创 512×256 RGBA8 图集（含 mipmaps 约 0.67 MiB），继续使用既有六实例箱体和六点 Points。图集、几何与实例资源在插件重载时释放。
+
+生产构建，Chromium / ANGLE / SwiftShader 软件渲染，`?capture=1&perf=1&q=high`，固定 1× 渲染比例；同一私有世界存档分别从正午、晴天、7200 秒一天开始，每视图 20 个已渲染帧。基线实际时段为 12.2 / 12.3 / 12.4 时，最终版为 12.2 / 12.4 / 12.4 时。机位、原始采样、实机截图见[第 16 轮](playtest-logs/2026-10-04/round16/index.md)。
+
+| 视图 | 帧间隔中位数 ms（前→后） | 全场景绘制次数中位数（前→后） | 三角形中位数（前→后） | 程序 / 几何 / 纹理（前→后） |
+|---|---|---|---|---|
+| 礼堂 900×600 | 1111.2 → 1134.6 | 132 → 132 | 218512 → 218622 | 178/196/44 → 180/196/45 |
+| 城堡 900×600 | 1551.5 → 1577.4 | 268 → 270 | 229463 → 229734 | 180/223/46 → 182/224/47 |
+| 窄屏 390×844 | 844.9 → 862.1 | 177 → 182 | 215406 → 215758 | 183/238/47 → 185/239/48 |
+
+这些短窗口的帧间隔变化约为 +2.1% / +1.7% / +2.0%，没有观察到大幅变化。服务器正常运行，随机事件、实体、粒子与裁剪并不逐帧相同，因此全场景绘制次数和资源计数不能作为静态材质成本的严格对照；飞路静态部分的箱体与 Points 数量不变，明确的新增资源是一张图集。软件渲染帧间隔不是硬件 GPU 数据，不能据此推导真机 FPS 或手机流畅度。夜间与 `?style=real` 附加检查只验证显示、加载和交互，不计入这张性能表。

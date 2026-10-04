@@ -1,0 +1,78 @@
+{
+  "label": "after-night",
+  "renderer": "ANGLE / SwiftShader software renderer",
+  "errors": [],
+  "shaderErrors": [],
+  "movement": [
+    "arrived",
+    "arrived"
+  ],
+  "shots": [
+    {
+      "name": "hall",
+      "camera": {
+        "pos": [
+          0,
+          11,
+          -58
+        ],
+        "look": [
+          0,
+          1,
+          -46
+        ]
+      },
+      "viewport": [
+        900,
+        600
+      ],
+      "time": {
+        "hour": 23,
+        "night": true,
+        "weather": "clear",
+        "remark": {
+          "zh": "夜深了。黑湖边的摄魂怪出来了——带好守护神。",
+          "en": "Late at night. The Dementors are out by the lake. Bring a Patronus."
+        }
+      },
+      "perf": {
+        "frames": [
+          {
+            "dt": 2751.699999999255,
+            "calls": 82,
+            "tris": 201044
+          },
+          {
+            "dt": 1433,
+            "calls": 183,
+            "tris": 226388
+          },
+          {
+            "dt": 1524.7000000011176,
+            "calls": 82,
+            "tris": 201080
+          },
+          {
+            "dt": 1505.699999999255,
+            "calls": 183,
+            "tris": 226424
+          }
+        ],
+        "info": {
+          "programs": 179,
+          "geometries": 198,
+          "textures": 45
+        },
+        "scale": 1,
+        "travel": [
+          [
+            "BoxGeometry/MeshStandardMaterial (child)",
+            1
+          ]
+        ]
+      }
+    }
+  ],
+  "menu": true,
+  "destinations": 5
+}

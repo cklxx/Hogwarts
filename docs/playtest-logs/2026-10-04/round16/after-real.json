@@ -1,0 +1,77 @@
+{
+  "label": "after-real",
+  "renderer": "ANGLE / SwiftShader software renderer",
+  "errors": [],
+  "shaderErrors": [],
+  "movement": [
+    "arrived"
+  ],
+  "shots": [
+    {
+      "name": "hall",
+      "camera": {
+        "pos": [
+          0,
+          11,
+          -58
+        ],
+        "look": [
+          0,
+          1,
+          -46
+        ]
+      },
+      "viewport": [
+        900,
+        600
+      ],
+      "time": {
+        "hour": 12.7,
+        "night": false,
+        "weather": "clear",
+        "remark": {
+          "zh": "阳光正好，适合在湖边躺平。",
+          "en": "Lovely sun. Good for lying flat by the lake."
+        }
+      },
+      "perf": {
+        "frames": [
+          {
+            "dt": 1259.4000000003725,
+            "calls": 76,
+            "tris": 192400
+          },
+          {
+            "dt": 2592,
+            "calls": 188,
+            "tris": 233328
+          },
+          {
+            "dt": 992.5,
+            "calls": 76,
+            "tris": 192400
+          },
+          {
+            "dt": 1143.4000000003725,
+            "calls": 187,
+            "tris": 233326
+          }
+        ],
+        "info": {
+          "programs": 156,
+          "geometries": 198,
+          "textures": 54
+        },
+        "scale": 1,
+        "travel": [
+          [
+            "BoxGeometry/MeshStandardMaterial (child)",
+            1
+          ]
+        ]
+      }
+    }
+  ],
+  "menu": true,
+  "destinations": 5
+}
