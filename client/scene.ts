@@ -720,7 +720,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(candleGeo, candleMat));
     const s = new THREE.Sprite(candleGlow);
-    s.scale.setScalar(1.1);
+    s.scale.setScalar(STORYBOOK ? 0.65 : 1.1);
     s.position.y = 0.35;
     g.add(s);
     g.position.set(c.x, c.y, c.z);
