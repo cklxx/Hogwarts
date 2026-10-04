@@ -170,6 +170,10 @@ describe('the duel slip (client/panels/duel.ts) reads what the kernel sends', ()
     const line = duelLine(du, null, names, a.handle)!;
     expect(line).toMatchObject({ title: 'Harry ⚔ Ron', mine: true });
     expect(duelLine(du, null, names, 'someone')?.mine).toBe(false);
+    // A spectator in another scene has neither duellist in its entity/name cache.
+    expect(duelLine(du, null, () => '?', 'far-away')?.title).toBe('Harry ⚔ Ron');
+    expect(JSON.stringify(du)).not.toContain(a.id);
+    expect(JSON.stringify(du)).not.toContain(b.id);
   });
 });
 

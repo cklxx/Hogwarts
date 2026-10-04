@@ -1387,16 +1387,19 @@ export class World {
     return dealt;
   }
   /** Your last few hits (look.yourHits): an agent's bolt lands after cast returns, and nothing else said whether it hit. */
-  private hits = new Map<string, { at: number; id: string; name: string; dmg: number; down: boolean }[]>();
+  private hits = new Map<string, { at: number; id: string; target: string; name: string; dmg: number; down: boolean }[]>();
   private noteHit(by: string, id: string, name: string, dmg: number, down: boolean) {
     if (!this.wizards.has(by)) return;
     const l = this.hits.get(by) ?? [];
-    l.push({ at: this.now, id, name, dmg: Math.round(dmg * 10) / 10, down });
+    // Capture the public handle now, so removing a wizard cannot expose a registry id later.
+    const target = this.wizards.get(id)?.handle ?? id;
+    l.push({ at: this.now, id, target, name, dmg: Math.round(dmg * 10) / 10, down });
     if (l.length > HITS_KEPT) l.shift();
     this.hits.set(by, l);
   }
-  recentHits(wid: string) {
-    return (this.hits.get(wid) ?? []).filter((h) => this.now - h.at <= HITS_SHOWN_S).map((h) => ({ secondsAgo: round(this.now - h.at), target: h.id, name: h.name, damage: h.dmg, down: h.down || undefined })).reverse();
+  /** Reflexes consume internal ids; the player's look view requests public targets. */
+  recentHits(wid: string, publicTargets = false) {
+    return (this.hits.get(wid) ?? []).filter((h) => this.now - h.at <= HITS_SHOWN_S).map((h) => ({ secondsAgo: round(this.now - h.at), target: publicTargets ? h.target : h.id, name: h.name, damage: h.dmg, down: h.down || undefined })).reverse();
   }
   private damageInner(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean; hex?: boolean } = {}): number {
     if (!(opts.hex ? this.jinxBites(srcId, dstId) : this.canHarm(srcId, dstId))) return 0;
@@ -3341,7 +3344,7 @@ export class World {
       // hostile spells flying at you now (reflexes can meet them for you: the reflexes tool)
       ...(() => { const inc = this.incoming(w.id); return inc.length ? { incoming: inc } : {}; })(),
       // what an agent could not see before (playtest round 2): your own recent hits, the school event's target, a chest in sight
-      yourHits: this.recentHits(w.id),
+      yourHits: this.recentHits(w.id, true),
       schoolEvent: this.lookEvent(w),
       chests: chestsLeft(this).filter((c) => dist(c, w.pos) <= CHEST_SIGHT).map((c) => ({ id: c.id, x: round(c.x), z: round(c.z), dist: round(dist(c, w.pos)), howTo: 'walk within 2.6 m, then open_chest' })),
       chestHint: chestClues(this, w).nearest ?? null, // the nearest closed chest, as a place and how warm (school_events lists them all)

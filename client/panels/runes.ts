@@ -1,6 +1,6 @@
 /**
  * 符文零件 in the browser (src/shared/runes.ts; the kernel's src/kernel/runes.ts): a rune you own that is on no spell
- * shows a card over the hotbar — what it does, the line of Runes it is worth, and one button per attack spell on your
+ * shows a card over the hotbar — what it does, an illustrative effect sketch, and one button per attack spell on your
  * bar — until it is on one (docs/DESIGN.md §4: every new player puts their first rune on a spell; the card is that
  * step, and it does not go away by itself). A hotbar tile whose spell carries a rune shows the rune's first character
  * and its level above 1 (its ::before; ::after is the selection ring).
@@ -77,9 +77,9 @@ export const runesFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
       const def = RUNES[k];
       card.dataset.rune = k;
       card.innerHTML = `<div class="rc-head"><b>✨ ${L(`新符文：${def.zh}`, `New rune: ${def.en}`)}</b>`
-        + `<button type="button" data-code aria-controls="runecard-code" aria-expanded="${codeOpen}">${L('符文代码', 'Rune code')}</button></div>`
+        + `<button type="button" data-code aria-controls="runecard-code" aria-expanded="${codeOpen}">${L('效果示意', 'Effect sketch')}</button></div>`
         + `<div class="rc-doc">${esc(L(def.docZh, def.docEn))}</div>`
-        + `<code id="runecard-code"${codeOpen ? '' : ' hidden'}>${L('相当于在咒语里写：', 'worth this in Runes: ')}${esc(def.code)}</code>`
+        + `<code id="runecard-code"${codeOpen ? '' : ' hidden'}>${L('示意，不能直接运行；获得符文后即可装备：', 'Illustration, not executable; equip the rune once owned: ')}${esc(def.code)}</code>`
         + `<div class="rc-row">${attacks.map((s) => {
           const label = esc(L(`装到「${spellName(s.name)}」`, `Put on ${s.name}`));
           return `<button type="button" data-spell="${esc(s.id)}" aria-label="${label}" title="${label}"><span class="rc-full">${label}</span><span class="rc-short" aria-hidden="true">${L('装 ', 'Equip ')}${esc(spellName(s.name))}</span></button>`;
