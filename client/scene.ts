@@ -232,6 +232,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   windowMat.roughness = 0.2;
   windowMat.metalness = 0.3;
   const candleMat = glowMat(0xfff1c4);
+  // Keep the wax body warm without blooming like a fluorescent tube at night; its flame
+  // sprite and the hall's existing light still provide the small bright core and illumination.
+  if (STORYBOOK) candleMat.emissive.multiplyScalar(0.4);
   const leaf = new THREE.MeshStandardMaterial({ color: STORYBOOK ? 0xffffff : 0x2a4a26, roughness: 1, flatShading: true });
   // tree crowns sway in the wind (more at the top), each tree with its own phase. The lean is worked
   // out in world space (every crown bends downwind, whatever its instance's yaw and scale; bigger
