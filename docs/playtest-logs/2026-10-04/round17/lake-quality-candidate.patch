@@ -1,0 +1,61 @@
+--- a/client/scene.ts
++++ b/client/scene.ts
+@@ -1,6 +1,7 @@
+ import * as THREE from 'three';
+ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+ import { Water } from 'three/addons/objects/Water.js';
++import { createLakeQuality } from './lake-quality';
+ import { HOUSE_COLORS, type House } from '../src/shared/constants';
+ import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
+ import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_CANDLES, HALL_DOOR, HALL_LINTEL, HALL_ROOF, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS, TURRETS, interiorAt } from '../src/shared/layout';
+@@ -776,6 +777,7 @@
+     lakeMirror.apply(lake, args);
+     grass.group.visible = was;
+   });
++  const lakeQuality = lake && lakeReflect ? createLakeQuality(lake, lakeReflect) : null;
+   let bannerKey: House | null | undefined;
+   let roofK = -1;
+   return {
+@@ -787,8 +789,8 @@
+       crownI.geometry = crownGeos[q];
+       setWizardDetail(q); // the wizards in the world follow the world's quality
+       if (outline) outline.visible = q === 'high';
+-      // the lake's mirror pass re-renders the whole scene; freeze it on weak GPUs
+-      if (lake && lakeReflect) (lake as Water).onBeforeRender = q === 'high' ? lakeReflect : () => {};
++      // low quality uses a flat reflection color, retaining camera uniforms without another render pass
++      lakeQuality?.(q);
+     },
+     tick(t, dt, willowAngry, sunDir, env = {}) {
+       windTime.value = t;
+--- /dev/null
++++ b/client/lake-quality.ts
+@@ -0,0 +1,29 @@
++import * as THREE from 'three';
++import type { Water } from 'three/addons/objects/Water.js';
++
++/** Low quality keeps moving water and view uniforms without rendering a mirror pass. */
++export function createLakeQuality(lake: Water, mirror: Water['onBeforeRender']) {
++  const uniforms = lake.material.uniforms;
++  const mirrorTexture = uniforms.mirrorSampler.value as THREE.Texture;
++  // Three's Color already contains linear RGB; Water samples this texture directly in linear light.
++  const color = uniforms.waterColor.value as THREE.Color;
++  const byte = (v: number) => Math.round(THREE.MathUtils.clamp(v, 0, 1) * 255);
++  const flat = new THREE.DataTexture(new Uint8Array([byte(color.r), byte(color.g), byte(color.b), 255]), 1, 1, THREE.RGBAFormat);
++  flat.colorSpace = THREE.NoColorSpace;
++  flat.generateMipmaps = false;
++  flat.needsUpdate = true;
++  const dispose = () => { flat.dispose(); lake.material.removeEventListener('dispose', dispose); };
++  lake.material.addEventListener('dispose', dispose);
++  const low: Water['onBeforeRender'] & { lighter?: boolean } = (_renderer, _scene, camera) => {
++    (uniforms.eye.value as THREE.Vector3).setFromMatrixPosition(camera.matrixWorld);
++  };
++  // main.ts's lighterLake must not throttle the cheap camera uniform update.
++  low.lighter = true;
++  return (q: 'low' | 'high') => {
++    uniforms.mirrorSampler.value = q === 'high' ? mirrorTexture : flat;
++    // A constant sample needs no projected UVs. Identity guarantees mirrorCoord.w = 1 in low quality,
++    // including after a high-quality frame; the original mirror hook restores its projection on high.
++    if (q === 'low') (uniforms.textureMatrix.value as THREE.Matrix4).identity();
++    lake.onBeforeRender = q === 'high' ? mirror : low;
++  };
++}

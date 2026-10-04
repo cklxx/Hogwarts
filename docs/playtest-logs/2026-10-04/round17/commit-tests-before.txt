@@ -1,0 +1,81 @@
+✖ first contribute call reports startup HEAD even when repository commits after module import (1613.615328ms)
+✖ HOGWARTS_COMMIT at module load wins and is immutable after import (766.627516ms)
+✖ empty override retains git fallback captured at module load (796.784845ms)
+✔ without a repository or override, report unknown (621.546525ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 1
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3942.062537
+
+✖ failing tests:
+
+test at ../scratch/playtest-hour-2026-10-04/repro/running-commit-regression.test.mjs:18:1
+✖ first contribute call reports startup HEAD even when repository commits after module import (1613.615328ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'ff6b54d'
+  - '65cce02'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/playtest-hour-2026-10-04/repro/running-commit-regression.test.mjs:18:172)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ff6b54d',
+    expected: '65cce02',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../scratch/playtest-hour-2026-10-04/repro/running-commit-regression.test.mjs:19:1
+✖ HOGWARTS_COMMIT at module load wins and is immutable after import (766.627516ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'changed-after-import'
+  - 'release-start-abc123'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/playtest-hour-2026-10-04/repro/running-commit-regression.test.mjs:19:155)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'changed-after-import',
+    expected: 'release-start-abc123',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../scratch/playtest-hour-2026-10-04/repro/running-commit-regression.test.mjs:20:1
+✖ empty override retains git fallback captured at module load (796.784845ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '179015f'
+  - '91b4dbc'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/playtest-hour-2026-10-04/repro/running-commit-regression.test.mjs:20:153)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '179015f',
+    expected: '91b4dbc',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
