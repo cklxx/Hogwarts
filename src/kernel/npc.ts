@@ -55,9 +55,17 @@ export function npcMayFight(world: World, npc: Wizard, foe: Wizard): boolean {
   return dist(foe.pos, SPAWN) > NPC_CALM_R && dist(npc.pos, SPAWN) > NPC_CALM_R;
 }
 
-const brains = new Map<string, { patrol: number; next: number; lastSay: number; grudge: string | null; grudgeUntil: number }>();
+type Brain = { patrol: number; next: number; lastSay: number; grudge: string | null; grudgeUntil: number };
+// Exam sandboxes must never remove the live world's NPC brains.
+const brainsByWorld = new WeakMap<World, Map<string, Brain>>();
+function brainsFor(world: World) {
+  let brains = brainsByWorld.get(world);
+  if (!brains) { brains = new Map(); brainsByWorld.set(world, brains); }
+  return brains;
+}
 
 export function ensureNpcs(world: World, count: number) {
+  const brains = brainsFor(world);
   for (const p of PERSONAS.slice(0, Math.max(0, Math.min(PERSONAS.length, count)))) {
     let w = [...world.wizards.values()].find((x) => x.npc && x.name === p.name);
     if (!w) {
@@ -74,6 +82,8 @@ export function ensureNpcs(world: World, count: number) {
 
 /** Called every tick; each NPC thinks twice a second. */
 export function thinkNpcs(world: World) {
+  const brains = brainsByWorld.get(world);
+  if (!brains) return;
   for (const [id, b] of brains) {
     const w = world.wizards.get(id);
     if (!w || !w.npc) { brains.delete(id); continue; }
