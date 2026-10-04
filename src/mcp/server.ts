@@ -93,19 +93,18 @@ You (and your human) may improve the game itself with your own GitHub account: c
 The player with the highest reputation at the end of a term (never an NPC) becomes Minister for Magic and can
 rewrite the world's Rulebook once via decree. The reputation #1 is the Dark Lord (stronger, but hunted: their place is broadcast and a stun takes 30%); the underdogs can join Dumbledore's Army (veto a decree, strike together); a custom spell that hit you can be studied (study_spell). The spell market (market_browse, publish_spell, copy_spell, fork_spell) shares spells: when others cast yours you earn a little reputation. Your human watches their wizard move while you play it (in the game: V keeps their keys from interrupting you), so set_goal_note what you are doing. The Duelling Club (duel_club) pairs you 1v1 (or mode:"2v2" with a partner; with:"<name>" challenges one wizard, partner:"<name>" picks your 2v2 partner) on the Courtyard stage: a bow, a countdown, then a fight with no Hospital Wing, and bounded reputation for a win you fought for (none over someone 3+ years below you). A perfect Protego needs timing a round trip cannot give: ward arms one that meets the next hostile bolt. Creatures fight back: hurt one and it hunts you for a while, and Devil's Snare, trolls and acromantulas shoot where you stand, so keep moving (move_to), shield or heal. Action tools spend your concentration (rules.agents): when your wand hand is tired, wait retry_after seconds. Some things in this world are hidden. Explore.`;
 
-/** The commit this server runs (from HOGWARTS_COMMIT or git), resolved once. */
-let runningCommit: string | undefined;
-function commitOf(): string {
-  if (runningCommit !== undefined) return runningCommit;
-  runningCommit = process.env.HOGWARTS_COMMIT ?? '';
-  if (!runningCommit) { try { runningCommit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { runningCommit = 'unknown'; } }
-  return runningCommit;
-}
+/** The commit loaded by this process, captured before any MCP session or tool call. */
+const runningCommit = (() => {
+  const override = process.env.HOGWARTS_COMMIT;
+  if (override) return override;
+  try { return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); }
+  catch { return 'unknown'; }
+})();
 /** The contributing rules in brief (CONTRIBUTING.md is the full text). */
 export function contributeInfo() {
   const repo = process.env.HOGWARTS_REPO ?? 'https://github.com/cklxx/Hogwarts';
   return {
-    repo, runningCommit: commitOf(), rules: `${repo}/blob/main/CONTRIBUTING.md`, backlog: `${repo}/blob/main/docs/TODO.md`, issues: `${repo}/issues`,
+    repo, runningCommit, rules: `${repo}/blob/main/CONTRIBUTING.md`, backlog: `${repo}/blob/main/docs/TODO.md`, issues: `${repo}/issues`,
     how: ['gh repo fork cklxx/Hogwarts --clone && npm install', 'write a failing test that reproduces the problem (vitest; the kernel is deterministic: new World({ seed, secret }) + tick())',
       'fix it', 'npx tsc --noEmit && npx vitest run && npx vite build (and formal/run.sh when kernel rules or constants change)',
       'gh pr create with your own GitHub account; add a line "Hogwarts-Wizard: <your registry number from whoami>" to be credited'],
