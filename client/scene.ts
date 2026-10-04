@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
+import { createLakeQuality } from './lake-quality';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
 import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_CANDLES, HALL_DOOR, HALL_LINTEL, HALL_ROOF, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS, TURRETS, interiorAt } from '../src/shared/layout';
@@ -776,6 +777,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     lakeMirror.apply(lake, args);
     grass.group.visible = was;
   });
+  const lakeQuality = lake && lakeReflect ? createLakeQuality(lake, lakeReflect) : null;
   let bannerKey: House | null | undefined;
   let roofK = -1;
   return {
@@ -787,8 +789,8 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       crownI.geometry = crownGeos[q];
       setWizardDetail(q); // the wizards in the world follow the world's quality
       if (outline) outline.visible = q === 'high';
-      // the lake's mirror pass re-renders the whole scene; freeze it on weak GPUs
-      if (lake && lakeReflect) (lake as Water).onBeforeRender = q === 'high' ? lakeReflect : () => {};
+      // low quality uses a flat reflection color, retaining camera uniforms without another render pass
+      lakeQuality?.(q);
     },
     tick(t, dt, willowAngry, sunDir, env = {}) {
       windTime.value = t;
