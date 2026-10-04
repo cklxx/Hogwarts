@@ -53,8 +53,8 @@
     },
     {
       "path": "formal.txt",
-      "bytes": 1077,
-      "sha256": "c2d8efdc1c9d977ad8c15e254f09e7c69e9952c8bd4c084fb17325c2b2f9fca2"
+      "bytes": 1333,
+      "sha256": "f42dca2459913c1a8bef70b47d0bad8d5f50904800bffa100f60b9ee844140fa"
     },
     {
       "path": "independent-review.md",
@@ -63,8 +63,8 @@
     },
     {
       "path": "index.md",
-      "bytes": 6717,
-      "sha256": "19e2c07f5a9fbe0fc8adb4533947d7196e3d1d3cb03b5752be33c54f0b85c5e4"
+      "bytes": 6906,
+      "sha256": "c2fabd14756d3581b5d10efaafa8cbf474bf2cb92681f571a5540735f7a6105e"
     },
     {
       "path": "market-before-after.png",

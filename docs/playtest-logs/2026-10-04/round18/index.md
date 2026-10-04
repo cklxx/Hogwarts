@@ -38,7 +38,7 @@
 
 专项证据：[导航](navigation.json)、[位置切换先红](route-reset-before.md)／[修复后](route-reset-after.txt)、[补水奖励](water-assist.json)、[比赛与交易](combat.json)、[独立只读审查](independent-review.md)。
 
-最终本地检查：`npx tsc --noEmit`、89 文件 **920 项测试**、`npx vite build` 全部通过。完整 TLA+ 与 Lean 检查通过，Hogwarts 主向量未改变；追加名称来源编码后，又独立检查最终 WaterAssist：16 定理通过，40 组奖励与 10 组名称编码向量完全一致。最终 PR 提交仍须由 CI 再运行完整链路。
+最终本地检查：`npx tsc --noEmit`、89 文件 **920 项测试**、`npx vite build` 全部通过。完整 TLA+ 与 Lean 检查通过，Hogwarts 主向量未改变；追加名称来源编码后，又独立检查最终 WaterAssist：16 定理通过，40 组奖励与 10 组名称编码向量完全一致。首次 PR CI 的全部模型与证明通过，向量漂移检查发现新增 JSON 末尾换行与生成器不一致；已按生成器重新输出并逐字节核对，数值完全未变。修正后由最终提交的 CI 再运行完整链路。
 
 记录：[完整测试](tests.txt)、[生产构建](build.txt)、[形式化检查](formal.txt)。为避免与 TLC 和软件渲染浏览器争用 CPU，完整测试使用 `--maxWorkers=2`，未跳过或减少测试。新增 Lean 奖励分配证明与 TLA+ 导航模型是对相关抽象状态的验证；真实几何、实际交易和界面行为由运行时回归覆盖，不把抽象模型称作完整程序证明。
 
