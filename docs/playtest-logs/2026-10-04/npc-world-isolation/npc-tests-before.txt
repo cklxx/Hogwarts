@@ -1,0 +1,113 @@
+✖ an empty second World tick cannot erase the live world sparring brain (97.119358ms)
+✖ real gradeExam sandboxes cannot stop live NPC sparring (91.967287ms)
+✖ two worlds can alternate ticks while both retain their own NPC brains (152.164405ms)
+✖ grading mid-match preserves spellbook and the existing AI action schedule (129.656891ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1228.576185
+
+✖ failing tests:
+
+test at ../scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:2:1941
+✖ an empty second World tick cannot erase the live world sparring brain (97.119358ms)
+  AssertionError [ERR_ASSERTION]: NPC must still cast and hurt its opponent
+      at TestContext.<anonymous> (/workspace/scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:10:208)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:2:2308
+✖ real gradeExam sandboxes cannot stop live NPC sparring (91.967287ms)
+  AssertionError [ERR_ASSERTION]: the live NPC must retain its brain after grading
+      at TestContext.<anonymous> (/workspace/scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:11:140)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:2:2642
+✖ two worlds can alternate ticks while both retain their own NPC brains (152.164405ms)
+  AssertionError [ERR_ASSERTION]: first world NPC still fights
+      at TestContext.<anonymous> (/workspace/scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:12:226)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:2:3135
+✖ grading mid-match preserves spellbook and the existing AI action schedule (129.656891ms)
+  AssertionError [ERR_ASSERTION]: retained brain preserves prior next-think time and action progress
+  + actual - expected
+  
+    [
+      {
+        at: 35.40000000000013,
+        mana: 16,
+        ok: true,
+        spell: 'Stupefy'
+      },
+  -   {
+  -     at: 35.950000000000095,
+  -     mana: 15.2,
+  -     ok: true,
+  -     spell: 'Incendio'
+  -   },
+  -   {
+  -     at: 36.500000000000064,
+  -     mana: 0,
+  -     ok: false,
+  -     spell: 'Incendio'
+  -   },
+  -   {
+  -     at: 36.500000000000064,
+  -     mana: 16,
+  -     ok: true,
+  -     spell: 'Stupefy'
+  -   }
+    ]
+  
+      at TestContext.<anonymous> (/workspace/scratch/playtest-hour-2026-10-04/repro/npc-world-regression.test.ts:15:85)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ { at: 35.40000000000013, spell: 'Stupefy', ok: true, mana: 16 } ],
+    expected: [ { at: 35.40000000000013, spell: 'Stupefy', ok: true, mana: 16 }, { at: 35.950000000000095, spell: 'Incendio', ok: true, mana: 15.2 }, { at: 36.500000000000064, spell: 'Incendio', ok: false, mana: 0 }, { at: 36.500000000000064, spell: 'Stupefy', ok: true, mana: 16 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
