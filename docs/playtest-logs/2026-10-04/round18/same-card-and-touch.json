@@ -1,0 +1,23 @@
+{
+  "fixture": true,
+  "before": {
+    "title": "巧克力蛙画片\n28/82 张 · C",
+    "gridCards": 82,
+    "totalCardElements": 83,
+    "pickDisplay": "none",
+    "card": "赫尔加·赫奇帕奇",
+    "flavour": "来自山谷的创始人，「我会一视同仁地教他们」。厨房里的家养小精灵都是她请来的。"
+  },
+  "after": {
+    "title": "巧克力蛙画片\n28/82 张",
+    "pickDisplay": "block",
+    "card": "赫尔加·赫奇帕奇",
+    "flavour": "来自山谷的创始人，「我会一视同仁地教他们」。厨房里的家养小精灵都是她请来的。"
+  },
+  "touchScroll": {
+    "before": 0,
+    "after": 310,
+    "input": "CDP native touchStart/move/end, 325px upward swipe"
+  },
+  "closed": true
+}

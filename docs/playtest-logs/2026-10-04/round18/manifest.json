@@ -1,0 +1,110 @@
+{
+  "implementation": "faabb1f195f70c5be369701516e2447c3b0643ae",
+  "files": [
+    {
+      "path": "after-card-detail.png",
+      "bytes": 484324,
+      "sha256": "ce4dc58c2588d2363f7cd0e0cf6b67b31ef61a970f7c43e2cb80d920f614e02f"
+    },
+    {
+      "path": "after-gate.png",
+      "bytes": 389645,
+      "sha256": "3f249baed8167afa723cb03b4818fe07105bcc84de35c1c83dd09466a91fe89d"
+    },
+    {
+      "path": "after-touch-prompt.png",
+      "bytes": 496647,
+      "sha256": "7b031f0017a6730392efd3e12822803661fa7fc98b06bc201c97cc27bb4b2304"
+    },
+    {
+      "path": "before-card-detail.png",
+      "bytes": 458699,
+      "sha256": "f2e9868d8607425ea8cf9c571bf4b8a4ad9c8b2b63d09104a7d2fd68b10c9948"
+    },
+    {
+      "path": "before-gate.png",
+      "bytes": 390003,
+      "sha256": "a0f8c99d796dc442adc740a682ebffbb18453eb4bc7503bd5cf6f983253128f3"
+    },
+    {
+      "path": "before-touch-prompt.png",
+      "bytes": 472530,
+      "sha256": "68e3a960b455c4918bdc3292b6b3ba60c7a446f688a9d0be52b207bee2d5eb9f"
+    },
+    {
+      "path": "browser.json",
+      "bytes": 3947,
+      "sha256": "add847a7fe52515d88d6703c08fe799303134256e692111998278a29c6c20d8d"
+    },
+    {
+      "path": "build.txt",
+      "bytes": 2807,
+      "sha256": "46f2762a653f7eab17f55269a568c43cf12d38fba6a78673b2d4a886ec3910ab"
+    },
+    {
+      "path": "combat-focused.txt",
+      "bytes": 426,
+      "sha256": "f73748dd4f2ab6aeac05a59901d2f2cb6fb856b2a6ef10d3e4918cd00860bc9c"
+    },
+    {
+      "path": "combat.json",
+      "bytes": 2062,
+      "sha256": "eeedb405076e5a40721587ba6035d5ac701be123b1d60b47e1db7b2e8a9f1183"
+    },
+    {
+      "path": "formal.txt",
+      "bytes": 1077,
+      "sha256": "c2d8efdc1c9d977ad8c15e254f09e7c69e9952c8bd4c084fb17325c2b2f9fca2"
+    },
+    {
+      "path": "independent-review.md",
+      "bytes": 1661,
+      "sha256": "4afddec8bd0f3bcda7c2bfb1cc827a2d52d81b6228192192068b186e8affd7cb"
+    },
+    {
+      "path": "index.md",
+      "bytes": 6717,
+      "sha256": "19e2c07f5a9fbe0fc8adb4533947d7196e3d1d3cb03b5752be33c54f0b85c5e4"
+    },
+    {
+      "path": "market-before-after.png",
+      "bytes": 125331,
+      "sha256": "be69c6cc914125faa53c9336c310cc1c084801bf3708a71b1ed24ea4805c7b59"
+    },
+    {
+      "path": "market-browser.json",
+      "bytes": 574,
+      "sha256": "5cf3b8587b14e63e55c5fca6bc27fe0dc39d6129acd1f313db29c8681aada138"
+    },
+    {
+      "path": "navigation.json",
+      "bytes": 6812,
+      "sha256": "e0c239787a7711ed8f256025f0e55e63fa34bc1bc883f4251f386a236dae1c3d"
+    },
+    {
+      "path": "route-reset-after.txt",
+      "bytes": 426,
+      "sha256": "0be237ef9d2e6d688486911075aa2a6c5f412bdafc5fda846400109931bc134f"
+    },
+    {
+      "path": "route-reset-before.md",
+      "bytes": 1040,
+      "sha256": "b6aaed04f403773333dcbc5393c4d750c3107cc3d94583de0cba187c2f62f3ed"
+    },
+    {
+      "path": "same-card-and-touch.json",
+      "bytes": 745,
+      "sha256": "40b5482d985ad2387c914deb5f2a5c56df8e5c181ceafbd326febbaaec625312"
+    },
+    {
+      "path": "tests.txt",
+      "bytes": 376,
+      "sha256": "23d5925b2a049db5a91f0c3d4ac711dfdf40f4cb169a06417cabb8256e86d34f"
+    },
+    {
+      "path": "water-assist.json",
+      "bytes": 4419,
+      "sha256": "0f67821b98181a0d0664a4272ed466a90b106ea8964ec4309f86926c2c385026"
+    }
+  ]
+}

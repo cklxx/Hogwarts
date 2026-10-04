@@ -1,0 +1,165 @@
+{
+  "fixture": true,
+  "device": "Chromium + SwiftShader; viewport/touch emulation, not phone hardware",
+  "results": [
+    {
+      "touch": true,
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "gatePositioning": true,
+      "prompt": " 使用飞路网 ·「礼堂」",
+      "promptTapOpenedFloo": true,
+      "detail": {
+        "display": "block",
+        "text": "「霍格沃茨最不受欢迎的校长」，并以此为荣。肖像在两处墙上来回跑，专门传话。",
+        "scrollTop": 0,
+        "rect": {
+          "x": 45,
+          "y": 537.640625,
+          "width": 300,
+          "height": 51.125
+        },
+        "window": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "returnScroll": {
+        "before": 1515,
+        "after": 1515
+      },
+      "filters": true,
+      "close": true,
+      "escapeBackThenClose": true
+    },
+    {
+      "touch": true,
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "gatePositioning": true,
+      "prompt": " the Floo Network (the Great Hall)",
+      "promptTapOpenedFloo": true,
+      "detail": {
+        "display": "block",
+        "text": "\"The least popular Headmaster Hogwarts ever had\", and proud of it. His portrait runs between two walls carrying messages.",
+        "scrollTop": 0,
+        "rect": {
+          "x": 45,
+          "y": 527.0234375,
+          "width": 300,
+          "height": 102.25
+        },
+        "window": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "returnScroll": {
+        "before": 1743,
+        "after": 1743
+      },
+      "filters": true,
+      "close": true,
+      "escapeBackThenClose": true
+    },
+    {
+      "touch": true,
+      "lang": "en",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "detail": true,
+      "back": true,
+      "cluesExpand": true,
+      "scrollToEnd": true,
+      "close": true
+    },
+    {
+      "touch": true,
+      "lang": "en",
+      "viewport": {
+        "width": 844,
+        "height": 390
+      },
+      "detail": true,
+      "back": true,
+      "cluesExpand": true,
+      "scrollToEnd": true,
+      "close": true
+    },
+    {
+      "touch": false,
+      "lang": "zh",
+      "viewport": {
+        "width": 900,
+        "height": 600
+      },
+      "gatePositioning": true,
+      "prompt": "F 使用飞路网 ·「礼堂」",
+      "promptTapOpenedFloo": false,
+      "detail": {
+        "display": "block",
+        "text": "「霍格沃茨最不受欢迎的校长」，并以此为荣。肖像在两处墙上来回跑，专门传话。",
+        "scrollTop": 0,
+        "rect": {
+          "x": 337.78125,
+          "y": 362.3203125,
+          "width": 224.4375,
+          "height": 65.71875
+        },
+        "window": {
+          "width": 900,
+          "height": 600
+        }
+      },
+      "returnScroll": {
+        "before": 420,
+        "after": 420
+      },
+      "filters": true,
+      "close": true,
+      "escapeBackThenClose": true
+    },
+    {
+      "touch": false,
+      "lang": "en",
+      "viewport": {
+        "width": 900,
+        "height": 600
+      },
+      "gatePositioning": true,
+      "prompt": "F the Floo Network (the Great Hall)",
+      "promptTapOpenedFloo": false,
+      "detail": {
+        "display": "block",
+        "text": "\"The least popular Headmaster Hogwarts ever had\", and proud of it. His portrait runs between two walls carrying messages.",
+        "scrollTop": 0,
+        "rect": {
+          "x": 337.78125,
+          "y": 351.3671875,
+          "width": 224.4375,
+          "height": 87.625
+        },
+        "window": {
+          "width": 900,
+          "height": 600
+        }
+      },
+      "returnScroll": {
+        "before": 422,
+        "after": 422
+      },
+      "filters": true,
+      "close": true,
+      "escapeBackThenClose": true
+    }
+  ],
+  "errors": []
+}
