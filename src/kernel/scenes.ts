@@ -39,7 +39,7 @@ function cross(world: World, wid: string, g: Gate) {
   world.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z, h: w.handle });
   w.pos = { ...g.out };
   world.solids.resolve(w.pos, 0.5, true);
-  w.goal = null; w.route = []; w.goalBy = null;
+  world.stopWalk(w);
   world.moved(w);
   world.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z, h: w.handle });
   const to = sceneById(g.to)!;
@@ -60,7 +60,7 @@ function pressedEdge(world: World, w: Wizard) {
 
 function stepLate(world: World) {
   for (const w of world.wizards.values()) {
-    if (!world.isActive(w) || w.st.jailedUntil > 0) { world.gates.press.delete(w.id); continue; }
+    if (w.npc || !world.isActive(w) || w.st.jailedUntil > 0) { world.gates.press.delete(w.id); continue; }
     if (world.now - (world.gates.at.get(w.id) ?? -1e9) < GATE_COOLDOWN_S) continue;
     if (inMatch(world.duel, w.id) || qdOnTeam(world, w.id)) continue;
     const edge = pressedEdge(world, w);
@@ -82,7 +82,7 @@ function stepLate(world: World) {
 function migrate(world: World) {
   for (const w of world.wizards.values()) {
     if (w.st.jailedUntil > 0 || sceneAt(w.pos.x, w.pos.z)) continue;
-    w.pos = { ...SPAWN }; w.goal = null; w.route = []; w.goalBy = null;
+    w.pos = { ...SPAWN }; world.stopWalk(w);
     world.via.delete(w.id);
     world.moved(w);
   }

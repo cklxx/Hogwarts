@@ -28,6 +28,8 @@ import {
   MARKET_UNBAN_NEWS, fill, type Line,
 } from '../lore/memes.js';
 import { z } from 'zod';
+import { analyze } from '../runes/checker.js';
+import { maxNodes, spellbookSize } from './progression.js';
 import type { Feature } from './feature.js';
 import type { Rulebook } from './rulebook.js';
 import type { Spell, Wizard } from './types.js';
@@ -357,11 +359,7 @@ export function marketSpell(world: World, wid: string | null, id: string, v?: nu
     : l.hidden ? { ok: false, why: 'Unpublished by its author. 作者已下架。' }
     : banned ? { ok: false, why: 'Banned by Ministry decree: you may read it, not copy it. 已被法令禁用：可以读，不能抄。' }
     : { ok: true };
-  const have = w?.spells.find((s) => s.market?.id === l.id);
-  const canCopy = !canFork.ok || !w ? canFork
-    : ver.minYear > w.year ? { ok: false, why: `Needs year ${ver.minYear} (you are year ${w.year}). 需要 ${ver.minYear} 年级。` }
-    : have ? { ok: false, why: `Already in your book as "${have.name}" (v${have.market!.v}). 你的咒语书里已经有它了。`, have: { name: have.name, v: have.market!.v } }
-    : { ok: true };
+  const canCopy: CopyAvailability = w ? copyAvailability(world, w, l, ver) : canFork;
   const showSource = !l.hidden || yours;
   return {
     ...card(world, l, wid), version: ver.v, versionName: ver.name, incantationOf: ver.incantation,
@@ -536,6 +534,42 @@ function takeable(world: World, w: Wizard, id: string, v: number | undefined, wh
 
 function freeName(w: Wizard, name: string) {
   if (w.spells.some((s) => s.name.toLowerCase() === name.toLowerCase())) throw new Error(`You already have a spell called "${name}": give it another name. 你的咒语书里已经有「${name}」了，换个名字。`);
+}
+
+/** Read-only admission for the selected version, with a free name if the default collides.
+ * Owning another copy is not a ban: copySpell already permits versions (or duplicates) under different names.
+ * Keep the actual transaction authoritative; these checks neither forge nor transfer money.
+ */
+interface CopyAvailability {
+  ok: boolean; why?: string; have?: { name: string; v: number }; requiresRename?: boolean; suggestedName?: string;
+}
+function copyAvailability(world: World, w: Wizard, l: MarketListing, ver: MarketVersion): CopyAvailability {
+  try {
+    takeable(world, w, l.id, ver.v, 'copy');
+    payPrice(world, w, l, true);
+    analyze(ver.source, { year: w.year, maxNodes: maxNodes(w.year, world.rules), banned: world.rules.magic.bannedPrimitives, seals: w.seals });
+    if (w.spells.filter(s => !s.builtin).length >= spellbookSize(w.year)) {
+      throw new Error(`Your spellbook holds ${spellbookSize(w.year)} original spells at year ${w.year}. Unlearn one first. 咒语书已满，先遗忘一个咒语。`);
+    }
+    const have = w.spells.find(s => s.market?.id === l.id && s.market.v === ver.v)
+      ?? w.spells.find(s => s.market?.id === l.id);
+    const held = have ? { have: { name: have.name, v: have.market!.v } } : {};
+    const defaultName = clean(ver.name, 40);
+    const conflict = w.spells.find(s => s.name.toLowerCase() === defaultName.toLowerCase());
+    if (defaultName && !conflict) return { ok: true, ...held };
+    let suggestedName = '';
+    for (let i = 1; ; i++) {
+      const suffix = ` v${ver.v}${i === 1 ? '' : ` (${i})`}`;
+      suggestedName = (defaultName || 'Copy').slice(0, 40 - suffix.length) + suffix;
+      if (!w.spells.some(s => s.name.toLowerCase() === suggestedName.toLowerCase())) break;
+    }
+    return {
+      ok: true, ...held, requiresRename: true, suggestedName,
+      why: conflict
+        ? `Your book already has "${conflict.name}"${conflict.market?.id === l.id ? ` (v${conflict.market.v})` : ''}. Copy v${ver.v} under another name; existing copies stay unchanged. 书中已有「${conflict.name}」，复制 v${ver.v} 时换个名字；原有抄本不变。`
+        : `The published name becomes empty when cleaned. Give the v${ver.v} copy a name. 发布名清理后为空，请给 v${ver.v} 抄本取一个名字。`,
+    };
+  } catch (e) { return { ok: false, why: (e as Error).message }; }
 }
 
 /**

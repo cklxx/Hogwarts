@@ -26,8 +26,10 @@
 | 决斗俱乐部里只有对手之间能互相伤害：2v2 的队友互相打不到，出局的人碰不到也不会被碰，外人不能打、不能治 | `World.canHarm` 的决斗分支（`duelFoes`） | TLA+ `Hostility`（`DuelMutual`、`DuelTeammates`、`DuelIsolated`） |
 | 决斗中躲不进安全区：决斗台和礼堂的安全区有重叠，开打后走进安全区就算走下台（出局）；台子中心或任何一端在安全区里，俱乐部就关门 | `stepDuelClub`、`duelClosed`（`src/kernel/duelclub.ts`） | `test/duelclub3.test.ts` |
 | 决斗俱乐部的 NPC 陪练不以大欺小：派年级最接近的 NPC；它比你高年级时按你的水平打（它的伤害按两个年级的魔弹上限折算，你打它的伤害按两边的生命上限折算） | `freeNpcs` / `sparScale`（`src/kernel/duelclub.ts`，`hit` 钩子） | `test/duelclub3.test.ts`、`test/round8.test.ts` |
+| 决斗翻滚逐段检查碰撞后的实际路径，不进入安全区或越出场地；没有安全方向时停在原位。倒地与复活清除旧路线和跨场景后续目标，停止或暂停 Agent 不取消玩家路线 | `stageRoll` / `duelRollStepAllowed`、`World.stopWalk` | TLA+ `Navigation`，`test/navigation-regressions.test.ts` |
 | 人永远优先：你一操作，Agent 立刻让路；暂停 Agent 后它只能看、能说话 | `World.setInput`、Agent 控制 | TLA+ `Control` |
 | 黑魔法也要过伤害判定：夺魂咒永远不能用在巫师身上（谁的意志都不能被夺走），厉火只烧 `canHarm` 允许烧的 | `src/kernel/dark.ts` | `test/dark.test.ts` |
+| 玩家自定义的咒语名和喊词是数据，不能冒充水、符文、反射、连锁或黑魔法内部来源标记；真正原语显式添加内部标记，合法同名咒语仍能装符文与被偷师 | `src/shared/spell-tags.ts`、`magic.ts`、`runes.ts`、`unfair.ts` | Lean `WaterAssist` 的名称编码与来源隔离证明，`test/spell-tags.test.ts` |
 | 插件带来的 Runes 原语和内核自带的一样：受年级和封印门槛、法力上限、法令禁用的约束 | `registerPrims`、`FEATURE_SPELLS`（`src/kernel/magic.ts`） | `test/dark.test.ts`，TLA+ `CastTxn` |
 
 ## 3. 奖励有上限：刷不爆
@@ -36,6 +38,7 @@
 |---|---|---|
 | 每人每学期能加的学院分有上限，学院分永远不为负 | `src/kernel/housecup.ts` | Lean `cup_term_bounded`、`cup_deduct_nonneg`、`house_points_bounded` |
 | 决斗声望：同一对手 10 分钟一次，每学期最多 5 场；开打前（鞠躬、倒数）有人离开或下线只算取消：不计胜负、不给奖励、不记进重赛间隔 | `src/kernel/duelclub.ts` `duelGrant`、`cancelMatch` | Lean `duel_club_term_bounded`，`test/duelclub3.test.ts` |
+| 有效补水协作只分配击杀者现有经验的最多四分之一，不增发经验；每怪每人一份、最多八人，贡献 60 秒内且同场景 30 米内活跃真人才能领取；自然补湿、自协作、NPC／附身和零实际伤害不算；其他伤害贡献者经验、声望、金钱与击杀归属不变 | `src/kernel/chem.ts`、`water-assist.ts`、`World.slay` | Lean `WaterAssist`，`test/water-assist.test.ts` |
 | 魁地奇的声望和学院分都有上限 | `qdRep` / `qdCup` | Lean `qd_rep_bounded`、`qd_cup_bounded` |
 | 集市版税：每人每咒语每天一次，每日有总上限，不给自己付、不给 NPC 付 | `src/kernel/market.ts` | TLA+ `Market`，Lean `royalty_*` |
 | 集市标价（0–10 加隆）：复制或改编时从拿的人转给作者，每人每个咒语只付一次；加隆只转移不凭空产生；入学不满 10 分钟的人免费拿，作者也不入账（小号刷不了钱）；买不起就拒绝，什么都不扣 | `payPrice`（`src/kernel/market.ts`） | `test/round8.test.ts` |
@@ -54,7 +57,7 @@
 | 偷声望有比例上限，决斗中声望守恒 | `src/kernel/unfair.ts` | Lean `steal_*`、`duel_conserves*` |
 | 野生魔物一击最多打掉你最大生命的 40 %（事件加强过的也一样）：满血至少要挨三下才会倒 | `CREATURE_HIT_CAP`、`World.damageInner` | Lean `creature_hit_capped`、`creature_two_blows_survive` + 向量，`test/round4.test.ts` |
 | 一年级不会被野生魔物成群围上：同一时刻最多 2 只主动挑上你（被你打了的照样追你） | `NEWCOMER_PACK`、`World.stepCreatures` | `test/round9.test.ts` |
-| 场景之间是迷雾：魔咒射不过去，人只能经传送门或边缘出口过去（手推着走进迷雾 0.35 秒；点地面 / `move_to` 的路线走到边缘再过；点在边外 3 米内只走到边缘；站长 2026-09-30 定：迷雾不是空气墙），出来一定在某个场景里；决斗中、魁地奇队员、NPC 都不会过；路线只是路过门口不会被传送 | `src/shared/scenes.ts`、`src/kernel/scenes.ts`、`World.setGoal` | `test/scenes.test.ts` |
+| 场景之间是迷雾：魔咒射不过去，人只能经传送门或边缘出口过去（手推着走进迷雾 0.35 秒；点地面 / `move_to` 的路线走到边缘再过；点在边外 3 米内只走到边缘；站长 2026-09-30 定：迷雾不是空气墙），出来一定在某个场景里；决斗中、魁地奇队员、NPC（包括被附身时）都不会过；路线只是路过门口不会被传送 | `src/shared/scenes.ts`、`src/kernel/scenes.ts`、`World.setGoal` | `test/scenes.test.ts`、`test/playtest18-world.test.ts` |
 | 野生魔物只在自己家的场景里活动：不挑别的场景的人，会飞的也飞不出去 | `World.stepCreatures`（`sameScene`）、`World.stepToward` | `test/round10.test.ts` |
 | 决斗中的翻滚不会把你滚出决斗台或滚进安全区（会改道） | `stageRoll`（`src/kernel/duelclub.ts`，`dodgeDir` 钩子） | `test/round10.test.ts` |
 | 施法打不到就不扣法力：目标不在了、中间有墙、对方打不得，都当场拒绝，法力分文不动 | `World.cast` | `test/round4.test.ts`（TLA+ `CastTxn` 的「失败不扣」） |

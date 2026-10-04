@@ -18,6 +18,7 @@ import { BURST_LV, CHAIN_DMG, CHAIN_LV, CHAIN_R, RUNE_IDS, RUNE_MAX, RUNES, rune
 import type { Feature } from './feature.js';
 import type { Projectile, Wizard } from './types.js';
 import type { World } from './world.js';
+import { userSpellTag } from '../shared/spell-tags.js';
 
 declare module './world.js' {
   interface World {
@@ -43,7 +44,7 @@ function runeOf(world: World, w: Wizard | undefined, tags: readonly string[]): {
   if (!w || w.npc) return null;
   const r = world.runes.of.get(w.id);
   if (!r) return null;
-  for (const s of w.spells) if (tags.includes(s.name) && r.on[s.id]) return { k: r.on[s.id], lv: runeLevel(world, w.id, r.on[s.id]) };
+  for (const s of w.spells) if (tags.includes(userSpellTag(s.name)) && r.on[s.id]) return { k: r.on[s.id], lv: runeLevel(world, w.id, r.on[s.id]) };
   return null;
 }
 const RUNE_TAG = 'rune';

@@ -4,7 +4,7 @@ import { OVERLAY } from './layers';
 import { painted } from './models';
 import { heightAt } from './terrain';
 import type { ClientFeatureFactory } from './feature';
-import { PROP_DEFS, PROPS, type Prop, type PropKind } from '../src/shared/props';
+import { PROP_DEFS, PROPS, propHint, type Prop, type PropKind } from '../src/shared/props';
 
 /**
  * 场景道具 in the browser (src/shared/props.ts; the kernel's src/kernel/props.ts): each kind is one instanced mesh
@@ -99,8 +99,8 @@ const GLOW: Partial<Record<PropKind, { geo: () => THREE.BufferGeometry; color: n
 };
 
 /** The hover line over a prop: its name and what it wants. */
-function signTexture(k: PropKind) {
-  const d = PROP_DEFS[k];
+function signTexture(p: Prop) {
+  const d = PROP_DEFS[p.kind], hint = propHint(p);
   const c = document.createElement('canvas');
   c.width = 384; c.height = 88;
   const g = c.getContext('2d')!;
@@ -108,7 +108,7 @@ function signTexture(k: PropKind) {
   g.fillStyle = 'rgba(28, 20, 12, 0.72)';
   g.beginPath(); g.roundRect?.(8, 6, 368, 76, 16); if (!g.roundRect) g.rect(8, 6, 368, 76); g.fill();
   g.font = '600 30px "Noto Serif SC", "Songti SC", serif'; g.fillStyle = '#fff1cf'; g.fillText(L(d.zh, d.en), 192, 30);
-  g.font = '500 20px "Noto Sans SC", "PingFang SC", sans-serif'; g.fillStyle = '#e6dcc4'; g.fillText(L(d.hintZh, d.hintEn), 192, 62);
+  g.font = '500 20px "Noto Sans SC", "PingFang SC", sans-serif'; g.fillStyle = '#e6dcc4'; g.fillText(L(hint.zh, hint.en), 192, 62, 352);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -187,7 +187,7 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   const sign = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, toneMapped: false }));
   sign.scale.set(3.4, 0.78, 1); sign.visible = false; sign.renderOrder = 7; sign.layers.set(OVERLAY);
   group.add(sign);
-  const signs = new Map<PropKind, THREE.Texture>();
+  const signs = new Map<string, THREE.Texture>();
   let hovered: Prop | null = null, hoverAt = 0, t = 0;
 
   let sig = '';
@@ -223,8 +223,9 @@ export const propsFeature: ClientFeatureFactory = (d) => {
       if (hovered && t - hoverAt > 0.2) hovered = null;
       sign.visible = !!hovered;
       if (hovered) {
-        let tx = signs.get(hovered.kind);
-        if (!tx) { tx = signTexture(hovered.kind); signs.set(hovered.kind, tx); }
+        const key = `${hovered.kind}:${propHint(hovered).en}`;
+        let tx = signs.get(key);
+        if (!tx) { tx = signTexture(hovered); signs.set(key, tx); }
         if (sign.material.map !== tx) { sign.material.map = tx; sign.material.needsUpdate = true; }
         sign.position.set(hovered.x, heightAt(hovered.x, hovered.z) + 2.3, hovered.z);
       }
