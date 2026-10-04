@@ -1,0 +1,44 @@
+[
+  {
+    "gradeExamFirst": false,
+    "graded": false,
+    "match": true,
+    "npc": "Seamus Finnigan",
+    "npcCastAttempts": 4,
+    "npcCastSuccess": 3,
+    "npcDealt": 44.739999999999995,
+    "playerHp": 55.25999999999999,
+    "playerMaxHp": 100,
+    "positions": [
+      {
+        "x": -7,
+        "z": -30
+      },
+      {
+        "x": 7,
+        "z": -30
+      }
+    ]
+  },
+  {
+    "gradeExamFirst": true,
+    "graded": true,
+    "match": true,
+    "npc": "Seamus Finnigan",
+    "npcCastAttempts": 4,
+    "npcCastSuccess": 3,
+    "npcDealt": 44.739999999999995,
+    "playerHp": 55.25999999999999,
+    "playerMaxHp": 100,
+    "positions": [
+      {
+        "x": -7,
+        "z": -30
+      },
+      {
+        "x": 7,
+        "z": -30
+      }
+    ]
+  }
+]
