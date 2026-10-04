@@ -1,0 +1,78 @@
+{
+  "label": "after-night",
+  "renderer": "ANGLE / SwiftShader software renderer",
+  "errors": [],
+  "shaderErrors": [],
+  "movement": [
+    "arrived",
+    "arrived"
+  ],
+  "shots": [
+    {
+      "name": "hall",
+      "camera": {
+        "pos": [
+          0,
+          11,
+          -58
+        ],
+        "look": [
+          0,
+          1,
+          -46
+        ]
+      },
+      "viewport": [
+        900,
+        600
+      ],
+      "time": {
+        "hour": 22.2,
+        "night": true,
+        "weather": "clear",
+        "remark": {
+          "zh": "夜里。宵禁了，费尔奇和洛丽丝夫人正在巡逻。",
+          "en": "Night. Curfew; Filch and Mrs Norris are on patrol."
+        }
+      },
+      "perf": {
+        "frames": [
+          {
+            "dt": 2355.5999999996275,
+            "calls": 82,
+            "tris": 200716
+          },
+          {
+            "dt": 1175.0999999996275,
+            "calls": 186,
+            "tris": 243648
+          },
+          {
+            "dt": 1103.2000000011176,
+            "calls": 82,
+            "tris": 200680
+          },
+          {
+            "dt": 1095.5999999996275,
+            "calls": 186,
+            "tris": 243648
+          }
+        ],
+        "info": {
+          "programs": 180,
+          "geometries": 199,
+          "textures": 45
+        },
+        "scale": 1,
+        "travel": [
+          [
+            "BoxGeometry/MeshStandardMaterial (child)",
+            1
+          ]
+        ]
+      }
+    }
+  ],
+  "menu": true,
+  "destinations": 5
+}
