@@ -27,7 +27,7 @@ export interface MarketDetail extends MarketCard {
   versionList: { v: number; name: string; at: number; nodes: number; minYear: number; tags: string[] }[];
   lineage: { id: string; v: number; name: string; author: string; unpublished?: boolean }[];
   forkList: { id: string; name: string; author: string }[];
-  canCopy: { ok: boolean; why?: string; have?: { name: string; v: number } };
+  canCopy: { ok: boolean; why?: string; have?: { name: string; v: number }; requiresRename?: boolean; suggestedName?: string };
   canFork: { ok: boolean; why?: string };
 }
 interface Browse {
@@ -38,6 +38,12 @@ interface Browse {
 }
 /** A spell of your own book, as the armory lists it. */
 export interface BookSpell { id: string; name: string; builtin: boolean; effects: string[]; source: string; origin?: { author: string }; market?: { id: string; v: number; own?: boolean } }
+
+/** The same free-name constraint as copy_spell; blank input uses the selected version's name. */
+export function canCopyMarketName(detail: Pick<MarketDetail, 'canCopy' | 'versionName'>, input: string, spells: readonly Pick<BookSpell, 'name'>[]): boolean {
+  const name = (input.trim() || detail.versionName).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 40);
+  return detail.canCopy.ok && name.length > 0 && !spells.some(s => s.name.toLowerCase() === name.toLowerCase());
+}
 
 export interface MarketHost {
   /** Send a message to the server. */
@@ -162,15 +168,16 @@ export function createMarket(book: HTMLElement, host: MarketHost) {
   function renderDetail() {
     const d = detail;
     if (!d || d.id !== sel) { renderPublish(); return; }
+    const copyName = d.canCopy.suggestedName ?? d.versionName;
     const vs = d.versionList.length > 1 ? `<select class="mk-ver">${d.versionList.map((x) => `<option value="${x.v}"${x.v === d.version ? ' selected' : ''}>v${x.v} · ${esc(x.name)}</option>`).join('')}</select>` : `<span class="mk-v">v${d.version}</span>`;
     const lineage = d.lineage.length ? `<p class="mk-line">${ic('quill')}${L('家谱', 'Lineage')}：${[`<b>${nameHtml(d.name)}</b>`, ...d.lineage.map((p) => `<button type="button" class="linky" data-id="${esc(p.id)}">${nameHtml(p.name)}</button> <small>${esc(p.author)}${p.unpublished ? L('（已下架）', ' (unpublished)') : ''}</small>`)].join(' ← ')}</p>` : '';
     const forks = d.forkList.length ? `<p class="mk-line">${ic('figures')}${L('改编', 'Forks')}：${d.forkList.map((f) => `<button type="button" class="linky" data-id="${esc(f.id)}">${nameHtml(f.name)}</button> <small>${esc(f.author)}</small>`).join('，')}</p>` : '';
     const acts = d.yours
       ? `<div class="row">${d.unpublished ? `<button type="button" class="mk-republish">${ic('scroll')}${L('重新上架', 'Publish again')}</button>` : `<button type="button" class="ghost mk-unpublish">${ic('x')}${L('下架', 'Unpublish')}</button>`}<span class="hint">${L('在咒语书里改好后再次发布，就是新版本。', 'Rework it in the spellbook and publish again for a new version.')}</span></div>`
-      : `<div class="row mk-acts"><label class="fld mk-nm"><small>${L('抄本名', 'Copy name')}</small><input class="mk-name" maxlength="40" value="${esc(d.versionName)}"/></label>${slotSelect('mk-slot')}`
-        + `<button type="button" class="mk-copy"${d.canCopy.ok ? '' : ' disabled'}>${ic('check')}${L('抄进咒语书', 'Copy into my book')}</button>`
+      : `<div class="row mk-acts"><label class="fld mk-nm"><small>${L('抄本名', 'Copy name')}</small><input class="mk-name" maxlength="40" value="${esc(copyName)}"/></label>${slotSelect('mk-slot')}`
+        + `<button type="button" class="mk-copy"${canCopyMarketName(d, copyName, host.spells()) ? '' : ' disabled'}>${ic('check')}${L('抄进咒语书', 'Copy into my book')}</button>`
         + `<button type="button" class="ghost mk-fork"${d.canFork.ok && d.source !== null ? '' : ' disabled'}>${ic('quill')}${L('改编', 'Fork')}</button></div>`
-        + (d.canCopy.ok ? '' : `<p class="hint mk-why">${esc(tr(d.canCopy.why ?? ''))}</p>`);
+        + (d.canCopy.why ? `<p class="hint mk-why">${esc(tr(d.canCopy.why))}</p>` : '');
     const fork = forking && !d.yours ? `<div class="mk-forkbox"><h3>${ic('quill')}${L('改编', 'Fork')} <small class="hint">${L('改动源码，以你的名字发布；家谱里会记下原作者。', 'Change the source and publish it as yours; the lineage keeps the original author.')}</small></h3>`
       + `<div class="row"><label class="fld"><small>${L('名字', 'Name')}</small><input class="mk-fname" maxlength="40" value="${esc(`${d.versionName} II`.slice(0, 40))}"/></label><label class="fld"><small>${L('简介', 'Line')}</small><input class="mk-fdesc" maxlength="140"/></label></div>`
       + `<textarea class="mk-fsrc" spellcheck="false">${esc(d.source ?? '')}</textarea><div class="row">${slotSelect('mk-fslot')}<button type="button" class="mk-dofork">${ic('scroll')}${L('发布改编', 'Publish the fork')}</button><button type="button" class="quiet mk-nofork">${L('取消', 'Cancel')}</button></div></div>` : '';
@@ -202,6 +209,7 @@ export function createMarket(book: HTMLElement, host: MarketHost) {
     }
     if (!detail) return;
     if (b.classList.contains('mk-copy')) {
+      if (!canCopyMarketName(detail, $<HTMLInputElement>('.mk-name').value, host.spells())) return;
       const slot = Number($<HTMLSelectElement>('.mk-slot').value) || undefined;
       host.send({ t: 'marketop', op: 'copy', id: detail.id, v: detail.version, name: $<HTMLInputElement>('.mk-name').value.trim() || undefined, slot });
     } else if (b.classList.contains('mk-fork')) { forking = true; renderDetail(); $<HTMLTextAreaElement>('.mk-fsrc')?.focus(); }
@@ -227,6 +235,12 @@ export function createMarket(book: HTMLElement, host: MarketHost) {
     const t = e.target as HTMLElement;
     if (t.classList.contains('mk-ver') && detail) { read(detail.id, Number((t as HTMLSelectElement).value)); return; }
     if (t.closest('.mk-filters')) { offset = 0; browse(); }
+  });
+  root.addEventListener('input', (e) => {
+    const input = e.target as HTMLInputElement;
+    if (input.classList.contains('mk-name') && detail) {
+      $<HTMLButtonElement>('.mk-copy').disabled = !canCopyMarketName(detail, input.value, host.spells());
+    }
   });
   $('.mk-q input').addEventListener('input', () => { clearTimeout(timer); timer = window.setTimeout(() => { offset = 0; browse(); }, 300); });
 

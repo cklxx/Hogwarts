@@ -10,6 +10,7 @@ import { describeGlamour, glamourCostArgs, jinxLayer, materialRefusal, nextLook,
 import { dist } from './physics.js';
 import type { Pending, Vec2, Wizard } from './types.js';
 import type { World } from './world.js';
+import { displaySpellTags } from '../shared/spell-tags.js';
 
 export interface CastContext {
   target: string | null;
@@ -375,7 +376,6 @@ function planLater(world: World, w: Wizard, pendings: Pending[], report: CastRep
   report.notes.push('Delayed blocks are planned against the world as it is now; by the time they fire, things may have moved.');
 }
 
-const tagsFor = (ctx: CastContext) => [ctx.incantation, ctx.spellName].join(' | ').slice(0, 200).split(' | ');
+const tagsFor = (ctx: CastContext) => displaySpellTags(ctx.spellName, ctx.incantation);
 const round = (n: number) => Math.round(n * 10) / 10;
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-

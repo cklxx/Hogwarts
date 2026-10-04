@@ -1,0 +1,122 @@
+{
+  "baselineCommit": "e007f34",
+  "baseline": {
+    "source": "isolated git archive HEAD; pure split module copied only to allow new test imports; baseline World and chem unchanged",
+    "command": "vitest run test/water-assist.test.ts -t 'different houses receive'",
+    "result": "failed as expected",
+    "expectedHelperXp": 35,
+    "actualHelperXp": 0
+  },
+  "candidate": {
+    "command": "npx vitest run test/water-assist.test.ts test/chem.test.ts",
+    "filesPassed": 2,
+    "testsPassed": 31,
+    "testsFailed": 0,
+    "worldTrollExample": {
+      "originalKillerXp": 140,
+      "helperXp": 35,
+      "killerXp": 105,
+      "newHelperRep": 0,
+      "newHelperGalleons": 0,
+      "newHelperKillCredit": 0
+    }
+  },
+  "formal": {
+    "tool": "Lean v4.33.0",
+    "file": "formal/lean/WaterAssist.lean",
+    "result": "all 16 theorems checked",
+    "vectors": "formal/water-assist-vectors.json",
+    "vectorRows": 40,
+    "allocationPropertyCases": 13013,
+    "displayTagVectorRows": 10
+  },
+  "rules": {
+    "source": "active Aguamenti only; dew/rain sourced wetness excluded",
+    "trigger": "different real active nearby human directly deals positive damage during a wet reaction against an unowned/unpossessed hostile creature",
+    "waterProvenanceSeconds": 8,
+    "contributionSeconds": 60,
+    "distanceMetres": 30,
+    "sameSceneRequired": true,
+    "uniqueHelpersPerCreature": 8,
+    "xpSource": "floor(existing killer XP / 4), integer shares; fractional remainder kept by killer; other damage XP unchanged",
+    "excluded": [
+      "self",
+      "NPC",
+      "possessed actors or creatures",
+      "summons",
+      "natural wetness",
+      "expired wetness or contributions",
+      "non-positive damage",
+      "simulation",
+      "offline/down/distant helpers",
+      "non-creature targets"
+    ],
+    "repeat": "same wizard/creature entry never increases weight or refreshes deadline; another jet cannot steal live provenance",
+    "cleanup": "at slay and periodic expiration/removal sweep",
+    "feedback": "private bilingual system event only on actual positive helper XP"
+  },
+  "sourceFiles": [
+    "src/kernel/chem.ts",
+    "src/kernel/water-assist.ts",
+    "test/water-assist.test.ts",
+    "formal/lean/WaterAssist.lean",
+    "formal/water-assist-vectors.json"
+  ],
+  "integrationByParent": [
+    "src/kernel/world.ts",
+    "formal/run.sh",
+    ".github/workflows/ci.yml"
+  ],
+  "noCommit": true,
+  "fullSuiteDelegatedToParent": true,
+  "trustBoundaryFix": {
+    "before": "pre-fix real World.forgeSpell + World.cast + 8 ticks: zero-damage bolt called water, incantation water, or separated water text incorrectly soaked the troll; four actual exploit cases failed their expected no-soak assertions",
+    "baselineTestResult": {
+      "testFile": "test/spell-tags.test.ts",
+      "correctedFixtureRunTests": 9,
+      "failed": 6,
+      "passed": 3,
+      "failures": "4 real spoofing cases plus existing rune-name and delimiter-name split failures; counted projectile spawns instead of live projectile count"
+    },
+    "source": "src/shared/spell-tags.ts prefixes every user field with user:, preserving names already beginning user: by prefixing again; names and incantations remain exactly two fields; engine provenance remains separately appended by primitives and internal hits",
+    "reserved": [
+      "water",
+      "conduct",
+      "overload",
+      "rune",
+      "reflected",
+      "whizbang",
+      "sectumsempra"
+    ],
+    "preserved": [
+      "arbitrary display names",
+      "same-name rune activation",
+      "same-name studying",
+      "separator names as one data field",
+      "real Aguamenti provenance/reward",
+      "existing Wingardium Leviosa troll multiplier"
+    ],
+    "focused": {
+      "command": "npx vitest run test/spell-tags.test.ts test/runes.test.ts test/chem.test.ts test/water-assist.test.ts test/unfair.test.ts test/dark.test.ts",
+      "filesPassed": 6,
+      "testsPassed": 92,
+      "failed": 0
+    },
+    "finalLean": {
+      "exitCode": 0,
+      "theorems": 16,
+      "vectorComparison": "parsed JSON exactly equal",
+      "allocationVectors": 40,
+      "displayProvenanceVectors": 10
+    },
+    "files": [
+      "src/shared/spell-tags.ts",
+      "src/kernel/magic.ts",
+      "src/kernel/runes.ts",
+      "src/kernel/unfair.ts",
+      "test/spell-tags.test.ts",
+      "formal/lean/WaterAssist.lean",
+      "formal/water-assist-vectors.json"
+    ]
+  }
+}

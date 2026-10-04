@@ -12,6 +12,7 @@ import {
   DARK_LORD_MIN_REP, DARK_LORD_POWER_PCT, DARK_LORD_SEEN_S, STUDIED_KEEP, STUDY_DELAY_S, STUDY_KEEP, STUDY_MEMORY_S,
 } from '../shared/constants.js';
 import { zhPlace } from '../shared/zh.js';
+import { userSpellTag } from '../shared/spell-tags.js';
 import { fill, type Line } from '../lore/memes.js';
 import type { Feature } from './feature.js';
 import { darkLordTakes, jointPct, vetoPasses } from './progression.js';
@@ -512,7 +513,7 @@ function noteSpellHit(world: World, attacker: Wizard, victim: Wizard, tags: read
   if (attacker === victim || victim.npc || attacker.npc) return;
   const name = tags[1];
   if (!name) return;
-  const spell = attacker.spells.find((s) => !s.builtin && s.name === name);
+  const spell = attacker.spells.find((s) => !s.builtin && userSpellTag(s.name) === name);
   if (!spell) return;
   const key = `${attacker.handle}:${spell.id}`;
   if (victim.studied?.includes(key)) return;

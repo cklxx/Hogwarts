@@ -15,7 +15,7 @@
  *    cauldron woken by fire brews a potion beside it;
  * State goes out as the snapshot's `props` (only what is not at rest), and MCP look lists the props within 25 m.
  */
-import { IGNITE_R, PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROPS, WHIZBANG_POWER, type Prop } from '../shared/props.js';
+import { IGNITE_R, PROP_BREAKS_PER_TERM, PROP_BREAK_XP, PROP_DEFS, PROP_GROUPS, PROP_GROUP_GALLEONS, PROP_GROUP_XP, PROP_R, PROP_RESPAWN_S, PROPS, propHint, WHIZBANG_POWER, type Prop } from '../shared/props.js';
 import type { Element } from '../shared/constants.js';
 import { LOOT_PCT, LOOT_WEIGHTS, type LootKind } from '../shared/loot.js';
 import { drop } from './loot.js';
@@ -170,7 +170,7 @@ export const PROPS_FEATURE: Feature = {
       const s = world.props, here = near(x.pos, Math.min(radius, 25), []);
       if (!here.length) return undefined;
       return here.map((p) => {
-        const d = PROP_DEFS[p.kind];
+        const d = PROP_DEFS[p.kind], hint = propHint(p);
         return {
           id: p.id, kind: p.kind, zh: d.zh, x: p.x, z: p.z, ...(p.group ? { group: p.group } : {}),
           state: s.broken.has(p.id) ? 'broken' : s.awake.has(p.id) ? 'awake' : 'rest',
@@ -178,7 +178,7 @@ export const PROPS_FEATURE: Feature = {
           // stones over chat thought they had 2–3 s; they had 30 — now they can see it)
           ...(s.awake.has(p.id) ? { secondsLeft: Math.ceil(s.awake.get(p.id)!.until - world.now) } : {}),
           ...(p.group ? { groupLit: `${(members.get(p.group) ?? []).filter((q) => (s.awake.get(q.id)?.until ?? 0) > world.now).length}/${(members.get(p.group) ?? []).length}` } : {}),
-          ...(d.wakes ? { wakes: d.wakes } : {}), hint: `${d.hintZh} / ${d.hintEn}`,
+          ...(d.wakes ? { wakes: d.wakes } : {}), hint: `${hint.zh} / ${hint.en}`,
         };
       });
     },

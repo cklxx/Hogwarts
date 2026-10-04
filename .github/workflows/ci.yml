@@ -32,4 +32,4 @@ jobs:
       - name: Model-check TLA+ specs and check Lean proofs
         run: TLA2TOOLS=/tmp/tla2tools.jar LEAN=$HOME/.elan/bin/lean formal/run.sh
       - name: Conformance vectors are up to date
-        run: git diff --exit-code formal/vectors.json
+        run: git diff --exit-code formal/vectors.json formal/water-assist-vectors.json

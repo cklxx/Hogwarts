@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WARD_CD_S, WARD_MANA, WARD_MAX_S, type CreatureKind, type House } from '../src/shared/constants';
 import { inZoneId } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
+import { ic } from './ink';
 import { heightAt, rayGround } from './terrain';
 
 /**
@@ -973,7 +974,13 @@ export function createControls(d: ControlsDeps) {
     action = findAction();
     const pr = $('#prompt');
     pr.hidden = !action;
-    if (action && pr.dataset.label !== action.label) { pr.dataset.label = action.label; pr.innerHTML = `<kbd>F</kbd> ${action.label.replace(/^按 F |^F — /, '')}`; promptW = 0; }
+    if (action && pr.dataset.label !== action.label) {
+      pr.dataset.label = action.label;
+      const label = action.label.replace(/^按 F |^F — /, '');
+      pr.setAttribute('aria-label', touch ? `${L('点按交互：', 'Tap to interact: ')}${label}` : action.label);
+      pr.innerHTML = `${touch ? ic('hand') : '<kbd>F</kbd>'} ${label}`;
+      promptW = 0;
+    }
     const tip = $('#tip');
     if (!tip.hidden && tipSlot >= 0) renderTip(tipSlot);
     tutorial.tick();
