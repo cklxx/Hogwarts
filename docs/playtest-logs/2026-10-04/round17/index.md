@@ -73,7 +73,7 @@ NPC专项817/81；公共反馈与NPC整合818/81；再整合湖水和启动提�
 - [新手报告](newcomer-report.md)、[战斗/编程报告](combat-report.md)、[社交报告](social-report.md)、[浏览器/触摸报告](visual-report.md)。
 - [日志清单与SHA256](artifact-manifest.json)、[操作摘要](action-summary.json)；四份gzip日志为脱敏导出。CLI入学另一次不混入Social1367调用。
 - [移动诊断](pitch-hall-nav-report.md)、[自动闪避复核](automatic-candidate.json)、[闪避候选补丁（未实装）](stage-roll-candidate.patch)、[倒地路线候选（未实装）](respawn-navigation-candidate.patch)。这些独立World/加速tick夹具不计实玩时长。
-- [实际命中与远处决斗MCP/WS修复复核](candidate-smoke.json)、[交卷后NPC继续伤害HTTP复核](npc-http-after-grade.json)、[启动提交归属诊断](running-commit-report.md)。均为隔离服务验证，不是原小时修复后结果。
+- [实际命中与远处决斗MCP/WS修复复核](candidate-smoke.json)、[交卷后NPC继续伤害HTTP复核](npc-http-after-grade.json)、[启动提交归属诊断](running-commit-report.md)。均为隔离验证（HTTP/WS 或独立子进程模块），不是原小时修复后结果。
 - 小时画面：[礼堂材质/正常镜头](hour-11-hearth-normal-camera-dusk.png)、[手机夜景](hour-21-phone-hall-night.png)、[触摸战斗](hour-32-phone-target-roll.png)、[low](hour-56-water-low-day-after-high-three-frames.png)/[high](hour-58-water-high-day-settled.png)/[low重回](hour-59-water-low-day-final.png)、[桌面卡片详情](hour-88-owned-card-wide-detail-clean.png)/[手机详情消失](hour-89-owned-card-phone-detail-hidden-clean.png)、[最后一分钟宝箱](hour-92-final-minute-chest-ui-reward.png)。
 
 原始私有世界、密钥、未脱敏驱动和封印/考试答案不归档。源码字段和选修谜题工具结果从公开操作导出移除。程序员路径的代码编译/错误体验见角色报告，不提供解谜答案。
@@ -89,3 +89,5 @@ NPC专项817/81；公共反馈与NPC整合818/81；再整合湖水和启动提�
 低画质均无512×512镜面pass，programs169→169、textures35→36，符合增加一个复用回退纹理；几何174→172，说明动态世界样本并非完全相同，不声称draw calls/帧耗时收益或逐帧成本相等。原版/候选实测与原始逐帧数据见[摘要](water-production-summary.json)、[before](fixed-before.json)、[after](fixed-after.json)。高画质在另一组真实夜间回归恢复512×512镜面pass，蓝色水面正常，[high截图](lake-after-high.png)；先前白天/傍晚时刻不同的比较保留为复核记录；所有这些前后时刻不同的生产样本都不用来证明性能改善。所有样本pageerror/Shader error为0；CPU测试另覆盖low→high→low复用与释放。软件GPU不能推出真实手机FPS。
 
 湖水修复源提交 `c15a04b`，独立PR [#21](https://github.com/cklxx/Hogwarts/pull/21)，check与formal均已通过。公共反馈/运行提交/本报告归入独立PR；NPC修复PR [#20](https://github.com/cklxx/Hogwarts/pull/20) 已合入。
+
+复现脚本保留历史scratch路径；闪避候选实现已一并归档为 `stage-roll-candidate.ts`，没有加载到生产世界。归档审查再次核对四份gzip的SHA256、条数与字节数，均匹配。
