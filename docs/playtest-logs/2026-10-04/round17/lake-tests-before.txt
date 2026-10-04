@@ -1,0 +1,109 @@
+(node:16211) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✖ cold low binds initialized linear color and updates eye from camera world matrix without a render pass (23.698591ms)
+✖ low-high-low restores the same RT sampler and reuses the single low texture (1.336569ms)
+✖ disposing the owning Water material releases the low texture once (0.928663ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 0
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 571.354852
+
+✖ failing tests:
+
+test at ../scratch/playtest-hour-2026-10-04/repro/lake-quality.test.ts:2:2184
+✖ cold low binds initialized linear color and updates eye from camera world matrix without a render pass (23.698591ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   0,
+  +   0,
+  +   0
+  -   -83,
+  -   15,
+  -   39
+    ]
+  
+      at TestContext.<anonymous> (/workspace/scratch/playtest-hour-2026-10-04/repro/lake-quality.test.ts:7:269)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 0, 0, 0 ],
+    expected: [ -83, 15, 39 ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../scratch/playtest-hour-2026-10-04/repro/lake-quality.test.ts:2:3427
+✖ low-high-low restores the same RT sampler and reuses the single low texture (1.336569ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  ... Skipped lines
+  
+    [
+      1,
+      0,
+      0,
+      0,
+  ...
+      0,
+  +   5,
+  +   6,
+  +   7,
+  -   0,
+  -   0,
+  -   0,
+      1
+    ]
+  
+      at TestContext.<anonymous> (/workspace/scratch/playtest-hour-2026-10-04/repro/lake-quality.test.ts:8:427)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [
+      1, 0, 0, 0, 0, 1,
+      0, 0, 0, 0, 1, 0,
+      5, 6, 7, 1
+    ],
+    expected: [
+      1, 0, 0, 0, 0, 1,
+      0, 0, 0, 0, 1, 0,
+      0, 0, 0, 1
+    ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../scratch/playtest-hour-2026-10-04/repro/lake-quality.test.ts:2:4254
+✖ disposing the owning Water material releases the low texture once (0.928663ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (/workspace/scratch/playtest-hour-2026-10-04/repro/lake-quality.test.ts:9:303)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,14 @@
+{
+  "scope": "hour window probes; HTTP healthy is not NPC AI healthy",
+  "first": "2026-10-04T11:17:51.634Z",
+  "last": "2026-10-04T12:18:25.514Z",
+  "probes": 364,
+  "statuses": {
+    "200": 364
+  },
+  "p95Ms": 8.05,
+  "maxMs": 53.22,
+  "builds": [
+    "54d6830aaf41"
+  ]
+}

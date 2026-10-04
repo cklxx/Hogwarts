@@ -602,7 +602,7 @@ export function qdStatus(world: World, wid: string | null) {
     you: you ? { side: m!.sides[you.side], role: you.role, goals: you.goals, autopilot: you.chase, carrying: m!.quaffle.carrier === wid } : null,
     pitch: QD_PITCH,
     league: leagueView(world),
-    rules: { goal: QD_GOAL, snitch: QD_SNITCH, bludgerDamage: QD_BLUDGER_DMG, reputationMax: QD_REP_MAX, housePointsMax: QD_CUP_MAX, howTo: 'join during the call; touch the Quaffle to take it, throw it (quidditch throw) through a hoop at the other end; a spell that passes a Bludger beats it away; a seeker who stays within 1.5 m of the Snitch for 0.5 s catches it. quidditch chase = autopilot.' },
+    rules: { goal: QD_GOAL, snitch: QD_SNITCH, bludgerDamage: QD_BLUDGER_DMG, reputationMax: QD_REP_MAX, housePointsMax: QD_CUP_MAX, howTo: `join during the call; touch the Quaffle to take it, throw it (quidditch throw) through a hoop at the other end; a spell that passes a Bludger beats it away; a seeker who stays within ${QD_CATCH_R} m of the Snitch for ${QD_CATCH_S} s catches it. quidditch chase = autopilot.` },
   };
 }
 

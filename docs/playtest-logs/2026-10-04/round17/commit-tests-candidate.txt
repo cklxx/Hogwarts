@@ -1,0 +1,12 @@
+✔ first contribute call reports startup HEAD even when repository commits after module import (2183.428599ms)
+✔ HOGWARTS_COMMIT at module load wins and is immutable after import (1914.761653ms)
+✔ empty override retains git fallback captured at module load (1623.534976ms)
+✔ without a repository or override, report unknown (1368.907295ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7194.554696

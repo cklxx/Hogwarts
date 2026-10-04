@@ -1,0 +1,60 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (../scratch/playtest-hour-2026-10-04/repro/vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.2 /workspace/scratch/playtest-hour-2026-10-04/repro
+
+ ❯ duel-roll.test.ts (5 tests | 3 failed) 89ms
+   ❯ existing duel roll invariant: collision-resolved paths (5)
+     × manual diagonal roll near east jamb stays outside the Great Hall 45ms
+     × incoming reflex automatically chooses a safe direction near the same jamb 19ms
+     × rejects a segment crossing the Hall corner even if its ideal endpoint is outside 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  duel-roll.test.ts > existing duel roll invariant: collision-resolved paths > manual diagonal roll near east jamb stays outside the Great Hall
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ remain duel-roll.test.ts:10:91
+
+ ❯ duel-roll.test.ts:12:181
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  duel-roll.test.ts > existing duel roll invariant: collision-resolved paths > incoming reflex automatically chooses a safe direction near the same jamb
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ remain duel-roll.test.ts:10:91
+
+ ❯ duel-roll.test.ts:13:289
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  duel-roll.test.ts > existing duel roll invariant: collision-resolved paths > rejects a segment crossing the Hall corner even if its ideal endpoint is outside
+AssertionError: expected [ 0.09950371902099893, …(1) ] to not deeply equal [ 0.09950371902099893, …(1) ]
+
+Compared values have no visual difference.
+
+ ❯ duel-roll.test.ts:14:418
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 2 passed (5)
+   Start at  11:30:57
+   Duration  1.69s (transform 73%, import 21%, tests 6%)
+

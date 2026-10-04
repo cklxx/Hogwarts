@@ -1,0 +1,26 @@
+[
+  {
+    "file": "newcomer-actions.redacted.jsonl.gz",
+    "sha256": "bdad9c8b92ac03605b8deb41c726d5cf71fadc3369212a7b950fbcab044e06be",
+    "entries": 1921,
+    "bytes": 102144
+  },
+  {
+    "file": "combat-actions.redacted.jsonl.gz",
+    "sha256": "fe99657958ab3a222ffc9dd380bb5aaa13f0666799f9c863429d27885f0b938f",
+    "entries": 1787,
+    "bytes": 269510
+  },
+  {
+    "file": "social-actions.redacted.jsonl.gz",
+    "sha256": "51f3f4b630bbb8644aac93485f60bd06a544d0c90956269305255bf4b55b3416",
+    "entries": 1367,
+    "bytes": 126898
+  },
+  {
+    "file": "visual-actions.redacted.jsonl.gz",
+    "sha256": "e42a60a712921f1249b1ee25b1155e161e12f7635677e09a73d2501f87f8acd3",
+    "entries": 748,
+    "bytes": 75792
+  }
+]

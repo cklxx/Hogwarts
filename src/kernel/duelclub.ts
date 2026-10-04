@@ -244,8 +244,13 @@ export function duelWire(world: World) {
   const m = world.duel.match;
   if (!m) return undefined;
   const h = (id: string) => world.wizards.get(id)?.handle;
+  const names: Record<string, string> = {};
+  for (const id of [...m.sides[0], ...m.sides[1]]) {
+    const w = world.wizards.get(id);
+    if (w) names[w.handle] = w.name;
+  }
   const two = m.sides[0].length > 1 || m.sides[1].length > 1;
-  return { a: h(m.a), b: h(m.b), ...(two ? { a2: h(m.sides[0][1] ?? ''), b2: h(m.sides[1][1] ?? '') } : {}), ph: m.phase, t: Math.max(0, Math.ceil(phaseEnd(m) - world.now)), ...(Object.keys(m.out).length ? { out: Object.keys(m.out).map(h) } : {}) };
+  return { a: h(m.a), b: h(m.b), names, ...(two ? { a2: h(m.sides[0][1] ?? ''), b2: h(m.sides[1][1] ?? '') } : {}), ph: m.phase, t: Math.max(0, Math.ceil(phaseEnd(m) - world.now)), ...(Object.keys(m.out).length ? { out: Object.keys(m.out).map(h) } : {}) };
 }
 
 function heal(world: World, w: Wizard) {

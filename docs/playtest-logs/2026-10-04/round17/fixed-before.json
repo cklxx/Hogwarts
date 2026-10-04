@@ -1,0 +1,165 @@
+{
+  "label": "fixed-before",
+  "kind": "isolated production browser fixture, noon/shore reset; excluded from hour gameplay",
+  "renderer": "ANGLE / SwiftShader software",
+  "samples": [
+    {
+      "q": "low",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "time": {
+        "hour": 13.1,
+        "night": false,
+        "weather": "clear",
+        "remark": {
+          "zh": "白天。上课时间，但你显然在逃课。",
+          "en": "Daytime. Lessons are on; you are clearly skipping them."
+        }
+      },
+      "pos": {
+        "x": -82.7,
+        "z": 39.7
+      },
+      "perf": {
+        "frames": [
+          {
+            "dt": 786.1999999992549,
+            "js": 23.899999994784594,
+            "calls": 73,
+            "tris": 137837
+          },
+          {
+            "dt": 488.1000000014901,
+            "js": 19.900000002235174,
+            "calls": 113,
+            "tris": 151693
+          },
+          {
+            "dt": 287,
+            "js": 16.599999990314245,
+            "calls": 73,
+            "tris": 137837
+          },
+          {
+            "dt": 1566.3999999985099,
+            "js": 39.29999999329448,
+            "calls": 113,
+            "tris": 151965
+          },
+          {
+            "dt": 277.6000000014901,
+            "js": 9.199999999254942,
+            "calls": 73,
+            "tris": 137549
+          },
+          {
+            "dt": 262.0999999977648,
+            "js": 12.199999995529652,
+            "calls": 113,
+            "tris": 151677
+          },
+          {
+            "dt": 569.4000000022352,
+            "js": 24.399999994784594,
+            "calls": 73,
+            "tris": 137693
+          },
+          {
+            "dt": 267.5,
+            "js": 9.49999999627471,
+            "calls": 113,
+            "tris": 151821
+          },
+          {
+            "dt": 262.8999999985099,
+            "js": 10.49999999627471,
+            "calls": 73,
+            "tris": 137693
+          },
+          {
+            "dt": 276.5,
+            "js": 10.400000002235174,
+            "calls": 113,
+            "tris": 151821
+          },
+          {
+            "dt": 269.80000000074506,
+            "js": 8.50000000372529,
+            "calls": 73,
+            "tris": 137693
+          },
+          {
+            "dt": 257.6000000014901,
+            "js": 9.799999997019768,
+            "calls": 113,
+            "tris": 151821
+          },
+          {
+            "dt": 261.29999999701977,
+            "js": 16.49999999254942,
+            "calls": 73,
+            "tris": 137693
+          },
+          {
+            "dt": 270,
+            "js": 11.800000000745058,
+            "calls": 113,
+            "tris": 151821
+          },
+          {
+            "dt": 248.90000000223517,
+            "js": 11.99999999627471,
+            "calls": 73,
+            "tris": 137693
+          },
+          {
+            "dt": 531.5,
+            "js": 14.49999999627471,
+            "calls": 113,
+            "tris": 151821
+          },
+          {
+            "dt": 261.69999999925494,
+            "js": 13.99999999254942,
+            "calls": 73,
+            "tris": 137693
+          },
+          {
+            "dt": 270.6000000014901,
+            "js": 20.400000002235174,
+            "calls": 113,
+            "tris": 151821
+          },
+          {
+            "dt": 296.19999999925494,
+            "js": 14.400000002235174,
+            "calls": 73,
+            "tris": 137693
+          },
+          {
+            "dt": 260.5,
+            "js": 14.099999997764826,
+            "calls": 113,
+            "tris": 151821
+          }
+        ],
+        "info": {
+          "programs": 169,
+          "geometries": 174,
+          "textures": 35
+        },
+        "passes": {
+          "shadow-map": 400,
+          "Scene:292.5x633:PerspectiveCamera": 1820,
+          "Mesh:screen:OrthographicCamera": 20,
+          "Scene:screen:PerspectiveCamera": 20
+        },
+        "scale": 0.75
+      },
+      "screenshot": "fixed-before-low.png"
+    }
+  ],
+  "errors": []
+}

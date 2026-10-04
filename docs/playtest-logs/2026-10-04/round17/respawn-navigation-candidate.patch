@@ -1,0 +1,10 @@
+--- a/src/kernel/world.ts
++++ b/src/kernel/world.ts
+@@ -2144,6 +2144,7 @@
+       if (w.agentPaused) throw new Error(AGENT_PAUSED);
+       if (this.playerSteering(w)) throw new Error(PLAYER_STEERING);
+     } else w.steerAt = this.now;
++    if (goal && w.st.stunnedUntil) throw new Error('You are stunned: wait until you recover before setting a new route. 你被击晕了：恢复后再设置新路线。');
+     w.route = [];
+     w.goal = null;
+     w.goalBy = null;

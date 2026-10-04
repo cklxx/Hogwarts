@@ -9,7 +9,7 @@ import { ic } from '../ink';
 import { bearing, esc, fmtDist } from './logic';
 
 /** Snapshot `du` (duelWire). */
-export interface DuSnap { a?: string; b?: string; a2?: string; b2?: string; out?: string[]; ph: 'bow' | 'count' | 'fight'; t: number }
+export interface DuSnap { a?: string; b?: string; a2?: string; b2?: string; names?: Record<string, string>; out?: string[]; ph: 'bow' | 'count' | 'fight'; t: number }
 interface DuelStatus { closed?: string | false | null; stage: { x: number; z: number }; queue: number; you: { position?: number; mode?: '1v1' | '2v2'; inMatch?: boolean } | null }
 
 export interface DuelDeps {
@@ -36,7 +36,8 @@ export function duelLine(du: DuSnap | undefined, st: DuelStatus | null, nameOf: 
   if (du) {
     const mine = duelists(du).includes(me);
     const [zh, en] = PHASE[du.ph];
-    const side = (hs: (string | undefined)[]) => hs.filter(Boolean).map((h) => (du.out?.includes(h!) ? `${nameOf(h)}✗` : nameOf(h))).join(' & ');
+    const name = (h: string) => du.names?.[h] ?? nameOf(h);
+    const side = (hs: (string | undefined)[]) => hs.filter(Boolean).map((h) => (du.out?.includes(h!) ? `${name(h!)}✗` : name(h!))).join(' & ');
     return { title: `${side([du.a, du.a2])} ⚔ ${side([du.b, du.b2])}`, sub: `${du.a2 ? '2v2 · ' : ''}${L(zh, en)} · ${du.t}s${mine && du.ph !== 'fight' ? L(' · 站定，不能施法', ' · hold still, no casting') : ''}${du.out?.includes(me) ? L(' · 你出局了：看队友的', " · you're out: it's up to your partner") : ''}`, mine };
   }
   if (st?.you?.position) {

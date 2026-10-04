@@ -1,0 +1,44 @@
+[
+  {
+    "candidate": false,
+    "queued": true,
+    "why": "",
+    "afterRespawn": {
+      "pos": {
+        "x": 73.5,
+        "z": 26.254783876152374
+      },
+      "scene": "castle",
+      "goal": null
+    },
+    "resent": {
+      "pos": {
+        "x": 94.70143717233694,
+        "z": 36.953662475070566
+      },
+      "scene": "forest",
+      "goal": null
+    }
+  },
+  {
+    "candidate": true,
+    "queued": false,
+    "why": "You are stunned: wait until you recover before setting a new route. 你被击晕了：恢复后再设置新路线。",
+    "afterRespawn": {
+      "pos": {
+        "x": 1.6759667824953794,
+        "z": -19.346943024545908
+      },
+      "scene": "castle",
+      "goal": null
+    },
+    "resent": {
+      "pos": {
+        "x": 94.47452022424618,
+        "z": 36.87673482741272
+      },
+      "scene": "forest",
+      "goal": null
+    }
+  }
+]

@@ -40,6 +40,20 @@ describe('playtest round 2', () => {
     expect(hits[1].damage).toBeGreaterThan(0);
   });
 
+  it('a hit on a wizard exposes a reusable public target, including after that wizard leaves', () => {
+    const w = mk();
+    const a = player(w, 'Follow Up'), b = player(w, 'Opponent', 'Slytherin');
+    a.pos = { x: 40, z: 10 }; b.pos = { x: 40, z: 16 };
+    expect(w.damage(a.id, b.id, 5, 'arcane')).toBeGreaterThan(0);
+    const hit = w.look(a.id).yourHits[0];
+    expect(hit.target).toBe(b.handle);
+    expect(w.resolveTarget(hit.target, a.id)).toBe(b.id);
+    expect(w.resolveTarget(b.id, a.id)).toBeNull();
+    w.wizards.delete(b.id);
+    expect(w.look(a.id).yourHits[0].target).toBe(b.handle);
+    expect(JSON.stringify(w.look(a.id).yourHits)).not.toContain(b.id);
+  });
+
   it('"no way to find a chest": look shows the ones within sight', () => {
     const w = mk();
     const a = player(w, 'Newcomer');

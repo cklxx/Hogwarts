@@ -82,6 +82,16 @@ describe('MCP over streamable HTTP', () => {
     expect(g.text).toContain('RUNES');
     expect(g.text).toContain('(bolt at power element?)');
 
+    // A rune's explanatory sketch is not source to feed back into forge_spell.
+    // First-years can equip an owned rune even if a word in its sketch is year-locked.
+    const runes = await call(c, 'runes');
+    expect(runes.isError).toBe(false);
+    expect(runes.data.codeKind).toBe('illustration');
+    expect(runes.data.codeNote).toMatch(/[一-鿿]/);
+    expect(runes.data.codeNote).toContain('not executable');
+    expect(runes.data.runes).toHaveLength(3);
+    expect(runes.data.runes.every((r: any) => !r.owned)).toBe(true);
+
     const bad = await call(c, 'forge_spell', { name: 'Oops', source: '(bolt target' });
     expect(bad.isError).toBe(true);
     expect(bad.text).toMatch(/unclosed/);
@@ -129,6 +139,20 @@ describe('MCP over streamable HTTP', () => {
 
     const lb = await call(c, 'leaderboard');
     expect(lb.data.loopholeFirstFoundBy).toBe('Agent Fred');
+
+    // Public hit targets must work in the next real MCP cast, including a wizard duel.
+    expect((await call(c, 'duel_club', { op: 'join', with: 'Agent George' })).isError).toBe(false);
+    expect((await call(c2b, 'duel_club', { op: 'join', with: 'Agent Fred' })).isError).toBe(false);
+    await new Promise((ok) => setTimeout(ok, 5300));
+    const georgeHandle = (await call(c2b, 'whoami')).data.handle;
+    expect((await call(c, 'cast', { spell: 'Stupefy', target: georgeHandle })).data.ok).toBe(true);
+    await new Promise((ok) => setTimeout(ok, 800));
+    const hit = (await call(c, 'look')).data.yourHits.find((h: any) => h.name === 'Agent George');
+    expect(hit.target).toBe(georgeHandle);
+    expect(hit.target).not.toBe(george.registry);
+    await new Promise((ok) => setTimeout(ok, 800));
+    expect((await call(c, 'cast', { spell: 'Stupefy', target: hit.target })).data.ok).toBe(true);
+    await call(c2b, 'duel_club', { op: 'leave' });
   });
 
   it('limits refused forge parcels per wizard, not per session', async () => {

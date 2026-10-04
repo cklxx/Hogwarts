@@ -1,0 +1,6 @@
+import { World } from '/workspace/Hogwarts/src/kernel/world.ts';
+import { clearLine, walkableAt } from '/workspace/Hogwarts/src/kernel/pathfind.ts';
+import { writeFileSync } from 'node:fs';
+const w=new World({seed:41,secret:'first-leg-only'});w.rules.creatures.spawnMultiplier=0;w.rules.events.pool=[];w.term.endsAt=1e12;const a=w.enroll('Path Fixture').wizard;a.connections=1;a.createdAt=-1e6;a.pos={x:30.017,z:-63.5};w.moved(a);w.setGoal(a.id,{x:0,z:-52},'agent');const start={...a.pos},first={...a.route[0]};const samples=[];
+for(let i=0;i<25*20;i++){const before={...a.pos};w.tick();if(i>=100&&i<116)samples.push({t:w.now,pos:{...a.pos},netStep:Math.hypot(a.pos.x-before.x,a.pos.z-before.z),headwayFraction:Math.hypot(a.pos.x-before.x,a.pos.z-before.z)/(w.rules.physics.moveSpeed*.05),distanceToFirst:Math.hypot(a.pos.x-first.x,a.pos.z-first.z),stuck:{...(w as any).stuck.get(a.id)}});}
+const result={kind:'isolated-minimal',start,first,firstClear:clearLine(start,first,w.solids),startCellWalkable:walkableAt(start,w.solids),goal:a.goal,final:{...a.pos},stunned:a.st.stunnedUntil,hp:a.hp,samples};writeFileSync('/workspace/scratch/playtest-hour-2026-10-04/repro/nav-first-leg-repro.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify({...result,samples:result.samples.slice(0,4)},null,2));

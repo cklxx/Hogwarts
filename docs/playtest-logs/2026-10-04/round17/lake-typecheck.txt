@@ -1,0 +1,1 @@
+Candidate scene.ts + lake-quality.ts source overlay: TypeScript project diagnostics 0. No repository files modified.
