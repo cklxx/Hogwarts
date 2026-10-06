@@ -8,7 +8,8 @@ import type { ClientFeature, ClientFeatureFactory } from '../feature';
 import { L, lang } from '../i18n';
 import { makeBroom } from '../quidditch3d';
 import { heightAt } from '../terrain';
-import { glowSprite } from '../textures';
+import { STORYBOOK, glowSprite } from '../textures';
+import { hearthMaterial } from '../hearth';
 import { FIREPLACES, fireplaceNear } from '../../src/shared/travel';
 import { esc } from './logic';
 
@@ -25,16 +26,22 @@ export function flooChoices(here: { x: number; z: number }) {
 export const travelFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
   const group = new THREE.Group();
   group.name = 'travel';
-  const hearth = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 1.6, 0.9), new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 0.95 }), FIREPLACES.length);
+  const hearthGeo = new THREE.BoxGeometry(2.2, 1.6, 0.9);
+  const hearthMat = STORYBOOK ? hearthMaterial(hearthGeo) : new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 0.95 });
+  const hearth = new THREE.InstancedMesh(hearthGeo, hearthMat, FIREPLACES.length);
   const flameGeo = new THREE.BufferGeometry();
   const fp = new Float32Array(FIREPLACES.length * 3);
   FIREPLACES.forEach((f, i) => {
     const y = heightAt(f.x, f.z);
     tmp.position.set(f.x, y + 0.8, f.z); tmp.updateMatrix(); hearth.setMatrixAt(i, tmp.matrix);
-    fp.set([f.x, y + 1.0, f.z + 0.5], i * 3);
+    fp.set([f.x, y + (STORYBOOK ? 1.8 : 1.0), f.z + (STORYBOOK ? 0 : 0.5)], i * 3);
   });
   flameGeo.setAttribute('position', new THREE.BufferAttribute(fp, 3));
   const flameMat = new THREE.PointsMaterial({ map: glowSprite('rgba(120,255,140,1)', 'rgba(20,160,60,0)'), size: 2.2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  ctx.effect(() => () => {
+    hearth.dispose(); hearthGeo.dispose(); hearthMat.map?.dispose(); hearthMat.dispose();
+    flameGeo.dispose(); flameMat.map?.dispose(); flameMat.dispose();
+  });
   group.add(hearth, new THREE.Points(flameGeo, flameMat));
   const brooms = new Map<string, THREE.Group>();
   let riders: readonly string[] = [], t = 0;
@@ -81,7 +88,7 @@ export const travelFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
     },
     frame(dt) {
       t += dt;
-      flameMat.size = 2.0 + Math.sin(t * 7) * 0.25;
+      flameMat.size = STORYBOOK ? 1.2 + Math.sin(t * 7) * 0.1 : 2.0 + Math.sin(t * 7) * 0.25;
       riders = d.wire<string[]>('tr') ?? [];
       for (const [h, b] of brooms) if (!riders.includes(h)) { group.remove(b); brooms.delete(h); }
       for (const h of riders) {

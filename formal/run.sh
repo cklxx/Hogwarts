@@ -28,4 +28,17 @@ if lean_out=$("$LEAN" lean/Hogwarts.lean 2>&1); then
 else
   echo "FAIL"; echo "$lean_out" | head -20; fail=1
 fi
+# Additional self-contained proofs do not alter Hogwarts conformance vectors.
+for proof in lean/*.lean; do
+  [[ "$proof" == "lean/Hogwarts.lean" ]] && continue
+  printf '%-12s ' "$(basename "$proof" .lean)"
+  if proof_out=$("$LEAN" "$proof" 2>&1); then
+    echo "OK  (all theorems checked)"
+    if [[ "$proof" == "lean/WaterAssist.lean" ]]; then
+      grep '^WATER_ASSIST_VECTORS ' <<<"$proof_out" | sed 's/^WATER_ASSIST_VECTORS //' | python3 -c "import json,sys; json.dump(json.load(sys.stdin), open('water-assist-vectors.json','w'), indent=0)"
+    fi
+  else
+    echo "FAIL"; echo "$proof_out" | head -20; fail=1
+  fi
+done
 exit $fail

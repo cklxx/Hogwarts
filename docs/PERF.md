@@ -1677,3 +1677,143 @@ What changed:
 - **Tag declutter** (`client/main.ts`): every 6th frame; **bolt height** (`client/main.ts`): cached, resampled after 3 m.
 
 Verified: `tsc` clean, `test/props.test.ts` 11/11, browser smoke test renders with no errors (the new shaders compile). SwiftShader (~0.15 fps) cannot resolve the JS delta — the win is structural: ~3760 CPU particle updates and 2 full buffer uploads per frame are gone.
+
+## 2026-10-03 — flat-ground CPU cost and persistent name-tag decluttering
+
+`heightAt` now stops evaluating the flatness mask as soon as it reaches zero, and skips the five rolling-noise
+octaves on completely flat ground. Lake, mountain and island terms still run. Name-tag decluttering now keeps
+its hidden set between 100 ms refreshes: previously animation re-enabled those labels on the five frames
+between overlap checks. Changing the target refreshes the set immediately.
+
+Raw results, the benchmark scripts and reproduction commands are in
+[`playtest-logs/2026-10-03/perf/`](playtest-logs/2026-10-03/perf/README.md).
+Baseline: `4d968113a31b56b59c8b91215384244965968bd1`; the after build adds these terrain/label changes and the
+accompanying basic UI fixes. Environment: Node **24.19.0**, Chromium **151.0.7922.173**, Linux, SwiftShader.
+
+### Terrain CPU, eight regions
+
+Each region has 8,192 deterministic points (seed `20261003`). Each version runs seven alternating samples of
+163,840 calls; the table is median process CPU time (`process.cpuUsage`, user + system), not wall-clock time.
+The repeat run below confirmed the initial measurement. All **65,536 points were numerically identical** to
+the old implementation, maximum absolute difference **0**. Thirty saved height vectors around flat boundaries,
+the lake, forest, mountains and Azkaban also pass alongside the existing collision/view tests (68 tests total).
+
+| Region | Before, CPU ns/call | After, CPU ns/call | Reduction |
+|---|---:|---:|---:|
+| Spawn | 256 | 69 | 73.0% |
+| Castle | 260 | 127 | 51.0% |
+| Lake | 230 | 198 | 13.8% |
+| Forest | 233 | 192 | 17.7% |
+| Quidditch pitch | 223 | 90 | 59.6% |
+| Hogsmeade | 237 | 120 | 49.5% |
+| Highlands | 356 | 351 | 1.3% |
+| Azkaban | 195 | 194 | 0.7% |
+
+These are costs of one terrain query. They do not imply the same percentage improvement in frame time; the
+small differences outside flat areas are close to measurement noise.
+
+### Same-snapshot rendering check
+
+The first moving-world run increased draw calls, so a second check held the scene constant. Both builds used
+the same saved identities and positions, 20 connected stationary bots, 27 total wizards (including the viewer
+and the six NPCs actually created by `NPC_COUNT=12`), and 83 creatures. A benchmark-only preload freezes
+`World.tick` and `setInput`; the latter otherwise still changes facing. The real HTTP/WebSocket server and
+client remain in use. A fixed browser random seed also keeps procedural decorations identical.
+
+Settings: low quality, 1280×720, `dyn=0`, fixed `crowd` capture camera, two seconds without drawing to settle
+camera/LOD, four seconds warm-up, sixteen seconds sampled. Each build produced 17 measured frames. The complete
+protocol snapshots matched byte for byte; both SHA-256 witnesses are
+`7ae2842dd33e858cce2b1348ada538f144cb00f36e426495a6b9d7af92e99a9c`.
+
+| Per frame | Before | After |
+|---|---:|---:|
+| Total draw calls | 689.00 | 678.41 |
+| Triangles | 314,934.76 | 314,913.59 |
+| Shadow-map calls | 81.41 | 81.41 |
+| Main scene render calls, including its shadow work | 658.41 | 658.41 |
+| Screen overlay calls | 29.59 | 19.00 |
+| Actor drawables in end-of-run census | 350 | 338 |
+| Actor shadow casters | 85 | 85 |
+
+The shadow-map row is nested in the scene-render row and must not be added to it. Calls still alternate with
+shadow refreshes: before `{609, 770, 782}`, after `{597, 770}`. The scene and shadow work are identical; the
+reduction is the overlapping labels. The end-of-run census loses exactly 12 label quads (24 triangles), with
+no change in casters. This controlled case rules out the draw-call increase seen in the moving-world sample
+as a rendering regression for the same scene. It does not establish a universal draw-call reduction.
+
+### Moving-world results and limits
+
+The original A/B used low quality, 1280×720, `dyn=0`, 20 moving/casting bots, 10 of them near spawn,
+`NPC_COUNT=12`, four seconds warm-up and eight seconds per view. Each `--nodraw` window contains 480 frames:
+
+| No-draw CPU, ms/frame | Follow before → after | Crowd before → after |
+|---|---:|---:|
+| Total frame JS, excluding message/HUD callbacks | 1.49 → 1.42 | 1.54 → 1.64 |
+| Entity animation | 0.46 → 0.41 | 0.48 → 0.51 |
+| World/camera update | 0.21 → 0.15 | 0.20 → 0.15 |
+| Controls/features | 0.80 → 0.84 | 0.84 → 0.95 |
+
+Both no-draw runs maintained 60 Hz with no frame over 50 ms. Overall JS did **not** improve consistently.
+With drawing enabled, follow calls were 179 → 202 and crowd 637 → 727, but those windows contained only 15 and
+9 frames while entities and the follow camera continued moving. Those observations prompted the fixed-world
+check above; they are retained in `browser-dynamic.jsonl`, not silently discarded. Draw-enabled first frame
+was 19.37 → 19.62 s; the separately launched no-draw runs initially drew a frame at 19.30 → 18.90 s. These do
+not show a consistent loading improvement.
+
+SwiftShader rendered around 1–2 fps in these tests. Its software rasterization competes for CPU with the
+client, so neither this fps nor draw-enabled JS timing describes a player's hardware experience. The supported
+claims are lower flat-ground query cost, unchanged sampled terrain, stable name-tag suppression, and no
+same-scene increase in scene/shadow drawing. Real-GPU frame-time improvement remains unmeasured.
+
+## 2026-10-03: smaller MCP exploration responses
+
+`look({radius:10})` previously returned props out to 25 metres. Passing the bounded query radius into the
+props view now filters that section to `min(radius, 25)`, while retaining the default 25 metre cap and order.
+This reduces irrelevant information for agents requesting a small area.
+
+Controlled before/after: World seed 43, Query Reader at the lake floo point (-82, 26), no ticking, identical
+prop states. Count and UTF-8 byte size refer only to compact `JSON.stringify(look.props)`, not the whole MCP
+response. [Reproduction script](playtest-logs/2026-10-03/round11/bench/props-query.mts) and
+[before](playtest-logs/2026-10-03/round11/bench/props-query-before.jsonl) /
+[after](playtest-logs/2026-10-03/round11/bench/props-query-after.jsonl) raw measurements are archived.
+
+| Requested radius | Props before → after | Farthest prop, metres before → after | Props JSON bytes before → after |
+|---|---:|---:|---:|
+| 10 | 31 → 13 | 25 → 9.847 | 5,671 → 2,159 (−61.9%) |
+| 12 | 31 → 15 | 25 → 11.621 | 5,671 → 2,605 (−54.1%) |
+| 40 | 31 → 31 | 25 → 25 | 5,671 → 5,671 |
+| 80 | 31 → 31 | 25 → 25 | 5,671 → 5,671 |
+
+The default and explicit 25/40/80 metre results are also tested for equality. This fixture measures query
+payload size, not latency, CPU savings or FPS. Actual exploration reproductions are recorded separately in
+the round 11 playtest report.
+
+## 2026-10-04：石灰岩、胡桃木与飞路台材质（第 16 轮）
+
+实现 `0d185f5`、`8a174a2`；基线 `ff556bc`。这是材质调整，不新增灯光或模型部件。石墙与木板贴图尺寸不变；飞路台新增一张原创 512×256 RGBA8 图集（含 mipmaps 约 0.67 MiB），继续使用既有六实例箱体和六点 Points。图集、几何与实例资源在插件重载时释放。
+
+生产构建，Chromium / ANGLE / SwiftShader 软件渲染，`?capture=1&perf=1&q=high`，固定 1× 渲染比例；同一私有世界存档分别从正午、晴天、7200 秒一天开始，每视图 20 个已渲染帧。基线实际时段为 12.2 / 12.3 / 12.4 时，最终版为 12.2 / 12.4 / 12.4 时。机位、原始采样、实机截图见[第 16 轮](playtest-logs/2026-10-04/round16/index.md)。
+
+| 视图 | 帧间隔中位数 ms（前→后） | 全场景绘制次数中位数（前→后） | 三角形中位数（前→后） | 程序 / 几何 / 纹理（前→后） |
+|---|---|---|---|---|
+| 礼堂 900×600 | 1111.2 → 1134.6 | 132 → 132 | 218512 → 218622 | 178/196/44 → 180/196/45 |
+| 城堡 900×600 | 1551.5 → 1577.4 | 268 → 270 | 229463 → 229734 | 180/223/46 → 182/224/47 |
+| 窄屏 390×844 | 844.9 → 862.1 | 177 → 182 | 215406 → 215758 | 183/238/47 → 185/239/48 |
+
+这些短窗口的帧间隔变化约为 +2.1% / +1.7% / +2.0%，没有观察到大幅变化。服务器正常运行，随机事件、实体、粒子与裁剪并不逐帧相同，因此全场景绘制次数和资源计数不能作为静态材质成本的严格对照；飞路静态部分的箱体与 Points 数量不变，明确的新增资源是一张图集。软件渲染帧间隔不是硬件 GPU 数据，不能据此推导真机 FPS 或手机流畅度。夜间与 `?style=real` 附加检查只验证显示、加载和交互，不计入这张性能表。
+
+
+## 2026-10-06：异步检查点与服务器恢复
+
+基线 `308cbda`，实现 `2781f0c`。存档与时钟／进程生命周期从入口拆出；坏存档拒绝启动，进程级异常退出并保留上次检查点，格式错误的 HTTP／升级 URL 及 JSON 在请求边界返回 400，解析输入不回显。自动保存改成同步捕获、异步写盘，同步文件字节后原子替换；慢盘只保留一个在写任务。正常信号等待最终保存，失败／10 秒超时不会误报成功。
+
+Node 24.19.0、Linux、5 核可见 AMD EPYC 7763；同一静止世界、三轮预热后九轮交替，每次保存字节一致。旧实现没有文件同步，新实现包含文件同步：
+
+| 角色数／保存体积 | 主线程同步阻塞中位数（旧→新） | 完整保存中位数（旧→新） |
+|---|---:|---:|
+| 500／1.56 MB | 5.54 → 5.16 ms | 5.54 → 6.73 ms |
+| 2000／6.23 MB | 26.93 → 23.62 ms | 26.94 → 27.99 ms |
+
+主线程阻塞约少 7%／12%；完整写入因额外文件同步略长。序列化仍是主要同步成本，不能推导整个游戏同幅度变快。复现：`npx tsx scripts/bench-persistence.ts --n=500,2000 --rounds=9`。
+
+200 客户端真实 HTTP／WebSocket、20 Hz 输入、每秒施法、单 realm 的首轮 60 秒对照及交替复测，全部保持连接、施法回复 100%。最终三次 32 秒样本的 loop p99 为 12.03–13.50 ms、cast RTT p99 为 8.63–10.10 ms；基线为 12.07–12.79 ms、8.19–8.68 ms，不能声称整体吞吐或尾延迟改善。运行中场景未逐帧固定，也不作严格无退化结论。全部九次数字、原始记录、验证和限制见 [服务器恢复回归](playtest-logs/2026-10-06/server-recovery/index.md)。这不是小时级浸泡或硬件 GPU／实体手机验收。

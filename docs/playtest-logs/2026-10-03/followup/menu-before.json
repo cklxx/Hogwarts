@@ -1,0 +1,30 @@
+{
+  "stage": "before",
+  "mid": {
+    "menuVisible": true,
+    "scrollTop": 810,
+    "scrollHeight": 1727,
+    "clientHeight": 810,
+    "close": {
+      "top": -781,
+      "bottom": -735,
+      "left": 313,
+      "right": 359
+    },
+    "closeInsideViewport": false
+  },
+  "bottom": {
+    "menuVisible": true,
+    "scrollTop": 917,
+    "scrollHeight": 1727,
+    "clientHeight": 810,
+    "close": {
+      "top": -888,
+      "bottom": -842,
+      "left": 313,
+      "right": 359
+    },
+    "closeInsideViewport": false
+  },
+  "closed": false
+}

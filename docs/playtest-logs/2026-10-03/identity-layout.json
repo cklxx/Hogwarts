@@ -1,0 +1,1730 @@
+[
+  {
+    "mode": "before",
+    "width": 320,
+    "wizardName": "PhoneNovaTwo",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 200,
+      "height": 40,
+      "right": 216,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 140,
+      "height": 20.390625,
+      "right": 197,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 91.59375,
+      "height": 20.390625,
+      "right": 197,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 132,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 204,
+      "bottom": 56
+    },
+    "gap": -84,
+    "intersection": 72,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 320,
+    "wizardName": "VeryLongEnglishWizardName",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 200,
+      "height": 40,
+      "right": 216,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 140,
+      "height": 20.390625,
+      "right": 197,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 91.59375,
+      "height": 20.390625,
+      "right": 197,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 132,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 204,
+      "bottom": 56
+    },
+    "gap": -84,
+    "intersection": 72,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 320,
+    "wizardName": "这是一个很长的霍格沃茨中文名字",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 200,
+      "height": 40,
+      "right": 216,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 140,
+      "height": 20.390625,
+      "right": 197,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 91.59375,
+      "height": 20.390625,
+      "right": 197,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 132,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 204,
+      "bottom": 56
+    },
+    "gap": -84,
+    "intersection": 72,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "name"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 360,
+    "wizardName": "PhoneNovaTwo",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 206.4375,
+      "height": 40,
+      "right": 222.4375,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 146.4375,
+      "height": 20.390625,
+      "right": 203.4375,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 98.03125,
+      "height": 20.390625,
+      "right": 203.4375,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 172,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 244,
+      "bottom": 56
+    },
+    "gap": -50.4375,
+    "intersection": 50.4375,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 360,
+    "wizardName": "VeryLongEnglishWizardName",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 240,
+      "height": 40,
+      "right": 256,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 180,
+      "height": 20.390625,
+      "right": 237,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 131.59375,
+      "height": 20.390625,
+      "right": 237,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 172,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 244,
+      "bottom": 56
+    },
+    "gap": -84,
+    "intersection": 72,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 360,
+    "wizardName": "这是一个很长的霍格沃茨中文名字",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 240,
+      "height": 40,
+      "right": 256,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 180,
+      "height": 20.390625,
+      "right": 237,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 131.59375,
+      "height": 20.390625,
+      "right": 237,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 172,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 244,
+      "bottom": 56
+    },
+    "gap": -84,
+    "intersection": 72,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "name"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 390,
+    "wizardName": "PhoneNovaTwo",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 206.4375,
+      "height": 40,
+      "right": 222.4375,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 146.4375,
+      "height": 20.390625,
+      "right": 203.4375,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 98.03125,
+      "height": 20.390625,
+      "right": 203.4375,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 202,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 274,
+      "bottom": 56
+    },
+    "gap": -20.4375,
+    "intersection": 20.4375,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 390,
+    "wizardName": "VeryLongEnglishWizardName",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 270,
+      "height": 40,
+      "right": 286,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 210,
+      "height": 20.390625,
+      "right": 267,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 161.59375,
+      "height": 20.390625,
+      "right": 267,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 202,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 274,
+      "bottom": 56
+    },
+    "gap": -84,
+    "intersection": 72,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "name lat"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "before",
+    "width": 390,
+    "wizardName": "这是一个很长的霍格沃茨中文名字",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 270,
+      "height": 40,
+      "right": 286,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 210,
+      "height": 20.390625,
+      "right": 267,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 161.59375,
+      "height": 20.390625,
+      "right": 267,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 202,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 274,
+      "bottom": 56
+    },
+    "gap": -84,
+    "intersection": 72,
+    "allClockPointsReachable": false,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": false,
+        "hit": "name"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": false,
+        "hit": "name"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": false,
+        "hit": "me"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 320,
+    "wizardName": "PhoneNovaTwo",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 110,
+      "height": 40,
+      "right": 126,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 50,
+      "height": 20.390625,
+      "right": 107,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 1.59375,
+      "height": 20.390625,
+      "right": 107,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 132,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 204,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 320,
+    "wizardName": "VeryLongEnglishWizardName",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 110,
+      "height": 40,
+      "right": 126,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 50,
+      "height": 20.390625,
+      "right": 107,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 1.59375,
+      "height": 20.390625,
+      "right": 107,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 132,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 204,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 320,
+    "wizardName": "这是一个很长的霍格沃茨中文名字",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 110,
+      "height": 40,
+      "right": 126,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 50,
+      "height": 20.390625,
+      "right": 107,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 1.59375,
+      "height": 20.390625,
+      "right": 107,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 132,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 204,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 360,
+    "wizardName": "PhoneNovaTwo",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 150,
+      "height": 40,
+      "right": 166,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 90,
+      "height": 20.390625,
+      "right": 147,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 41.59375,
+      "height": 20.390625,
+      "right": 147,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 172,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 244,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 360,
+    "wizardName": "VeryLongEnglishWizardName",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 150,
+      "height": 40,
+      "right": 166,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 90,
+      "height": 20.390625,
+      "right": 147,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 41.59375,
+      "height": 20.390625,
+      "right": 147,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 172,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 244,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 360,
+    "wizardName": "这是一个很长的霍格沃茨中文名字",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 150,
+      "height": 40,
+      "right": 166,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 90,
+      "height": 20.390625,
+      "right": 147,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 41.59375,
+      "height": 20.390625,
+      "right": 147,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 172,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 244,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 390,
+    "wizardName": "PhoneNovaTwo",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 180,
+      "height": 40,
+      "right": 196,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 120,
+      "height": 20.390625,
+      "right": 177,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 71.59375,
+      "height": 20.390625,
+      "right": 177,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 202,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 274,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 390,
+    "wizardName": "VeryLongEnglishWizardName",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 180,
+      "height": 40,
+      "right": 196,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 120,
+      "height": 20.390625,
+      "right": 177,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 71.59375,
+      "height": 20.390625,
+      "right": 177,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 202,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 274,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "width": 390,
+    "wizardName": "这是一个很长的霍格沃茨中文名字",
+    "me": {
+      "x": 16,
+      "y": 8,
+      "width": 180,
+      "height": 40,
+      "right": 196,
+      "bottom": 48
+    },
+    "who": {
+      "x": 57,
+      "y": 17.796875,
+      "width": 120,
+      "height": 20.390625,
+      "right": 177,
+      "bottom": 38.1875
+    },
+    "name": {
+      "x": 105.40625,
+      "y": 17.796875,
+      "width": 71.59375,
+      "height": 20.390625,
+      "right": 177,
+      "bottom": 38.1875
+    },
+    "button": {
+      "x": 202,
+      "y": 12,
+      "width": 72,
+      "height": 44,
+      "right": 274,
+      "bottom": 56
+    },
+    "gap": 6,
+    "intersection": 0,
+    "allClockPointsReachable": true,
+    "hits": [
+      {
+        "dx": 4,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 4,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 4,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 36,
+        "dy": 4,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 36,
+        "dy": 22,
+        "clock": true,
+        "hit": "num"
+      },
+      {
+        "dx": 36,
+        "dy": 40,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 4,
+        "clock": false,
+        "hit": "clock"
+      },
+      {
+        "dx": 68,
+        "dy": 22,
+        "clock": true,
+        "hit": "time veiled phone-time"
+      },
+      {
+        "dx": 68,
+        "dy": 40,
+        "clock": false,
+        "hit": "clock"
+      }
+    ]
+  }
+]

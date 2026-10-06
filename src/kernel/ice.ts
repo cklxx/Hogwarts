@@ -197,7 +197,7 @@ export const ICE_FEATURE: Feature = {
       if (!overWater(w.pos.x, w.pos.z) || onIce(world, w.pos.x, w.pos.z)) continue;
       world.fx({ k: 'react', x: w.pos.x, z: w.pos.z, h: 'soak' });
       world.chem?.wet.set(w.id, world.now + WET_S);
-      w.goal = null; w.route = []; w.goalBy = null;
+      world.stopWalk(w);
       world.solids.resolve(w.pos, 0.5);
       world.moved(w);
       skaters.get(world)?.delete(w.id);

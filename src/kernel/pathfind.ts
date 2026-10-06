@@ -106,14 +106,21 @@ export function walkableAt(p: Vec2, solids: Solids = STATIC_SOLIDS): boolean {
 }
 
 /** Nearest walkable cell to the point p (from its cell (i, j) outward), by distance to p itself. */
-function nearestOpen(p: Vec2, i: number, j: number): [number, number] | null {
-  if (ok(i, j)) return [i, j];
+function nearestOpen(p: Vec2, i: number, j: number, reachable = false): [number, number] | null {
+  // The body can stand in a coarse blocked cell (beside the mirror, for example). Its connection to
+  // the grid must be swept against actual solids, without requiring the origin's coarse cell open.
+  const accepts = (a: number, b: number) => {
+    if (!ok(a, b)) return false;
+    const c = center(a, b);
+    return !reachable || !cur!.hitSegment(p.x, p.z, c.x, c.z, -1, LEG_CLEAR);
+  };
+  if (accepts(i, j)) return [i, j];
   let best: [number, number] | null = null, bestD = Infinity;
   for (let r = 1; r < 40; r++) {
     for (let di = -r; di <= r; di++)
       for (const dj of [-r, r])
         for (const [a, b] of [[i + di, j + dj], [i + dj, j + di]] as const) {
-          if (!ok(a, b)) continue;
+          if (!accepts(a, b)) continue;
           const c = center(a, b), d = Math.hypot(c.x - p.x, c.z - p.z);
           if (d < bestD) { bestD = d; best = [a, b]; }
         }
@@ -141,7 +148,7 @@ function lineOk(a: Vec2, b: Vec2): boolean {
 /** Returns waypoints from `from` to (a walkable point near) `to`, excluding `from`. Null if unreachable. */
 export function findPath(from: Vec2, to: Vec2, solids: Solids = STATIC_SOLIDS): Vec2[] | null {
   use(solids);
-  const s = nearestOpen(from, ...cellOf(from));
+  const s = nearestOpen(from, ...cellOf(from), true);
   const g = nearestOpen(to, ...cellOf(to));
   if (!s || !g) return null;
   const goalPt = ok(...cellOf(to)) ? { ...to } : center(g[0], g[1]);
@@ -202,10 +209,19 @@ export function findPath(from: Vec2, to: Vec2, solids: Solids = STATIC_SOLIDS): 
   const cells: Vec2[] = [];
   for (let c = goal; c !== start && c !== -1; c = came[c]) cells.push(center(c % N, Math.floor(c / N)));
   cells.reverse();
-  // a start inside a blocked cell walks to the nearest open cell first
-  if (!ok(...cellOf(from))) cells.unshift(center(s[0], s[1]));
-  if (!cells.length) return [goalPt];
-  cells[cells.length - 1] = goalPt;
+  // Anchor the first leg at the collision-reachable start cell. This also covers an open origin cell
+  // whose centre is separated from the actual origin by a thin collider.
+  const startPt = center(s[0], s[1]);
+  if (!cells.length) {
+    // Same grid cell does not imply a clear direct leg (a thin column or tomb corner can intervene).
+    // The origin's connection to startPt was swept by nearestOpen; also verify the remaining leg.
+    if (!lineOk(startPt, goalPt)) return null;
+    cells.push(startPt);
+    if (Math.hypot(startPt.x - goalPt.x, startPt.z - goalPt.z) > 1e-9) cells.push(goalPt);
+  } else {
+    cells.unshift(startPt);
+    cells[cells.length - 1] = goalPt;
+  }
   // string-pull: keep only waypoints needed for line of sight
   const out: Vec2[] = [];
   let anchor = from;

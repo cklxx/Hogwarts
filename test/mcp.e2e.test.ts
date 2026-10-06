@@ -1,16 +1,21 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { once } from 'node:events';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
+import { World } from '../src/kernel/world.js';
+import { XP_FOR_YEAR } from '../src/kernel/progression.js';
 import { onMsg } from './ws.js';
 
 const PORT = Number(process.env.HOGWARTS_TEST_PORT ?? 17000 + Math.floor(Math.random() * 1000));
 const BASE = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
+let dir: string;
+let examToken: string;
 
 async function client(token?: string) {
   const c = new Client({ name: 'test', version: '0' });
@@ -26,18 +31,34 @@ async function call(c: Client, name: string, args: Record<string, unknown> = {})
 }
 
 beforeAll(async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'hogwarts-'));
+  dir = mkdtempSync(join(tmpdir(), 'hogwarts-'));
+  // The rotation guarantees year <= 2 exams, but some weeks have no year-one exam.
+  // Keep this candidate separate from the real HTTP enrollment/authentication coverage.
+  const world = new World({ seed: 7, secret: 'mcp-e2e-fixture' });
+  const candidate = world.enroll('Exam Candidate').wizard;
+  candidate.year = 2;
+  candidate.xp = XP_FOR_YEAR[2];
+  examToken = candidate.token;
+  writeFileSync(join(dir, 'world.json'), JSON.stringify(world.serialize()));
   proc = spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {
     env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', HOGWARTS_DATA: join(dir, 'world.json'), PUBLIC_URL: BASE },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise<void>((ok, bad) => {
     const t = setTimeout(() => bad(new Error('server did not start')), 60000);
-    proc.stdout!.on('data', (d) => { if (String(d).includes('[hogwarts]')) { clearTimeout(t); ok(); } });
+    proc.stdout!.on('data', (d) => { if (String(d).includes('[hogwarts]') && String(d).includes('(MCP:')) { clearTimeout(t); ok(); } });
     proc.stderr!.on('data', (d) => process.stderr.write(d));
   });
 }, 70000);
-afterAll(() => { proc?.kill('SIGTERM'); });
+afterAll(async () => {
+  if (proc && proc.exitCode === null && proc.signalCode === null) {
+    const exited = once(proc, 'exit');
+    proc.kill('SIGTERM');
+    await exited;
+  }
+  // The server saves synchronously on exit; remove only this suite's temporary fixture afterwards.
+  if (dir) rmSync(dir, { recursive: true, force: true });
+});
 
 describe('MCP over streamable HTTP', () => {
   it('lets an agent enroll, read the grimoire, forge and cast a spell, and find the loophole', async () => {
@@ -60,6 +81,16 @@ describe('MCP over streamable HTTP', () => {
     const g = await call(c, 'grimoire');
     expect(g.text).toContain('RUNES');
     expect(g.text).toContain('(bolt at power element?)');
+
+    // A rune's explanatory sketch is not source to feed back into forge_spell.
+    // First-years can equip an owned rune even if a word in its sketch is year-locked.
+    const runes = await call(c, 'runes');
+    expect(runes.isError).toBe(false);
+    expect(runes.data.codeKind).toBe('illustration');
+    expect(runes.data.codeNote).toMatch(/[一-鿿]/);
+    expect(runes.data.codeNote).toContain('not executable');
+    expect(runes.data.runes).toHaveLength(3);
+    expect(runes.data.runes.every((r: any) => !r.owned)).toBe(true);
 
     const bad = await call(c, 'forge_spell', { name: 'Oops', source: '(bolt target' });
     expect(bad.isError).toBe(true);
@@ -108,6 +139,20 @@ describe('MCP over streamable HTTP', () => {
 
     const lb = await call(c, 'leaderboard');
     expect(lb.data.loopholeFirstFoundBy).toBe('Agent Fred');
+
+    // Public hit targets must work in the next real MCP cast, including a wizard duel.
+    expect((await call(c, 'duel_club', { op: 'join', with: 'Agent George' })).isError).toBe(false);
+    expect((await call(c2b, 'duel_club', { op: 'join', with: 'Agent Fred' })).isError).toBe(false);
+    await new Promise((ok) => setTimeout(ok, 5300));
+    const georgeHandle = (await call(c2b, 'whoami')).data.handle;
+    expect((await call(c, 'cast', { spell: 'Stupefy', target: georgeHandle })).data.ok).toBe(true);
+    await new Promise((ok) => setTimeout(ok, 800));
+    const hit = (await call(c, 'look')).data.yourHits.find((h: any) => h.name === 'Agent George');
+    expect(hit.target).toBe(georgeHandle);
+    expect(hit.target).not.toBe(george.registry);
+    await new Promise((ok) => setTimeout(ok, 800));
+    expect((await call(c, 'cast', { spell: 'Stupefy', target: hit.target })).data.ok).toBe(true);
+    await call(c2b, 'duel_club', { op: 'leave' });
   });
 
   it('limits refused forge parcels per wizard, not per session', async () => {
@@ -155,21 +200,34 @@ describe('MCP over streamable HTTP', () => {
     expect(v).toMatchObject({ protocol: 1, version: expect.any(String) });
     expect(v.players).toBeGreaterThanOrEqual(1);
     expect(build).toBe(v.build);
+    ws.close();
+  });
 
+  it('lists and grades O.W.L. exams over WebSocket for an eligible candidate', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { authorization: `Bearer ${examToken}` } });
     // the O.W.L. exams panel: {t:'exams'} lists the week, {t:'sit'} grades a submission (kernel/exams.ts)
     const next = (t: string) => new Promise<any>((ok, bad) => {
       const timer = setTimeout(() => bad(new Error(`no ${t}`)), 8000);
       const off = onMsg(ws, (m) => { if (m.t === t || m.t === 'err') { clearTimeout(timer); off(); ok(m); } });
     });
-    ws.send(JSON.stringify({ t: 'exams' }));
-    const list = await next('exams');
-    expect(list.r.exams.length).toBeGreaterThanOrEqual(5);
-    const open = list.r.exams.find((e: { locked?: string }) => !e.locked);
-    ws.send(JSON.stringify({ t: 'sit', id: open.id, source: '(say' }));
-    const sat = await next('sat');
-    expect(sat.r.grade).toBe('T');
-    expect(sat.r.log).toMatch(/FAIL/);
-    ws.close();
+    try {
+      expect((await next('welcome')).t).toBe('welcome');
+      const listed = next('exams');
+      ws.send(JSON.stringify({ t: 'exams' }));
+      const list = await listed;
+      expect(list.t).toBe('exams');
+      expect(list.r.exams.length).toBeGreaterThanOrEqual(5);
+      const available = list.r.exams.filter((e: { locked?: string }) => !e.locked);
+      expect(available.length).toBeGreaterThanOrEqual(2);
+      const graded = next('sat');
+      ws.send(JSON.stringify({ t: 'sit', id: available[0].id, source: '(say' }));
+      const sat = await graded;
+      expect(sat.t).toBe('sat');
+      expect(sat.r.grade).toBe('T');
+      expect(sat.r.log).toMatch(/FAIL/);
+    } finally {
+      ws.close();
+    }
   });
 
   it('links a player and their agent: pair, owls, pause, rotate — and never leaks the key', async () => {

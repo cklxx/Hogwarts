@@ -1,11 +1,11 @@
 /**
  * 符文零件 (docs/DESIGN.md §3.3; after Balatro's jokers and Noita's wand modifiers): small pieces, each one sentence,
- * that you put on a spell and that change how it lands. They sit over the Runes code — the card says what line of
- * code each one is worth — so a first-year gets the joy of building a spell before writing one.
+ * that you put on a spell and that change how it lands. They sit over the Runes code — the card illustrates the
+ * effect, not executable source — so a first-year gets the joy of building a spell before writing one.
  * Shared by the kernel (src/kernel/runes.ts: what they do, how you get them) and the browser (client/panels/runes.ts).
  */
 export type RuneId = 'split' | 'chain' | 'burst';
-export interface RuneDef { zh: string; en: string; docZh: string; docEn: string; /** the Runes it is worth, for the card */ code: string; howZh: string; howEn: string }
+export interface RuneDef { zh: string; en: string; docZh: string; docEn: string; /** Illustrative effect sketch, not executable Runes source. */ code: string; howZh: string; howEn: string }
 export const RUNES: Record<RuneId, RuneDef> = {
   split: { zh: '分裂', en: 'Split', docZh: '这发魔弹同时向左右各多射一发（每发 60% 威力）', docEn: 'the bolt goes out as three, fanned (60% power each)', code: '(bolt (rotate aim -18) …) (bolt (rotate aim 18) …)', howZh: '第一次打出元素反应', howEn: 'your first magic reaction' },
   chain: { zh: '连锁', en: 'Chain', docZh: '命中后跳到旁边最多两个敌人（每跳 8 点，同一元素）', docEn: 'a hit leaps on to up to two more foes nearby (8 each, same element)', code: '(chain target 8)', howZh: '通关一个遭遇时挑选（温室、蜘蛛巢、佐科后院）', howEn: 'pick it when you clear an encounter (the greenhouse, the spider nest, Zonko’s yard)' },

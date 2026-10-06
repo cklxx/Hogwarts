@@ -1,0 +1,12 @@
+✔ an empty second World tick cannot erase the live world sparring brain (135.146416ms)
+✔ real gradeExam sandboxes cannot stop live NPC sparring (83.656859ms)
+✔ two worlds can alternate ticks while both retain their own NPC brains (82.62937ms)
+✔ grading mid-match preserves spellbook and the existing AI action schedule (75.625722ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1482.016838

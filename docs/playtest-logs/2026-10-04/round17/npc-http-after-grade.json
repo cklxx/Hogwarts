@@ -1,0 +1,14 @@
+[
+  {
+    "kind": "isolated real HTTP NPC match; fixture year 2; not hour gameplay",
+    "exam": "hello-owl",
+    "gradingCompleted": true,
+    "before": {
+      "npcDealt": 14
+    },
+    "after": {
+      "npcDealt": 101
+    },
+    "passed": true
+  }
+]

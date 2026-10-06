@@ -1,0 +1,38 @@
+{
+  "kind": "isolated-fixture",
+  "observations": [
+    {
+      "phase": "queued-while-down",
+      "pos": {
+        "x": 130,
+        "z": 38
+      },
+      "goal": {
+        "x": 95,
+        "z": 37
+      },
+      "scene": "forest",
+      "via": false
+    },
+    {
+      "phase": "after-respawn-and-walk",
+      "pos": {
+        "x": 73.5,
+        "z": 26.254783876152374
+      },
+      "goal": null,
+      "scene": "castle",
+      "via": false
+    },
+    {
+      "phase": "new-route-after-respawn",
+      "pos": {
+        "x": 94.70143717233694,
+        "z": 36.953662475070566
+      },
+      "goal": null,
+      "scene": "forest",
+      "via": false
+    }
+  ]
+}

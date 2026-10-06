@@ -1,0 +1,109 @@
+[
+  {
+    "label": "fixed-before",
+    "q": "low",
+    "gameHour": 13.1,
+    "frames": 20,
+    "scale": 0.75,
+    "info": {
+      "programs": 169,
+      "geometries": 174,
+      "textures": 35
+    },
+    "passes": {
+      "shadow-map": 400,
+      "Scene:292.5x633:PerspectiveCamera": 1820,
+      "Mesh:screen:OrthographicCamera": 20,
+      "Scene:screen:PerspectiveCamera": 20
+    },
+    "median": {
+      "dt": 270.3,
+      "js": 14.05,
+      "calls": 93.0,
+      "tris": 144757.0
+    },
+    "errors": []
+  },
+  {
+    "label": "fixed-after",
+    "q": "low",
+    "gameHour": 14.5,
+    "frames": 20,
+    "scale": 0.75,
+    "info": {
+      "programs": 169,
+      "geometries": 172,
+      "textures": 36
+    },
+    "passes": {
+      "shadow-map": 434,
+      "Scene:292.5x633:PerspectiveCamera": 1874,
+      "Mesh:screen:OrthographicCamera": 20,
+      "Scene:screen:PerspectiveCamera": 20
+    },
+    "median": {
+      "dt": 270.8,
+      "js": 10.75,
+      "calls": 95.5,
+      "tris": 146257.0
+    },
+    "errors": []
+  },
+  {
+    "label": "lake-after",
+    "q": "low",
+    "gameHour": 17.7,
+    "frames": 20,
+    "scale": 0.75,
+    "info": {
+      "programs": 173,
+      "geometries": 192,
+      "textures": 37
+    },
+    "passes": {
+      "shadow-map": 1410,
+      "Scene:292.5x633:PerspectiveCamera": 2790,
+      "Mesh:screen:OrthographicCamera": 20,
+      "Scene:screen:PerspectiveCamera": 20
+    },
+    "median": {
+      "dt": 282.85,
+      "js": 12.0,
+      "calls": 141.5,
+      "tris": 158971.0
+    },
+    "errors": []
+  },
+  {
+    "label": "lake-after",
+    "q": "high",
+    "gameHour": 19,
+    "frames": 20,
+    "scale": 1,
+    "info": {
+      "programs": 183,
+      "geometries": 199,
+      "textures": 48
+    },
+    "passes": {
+      "shadow-map": 1405,
+      "Scene:512x512:PerspectiveCamera": 510,
+      "Scene:390x844:PerspectiveCamera": 3535,
+      "Mesh:195x422:OrthographicCamera": 80,
+      "Mesh:98x211:OrthographicCamera": 40,
+      "Mesh:49x106:OrthographicCamera": 40,
+      "Mesh:25x53:OrthographicCamera": 40,
+      "Mesh:13x27:OrthographicCamera": 40,
+      "Mesh:390x844:OrthographicCamera": 20,
+      "Mesh:screen:OrthographicCamera": 20,
+      "Scene:screen:PerspectiveCamera": 20
+    },
+    "median": {
+      "dt": 648.25,
+      "js": 21.7,
+      "calls": 191.5,
+      "tris": 305236.0
+    },
+    "errors": []
+  }
+]

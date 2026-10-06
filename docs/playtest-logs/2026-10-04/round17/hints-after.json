@@ -1,0 +1,13 @@
+{
+  "label": "hints-after",
+  "kind": "isolated production browser fixture, noon/shore reset; excluded from hour gameplay",
+  "renderer": "ANGLE / SwiftShader software",
+  "samples": [
+    {
+      "q": "low",
+      "wording": "示意，不能直接运行；获得符文后即可装备：(bolt (rotate aim -18) …) (bolt (rotate aim 18) …)",
+      "screenshot": "hints-after-rune.png"
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,114 @@
+{
+  "you": {
+    "x": 0.6,
+    "z": -33.3,
+    "facing": -0.5,
+    "place": "The Courtyard",
+    "safeZone": false,
+    "onGrounds": true,
+    "lawless": false
+  },
+  "time": {
+    "hour": 4.1,
+    "night": true,
+    "weather": "clear",
+    "remark": {
+      "zh": "夜深了。黑湖边的摄魂怪出来了——带好守护神。",
+      "en": "Late at night. The Dementors are out by the lake. Bring a Patronus."
+    }
+  },
+  "wizards": [],
+  "creatures": [],
+  "landmarks": [
+    {
+      "id": "courtyard",
+      "name": "The Courtyard",
+      "dist": 11.3,
+      "x": 0,
+      "z": -22
+    },
+    {
+      "id": "great_hall",
+      "name": "The Great Hall",
+      "dist": 22.7,
+      "x": 0,
+      "z": -56
+    },
+    {
+      "id": "erised",
+      "name": "A disused classroom",
+      "dist": 39.7,
+      "x": 30,
+      "z": -60
+    },
+    {
+      "id": "greenhouses",
+      "name": "Greenhouses",
+      "dist": 40.6,
+      "x": 41,
+      "z": -30
+    },
+    {
+      "id": "seventh_floor",
+      "name": "Seventh-Floor Corridor",
+      "dist": 40.9,
+      "x": -32,
+      "z": -58
+    }
+  ],
+  "yourHits": [],
+  "schoolEvent": null,
+  "chests": [],
+  "chestHint": {
+    "en": "Behind a courtyard pillar",
+    "zh": "庭院石柱后面",
+    "distance": "within 30 m",
+    "distanceZh": "30 米内",
+    "bearing": "W"
+  },
+  "elderWand": "resting in Dumbledore's tomb (-52, 28)",
+  "tempus": {
+    "clock": "04:06",
+    "night": true,
+    "weather": "clear",
+    "term": 8,
+    "termSecondsLeft": 473,
+    "proclamation": "Draco dormiens nunquam titillandus."
+  },
+  "revelio": {
+    "year": 2,
+    "galleons": 46,
+    "reputation": 0,
+    "seals": "0/4",
+    "title": "Apprentice",
+    "nextTitle": {
+      "title": "Wizard",
+      "how": "Reach year 3."
+    }
+  },
+  "darkCorners": [
+    {
+      "section": "pointMe",
+      "lights": "the bottom-left corner: a radar that always points north",
+      "cast": "Point Me"
+    },
+    {
+      "section": "homenum",
+      "lights": "the bottom-right corner: everyone near you",
+      "cast": "Homenum Revelio",
+      "fromYear": 3
+    }
+  ],
+  "props": [
+    {
+      "id": "basin-courtyard-1",
+      "kind": "basin",
+      "zh": "水盆",
+      "x": 0,
+      "z": -30,
+      "state": "rest",
+      "wakes": "ice",
+      "hint": "用冰冻住；三个同时冻着有奖励 / freeze it with ice; all three at once pays"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "before": {
+    "name": "Patch",
+    "disabled": true
+  },
+  "default": {
+    "name": "Patch v2",
+    "disabled": false
+  },
+  "sameName": {
+    "disabled": true
+  },
+  "newName": {
+    "disabled": false
+  },
+  "sent": [
+    {
+      "id": "m_fixture",
+      "t": "marketop",
+      "op": "copy",
+      "v": 2,
+      "name": "My v2"
+    }
+  ],
+  "v1": {
+    "id": "local-v1",
+    "name": "Patch",
+    "builtin": false,
+    "effects": [
+      "heal"
+    ],
+    "source": "(heal self 5)",
+    "market": {
+      "id": "m_fixture",
+      "v": 1,
+      "own": false
+    }
+  }
+}

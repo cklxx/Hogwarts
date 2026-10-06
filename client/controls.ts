@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WARD_CD_S, WARD_MANA, WARD_MAX_S, type CreatureKind, type House } from '../src/shared/constants';
 import { inZoneId } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
+import { ic } from './ink';
 import { heightAt, rayGround } from './terrain';
 
 /**
@@ -973,7 +974,13 @@ export function createControls(d: ControlsDeps) {
     action = findAction();
     const pr = $('#prompt');
     pr.hidden = !action;
-    if (action && pr.dataset.label !== action.label) { pr.dataset.label = action.label; pr.innerHTML = `<kbd>F</kbd> ${action.label.replace(/^按 F |^F — /, '')}`; promptW = 0; }
+    if (action && pr.dataset.label !== action.label) {
+      pr.dataset.label = action.label;
+      const label = action.label.replace(/^按 F |^F — /, '');
+      pr.setAttribute('aria-label', touch ? `${L('点按交互：', 'Tap to interact: ')}${label}` : action.label);
+      pr.innerHTML = `${touch ? ic('hand') : '<kbd>F</kbd>'} ${label}`;
+      promptW = 0;
+    }
     const tip = $('#tip');
     if (!tip.hidden && tipSlot >= 0) renderTip(tipSlot);
     tutorial.tick();
@@ -1131,6 +1138,7 @@ export function createControls(d: ControlsDeps) {
     yaw: () => d.cam.yaw,
     slotOf: (name) => (d.me()?.hotbar.findIndex((s) => s?.name === name) ?? -1),
     openMenu: () => d.panels.menu(),
+    closeMenu: () => { $('#menu').hidden = true; },
     openBook: () => d.panels.book(),
     tempus: () => castOnSelf('Tempus'),
     openOwl: () => d.panels.owl(true),
@@ -1234,6 +1242,7 @@ interface TutorialDeps {
   yaw: () => number;
   slotOf: (spellName: string) => number;
   openMenu: () => void;
+  closeMenu: () => void;
   openBook: () => void;
   openOwl: () => void;
   pair: () => void;
@@ -1272,7 +1281,10 @@ function createTutorial(t: TutorialDeps) {
     if (b.dataset.act === 'tempus') t.tempus();
     if (b.dataset.act === 'pair') t.pair();
     if (b.dataset.act === 'owl') t.openOwl();
-    if (b.dataset.act === 'later') finish(true);
+    if (b.dataset.act === 'later') {
+      if (step === 5 || step === 6) { t.closeMenu(); step = 6; advance(); }
+      else finish(true);
+    }
     if (b.dataset.act === 'close') { doneUntil = 0; el.hidden = true; }
   });
 
@@ -1298,7 +1310,7 @@ function createTutorial(t: TutorialDeps) {
     return `<span class="dir"><span class="arrow" style="transform:rotate(${(a + t.yaw()).toFixed(2)}rad)">↑</span>${L(`大礼堂 ${Math.round(d)} 米`, `Great Hall ${Math.round(d)} m`)}</span>`;
   }
   /** One short line per step, placed beside the control it talks about (`at`); the help panel (H) has the long version. */
-  /** `short`: a phone's line (手机壳: one line of a dozen characters, beside the thumb, client/phone.ts). */
+  /** `short`: a phone's concise action prompt (wraps when needed, client/phone.css). */
   type Step = { at: 'bottom' | 'topleft' | 'topright'; line: () => string; short?: () => string; acts?: () => string; live?: () => string };
   const STEPS: Step[] = [
     {
@@ -1362,8 +1374,8 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'bottom',
-      short: () => L('骑<b>扫帚</b>飞（<b>M</b>），或走<b>飞路网</b>', 'Ride a <b>broom</b> (<b>M</b>), or take the <b>Floo</b>'),
-      line: () => L(`地图很大：按 <b>${key('M')}</b> 骑扫帚（2 倍速，城堡外），或站在<b>绿色火焰</b>旁说出地名走飞路网`, `The map is big: press <b>${key('M')}</b> for a broom (2× speed, outside the castle), or stand by a <b>green flame</b> and name a place for the Floo`),
+      short: () => L('站到<b>绿火</b>旁，点<b>手掌</b>选目的地', 'By a <b>green fire</b>, tap the <b>hand</b> to travel'),
+      line: () => L(`地图很大：按 <b>${key('M')}</b> 骑扫帚（2 倍速，城堡外），或站在<b>绿色火焰</b>旁按 <b>F</b> 选择目的地`, `The map is big: press <b>${key('M')}</b> for a broom (2× speed, outside the castle), or press <b>F</b> by a <b>green flame</b> to choose a Floo destination`),
       acts: () => `<button data-act="later" class="ghost">${L('知道了', 'Got it')}</button>`,
     },
   ];
@@ -1380,17 +1392,17 @@ function createTutorial(t: TutorialDeps) {
   function render() {
     if (step < 0) {
       if (doneUntil > now()) {
-        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
+        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><button class="tut-skip" data-act="close" aria-label="${L('关闭引导', 'Close tutorial')}"><svg class="ic"><use href="#i-x"/></svg></button>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
         place('bottom');
         el.hidden = false;
       } else el.hidden = true;
       return;
     }
-    // the last step (talk to your agent) only appears while an agent is connected
+    // The optional owl step needs an agent; tick skips it if the connection goes away.
     if (step === 6 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
-    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
+    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}</span>${X}`;
     if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
     // never behind an open panel: above it instead
     place(s.at);
@@ -1429,6 +1441,7 @@ function createTutorial(t: TutorialDeps) {
     }
     if (step === 4 && me.ui.includes('tempus')) { advance(); return; }
     if (step === 5 && t.agent()?.connected) { advance(); return; }
+    if (step === 6 && !t.agent()?.connected) { advance(); return; }
     render();
   }
   function notify(ev: 'cast' | 'book' | 'menu' | 'owl', c?: CastInfo) {

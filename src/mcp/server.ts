@@ -93,19 +93,18 @@ You (and your human) may improve the game itself with your own GitHub account: c
 The player with the highest reputation at the end of a term (never an NPC) becomes Minister for Magic and can
 rewrite the world's Rulebook once via decree. The reputation #1 is the Dark Lord (stronger, but hunted: their place is broadcast and a stun takes 30%); the underdogs can join Dumbledore's Army (veto a decree, strike together); a custom spell that hit you can be studied (study_spell). The spell market (market_browse, publish_spell, copy_spell, fork_spell) shares spells: when others cast yours you earn a little reputation. Your human watches their wizard move while you play it (in the game: V keeps their keys from interrupting you), so set_goal_note what you are doing. The Duelling Club (duel_club) pairs you 1v1 (or mode:"2v2" with a partner; with:"<name>" challenges one wizard, partner:"<name>" picks your 2v2 partner) on the Courtyard stage: a bow, a countdown, then a fight with no Hospital Wing, and bounded reputation for a win you fought for (none over someone 3+ years below you). A perfect Protego needs timing a round trip cannot give: ward arms one that meets the next hostile bolt. Creatures fight back: hurt one and it hunts you for a while, and Devil's Snare, trolls and acromantulas shoot where you stand, so keep moving (move_to), shield or heal. Action tools spend your concentration (rules.agents): when your wand hand is tired, wait retry_after seconds. Some things in this world are hidden. Explore.`;
 
-/** The commit this server runs (from HOGWARTS_COMMIT or git), resolved once. */
-let runningCommit: string | undefined;
-function commitOf(): string {
-  if (runningCommit !== undefined) return runningCommit;
-  runningCommit = process.env.HOGWARTS_COMMIT ?? '';
-  if (!runningCommit) { try { runningCommit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { runningCommit = 'unknown'; } }
-  return runningCommit;
-}
+/** The commit loaded by this process, captured before any MCP session or tool call. */
+const runningCommit = (() => {
+  const override = process.env.HOGWARTS_COMMIT;
+  if (override) return override;
+  try { return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); }
+  catch { return 'unknown'; }
+})();
 /** The contributing rules in brief (CONTRIBUTING.md is the full text). */
 export function contributeInfo() {
   const repo = process.env.HOGWARTS_REPO ?? 'https://github.com/cklxx/Hogwarts';
   return {
-    repo, runningCommit: commitOf(), rules: `${repo}/blob/main/CONTRIBUTING.md`, backlog: `${repo}/blob/main/docs/TODO.md`, issues: `${repo}/issues`,
+    repo, runningCommit, rules: `${repo}/blob/main/CONTRIBUTING.md`, backlog: `${repo}/blob/main/docs/TODO.md`, issues: `${repo}/issues`,
     how: ['gh repo fork cklxx/Hogwarts --clone && npm install', 'write a failing test that reproduces the problem (vitest; the kernel is deterministic: new World({ seed, secret }) + tick())',
       'fix it', 'npx tsc --noEmit && npx vitest run && npx vite build (and formal/run.sh when kernel rules or constants change)',
       'gh pr create with your own GitHub account; add a line "Hogwarts-Wizard: <your registry number from whoami>" to be credited'],
@@ -435,7 +434,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
   // ---------------------------------------------------------------- acting in the world
   register('look', {
     title: 'Look around',
-    description: 'Nearby wizards (by public handle), creatures (by id, with weaknesses), landmarks, time of day and weather. The HUD corners your reveal charms have lit appear as sections: tempus (clock, term), revelio (your own measure), pointMe (a north-up text radar), homenum (who is near, with compass bearings); darkCorners says which charm lights the rest.',
+    description: 'Nearby wizards (by public handle), creatures (by id, with weaknesses), landmarks, time of day and weather. radius 限制人物、魔物与道具；道具最多显示 min(radius, 25) 米内（默认 25 米），地标仍列最近五个。 radius limits wizards, creatures and props; props are capped at 25 m (min(radius, 25), default 25 m), while landmarks remain the nearest five. The HUD corners your reveal charms have lit appear as sections: tempus (clock, term), revelio (your own measure), pointMe (a north-up text radar), homenum (who is near, with compass bearings); darkCorners says which charm lights the rest.',
     inputSchema: { radius: z.number().min(1).max(80).optional() },
     annotations: { readOnlyHint: true },
   }, me((wid, a: { radius?: number }) => {
@@ -476,7 +475,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
 
   register('move_to', {
     title: 'Walk somewhere',
-    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. The grounds are scenes walled in by mist (the castle; the lake, the forest with Hagrid's hut, the Quidditch pitch, Hogsmeade): a place in another scene is reached through its gate in the courtyard or, when that scene lies past an edge (the castle's west edge: the lake; east: the forest; -z: the pitch; +z: Hogsmeade), through that edge; move_to walks you there, through and on (whoami.scene lists the gates where you are). A point in the mist itself (3 m or more past the edge; nearer, only to the edge) walks you to the edge that way and through it; walking by hand into the mist for a moment also takes you through. Walking takes real time (~7 m/s): follow with wait(until:"arrived"). Refused while your human is steering.`,
+    description: `Walk toward a point or a landmark (${LANDMARKS.map((l) => l.id).join(', ')}). Routes around walls, the lake and the forest automatically. The grounds are scenes walled in by mist (the castle; the lake, the forest with Hagrid's hut, the Quidditch pitch, Hogsmeade): a place in another scene is reached through its gate in the courtyard or, when that scene lies past an edge (the castle's west edge: the lake; east: the forest; -z: the pitch; +z: Hogsmeade), through that edge; move_to walks you there, through and on (whoami.scene lists the gates where you are). A point in the mist itself (3 m or more past the edge; nearer, only to the edge) walks you to the edge that way and through it; walking by hand into the mist for a moment also takes you through. Walking takes real time (~7 m/s): follow with wait(until:"arrived"). distance/etaSeconds 仅按基础步速与直线距离估计当前段；route 给出当前终点和后续目的地，不是全程耗时。 distance and etaSeconds estimate only the current segment, in a straight line at base walking speed; route shows its target and onward destination, not a total journey ETA. Refused while your human is steering.`,
     inputSchema: { landmark: z.string().optional(), x: z.number().optional(), z: z.number().optional() },
   }, me((wid, a: { landmark?: string; x?: number; z?: number }) => {
     const l = a.landmark ? landmarkById(a.landmark) : undefined;
@@ -486,12 +485,22 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const w = world.wizards.get(wid)!;
     const g = world.setGoal(wid, goal, 'agent')!;
     const d = Math.hypot(g.x - w.pos.x, g.z - w.pos.z);
-    return { walkingTo: l?.name ?? g, distance: Math.round(d), etaSeconds: Math.round(d / world.rules.physics.moveSpeed), blurb: l?.blurb };
+    const via = world.via.get(wid);
+    return {
+      walkingTo: l?.name ?? g, distance: Math.round(d), etaSeconds: Math.round(d / world.rules.physics.moveSpeed), blurb: l?.blurb,
+      route: {
+        currentTarget: { ...g }, destination: { ...(via?.to ?? g) }, continues: !!via,
+        estimateScope: 'current_segment', estimateBasis: 'straight_line_at_base_speed',
+        note: via
+          ? '距离和时间仅估计到当前段终点，穿过场景后继续，不是全程；未计绕路、扫帚、暂停或其他速度变化，最终落脚点可能因障碍调整。Distance and time estimate this segment only, not the whole journey; walking continues after crossing. Detours, brooms, pauses and other speed changes are excluded; the final endpoint may be adjusted around obstacles.'
+          : '距离和时间按到当前终点的直线与基础步速估计，未计绕路、扫帚、暂停或其他速度变化；终点已按可走位置调整。Distance and time use the straight line to the current endpoint at base walking speed, excluding detours, brooms, pauses and other speed changes; the endpoint is adjusted to a walkable position.',
+      },
+    };
   }));
 
   register('wait', {
     title: 'Let time pass',
-    description: 'Wait up to 45 seconds of game time, returning early when the condition is met ("owl": your human wrote to you). Returns what changed: health, mana, position, arrival, and new events (each with `from` for owls). Use it instead of polling look/whoami in a loop.',
+    description: 'Wait up to 45 seconds of game time, returning early when the condition is met ("owl": your human wrote to you). Returns what changed: health, mana, position, arrival, and new events (each with `from` for owls). For until:"arrived", reason is arrived only when the observed walk ends at its destination; idle means no walk was active at the start (it may already have finished), interrupted means it stopped short, unconfirmed means a scene crossing ended before its final route could be observed, and knocked_out means you are down. Use it instead of polling look/whoami in a loop.',
     inputSchema: {
       seconds: z.number().min(0.5).max(LISTEN_MAX_S).optional().describe(`default: ${LISTEN_MAX_S} with until (it returns early), else 5`),
       until: z.enum(['time', 'arrived', 'hurt', 'event', 'mana_full', 'owl', 'incoming', 'chat']).optional().describe('return early on this condition (default: time); incoming = a hostile spell is flying at you (the reply says from whom and in how many seconds: time to dodge, or have a ward up); chat = someone speaks to you (a whisper, your house, those near you, or your name said aloud) — then read everything with inbox'),
@@ -501,7 +510,7 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     const wid = acting();
     const w = wid ? world.wizards.get(wid) : undefined;
     if (!w) return fail(UNBOUND_HELP);
-    const start = { t: world.now, hp: w.hp, mana: w.mana, x: w.pos.x, z: w.pos.z, ev: world.events.at(-1)?.id ?? 0, walking: !!w.goal };
+    const start = { t: world.now, hp: w.hp, mana: w.mana, x: w.pos.x, z: w.pos.z, ev: world.events.at(-1)?.id ?? 0, walking: !!w.goal, stunned: w.stats.stunned };
     // the kernel's wake contract: public events but your own chat, private events to you, never your own owls
     const mine = () => world.inboxFor(w.id, start.ev);
     const fromHuman = (e: WorldEvent) => e.type === 'owl' && e.from === 'player' && !isConfirmAnswer(w.owlbox, e.owl?.re);
@@ -509,13 +518,32 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     // whatever you wait for, a wait never sleeps through your own knock-out (playtest round 2: "hp 6 -> 0" on the way to a troll)
     const maxHp = () => world.privateState(w.id).maxHp;
     const downAtStart = w.st.stunnedUntil > 0;
-    const danger = () => (!downAtStart && w.st.stunnedUntil > 0 ? 'knocked_out' : w.hp < start.hp - 5 && w.hp <= maxHp() * 0.3 ? 'danger' : null);
+    const danger = () => ((w.st.stunnedUntil > 0 && (!downAtStart || until === 'arrived')) || w.stats.stunned > start.stunned ? 'knocked_out' : w.hp < start.hp - 5 && w.hp <= maxHp() * 0.3 ? 'danger' : null);
+    // No walk at entry is not evidence of either arrival or failure: CLI calls can use fresh sessions.
+    // Track the live route's endpoint during this wait, including replans and onward scene journeys.
+    // A gate is only an intermediate goal; never call stopping at it arrival at the final destination.
+    let destination = world.via.get(w.id)?.to ?? w.goal;
+    let observedFinalRoute = !world.via.has(w.id);
+    const arrival = () => {
+      if (w.st.jailedUntil > 0) return 'interrupted';
+      if (w.goal) {
+        observedFinalRoute = !world.via.has(w.id);
+        destination = world.via.get(w.id)?.to ?? w.goal;
+        return null;
+      }
+      if (!start.walking) return 'idle';
+      if (world.via.has(w.id)) return 'interrupted';
+      if (destination && Math.hypot(w.pos.x - destination.x, w.pos.z - destination.z) < 1) return 'arrived';
+      // A short final leg can finish between polls, and its legal endpoint can differ from via.to
+      // (e.g. a solid building). No kernel lifecycle history is available here: do not invent failure.
+      return observedFinalRoute ? 'interrupted' : 'unconfirmed';
+    };
     // Lee Jordan's commentary does not wake someone who is not playing (it drowned every other event)
     const wakes = (e: WorldEvent) => e.type !== 'quidditch' || qdOnTeam(world, w.id) || e.to === w.id;
     const done = () => {
       if (danger()) return true;
       switch (until) {
-        case 'arrived': return !w.goal; // not walking at all: nothing to wait for (playtest round 4 waited the full time)
+        case 'arrived': return arrival() !== null;
         case 'hurt': return w.hp < start.hp - 0.5;
         case 'event': return mine().some(wakes);
         case 'owl': return mine().some(fromHuman);
@@ -533,13 +561,16 @@ export function createMcpServer(world: World, session: McpSession): McpServer {
     world.touch(w.id);
     const r1 = (n: number) => Math.round(n * 10) / 10;
     const evs = mine();
+    const reason = danger() ?? (until === 'arrived' ? arrival() ?? 'time' : done() ? until : 'time');
     return out({
-      waited: r1(world.now - start.t), reason: danger() ?? (done() ? until : 'time'),
+      waited: r1(world.now - start.t), reason,
       ...(danger() ? { warning: danger() === 'knocked_out' ? 'You were knocked out: the Hospital Wing has you for a while.' : 'Low health: heal (Episkey), shield, or get away before you go on.' } : {}),
       hp: `${Math.round(start.hp)} -> ${Math.round(w.hp)}`, mana: `${Math.round(start.mana)} -> ${Math.round(w.mana)}`,
       moved: r1(Math.hypot(w.pos.x - start.x, w.pos.z - start.z)), at: { x: r1(w.pos.x), z: r1(w.pos.z), place: world.placeName(w.pos) },
       walking: !!w.goal, state: world.whoami(w.id).state,
-      ...(until === 'arrived' && !start.walking ? { note: 'You were not walking: move_to first, then wait until:"arrived".' } : {}),
+      ...(reason === 'idle' ? { note: '当前没有行走，可能已在本次等待前结束；用 look 确认位置。No walk is in progress; it may have finished before this wait. Use look to check your position.' } : {}),
+      ...(reason === 'interrupted' ? { note: '行走在到达目标前中断；请检查位置和状态后再决定路线。The walk stopped before reaching its observed destination. Check your position and state before choosing a route.' } : {}),
+      ...(reason === 'unconfirmed' ? { note: '跨场景后的行走已结束，但未观察到最后一段的实际终点；用 look 确认位置。The cross-scene walk ended before its final route could be observed. Use look to confirm your position.' } : {}),
       ...(until === 'incoming' ? { incoming: world.incoming(w.id) } : {}),
       events: evs.slice(-20).map(agentEvent),
       ...(evs.some(fromHuman) ? { owls: 'Your human wrote to you: call listen to read (and acknowledge) their owls.' } : {}),

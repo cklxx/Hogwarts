@@ -1,0 +1,39 @@
+world: 20 bots (10 at the spawn), 12 NPCs, 83 creatures at start; 1280x720; 16s per spot after 4s
+  [perf] static batching: 106 of 261 meshes into 31 (83 move)
+  [perf] shaders warmed in 264 ms (105 programs)
+  load main thread: task 21558 ms, script 2380 ms, layout 87 ms, style 79 ms
+
+load (q=low): {"q":"low","loadEventMs":8202,"scriptMs":174,"rendererMs":347,"batchedMs":687,"worldMs":700,"qualityMs":713,"preControlsMs":726,"bootMs":984,"gateMs":8402,"wsOpenMs":8407,"warmMs":8450,"firstSnapMs":17208,"firstFrameMs":18655,"totalKB":2141,"KB_document":14,"KB_css":22,"KB_js":347,"KB_woff2":1753,"KB_fetch":2,"KB_image":0,"KB_svg":2}
+  programs: 176 at the first frame, 0 compiled since
+  passes (draw calls per frame): shadow-map 81.4, Scene:960x540:PerspectiveCamera 658, Mesh:screen:OrthographicCamera 1.00, Scene:screen:PerspectiveCamera 29.6
+  scene: 1042 drawables, 317 shadow casters
+    actors                         350 objs    85 casters    77420 tris/obj-sum 
+    props [inst]                   250 objs   117 casters    28674 tris/obj-sum 509 instances
+    scenes                         180 objs     0 casters     7480 tris/obj-sum 
+    fun                             70 objs     0 casters     1344 tris/obj-sum 
+    parts [inst]                    33 objs    25 casters    21744 tris/obj-sum 136 instances
+    static-batches                  31 objs    28 casters     7008 tris/obj-sum 
+    Mesh                            30 objs    15 casters     2808 tris/obj-sum 
+    Group                           20 objs    16 casters   109562 tris/obj-sum 
+    Mesh [inst]                     14 objs    11 casters      297 tris/obj-sum 1342 instances
+    willow                          10 objs    10 casters      260 tris/obj-sum 
+    loot [inst]                      8 objs     4 casters      572 tris/obj-sum 0 instances
+    squid                            6 objs     0 casters      144 tris/obj-sum 
+    Sprite                           5 objs     0 casters       10 tris/obj-sum 
+    light:PointLight                 4 objs     0 casters        0 tris/obj-sum 0 instances
+    chem                             4 objs     3 casters      168 tris/obj-sum 
+    Points                           3 objs     0 casters     6300 tris/obj-sum 
+    grass                            3 objs     0 casters       60 tris/obj-sum 
+    ice                              3 objs     0 casters      388 tris/obj-sum 
+    chem [inst]                      3 objs     0 casters       92 tris/obj-sum 36 instances
+    light:DirectionalLight           2 objs     0 casters        0 tris/obj-sum 0 instances
+    Group [inst]                     2 objs     2 casters      300 tris/obj-sum 0 instances
+    light:HemisphereLight            1 objs     0 casters        0 tris/obj-sum 0 instances
+    inst:candle [inst]               1 objs     0 casters       24 tris/obj-sum 48 instances
+    glow:candle                      1 objs     0 casters        2 tris/obj-sum 
+    crowd [inst]                     1 objs     1 casters      436 tris/obj-sum 5 instances
+  low/crowd: 1.01 fps, JS 16.5 ms/frame, 689 calls
+
+| q | spot | fps | frame p50 | p95 | max | >50ms | frame JS ms | msg ms/s | hud ms/s | anim | world | fx | ctl | render | parse/snap | apply/snap | calls | tris | progs | tex | geo | layout/s | style/s | layout ms/s | style ms/s | long tasks | heap MB/s | GCs | WS KB/s | snap KB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| low | crowd | 1.01 | 1029 | 1138 | 1138 | 17.0 | 16.5 | 0.98 | 0.29 | 0.55 | 0.21 | 0.03 | 1.45 | 14.3 | 0.03 | 0.06 | 689 | 314935 | 181 | 74.0 | 387 | 0.18 | 0.89 | 0.04 | 0.92 | 18.0 | 2.24 | 2.00 | 9.24 | 0.86 |

@@ -1,0 +1,70 @@
+{
+  "status": "completed",
+  "baseline": "54cd8e0 frozen production",
+  "started_at": "2026-10-04T11:17:44.185000+00:00",
+  "completed_at": "2026-10-04T12:18:31.585628+00:00",
+  "elapsed_seconds": 3647.400628,
+  "actions_logged": 748,
+  "screenshots": 97,
+  "browser_errors": [],
+  "driver_errors": 7,
+  "final": {
+    "year": 2,
+    "xp": 347,
+    "reputation": 8,
+    "reputationThisTerm": 0,
+    "galleons": 49,
+    "hp": 135,
+    "mana": 132,
+    "stats": {
+      "stuns": 0,
+      "stunned": 6,
+      "creatures": 8,
+      "casts": 39,
+      "forged": 2,
+      "spells": 2,
+      "dodges": 3,
+      "skate": 13.562499999999968,
+      "spellsWritten": 2
+    },
+    "runes": {
+      "bag": [
+        "split",
+        "chain",
+        "burst"
+      ],
+      "on": {
+        "b_stupefy": "split",
+        "b_aguamenti": "chain",
+        "b_glacius": "burst"
+      },
+      "lv": {
+        "split": 2
+      }
+    }
+  },
+  "known_invalid_screens": [
+    "15-hogsmeade-night",
+    "18-hall-night-normal-camera",
+    "26-phone-book-template",
+    "45-water-low-restart-three-frames-night",
+    "46-phone-night-skating",
+    "54-water-high-day-same-shore",
+    "55-water-low-day-after-high",
+    "76-quidditch-phone-panel",
+    "82-mobile-card-back",
+    "94-phone-house-cup-ceremony"
+  ],
+  "water_comparison": [
+    "56-water-low-day-after-high-three-frames",
+    "58-water-high-day-settled",
+    "59-water-low-day-final"
+  ],
+  "mobile_card_comparison": [
+    "88-owned-card-wide-detail-clean",
+    "89-owned-card-phone-detail-hidden-clean"
+  ],
+  "controls": "UI enrollment, keyboard, genuine CDP touch, legal MCP assistance all recorded; one active WebGL page; no time skip",
+  "browser_closed_at": "2026-10-04T12:18:31.759Z",
+  "redacted_export": true
+}

@@ -56,7 +56,7 @@ export function vessels(world: World, wid: string) {
 const wildFree = (world: World, c: Creature) => CREATURES[c.kind].faction === 'hostile' && !c.owner && !c.ev && !world.possess.creatures.has(c.id) && c.hp > 0;
 
 /** Hands off the controls: what was held down does not keep walking the body you leave behind (or the one you give back). */
-const me0 = (world: World, id: string) => { const x = world.wizards.get(id); if (x) { x.input = { dx: 0, dz: 0 }; x.goal = null; x.route = []; } };
+const me0 = (world: World, id: string) => { const x = world.wizards.get(id); if (x) { x.input = { dx: 0, dz: 0 }; world.stopWalk(x); } };
 
 function taken(world: World, wid: string) {
   if (world.possess.of.has(wid)) throw new Error('You already hold a vessel: release it first. 你已经附身了：先 release。');
@@ -72,7 +72,7 @@ export function possessNpc(world: World, wid: string, key: string, secs = POSSES
   if (busyNpc(world, v)) throw new Error(`${v.name} is busy (stunned, in a duel or a match, or already held). ${v.name} 现在没空。`);
   world.possess.npcs.set(v.id, { by: wid, until: world.now + secs });
   world.possess.of.set(wid, { kind: 'npc', id: v.id });
-  me0(world, wid); v.heldBy = wid; v.goal = null; v.route = []; v.goalBy = null;
+  me0(world, wid); v.heldBy = wid; me0(world, v.id);
   return v.id;
 }
 

@@ -1,0 +1,39 @@
+{
+  "scope": [
+    "src/kernel/quidditch.ts",
+    "src/kernel/market.ts",
+    "client/market.ts",
+    "test/market.test.ts",
+    "test/playtest-combat-regressions.test.ts"
+  ],
+  "initialRed": {
+    "tests": 6,
+    "failed": 5,
+    "productFailures": [
+      "seeker picks Quaffle but score stays 0",
+      "v1 ownership blocks v2 canCopy",
+      "full book metadata incorrectly says canCopy",
+      "insufficient balance metadata incorrectly says canCopy"
+    ],
+    "fixtureCorrections": [
+      "manual steering release must respect existing 2s grace (initial 1.5s was too short)",
+      "after score seeker has returned, so record forward flight before score then verify arrived position rather than goal which clears on arrival"
+    ]
+  },
+  "focused": {
+    "command": "npx vitest run test/playtest-combat-regressions.test.ts test/market.test.ts test/quidditch.test.ts test/round8.test.ts",
+    "files": 4,
+    "passed": 50,
+    "newRegressions": 9,
+    "evidence": "combat-focused.txt"
+  },
+  "formalScope": "No formal transition, admission rule or reward constant changed. Quidditch carrier priority restores existing described autopilot, and playerSteering guard remains first. copySpell, payPrice, royaltyStep, bans and forge rules unchanged; only read-only metadata/UI admission now reflect them. Control, Market and qd reward bounds remain unchanged.",
+  "browserScope": "No combat-owned browser/WebGL. Actual before/after createMarket bundled into isolated DOM fixed-response fixture; visual agent verifies. Kernel transaction tests are real World operations, fixture is not a live market purchase.",
+  "tsc": "Focused code checked; final integrated check is recorded in index.md.",
+  "additionalRegression": {
+    "case": "Default published name cleans to empty",
+    "baseline": "metadata says copy is possible but default copy fails",
+    "fix": "requiresRename and unique Copy vN suggestion; UI uses the same name cleaning as the transaction",
+    "verified": "rejected default costs nothing; suggested name actually copies and pays once"
+  }
+}

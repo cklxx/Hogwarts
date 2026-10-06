@@ -1,0 +1,30 @@
+{
+  "kind": "isolated post-fix HTTP/WS smoke; not hour gameplay",
+  "proof": [
+    {
+      "check": "runes metadata over real MCP",
+      "passed": true
+    },
+    {
+      "check": "actual hit uses public handle",
+      "passed": true,
+      "target": "p2"
+    },
+    {
+      "check": "reported target reusable for follow-up cast",
+      "passed": true
+    },
+    {
+      "check": "remote WS duel includes public handle/name map",
+      "passed": true,
+      "names": {
+        "p1": "Hints2 Alpha",
+        "p2": "Hints2 Beta"
+      }
+    },
+    {
+      "check": "authoritative duel and hit state still accepts legal casts",
+      "passed": true
+    }
+  ]
+}

@@ -45,11 +45,11 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   bush: { zh: '灌木', en: 'bush', breaks: true, blast: 2.4, power: 6, hintZh: '火一碰就烧，连着旁边的灌木和干草', hintEn: 'fire sets it alight, and the bushes and hay by it' },
   mushroom: { zh: '毒蘑菇', en: 'toadstool', breaks: true, pop: { r: 3, power: 8, element: 'arcane' }, hintZh: '一打就炸出孢子，伤到旁边的魔物，连着炸旁边的蘑菇', hintEn: 'any hit bursts it: spores hurt the creatures round it, and burst the toadstools by it' },
   ice: { zh: '冰块', en: 'ice block', breaks: true, loot: 1, hintZh: '打碎它：里面一定冻着东西', hintEn: 'break it: something is always frozen inside' },
-  brazier: { zh: '火盆', en: 'brazier', wakes: 'fire', secs: 40, quench: 'ice', hintZh: '用火点燃；三个同时燃着有奖励', hintEn: 'light it with fire; all three lit at once pays' },
-  rune: { zh: '符文石', en: 'rune stone', wakes: 'lightning', secs: 30, hintZh: '用雷电充能；三块同时亮着有奖励', hintEn: 'charge it with lightning; all three at once pays' },
-  basin: { zh: '水盆', en: 'basin', wakes: 'ice', secs: 35, quench: 'fire', hintZh: '用冰冻住；三个同时冻着有奖励', hintEn: 'freeze it with ice; all three at once pays' },
-  crystal: { zh: '光之水晶', en: 'light crystal', wakes: 'light', secs: 35, hintZh: '用光照亮；三颗同时亮着有奖励', hintEn: 'light it with light; all three at once pays' },
-  lantern: { zh: '灯笼', en: 'lantern', wakes: 'fire', also: 'light', secs: 60, quench: 'ice', hintZh: '用火或光点亮；三盏一起亮有奖励', hintEn: 'light it with fire or light; three lit at once pays' },
+  brazier: { zh: '火盆', en: 'brazier', wakes: 'fire', secs: 40, quench: 'ice', hintZh: '用火点燃', hintEn: 'light it with fire' },
+  rune: { zh: '符文石', en: 'rune stone', wakes: 'lightning', secs: 30, hintZh: '用雷电充能', hintEn: 'charge it with lightning' },
+  basin: { zh: '水盆', en: 'basin', wakes: 'ice', secs: 35, quench: 'fire', hintZh: '用冰冻住', hintEn: 'freeze it with ice' },
+  crystal: { zh: '光之水晶', en: 'light crystal', wakes: 'light', secs: 35, hintZh: '用光照亮', hintEn: 'light it with light' },
+  lantern: { zh: '灯笼', en: 'lantern', wakes: 'fire', also: 'light', secs: 60, quench: 'ice', hintZh: '用火或光点亮', hintEn: 'light it with fire or light' },
   cauldron: { zh: '坩埚', en: 'cauldron', wakes: 'fire', secs: 20, brews: true, hintZh: '用火煮：煮出一瓶药水', hintEn: 'heat it with fire: it brews a potion' },
   puddle: { zh: '水洼', en: 'puddle', wets: true, hintZh: '站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发', hintEn: 'step in and you are wet: then lightning conducts, ice freezes, fire steams' },
   lamppost: { zh: '路灯', en: 'lamppost', hintZh: '夜里会自己亮起', hintEn: 'lights itself at night' },
@@ -66,7 +66,6 @@ export const PROP_RESPAWN_S = 60;
 export const PROP_R = 0.8;
 /** Breaking pays this much experience, at most PROP_BREAKS_PER_TERM times a term (RULES: rewards are capped). */
 export const PROP_BREAK_XP = 2, PROP_BREAKS_PER_TERM = 50;
-/** Waking a prop (lighting a brazier, freezing a basin…) pays this much experience. */
 /** A group woken together pays each wizard who woke one of its three (within its window) this, once a term. */
 export const PROP_GROUP_XP = 25, PROP_GROUP_GALLEONS = 2;
 /** A whizbang's blast hurts wild creatures this much (fire). */
@@ -125,3 +124,13 @@ export const HAND_PROPS: readonly Prop[] = [
 export const PROPS: readonly Prop[] = [...HAND_PROPS, ...DRESSING];
 export const PROP_GROUPS: readonly PropGroup[] = [...HAND_GROUPS, ...DRESSING_GROUPS];
 export const propById = (id: string) => PROPS.find((p) => p.id === id) ?? null;
+
+const rewardGroups = new Set(PROP_GROUPS.map(g => g.id));
+
+/** A reward hint belongs to an actual puzzle group, never merely to the prop's kind. */
+export function propHint(p: Prop): { zh: string; en: string } {
+  const d = PROP_DEFS[p.kind];
+  return p.group && rewardGroups.has(p.group)
+    ? { zh: `${d.hintZh}；同组全部激活有奖励`, en: `${d.hintEn}; activating the whole group pays` }
+    : { zh: d.hintZh, en: d.hintEn };
+}
