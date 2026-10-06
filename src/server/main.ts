@@ -549,6 +549,20 @@ startRuntime({
     for (const ws of clients.keys()) { forget(ws); ws.terminate(); }
   },
 });
+// Event-loop stall / GC watcher: client-visible hitches show up here with their cause and timing.
+{
+  let last = performance.now();
+  setInterval(() => {
+    const now = performance.now(), lag = now - last - 1000; last = now;
+    if (lag > 120) console.log(`[hogwarts] event-loop lag ${Math.round(lag)}ms 事件循环卡顿`);
+  }, 1000);
+  try {
+    const obs = new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) if (e.duration > 80) console.log(`[hogwarts] GC ${Math.round(e.duration)}ms (${(e as any).entryType})`);
+    });
+    obs.observe({ entryTypes: ['gc'] });
+  } catch { /* older node */ }
+}
 // Preserve the original order at coincident deadlines: update the world before broadcasting it.
 const broadcastTimer = setInterval(broadcast, 100);
 http.listen(PORT, HOST, () => {

@@ -1195,6 +1195,8 @@ export function createControls(d: ControlsDeps) {
     /** The tutorial (or its closing word) is on screen. */
     tutorialActive: () => tutorial.active(),
     onCast, onGoto, onError, onArmory,
+    /** The world-space move vector the keys/joystick hold right now (client-side movement prediction). */
+    move: () => ({ dx: moveDx, dz: moveDz }),
   };
 }
 
