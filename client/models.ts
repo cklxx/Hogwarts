@@ -3,9 +3,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { parseGlamourKey, type Glamour, type GlamourMaterial } from '../src/shared/glamour';
 import { OVERLAY } from './layers';
-import { STORYBOOK, rimLit } from './textures';
+import { STORYBOOK, rimLit, spriteTex } from './textures';
 
 /** A canvas sprite used for name tags, hp bars and speech bubbles. */
+/** Per-frame paint budget: at most this many Label.paint() executions per rAF frame (reset by labelFrameBegin). */
+export const LABEL_PAINTS_PER_FRAME = 2;
+let labelBudget = 0;
+/** Call once per frame (from the main loop) to reopen the paint budget. */
+export function labelFrameBegin() { labelBudget = LABEL_PAINTS_PER_FRAME; }
 export class Label {
   sprite: THREE.Sprite;
   private canvas = document.createElement('canvas');
@@ -15,8 +20,8 @@ export class Label {
   constructor(scale = 1) {
     this.canvas.width = 512;
     this.canvas.height = 160;
-    this.tex = new THREE.CanvasTexture(this.canvas);
-    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.tex = spriteTex(this.canvas);
+    // (spriteTex: no mipmaps — nothing to regenerate on upload — LinearFilter, anisotropy 4, sRGB)
     // on the overlay (layers.ts): drawn at the screen's resolution, its colours as painted (not tone mapped)
     this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, depthTest: false, transparent: true, toneMapped: false }));
     this.sprite.scale.set(4.8 * scale, 1.5 * scale, 1);
@@ -30,11 +35,15 @@ export class Label {
    */
   draw(name: string, color: string, hpFrac: number, say?: string, extra = '', tag = '') {
     // (compared field by field, not as one key string: every entity's tag is told what to say every snapshot)
-    const was = this.last, hp = Math.round(hpFrac * 100);
+    // hp quantized to 0.1: the bar is 98 px wide, so finer steps are invisible — this alone cuts combat repaints ~10x
+    const was = this.last, hp = Math.round(hpFrac * 10) / 10;
     if (was && was[0] === name && was[1] === color && was[2] === hp && was[3] === say && was[4] === extra && was[5] === tag) { this.pending = null; return; }
     if (!this.sprite.visible) { this.pending = [name, color, hpFrac, say, extra, tag]; return; }
+    // per-frame budget: the rest wait for a later draw() (last is untouched, so the next snapshot retries)
+    if (labelBudget <= 0) return;
+    labelBudget--;
     this.last = [name, color, hp, say, extra, tag];
-    this.paint(name, color, hpFrac, say, extra, tag);
+    this.paint(name, color, hp, say, extra, tag);
   }
   private z = 1; private y0 = NaN;
   /**
@@ -699,7 +708,7 @@ function disposeOwned(root: THREE.Object3D, keep: Set<unknown>) {
     if (!(o as THREE.Sprite).isSprite && x.geometry && !keep.has(x.geometry)) x.geometry.dispose();
   });
 }
-const sharedParts = () => new Set<unknown>([...cache.values(), _shieldMat]);
+const sharedParts = () => new Set<unknown>([...cache.values(), ..._lamCache.values(), ..._auraMats.values(), _shieldMat]);
 /** A wizard gone for good (see main.ts: models of wizards that merely walked out of view are kept a while). */
 export function disposeWizard(m: WizardModel) {
   releaseWizardLook(m);
@@ -709,7 +718,7 @@ export function disposeWizard(m: WizardModel) {
 /** A creature model no pool wants any more (every creature builds its own parts). */
 export function disposeCreature(c: { root: THREE.Object3D; label: Label }) {
   c.label.dispose();
-  disposeOwned(c.root, new Set([glowTex()]));
+  disposeOwned(c.root, new Set<unknown>([glowTex(), ..._lamCache.values(), ..._auraMats.values()]));
 }
 
 // ------------------------------------------------------------------ the far wizard (crowd.ts)
@@ -1051,11 +1060,19 @@ export function wizardColor(h: House) {
   return c;
 }
 
+/** Shared creature materials by color+params (avoids per-instance material creation). */
+const _lamCache = new Map<string, THREE.MeshStandardMaterial>();
+const _lam = (c: number, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
+  const key = c + '|' + JSON.stringify(extra);
+  let m = _lamCache.get(key);
+  if (!m) { m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...extra }); _lamCache.set(key, m); }
+  return m;
+};
 export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: Label; anim: (t: number) => void } {
   const root = new THREE.Group();
   const label = new Label(0.7);
   let anim: (t: number) => void = () => {};
-  const lam = (c: number, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...extra });
+  const lam = _lam;
   switch (kind) {
     case 'pixie': {
       const b = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), lam(0x2a6bff, { emissive: 0x0a1a55 }));
@@ -1266,6 +1283,7 @@ function glowTex() {
 }
 
 /** A ring at the feet that shows the strongest aura: heal (green), venom, fire, frost, curse. */
+const _auraMats = new Map<number, THREE.MeshBasicMaterial>();
 export function makeAuraRing() {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 28), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
   m.rotation.x = -Math.PI / 2;
@@ -1280,7 +1298,13 @@ export function setAuraRing(ring: THREE.Mesh, flags: string, t: number) {
   for (let i = 0; i < AURA_COLORS.length && !hit; i++) if (flags.includes(AURA_COLORS[i][0])) hit = AURA_COLORS[i];
   ring.visible = !!hit;
   if (hit) {
-    (ring.material as THREE.MeshBasicMaterial).color.setHex(hit[1]).multiplyScalar(2);
+    let mat = _auraMats.get(hit[1]);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+      mat.color.setHex(hit[1]).multiplyScalar(2);
+      _auraMats.set(hit[1], mat);
+    }
+    ring.material = mat;
     ring.scale.setScalar(1 + 0.08 * Math.sin(t * 6));
   }
 }
