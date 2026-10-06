@@ -469,7 +469,7 @@ const watch = createWatch({ send: rawSend, toast: (s) => toast(s) });
  */
 /** Where an entity last stood (gx, gz) and the ground's height there: see groundOf. */
 type Grounded = { root: THREE.Object3D; gx?: number; gz?: number; gy?: number };
-type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
+type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number; tt?: number; pv?: number };
 type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number; /** hp / max at the last snapshot */ hpr?: number };
 /** A creature that vanishes at or under this share of its hp was brought down, not out of sight. */
 const KILL_HPR = 0.35;
@@ -523,7 +523,11 @@ function apply(s: Snap) {
       wizards.set(w.h, m);
     }
     m.seen = g;
-    m.tx = w.x; m.tz = w.z; m.tf = w.f;
+    {
+      const nowMs = performance.now();
+      if (m.tt) { const dts = (nowMs - m.tt) / 1000; if (dts > 0.02) m.pv = Math.min(9, Math.hypot(w.x - m.tx, w.z - m.tz) / dts); }
+      m.tx = w.x; m.tz = w.z; m.tf = w.f; m.tt = nowMs;
+    }
     const extra = badges(w.h) + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra, w.mm);
     setAuraRing(m.aura, w.s, clock);
@@ -1928,8 +1932,24 @@ const litPool: { x: number; y: number; z: number; color: number; d: number }[] =
 const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null, eye: new THREE.Vector3(), tag: 1 };
 function animWizard(w: WizardEntry, h: string) {
   const px = w.root.position.x, pz = w.root.position.z;
-  w.root.position.x += (w.tx - w.root.position.x) * FR.k;
-  w.root.position.z += (w.tz - w.root.position.z) * FR.k;
+  if (h === myHandle) {
+    // own wizard: client-side prediction bridges late snapshots (network jitter), then a crisp reconcile
+    const mv = ctl.move();
+    const age = w.tt ? (performance.now() - w.tt) / 1000 : 1;
+    if (Math.hypot(mv.dx, mv.dz) >= 0.05 && age > 0.12) {
+      const sp = w.pv || 6; // last authoritative speed, data-driven (no rulebook/collision copy)
+      w.root.position.x += mv.dx * sp * FR.dt;
+      w.root.position.z += mv.dz * sp * FR.dt;
+    } else {
+      const kOwn = 1 - Math.exp(-FR.dt * 22); // τ≈45ms: tight, no rubbery ease-in
+      const ex = w.tx - w.root.position.x, ez = w.tz - w.root.position.z;
+      if (Math.hypot(ex, ez) > 3) { w.root.position.x = w.tx; w.root.position.z = w.tz; } // collision/stun: snap
+      else { w.root.position.x += ex * kOwn; w.root.position.z += ez * kOwn; }
+    }
+  } else {
+    w.root.position.x += (w.tx - w.root.position.x) * FR.k;
+    w.root.position.z += (w.tz - w.root.position.z) * FR.k;
+  }
   let lift = 0;
   for (const f of feats) if (f.lift) lift += f.lift(h); // 魁地奇: riders fly
   w.root.position.y = groundOf(w) + lift;
