@@ -1,0 +1,23 @@
+{
+  "sourceCommit": "2781f0c2d51f36d8fbce1350751258b94b45cce9",
+  "node": "v24.19.0",
+  "commands": [
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "HOGWARTS_TEST_PORT=17843 npx vitest run --maxWorkers=2",
+      "exitCode": 0,
+      "files": 91,
+      "tests": 948
+    },
+    {
+      "command": "npx vite build",
+      "exitCode": 0
+    }
+  ],
+  "focusedTests": 28,
+  "kernelRulesChanged": false,
+  "formal": "PR CI runs all existing models and conformance checks"
+}
