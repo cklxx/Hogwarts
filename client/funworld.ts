@@ -142,6 +142,10 @@ export function createFunWorld() {
   hide();
   const at = { fx: 0, fz: 0, ff: 0, nx: 0, nz: 0, nf: 0, sx: 0, sz: 0, px: 0, pz: 0, init: '' };
   let t = 0;
+  // the opened-chest ids (snap.cup.ch): the array identity only changes when the server resends the head,
+  // so the Set is rebuilt only then instead of every frame
+  let cupCh: readonly string[] | undefined;
+  let openSet = new Set<string>();
   return {
     group,
     frame(dt: number, snap: { cup?: CupSnap; ev?: EvSnap | null } | null) {
@@ -160,8 +164,9 @@ export function createFunWorld() {
         if (on?.px !== undefined) { at.px = on.px; at.pz = on.pz!; }
       }
       // the chests nobody has opened this term
-      const open = new Set(snap?.cup?.ch ?? []);
-      for (const [id, g] of chests) g.visible = open.has(id);
+      const ch = snap?.cup?.ch;
+      if (ch !== cupCh) { cupCh = ch; openSet = new Set(ch ?? []); }
+      for (const [id, g] of chests) g.visible = openSet.has(id);
       if (!on) return;
       if (on.id === 'snitch' && on.s) {
         at.sx += (on.s.x - at.sx) * k; at.sz += (on.s.z - at.sz) * k;

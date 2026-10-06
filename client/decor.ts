@@ -67,6 +67,9 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
   const baseGeo = new THREE.BoxGeometry(2, 1.6, 2);
   const trimGeo = new THREE.BoxGeometry(2.1, 0.2, 2.1);
   let statueKey = '';
+  // fast path: look.statues is a fresh array only when the server resends the head; same reference => same content
+  // (buildStatues never mutates its input), so the JSON.stringify comparison runs only on a new reference
+  let statueRef: readonly unknown[] | undefined;
   // Instanced meshes for statues (reused across rebuilds)
   const MAX_STATUES = 8;
   const bronzeIM = new THREE.InstancedMesh(bronzeGeo, bronze, MAX_STATUES);
@@ -269,8 +272,12 @@ export function createDecor(scene: THREE.Scene, spots: { x: number; y: number; z
       const key = look.banner ?? 'Hogwarts';
       if (key !== currentBanner) { bannerMat.map = bannerTex(look.banner); bannerMat.needsUpdate = true; currentBanner = key; }
       bannerUniforms.uTime.value = t;
-      const sk = JSON.stringify(look.statues);
-      if (sk !== statueKey) { statueKey = sk; buildStatues(look.statues); }
+      const st = look.statues;
+      if (st !== statueRef) {
+        statueRef = st;
+        const sk = JSON.stringify(st);
+        if (sk !== statueKey) { statueKey = sk; buildStatues(st); }
+      }
 
       lanterns.visible = look.lanterns;
       if (look.lanterns) {
