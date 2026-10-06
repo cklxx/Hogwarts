@@ -118,7 +118,7 @@ function signTexture(p: Prop) {
 
 const CLAIM_R = 1.3;
 /** The squares the props are cut into for culling (metres). */
-const TILE = 48;
+const TILE = 24;
 /** Things you can touch read a size larger than life (the 2.5D camera hangs 24 m up) and a touch brighter. */
 const SIZE = 1.35;
 /** Kinds too small for their shadow to matter: they skip the shadow map (docs/PERF.md 2026-10-03). */

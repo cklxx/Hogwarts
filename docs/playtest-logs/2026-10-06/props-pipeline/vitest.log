@@ -1,0 +1,12 @@
+
+ RUN  v5.0.2 /workspace/scratch/pr29/review
+
+
+ Test Files  91 passed (91)
+      Tests  948 passed (948)
+   Start at  10:36:31
+   Duration  113.33s (tests 83%, import 15%, transform 2%)
+
+    Isolate  91 workers spawned · ~142ms startup each (spawn + environment, per file)
+             at least ~6.31s faster with isolate: false — reuses workers across files instead of one per file
+
