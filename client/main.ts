@@ -11,7 +11,7 @@ import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { createView } from './view';
 import { heightAt } from './terrain';
-import { disposeCreature, disposeWizard, farColors, makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
+import { disposeCreature, disposeWizard, farColors, labelFrameBegin, makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
 import { createLightBudget } from './lights';
 import { createCrowd } from './crowd';
 import { mergeStatic } from './batch';
@@ -414,7 +414,7 @@ function connect() {
     else if (msg.t === 'evs') for (const e of msg.es) { fun.onEvent(e); for (const f of feats) f.onEvent?.(e, true); feed(e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {
-      if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
+      if (msg.r.ok && msg.r.mana > 0) { manaCost.set(msg.r.spell, Math.round(msg.r.mana)); manaCostVer++; }
       ctl.onCast(msg.r);
       // (too fast / still recharging / short of mana: the press buffer waits those out, controls.ts castGate — a refusal
       // that slips past it still says nothing: a red line per mashed key was most of what a fight showed)
@@ -789,77 +789,37 @@ $('#clock').addEventListener('click', (e) => {
   if (b?.dataset.time) shell?.say(b.dataset.time, PRIO.note);
 });
 
+/** Signature of everything hudRender() reads (10 Hz). Unchanged signature => the guarded block would produce
+ * byte-identical DOM, so it is skipped. Not covered: ctl.hud() (target frame follows the mouse), the jailed/stunned
+ * overlay (countdowns), drawMinimap/drawMarauder, linkHud() (owl timers), renderGoal()/pn/fun/feats huds, watchBars() —
+ * those have time- or pointer-driven inputs and keep running every tick. `phone` is session-constant. */
+let lastHudSig = '';
+const q4 = (x: number | undefined) => x === undefined ? '?' : String(Math.round(x * 4) / 4); // 0.25 m tile
+function hudSig(): string {
+  const m = me!, s = snap!;
+  const hh = Math.floor(s.hour), mm = Math.floor((s.hour % 1) * 60);
+  // identity card, clock, bars, hotbar: hp/mana/xp at 0.01 (the bar width's toFixed(2) granularity)
+  let sig = `${m.ui.join(',')}|${m.title.zh}|${m.title.en}|${m.name}|${m.house}|${m.year}|${m.galleons}|${m.reputation}|${m.seals}|${m.title.next?.zh}|${m.title.next?.en}|${m.title.next?.how}|${m.decree ? 1 : 0}|${m.proclamation}|${hh}:${mm}|${s.night ? 1 : 0}|${s.weather}|${s.term.n}|${fmtT(s.term.left)}|${Math.round(m.hp * 100) / 100}|${m.maxHp}|${Math.round(m.mana * 100) / 100}|${m.maxMana}|${Math.round(m.xp * 100) / 100}|${m.xpNext}|`;
+  // hotbar: cd only changes on server 'me' messages, so 0.1 s is exact; plus selected, cost map, armory version
+  sig += m.hotbar.map((x) => x ? `${x.id}|${x.name}|${x.kind}|${x.mana}|${x.cd > 0 ? x.cd.toFixed(1) : 0}` : '').join(';') + `|${ctl.selected}|${manaCostVer}|${bookVer}|`;
+  // homenum presence: my tile, camera yaw, hash over every entity's tile + display flags
+  const my = wizards.get(myHandle);
+  let wh = 0;
+  const mix = (v: string) => { for (let i = 0; i < v.length; i++) wh = (wh * 31 + v.charCodeAt(i)) | 0; };
+  for (const w of s.w) mix(`${w.h},${q4(w.x)},${q4(w.z)},${w.ho},${w.s},${w.n};`);
+  for (const c of s.c) mix(`${c.i},${q4(c.x)},${q4(c.z)};`);
+  sig += `${my ? `${q4(my.root.position.x)},${q4(my.root.position.z)}` : '?'}|${Math.round(camYaw * 1000) / 1000}|${wh}|${s.w.length}|${s.c.length}|`;
+  // marauder's map
+  sig += `|${m.map ? m.map.map((w) => `${w.name}|${w.registry}|${w.house}|${w.year}|${w.where}|${q4(w.x)}|${q4(w.z)}`).join(';') : ''}`;
+  return sig;
+}
 function hud() {
   shell?.tick();
   if (!me || !snap) return;
-  const has = (k: string) => me!.ui.includes(k);
-  // top-left: one quiet line (title · name · house); Revelio reveals your own measure
-  const stats = has('revelio')
-    ? `<div class="stats">${L(`声望 <span class="num">${me.reputation}</span> · 封印 <span class="num">${me.seals}</span>/4`, `<span class="num">${me.reputation}</span> reputation · <span class="num">${me.seals}</span>/4 seals`)}${me.title.next ? ` · <span title="${esc(tr(me.title.next.how))}">${L('下一级', 'next')}: ${esc(L(me.title.next.zh, me.title.next.en))}</span>` : ''}</div>`
-    : '';
-  setHtml($('#me'), meCard(me, has('revelio')) + stats +
-    (me.decree ? `<div class="decree">${L('魔法部长 —— 你手握一道未颁布的法令（MCP: decree）', 'Minister for Magic — you hold an unspent decree (MCP: decree)')}</div>` : ''));
-  $('#me').classList.add('veiled');
-  // top-right: Tempus
-  const h = snap.hour;
-  const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
-  const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather);
-  // (the motto is the default proclamation: only a Minister's own words take the corner — the quiet HUD)
-  const procl = me.proclamation && me.proclamation !== SCHOOL_MOTTO ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
-  const timeLabel = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-  const timeDetails = `${timeLabel} · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 ${fmtT(snap.term.left)}`, `term ${snap.term.n} · ${fmtT(snap.term.left)} left`)}`;
-  if (has('tempus') && phone) {
-    const clockEl = $('#clock');
-    if (!clockEl.querySelector('.phone-time')) setHtml(clockEl, '<button type="button" class="time veiled phone-time"><span class="num"></span></button>');
-    const b = clockEl.querySelector<HTMLButtonElement>('.phone-time')!;
-    const num = b.querySelector('.num')!;
-    if (num.textContent !== timeLabel) num.textContent = timeLabel;
-    if (b.dataset.time !== timeDetails) { b.dataset.time = timeDetails; b.setAttribute('aria-label', timeDetails); }
-  } else setHtml($('#clock'), has('tempus')
-    ? `<div class="time veiled">${ic(snap.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</span></div>${procl}`
-    : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
-  // bottom-right: Homenum Revelio
-  const pres = $('#presence');
-  if (has('homenum')) {
-    const my = wizards.get(myHandle);
-    // the same sense MCP look.homenum reports (src/shared/reveal.ts), from where you are drawn
-    const near = my ? homenum({ x: my.root.position.x, z: my.root.position.z }, snap.w.filter((x) => x.h !== myHandle)) : [];
-    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ o: x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span class="hn" data-house="${x.ho}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L(`${HOMENUM_RANGE} 米内没有人。`, `No one within ${HOMENUM_RANGE}m.`)}</div>`) + '</div>');
-  } else setHtml(pres, me.year >= 3
-    ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
-    : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
-  // bottom-left: Point Me lights the minimap
-  $('#minimap').hidden = !has('point-me');
-  setHtml($('#pointme'), me.year >= 2
-    ? rune('compass', L('点一下施放「给我指路」，点亮小地图', 'Click to cast Point Me and light the minimap'), 'tip-up', 'Point Me')
-    : rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
-  bar('.hp', me.hp, me.maxHp, `${Math.round(me.hp)}/${me.maxHp}`);
-  bar('.mana', me.mana, me.maxMana, `${Math.round(me.mana)}/${me.maxMana}`);
-  bar('.xp', me.xpNext ? me.xp : 1, me.xpNext ?? 1, '');
-  const hb = $('#hotbar');
-  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => `<div><span></span><b></b><i></i><em></em>${ic('wand')}<u class="cost"></u></div>`).join('');
-  me.hotbar.forEach((s, i) => {
-    const el = hb.children[i] as HTMLElement;
-    // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
-    el.classList.toggle('sel', i === ctl.selected);
-    el.classList.toggle('empty', !s);
-    el.classList.toggle('poor', !!s && s.mana != null && me!.mana + 0.5 < s.mana); // (not enough mana for it now)
-    const kind = s?.kind ?? '';
-    if (el.dataset.kind !== kind) el.dataset.kind = kind;
-    setText(el.children[0], s ? spellName(s.name) : '·');
-    setText(el.children[1], String(i + 1));
-    const cd = s && s.cd > 0 ? s.cd : 0;
-    if (s) { if (cd > 0) cdMax.set(s.id, Math.max(cdMax.get(s.id) ?? 0, cd)); else cdMax.delete(s.id); }
-    setStyle(el.children[2] as HTMLElement, '--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
-    setText(el.children[3], cd >= 1 ? String(Math.ceil(cd)) : '');
-    // the tile's drawing (a written spell by what it does, once the armory has said) and its last mana cost
-    const info = s ? bookSpells.find((x) => x.id === s.id) : null;
-    const icon = `#i-${s ? spellIcon(s.name, info?.effects, info?.source) : 'wand'}`;
-    const use = el.children[4].firstElementChild as SVGUseElement;
-    if (use.getAttribute('href') !== icon) use.setAttribute('href', icon);
-    setText(el.children[5], s ? String(manaCost.get(s.name) ?? s.mana ?? '') : '');
-    el.onclick ??= () => ctl.castSlot(i);
-  });
+  // dirty check: the pure-render block is a function of hudSig(); the time-/pointer-driven parts below
+  // (target frame, overlay countdowns, minimap, marauder, owl timers, goal/panels/features) run every tick.
+  const sig = hudSig();
+  if (sig !== lastHudSig) { lastHudSig = sig; hudRender(); }
   ctl.hud();
   const ov = $('#overlay');
   if (me.jailed) { ov.hidden = false; setHtml(ov, L(`<div>阿兹卡班<small>摄魂怪会在 <span class="num">${me.jailed.toFixed(0)}</span> 秒后放你出去</small></div>`, `<div>Azkaban<small>The Dementors will release you in <span class="num">${me.jailed.toFixed(0)}</span>s</small></div>`)); }
@@ -880,6 +840,79 @@ function hud() {
   for (const f of feats) f.hud?.();
   watchBars();
 }
+/** The pure-render half of hud(): identity card, clock, presence, minimap setup, bars, hotbar.
+ * Runs only when hudSig() changed. */
+function hudRender() {
+  const m = me!, s = snap!;
+  const has = (k: string) => m!.ui.includes(k);
+  // top-left: one quiet line (title · name · house); Revelio reveals your own measure
+  const stats = has('revelio')
+    ? `<div class="stats">${L(`声望 <span class="num">${m.reputation}</span> · 封印 <span class="num">${m.seals}</span>/4`, `<span class="num">${m.reputation}</span> reputation · <span class="num">${m.seals}</span>/4 seals`)}${m.title.next ? ` · <span title="${esc(tr(m.title.next.how))}">${L('下一级', 'next')}: ${esc(L(m.title.next.zh, m.title.next.en))}</span>` : ''}</div>`
+    : '';
+  setHtml($('#me'), meCard(m, has('revelio')) + stats +
+    (m.decree ? `<div class="decree">${L('魔法部长 —— 你手握一道未颁布的法令（MCP: decree）', 'Minister for Magic — you hold an unspent decree (MCP: decree)')}</div>` : ''));
+  $('#me').classList.add('veiled');
+  // top-right: Tempus
+  const h = s.hour;
+  const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
+  const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[s.weather] ?? s.weather, s.weather);
+  // (the motto is the default proclamation: only a Minister's own words take the corner — the quiet HUD)
+  const procl = m.proclamation && m.proclamation !== SCHOOL_MOTTO ? `<div class="procl" title="${esc(m.proclamation)}">${esc(m.proclamation)}</div>` : '';
+  const timeLabel = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  const timeDetails = `${timeLabel} · ${weather} · ${L(`第 ${s.term.n} 学期 剩 ${fmtT(s.term.left)}`, `term ${s.term.n} · ${fmtT(s.term.left)} left`)}`;
+  if (has('tempus') && phone) {
+    const clockEl = $('#clock');
+    if (!clockEl.querySelector('.phone-time')) setHtml(clockEl, '<button type="button" class="time veiled phone-time"><span class="num"></span></button>');
+    const b = clockEl.querySelector<HTMLButtonElement>('.phone-time')!;
+    const num = b.querySelector('.num')!;
+    if (num.textContent !== timeLabel) num.textContent = timeLabel;
+    if (b.dataset.time !== timeDetails) { b.dataset.time = timeDetails; b.setAttribute('aria-label', timeDetails); }
+  } else setHtml($('#clock'), has('tempus')
+    ? `<div class="time veiled">${ic(s.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${s.term.n} 学期 剩 <span class="num">${fmtT(s.term.left)}</span>`, `term ${s.term.n} · <span class="num">${fmtT(s.term.left)}</span> left`)}</span></div>${procl}`
+    : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
+  // bottom-right: Homenum Revelio
+  const pres = $('#presence');
+  if (has('homenum')) {
+    const my = wizards.get(myHandle);
+    // the same sense MCP look.homenum reports (src/shared/reveal.ts), from where you are drawn
+    const near = my ? homenum({ x: my.root.position.x, z: my.root.position.z }, s.w.filter((x) => x.h !== myHandle)) : [];
+    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ o: x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span class="hn" data-house="${x.ho}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L(`${HOMENUM_RANGE} 米内没有人。`, `No one within ${HOMENUM_RANGE}m.`)}</div>`) + '</div>');
+  } else setHtml(pres, m.year >= 3
+    ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
+    : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
+  // bottom-left: Point Me lights the minimap
+  $('#minimap').hidden = !has('point-m');
+  setHtml($('#pointme'), m.year >= 2
+    ? rune('compass', L('点一下施放「给我指路」，点亮小地图', 'Click to cast Point Me and light the minimap'), 'tip-up', 'Point Me')
+    : rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
+  bar('.hp', m.hp, m.maxHp, `${Math.round(m.hp)}/${m.maxHp}`);
+  bar('.mana', m.mana, m.maxMana, `${Math.round(m.mana)}/${m.maxMana}`);
+  bar('.xp', m.xpNext ? m.xp : 1, m.xpNext ?? 1, '');
+  const hb = $('#hotbar');
+  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => `<div><span></span><b></b><i></i><em></em>${ic('wand')}<u class="cost"></u></div>`).join('');
+  m.hotbar.forEach((s, i) => {
+    const el = hb.children[i] as HTMLElement;
+    // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
+    el.classList.toggle('sel', i === ctl.selected);
+    el.classList.toggle('empty', !s);
+    el.classList.toggle('poor', !!s && s.mana != null && m!.mana + 0.5 < s.mana); // (not enough mana for it now)
+    const kind = s?.kind ?? '';
+    if (el.dataset.kind !== kind) el.dataset.kind = kind;
+    setText(el.children[0], s ? spellName(s.name) : '·');
+    setText(el.children[1], String(i + 1));
+    const cd = s && s.cd > 0 ? s.cd : 0;
+    if (s) { if (cd > 0) cdMax.set(s.id, Math.max(cdMax.get(s.id) ?? 0, cd)); else cdMax.delete(s.id); }
+    setStyle(el.children[2] as HTMLElement, '--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
+    setText(el.children[3], cd >= 1 ? String(Math.ceil(cd)) : '');
+    // the tile's drawing (a written spell by what it does, once the armory has said) and its last mana cost
+    const info = s ? bookSpells.find((x) => x.id === s.id) : null;
+    const icon = `#i-${s ? spellIcon(s.name, info?.effects, info?.source) : 'wand'}`;
+    const use = el.children[4].firstElementChild as SVGUseElement;
+    if (use.getAttribute('href') !== icon) use.setAttribute('href', icon);
+    setText(el.children[5], s ? String(manaCost.get(s.name) ?? s.mana ?? '') : '');
+    el.onclick ??= () => ctl.castSlot(i);
+  });
+}
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
 function meCard(me: Me, revealed: boolean) {
   const title = L(me.title.zh, me.title.en);
@@ -893,6 +926,8 @@ function meCard(me: Me, revealed: boolean) {
 const YEAR_ZH: Record<number, string> = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七' };
 /** The last mana each spell cost (from your own cast reports), shown on its hotbar tile. */
 const manaCost = new Map<string, number>();
+/** Bumped whenever manaCost changes (read by hudSig, so the hotbar's cost line refreshes). */
+let manaCostVer = 0;
 const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
   setStyle(b.children[0] as HTMLElement, 'width', `${Math.max(0, Math.min(100, (v / Math.max(1, max)) * 100)).toFixed(2)}%`);
@@ -1416,6 +1451,9 @@ function linkHud() {
 // ------------------------------------------------------------------ spellbook (in-browser Runes editor)
 type ArmorySpell = { id: string; name: string; incantation: string; builtin: boolean; minYear: number; nodes: number; effects: string[]; source: string };
 let bookSpells: ArmorySpell[] = [];
+/** Bumped when the armory reloads; bookById mirrors bookSpells so the hotbar avoids 6 full scans per tick. */
+let bookVer = 0;
+const bookById = new Map<string, ArmorySpell>();
 let bookSel: string | null = null;
 /** The hotbar as spell ids (from the last armory; changed at once when you move a spell, then confirmed by the server). */
 let bookBar: (string | null)[] = [null, null, null, null, null, null];
@@ -1441,6 +1479,7 @@ function bookOut(text: string, cls = '') {
 }
 function renderBook(armory: { spells: ArmorySpell[]; hotbar: { slot: number; spell: string | null }[] }, grimoireText: string) {
   bookSpells = armory.spells;
+  bookVer++; bookById.clear(); for (const x of bookSpells) bookById.set(x.id, x);
   const idOf = (name: string | null) => (name ? bookSpells.find((s) => s.name === name)?.id ?? null : null);
   bookBar = Array.from({ length: 6 }, (_, i) => idOf(armory.hotbar.find((h) => h.slot === i + 1)?.spell ?? null));
   $('#grimoire').textContent = grimoireText;
@@ -2030,6 +2069,7 @@ function frame() {
   const now = performance.now();
   if (now - prev < FRAME_MIN_MS) return;
   probe.frameBegin();
+  labelFrameBegin(); // reopen the name-tag paint budget (models.ts: at most 2 repaints this frame)
   let tp = probe.begin();
   const dtReal = Math.min(0.1, (now - prev) / 1000);
   // (a hit-stop slows the world's motion to a crawl for its few frames; the camera and the HUD keep real time)

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { L } from './i18n';
 import { OVERLAY } from './layers';
 import { painted } from './models';
+import { spriteTex } from './textures';
 import { heightAt } from './terrain';
 import type { ClientFeatureFactory } from './feature';
 import { PROP_DEFS, PROPS, propHint, type Prop, type PropKind } from '../src/shared/props';
@@ -22,7 +23,7 @@ const noUV = <T extends THREE.BufferGeometry>(g: T): T => { g.deleteAttribute('u
 function body(k: PropKind): THREE.BufferGeometry {
   switch (k) {
     case 'crate': return noUV(painted([[at(new THREE.BoxGeometry(0.8, 0.8, 0.8), 0, 0.4, 0), 0x9a6a36], [at(new THREE.BoxGeometry(0.84, 0.1, 0.84), 0, 0.78, 0), 0x6e4722], [at(new THREE.BoxGeometry(0.84, 0.1, 0.84), 0, 0.04, 0), 0x6e4722]]));
-    case 'barrel': return noUV(painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0x86532a], [at(new THREE.TorusGeometry(0.37, 0.03, 4, 16).rotateX(Math.PI / 2), 0, 0.22, 0), 0x3a3a40], [at(new THREE.TorusGeometry(0.35, 0.03, 4, 16).rotateX(Math.PI / 2), 0, 0.74, 0), 0x3a3a40]]));
+    case 'barrel': return noUV(painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0x86532a], [at(new THREE.TorusGeometry(0.37, 0.03, 4, 8).rotateX(Math.PI / 2), 0, 0.22, 0), 0x3a3a40], [at(new THREE.TorusGeometry(0.35, 0.03, 4, 8).rotateX(Math.PI / 2), 0, 0.74, 0), 0x3a3a40]]));
     case 'pumpkin': return noUV(painted([[at(new THREE.SphereGeometry(0.45, 12, 8).scale(1, 0.72, 1), 0, 0.33, 0), 0xe57a1c], [at(new THREE.CylinderGeometry(0.04, 0.06, 0.2, 5), 0, 0.72, 0), 0x3f6b2a]]));
     case 'pot': return noUV(painted([[at(new THREE.CylinderGeometry(0.2, 0.3, 0.55, 10), 0, 0.28, 0), 0xb8643c], [at(new THREE.TorusGeometry(0.21, 0.035, 4, 12).rotateX(Math.PI / 2), 0, 0.56, 0), 0x8e4a2a]]));
     case 'whizbang': return noUV(painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0xc2302a], [at(new THREE.CylinderGeometry(0.385, 0.385, 0.16, 12), 0, 0.5, 0), 0xf2c230], [at(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 4), 0.1, 1.1, 0), 0xf0e6c8]]));
@@ -32,7 +33,7 @@ function body(k: PropKind): THREE.BufferGeometry {
       [at(new THREE.TorusGeometry(0.38, 0.018, 3, 12), 0, 1.05, 0), 0xe4e0d6], [at(new THREE.TorusGeometry(0.72, 0.018, 3, 16), 0, 1.05, 0), 0xe4e0d6],
     ]));
     case 'hay': return noUV(painted([[at(new THREE.BoxGeometry(1.0, 0.7, 0.72), 0, 0.35, 0), 0xd9b55c], [at(new THREE.BoxGeometry(1.02, 0.08, 0.74), 0, 0.22, 0), 0x8a6a2c], [at(new THREE.BoxGeometry(1.02, 0.08, 0.74), 0, 0.5, 0), 0x8a6a2c]]));
-    case 'bush': return noUV(painted([[at(new THREE.IcosahedronGeometry(0.55, 1), 0, 0.5, 0), 0x4c7d38], [at(new THREE.IcosahedronGeometry(0.42, 1), 0.42, 0.38, 0.15), 0x5c9044], [at(new THREE.IcosahedronGeometry(0.38, 1), -0.38, 0.34, -0.12), 0x447233]]));
+    case 'bush': return noUV(painted([[at(new THREE.IcosahedronGeometry(0.55, 0), 0, 0.5, 0), 0x4c7d38], [at(new THREE.IcosahedronGeometry(0.42, 0), 0.42, 0.38, 0.15), 0x5c9044], [at(new THREE.IcosahedronGeometry(0.38, 0), -0.38, 0.34, -0.12), 0x447233]]));
     case 'mushroom': return noUV(painted([
       [at(new THREE.CylinderGeometry(0.09, 0.12, 0.42, 7), 0, 0.21, 0), 0xf1e8d6], [at(new THREE.SphereGeometry(0.3, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0, 0.4, 0), 0xc8322a],
       [at(new THREE.CylinderGeometry(0.06, 0.08, 0.26, 6), 0.32, 0.13, 0.12), 0xf1e8d6], [at(new THREE.SphereGeometry(0.18, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0.32, 0.25, 0.12), 0xd8452e],
@@ -95,9 +96,9 @@ const GLOW: Partial<Record<PropKind, { geo: () => THREE.BufferGeometry; color: n
   rune: { geo: () => at(new THREE.BoxGeometry(0.62, 1.36, 0.42), 0, 0.68, 0), color: 0x5aa8ff },
   basin: { geo: () => at(new THREE.CylinderGeometry(0.6, 0.6, 0.12, 14), 0, 0.36, 0), color: 0xcff4ff },
   crystal: { geo: () => at(new THREE.OctahedronGeometry(0.4).scale(0.8, 1.9, 0.8), 0, 0.6, 0), color: 0xfff1b8 },
-  lantern: { geo: () => at(new THREE.SphereGeometry(0.42, 10, 8), 0, 1.86, 0), color: 0xffc060 },
+  lantern: { geo: () => at(new THREE.SphereGeometry(0.42, 8, 6), 0, 1.86, 0), color: 0xffc060 },
   cauldron: { geo: () => at(new THREE.CylinderGeometry(0.4, 0.4, 0.12, 14), 0, 0.98, 0), color: 0x7dff7a },
-  lamppost: { geo: () => at(new THREE.SphereGeometry(0.30, 10, 8), 0, 3.12, 0), color: 0xffc060 },
+  lamppost: { geo: () => at(new THREE.SphereGeometry(0.30, 8, 6), 0, 3.12, 0), color: 0xffc060 },
 };
 
 /** The hover line over a prop: its name and what it wants. */
@@ -111,8 +112,7 @@ function signTexture(p: Prop) {
   g.beginPath(); g.roundRect?.(8, 6, 368, 76, 16); if (!g.roundRect) g.rect(8, 6, 368, 76); g.fill();
   g.font = '600 30px "Noto Serif SC", "Songti SC", serif'; g.fillStyle = '#fff1cf'; g.fillText(L(d.zh, d.en), 192, 30);
   g.font = '500 20px "Noto Sans SC", "PingFang SC", sans-serif'; g.fillStyle = '#e6dcc4'; g.fillText(L(hint.zh, hint.en), 192, 62, 352);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
+  const t = spriteTex(c);
   return t;
 }
 
@@ -138,23 +138,24 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   // (a puddle: glossy and a little see-through, so it takes the sky and the lamps)
   const wetMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.35, transparent: true, opacity: 0.82, depthWrite: false });
   const ringGeo = noUV(new THREE.RingGeometry(0.62, 0.8, 24).rotateX(-Math.PI / 2).translate(0, 0.06, 0));
-  const ringMat = new Map(kinds.filter((k) => RING[k]).map((k) => [k, new THREE.MeshBasicMaterial({ color: RING[k], transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })]));
+  // one material for all rings and one for all glows: the kind colour rides on the instance colour, so a bucket
+  // never switches material mid-draw (was: 6 ring + 7 glow materials, up to 3 switches per bucket)
+  const ringMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
+  ringMat.customProgramCacheKey = () => 'prop-ring';
   const glowGeo = new Map(kinds.filter((k) => GLOW[k]).map((k) => [k, noUV(GLOW[k]!.geo())]));
   // the flames and charges breathe in the vertex shader (a scale pulsation): the CPU never rewrites a live matrix
   const glowTime = { value: 0 };
-  const glowMat = new Map(kinds.filter((k) => GLOW[k]).map((k) => {
-    const gm = new THREE.MeshBasicMaterial({ color: GLOW[k]!.color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
-    gm.onBeforeCompile = (sh) => {
-      sh.uniforms.uTime = glowTime;
-      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-          float gph = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
-          transformed *= 1.0 + 0.08 * sin(uTime * 9.0 + gph);
-        #endif`);
-    };
-    gm.customProgramCacheKey = () => 'prop-glow';
-    return [k, gm] as [PropKind, THREE.MeshBasicMaterial];
-  }));
+  const glowMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+  glowMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = glowTime;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        float gph = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
+        transformed *= 1.0 + 0.08 * sin(uTime * 9.0 + gph);
+      #endif`);
+  };
+  glowMat.customProgramCacheKey = () => 'prop-glow';
+  const tmpC = new THREE.Color();
   interface Bucket { k: PropKind; list: Prop[]; m: THREE.InstancedMesh; g?: THREE.InstancedMesh; r?: THREE.InstancedMesh }
   const byKey = new Map<string, Prop[]>();
   for (const p of PROPS) { const key = `${p.kind}|${Math.floor(p.x / TILE)},${Math.floor(p.z / TILE)}`; (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(p); }
@@ -167,17 +168,21 @@ export const propsFeature: ClientFeatureFactory = (d) => {
     m.computeBoundingSphere();
     const b: Bucket = { k, list, m };
     group.add(m);
-    if (ringMat.has(k)) {
-      b.r = new THREE.InstancedMesh(ringGeo, ringMat.get(k)!, list.length);
+    const rc = RING[k];
+    if (rc !== undefined) {
+      b.r = new THREE.InstancedMesh(ringGeo, ringMat, list.length);
       b.r.name = `props:${key}:ring`;
-      list.forEach((p, i) => b.r!.setMatrixAt(i, place(p, true)));
+      list.forEach((p, i) => { b.r!.setMatrixAt(i, place(p, true)); b.r!.setColorAt(i, tmpC.setHex(rc)); });
+      b.r.instanceColor!.needsUpdate = true;
       b.r.boundingSphere = m.boundingSphere;
       group.add(b.r);
     }
-    if (glowMat.has(k)) {
-      b.g = new THREE.InstancedMesh(glowGeo.get(k)!, glowMat.get(k)!, list.length);
+    const gc = GLOW[k];
+    if (gc) {
+      b.g = new THREE.InstancedMesh(glowGeo.get(k)!, glowMat, list.length);
       b.g.name = `props:${key}:glow`;
-      list.forEach((p, i) => b.g!.setMatrixAt(i, place(p, false)));
+      list.forEach((p, i) => { b.g!.setMatrixAt(i, place(p, false)); b.g!.setColorAt(i, tmpC.setHex(gc.color)); });
+      b.g.instanceColor!.needsUpdate = true;
       // (the bounds of the bodies, grown for a flame's height: the glows start at size 0)
       b.g.boundingSphere = m.boundingSphere!.clone();
       b.g.boundingSphere.radius += 2;

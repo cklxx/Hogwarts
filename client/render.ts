@@ -260,7 +260,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a4a2a, 0.6);
   const sun = new THREE.DirectionalLight(0xfff1d6, 2.5);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024); // 1024 verified fine in low mode (docs/PERF.md); 2048 bought nothing visible
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.6;
   Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 500 });
@@ -320,7 +320,8 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   scene.add(clouds);
 
   // post-processing, rendered into a multisampled HDR target (MSAA survives the composer); stencil: view.ts x-ray
-  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4, stencilBuffer: true });
+  // 2x MSAA: 4x sits in the diminishing-returns zone on this art style; 2x halves multisample VRAM for no visible loss
+  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 2, stencilBuffer: true });
   const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.45, 1.1);
@@ -543,10 +544,10 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     /** 2.5D's lens (lens.ts flatLens), or the follow camera's. */
     setLens(on: boolean) { if (flat !== on) { flat = on; resize(); } },
     outRatio,
-    /** Low quality: smaller shadow map, no bloom pass (the render scale is dynres.ts's). Weak GPUs (auto-detected) or ?q=low. */
+    /** Low quality: no bloom pass (the render scale is dynres.ts's). Shadow map stays 1024 (verified fine). Weak GPUs (auto-detected) or ?q=low. */
     setQuality(q: 'low' | 'high') {
       const low = q === 'low';
-      sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
+      sun.shadow.mapSize.set(1024, 1024);
       sun.shadow.map?.dispose();
       sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
       bloom.enabled = !low;
