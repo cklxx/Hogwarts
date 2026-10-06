@@ -1,0 +1,27 @@
+{
+  "summaries": [
+    {
+      "label": "before",
+      "kinds": 20,
+      "props": 361,
+      "geometryBytes": 192248,
+      "bodyBuckets": 173,
+      "totalBuckets": 250,
+      "instanceMatrixBytes": 32576
+    },
+    {
+      "label": "after",
+      "kinds": 20,
+      "props": 361,
+      "geometryBytes": 159408,
+      "bodyBuckets": 173,
+      "totalBuckets": 250,
+      "instanceMatrixBytes": 32576
+    }
+  ],
+  "verified": [
+    "all non-UV attributes and indices byte-identical",
+    "bounding boxes identical",
+    "every prop body/glow/ring matrix identical in initial/broken/awake/reset states"
+  ]
+}

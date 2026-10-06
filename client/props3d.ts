@@ -16,45 +16,47 @@ import { PROP_DEFS, PROPS, propHint, type Prop, type PropKind } from '../src/sha
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const at = <T extends THREE.BufferGeometry>(g: T, x: number, y: number, z: number) => g.translate(x, y, z);
+/** Drop uv: no prop material uses a map (models.ts already strips uv for wizards). */
+const noUV = <T extends THREE.BufferGeometry>(g: T): T => { g.deleteAttribute('uv'); return g; };
 /** Each kind's body: a few painted primitives, merged (feet at y 0). */
 function body(k: PropKind): THREE.BufferGeometry {
   switch (k) {
-    case 'crate': return painted([[at(new THREE.BoxGeometry(0.8, 0.8, 0.8), 0, 0.4, 0), 0x9a6a36], [at(new THREE.BoxGeometry(0.84, 0.1, 0.84), 0, 0.78, 0), 0x6e4722], [at(new THREE.BoxGeometry(0.84, 0.1, 0.84), 0, 0.04, 0), 0x6e4722]]);
-    case 'barrel': return painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0x86532a], [at(new THREE.TorusGeometry(0.37, 0.03, 4, 16).rotateX(Math.PI / 2), 0, 0.22, 0), 0x3a3a40], [at(new THREE.TorusGeometry(0.35, 0.03, 4, 16).rotateX(Math.PI / 2), 0, 0.74, 0), 0x3a3a40]]);
-    case 'pumpkin': return painted([[at(new THREE.SphereGeometry(0.45, 12, 8).scale(1, 0.72, 1), 0, 0.33, 0), 0xe57a1c], [at(new THREE.CylinderGeometry(0.04, 0.06, 0.2, 5), 0, 0.72, 0), 0x3f6b2a]]);
-    case 'pot': return painted([[at(new THREE.CylinderGeometry(0.2, 0.3, 0.55, 10), 0, 0.28, 0), 0xb8643c], [at(new THREE.TorusGeometry(0.21, 0.035, 4, 12).rotateX(Math.PI / 2), 0, 0.56, 0), 0x8e4a2a]]);
-    case 'whizbang': return painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0xc2302a], [at(new THREE.CylinderGeometry(0.385, 0.385, 0.16, 12), 0, 0.5, 0), 0xf2c230], [at(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 4), 0.1, 1.1, 0), 0xf0e6c8]]);
+    case 'crate': return noUV(painted([[at(new THREE.BoxGeometry(0.8, 0.8, 0.8), 0, 0.4, 0), 0x9a6a36], [at(new THREE.BoxGeometry(0.84, 0.1, 0.84), 0, 0.78, 0), 0x6e4722], [at(new THREE.BoxGeometry(0.84, 0.1, 0.84), 0, 0.04, 0), 0x6e4722]]));
+    case 'barrel': return noUV(painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0x86532a], [at(new THREE.TorusGeometry(0.37, 0.03, 4, 16).rotateX(Math.PI / 2), 0, 0.22, 0), 0x3a3a40], [at(new THREE.TorusGeometry(0.35, 0.03, 4, 16).rotateX(Math.PI / 2), 0, 0.74, 0), 0x3a3a40]]));
+    case 'pumpkin': return noUV(painted([[at(new THREE.SphereGeometry(0.45, 12, 8).scale(1, 0.72, 1), 0, 0.33, 0), 0xe57a1c], [at(new THREE.CylinderGeometry(0.04, 0.06, 0.2, 5), 0, 0.72, 0), 0x3f6b2a]]));
+    case 'pot': return noUV(painted([[at(new THREE.CylinderGeometry(0.2, 0.3, 0.55, 10), 0, 0.28, 0), 0xb8643c], [at(new THREE.TorusGeometry(0.21, 0.035, 4, 12).rotateX(Math.PI / 2), 0, 0.56, 0), 0x8e4a2a]]));
+    case 'whizbang': return noUV(painted([[at(new THREE.CylinderGeometry(0.34, 0.38, 0.95, 12), 0, 0.475, 0), 0xc2302a], [at(new THREE.CylinderGeometry(0.385, 0.385, 0.16, 12), 0, 0.5, 0), 0xf2c230], [at(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 4), 0.1, 1.1, 0), 0xf0e6c8]]));
     // a web strung upright (feet at 0.2 m): spokes and two rings of silk
-    case 'web': return painted([
+    case 'web': return noUV(painted([
       ...[0, 1, 2, 3, 4, 5].map((i) => [at(new THREE.BoxGeometry(0.035, 1.7, 0.035).rotateZ((i * Math.PI) / 6), 0, 1.05, 0), 0xeeeae2] as [THREE.BufferGeometry, number]),
       [at(new THREE.TorusGeometry(0.38, 0.018, 3, 12), 0, 1.05, 0), 0xe4e0d6], [at(new THREE.TorusGeometry(0.72, 0.018, 3, 16), 0, 1.05, 0), 0xe4e0d6],
-    ]);
-    case 'hay': return painted([[at(new THREE.BoxGeometry(1.0, 0.7, 0.72), 0, 0.35, 0), 0xd9b55c], [at(new THREE.BoxGeometry(1.02, 0.08, 0.74), 0, 0.22, 0), 0x8a6a2c], [at(new THREE.BoxGeometry(1.02, 0.08, 0.74), 0, 0.5, 0), 0x8a6a2c]]);
-    case 'bush': return painted([[at(new THREE.IcosahedronGeometry(0.55, 1), 0, 0.5, 0), 0x4c7d38], [at(new THREE.IcosahedronGeometry(0.42, 1), 0.42, 0.38, 0.15), 0x5c9044], [at(new THREE.IcosahedronGeometry(0.38, 1), -0.38, 0.34, -0.12), 0x447233]]);
-    case 'mushroom': return painted([
+    ]));
+    case 'hay': return noUV(painted([[at(new THREE.BoxGeometry(1.0, 0.7, 0.72), 0, 0.35, 0), 0xd9b55c], [at(new THREE.BoxGeometry(1.02, 0.08, 0.74), 0, 0.22, 0), 0x8a6a2c], [at(new THREE.BoxGeometry(1.02, 0.08, 0.74), 0, 0.5, 0), 0x8a6a2c]]));
+    case 'bush': return noUV(painted([[at(new THREE.IcosahedronGeometry(0.55, 1), 0, 0.5, 0), 0x4c7d38], [at(new THREE.IcosahedronGeometry(0.42, 1), 0.42, 0.38, 0.15), 0x5c9044], [at(new THREE.IcosahedronGeometry(0.38, 1), -0.38, 0.34, -0.12), 0x447233]]));
+    case 'mushroom': return noUV(painted([
       [at(new THREE.CylinderGeometry(0.09, 0.12, 0.42, 7), 0, 0.21, 0), 0xf1e8d6], [at(new THREE.SphereGeometry(0.3, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0, 0.4, 0), 0xc8322a],
       [at(new THREE.CylinderGeometry(0.06, 0.08, 0.26, 6), 0.32, 0.13, 0.12), 0xf1e8d6], [at(new THREE.SphereGeometry(0.18, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0.32, 0.25, 0.12), 0xd8452e],
-    ]);
-    case 'ice': return painted([[at(new THREE.BoxGeometry(0.85, 0.85, 0.85).rotateY(0.4).rotateX(0.12), 0, 0.45, 0), 0xc2e8f7], [at(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 10).rotateX(1.2), 0, 0.45, 0), 0xf2c230]]);
-    case 'lantern': return painted([
+    ]));
+    case 'ice': return noUV(painted([[at(new THREE.BoxGeometry(0.85, 0.85, 0.85).rotateY(0.4).rotateX(0.12), 0, 0.45, 0), 0xc2e8f7], [at(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 10).rotateX(1.2), 0, 0.45, 0), 0xf2c230]]));
+    case 'lantern': return noUV(painted([
       [at(new THREE.CylinderGeometry(0.05, 0.07, 1.7, 6), 0, 0.85, 0), 0x2f2a26], [at(new THREE.BoxGeometry(0.36, 0.42, 0.36), 0, 1.86, 0), 0x3a3026],
       [at(new THREE.BoxGeometry(0.3, 0.32, 0.37), 0, 1.86, 0), 0xe8cf8a], [at(new THREE.ConeGeometry(0.28, 0.2, 4).rotateY(Math.PI / 4), 0, 2.17, 0), 0x2f2a26],
-    ]);
-    case 'cauldron': return painted([
+    ]));
+    case 'cauldron': return noUV(painted([
       [at(new THREE.SphereGeometry(0.5, 12, 8, 0, Math.PI * 2, Math.PI * 0.18, Math.PI * 0.82), 0, 0.55, 0), 0x26262b], [at(new THREE.TorusGeometry(0.42, 0.05, 5, 16).rotateX(Math.PI / 2), 0, 0.97, 0), 0x3a3a42],
       ...[0, 1, 2].map((i) => [at(new THREE.CylinderGeometry(0.04, 0.04, 0.3, 4), Math.sin((i * Math.PI * 2) / 3) * 0.3, 0.12, Math.cos((i * Math.PI * 2) / 3) * 0.3), 0x26262b] as [THREE.BufferGeometry, number]),
-    ]);
+    ]));
     // (three overlapping pools, darker at the edge: water, not a decal)
-    case 'puddle': return painted([[at(new THREE.CircleGeometry(1.0, 16).rotateX(-Math.PI / 2).scale(1, 1, 0.7), 0, 0.03, 0), 0x2c4456], [at(new THREE.CircleGeometry(0.7, 14).rotateX(-Math.PI / 2), 0.55, 0.031, 0.25), 0x2c4456], [at(new THREE.CircleGeometry(0.82, 16).rotateX(-Math.PI / 2).scale(1, 1, 0.65), -0.05, 0.035, -0.02), 0x47677f], [at(new THREE.CircleGeometry(0.5, 12).rotateX(-Math.PI / 2), 0.5, 0.036, 0.22), 0x47677f]]);
-    case 'brazier': return painted([
+    case 'puddle': return noUV(painted([[at(new THREE.CircleGeometry(1.0, 16).rotateX(-Math.PI / 2).scale(1, 1, 0.7), 0, 0.03, 0), 0x2c4456], [at(new THREE.CircleGeometry(0.7, 14).rotateX(-Math.PI / 2), 0.55, 0.031, 0.25), 0x2c4456], [at(new THREE.CircleGeometry(0.82, 16).rotateX(-Math.PI / 2).scale(1, 1, 0.65), -0.05, 0.035, -0.02), 0x47677f], [at(new THREE.CircleGeometry(0.5, 12).rotateX(-Math.PI / 2), 0.5, 0.036, 0.22), 0x47677f]]));
+    case 'brazier': return noUV(painted([
       [at(new THREE.CylinderGeometry(0.48, 0.26, 0.3, 12, 1, true), 0, 1.0, 0), 0x3b342e], [at(new THREE.CircleGeometry(0.42, 12).rotateX(-Math.PI / 2), 0, 0.95, 0), 0x241c16],
       ...[0, 1, 2].map((i) => [at(new THREE.CylinderGeometry(0.04, 0.05, 1.0, 5).rotateZ(0.2).rotateY((i * Math.PI * 2) / 3), Math.sin((i * Math.PI * 2) / 3) * 0.18, 0.5, Math.cos((i * Math.PI * 2) / 3) * 0.18), 0x2d2825] as [THREE.BufferGeometry, number]),
-    ]);
-    case 'rune': return painted([[at(new THREE.BoxGeometry(0.55, 1.3, 0.35), 0, 0.65, 0), 0x7c7f88], [at(new THREE.BoxGeometry(0.6, 0.12, 0.4), 0, 1.33, 0), 0x6a6d75], [at(new THREE.PlaneGeometry(0.3, 0.5), 0, 0.8, 0.176), 0x4f5a78]]);
-    case 'basin': return painted([[at(new THREE.CylinderGeometry(0.62, 0.5, 0.4, 14, 1, true), 0, 0.2, 0), 0x8d8a82], [at(new THREE.CircleGeometry(0.58, 14).rotateX(-Math.PI / 2), 0, 0.32, 0), 0x2f5e8f]]);
-    case 'crystal': return painted([[at(new THREE.OctahedronGeometry(0.28).scale(0.7, 1.9, 0.7), 0, 0.55, 0), 0xcfc4ff], [at(new THREE.OctahedronGeometry(0.2).scale(0.7, 1.6, 0.7).rotateZ(0.5), 0.25, 0.3, 0.05), 0xb7a8f5], [at(new THREE.OctahedronGeometry(0.17).scale(0.7, 1.5, 0.7).rotateZ(-0.6), -0.22, 0.26, -0.06), 0xdcd3ff]]);
+    ]));
+    case 'rune': return noUV(painted([[at(new THREE.BoxGeometry(0.55, 1.3, 0.35), 0, 0.65, 0), 0x7c7f88], [at(new THREE.BoxGeometry(0.6, 0.12, 0.4), 0, 1.33, 0), 0x6a6d75], [at(new THREE.PlaneGeometry(0.3, 0.5), 0, 0.8, 0.176), 0x4f5a78]]));
+    case 'basin': return noUV(painted([[at(new THREE.CylinderGeometry(0.62, 0.5, 0.4, 14, 1, true), 0, 0.2, 0), 0x8d8a82], [at(new THREE.CircleGeometry(0.58, 14).rotateX(-Math.PI / 2), 0, 0.32, 0), 0x2f5e8f]]));
+    case 'crystal': return noUV(painted([[at(new THREE.OctahedronGeometry(0.28).scale(0.7, 1.9, 0.7), 0, 0.55, 0), 0xcfc4ff], [at(new THREE.OctahedronGeometry(0.2).scale(0.7, 1.6, 0.7).rotateZ(0.5), 0.25, 0.3, 0.05), 0xb7a8f5], [at(new THREE.OctahedronGeometry(0.17).scale(0.7, 1.5, 0.7).rotateZ(-0.6), -0.22, 0.26, -0.06), 0xdcd3ff]]));
     // 路灯: flared base, tapered pole with collars, glass housing with cap and finial (~90 tris)
-    case 'lamppost': return painted([
+    case 'lamppost': return noUV(painted([
       [at(new THREE.CylinderGeometry(0.18, 0.26, 0.32, 8), 0, 0.16, 0), 0x2b2b30],
       [at(new THREE.CylinderGeometry(0.06, 0.10, 2.6, 6), 0, 1.6, 0), 0x2b2b30],
       [at(new THREE.TorusGeometry(0.10, 0.025, 4, 8).rotateX(Math.PI / 2), 0, 0.95, 0), 0x3d3d45],
@@ -63,18 +65,18 @@ function body(k: PropKind): THREE.BufferGeometry {
       [at(new THREE.BoxGeometry(0.28, 0.34, 0.28), 0, 3.12, 0), 0xffd88a],
       [at(new THREE.ConeGeometry(0.28, 0.20, 4).rotateY(Math.PI / 4), 0, 3.44, 0), 0x2b2b30],
       [at(new THREE.SphereGeometry(0.05, 6, 4), 0, 3.58, 0), 0x3d3d45],
-    ]);
+    ]));
     // 路牌: weathered post with two directional arms (~40 tris)
-    case 'signpost': return painted([
+    case 'signpost': return noUV(painted([
       [at(new THREE.CylinderGeometry(0.07, 0.10, 2.3, 6), 0, 1.15, 0), 0x6b4a2e],
       [at(new THREE.BoxGeometry(0.95, 0.20, 0.06).rotateY(0.35), 0.1, 1.92, 0), 0x7d5a38],
       [at(new THREE.BoxGeometry(0.20, 0.20, 0.06).rotateY(0.35 + Math.PI / 4), 0.52, 1.92, -0.14), 0x7d5a38],
       [at(new THREE.BoxGeometry(0.75, 0.18, 0.06).rotateY(-0.55), -0.08, 1.62, 0), 0x6b4a2e],
       [at(new THREE.BoxGeometry(0.18, 0.18, 0.06).rotateY(-0.55 + Math.PI / 4), -0.42, 1.62, 0.12), 0x6b4a2e],
       [at(new THREE.SphereGeometry(0.09, 6, 4), 0, 2.34, 0), 0x4a3320],
-    ]);
+    ]));
     // 长椅: slatted seat and back, iron frames (~70 tris)
-    case 'bench': return painted([
+    case 'bench': return noUV(painted([
       [at(new THREE.BoxGeometry(1.8, 0.06, 0.18), 0, 0.45, -0.20), 0x7d5a38],
       [at(new THREE.BoxGeometry(1.8, 0.06, 0.18), 0, 0.45, 0.0), 0x7d5a38],
       [at(new THREE.BoxGeometry(1.8, 0.06, 0.18), 0, 0.45, 0.20), 0x7d5a38],
@@ -84,7 +86,7 @@ function body(k: PropKind): THREE.BufferGeometry {
       [at(new THREE.BoxGeometry(0.08, 0.45, 0.55), 0.80, 0.225, 0), 0x2b2b30],
       [at(new THREE.BoxGeometry(0.06, 0.06, 0.62), -0.85, 0.68, -0.05), 0x2b2b30],
       [at(new THREE.BoxGeometry(0.06, 0.06, 0.62), 0.85, 0.68, -0.05), 0x2b2b30],
-    ]);
+    ]));
   }
 }
 /** What an awake one shows, and its colour (additive, so the bloom catches it). */
@@ -135,9 +137,9 @@ export const propsFeature: ClientFeatureFactory = (d) => {
   const geo = new Map(kinds.map((k) => [k, body(k)])), mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: 0.06 });
   // (a puddle: glossy and a little see-through, so it takes the sky and the lamps)
   const wetMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.35, transparent: true, opacity: 0.82, depthWrite: false });
-  const ringGeo = new THREE.RingGeometry(0.62, 0.8, 24).rotateX(-Math.PI / 2).translate(0, 0.06, 0);
+  const ringGeo = noUV(new THREE.RingGeometry(0.62, 0.8, 24).rotateX(-Math.PI / 2).translate(0, 0.06, 0));
   const ringMat = new Map(kinds.filter((k) => RING[k]).map((k) => [k, new THREE.MeshBasicMaterial({ color: RING[k], transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })]));
-  const glowGeo = new Map(kinds.filter((k) => GLOW[k]).map((k) => [k, GLOW[k]!.geo()]));
+  const glowGeo = new Map(kinds.filter((k) => GLOW[k]).map((k) => [k, noUV(GLOW[k]!.geo())]));
   // the flames and charges breathe in the vertex shader (a scale pulsation): the CPU never rewrites a live matrix
   const glowTime = { value: 0 };
   const glowMat = new Map(kinds.filter((k) => GLOW[k]).map((k) => {
