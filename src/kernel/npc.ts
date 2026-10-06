@@ -31,6 +31,14 @@ export const PERSONAS: Persona[] = [
   { name: 'Draco Malfoy', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'seventh_floor'], lines: NPC_LINES['Draco Malfoy'] ?? [] },
   { name: 'Cho Chang', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['pitch', 'lake_shore', 'courtyard'], lines: NPC_LINES['Cho Chang'] ?? [] },
   { name: 'Cedric Diggory', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'grounds', 'courtyard'], lines: NPC_LINES['Cedric Diggory'] ?? [] },
+  { name: 'Dean Thomas', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['grounds', 'courtyard', 'pitch'], lines: NPC_LINES['Dean Thomas'] ?? [] },
+  { name: 'Parvati Patil', house: 'Gryffindor', favourite: 'Incendio', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Parvati Patil'] ?? [] },
+  { name: 'Lavender Brown', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Lavender Brown'] ?? [] },
+  { name: 'Pansy Parkinson', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Pansy Parkinson'] ?? [] },
+  { name: 'Marietta Edgecombe', house: 'Ravenclaw', favourite: 'Stupefy', patrol: ['seventh_floor', 'courtyard', 'great_hall'], lines: NPC_LINES['Marietta Edgecombe'] ?? [] },
+  { name: 'Justin Finch-Fletchley', house: 'Hufflepuff', favourite: 'Glacius', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Justin Finch-Fletchley'] ?? [] },
+  { name: 'Zacharias Smith', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Zacharias Smith'] ?? [] },
+  { name: 'Theodore Nott', house: 'Slytherin', favourite: 'Glacius', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Theodore Nott'] ?? [] },
 ];
 
 /**
@@ -145,8 +153,11 @@ export function thinkNpcs(world: World) {
     // chatter (all NPCs together at most every MEME.NPC_GAP_S, so the feed stays readable), then patrol
     if (world.now - b.lastSay > 45 && world.rand() < 0.08) {
       const pool = chatterPool(world, w, p);
-      const line = pool[Math.floor(world.rand() * pool.length)];
-      if (world.banter(['npc', MEME.NPC_GAP_S])) world.say(w, line.en, 'npc', line.zh);
+      // personas without bespoke lines can have an empty pool (daytime, calm weather, no rival nearby)
+      if (pool.length) {
+        const line = pool[Math.floor(world.rand() * pool.length)];
+        if (world.banter(['npc', MEME.NPC_GAP_S])) world.say(w, line.en, 'npc', line.zh);
+      }
       b.lastSay = world.now;
     }
     if (!w.goal) {
