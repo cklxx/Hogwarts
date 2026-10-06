@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EARLY_S, SYSTEMS, SYSTEM_ZH, type PlayerMetrics } from '../../src/kernel/metrics.js';
+import { frameLabel } from './frame-label.js';
 
 const path = process.argv[2] ?? process.env.HOGWARTS_DATA ?? join(process.cwd(), 'data/world.json');
 const world = JSON.parse(readFileSync(path, 'utf8')) as { features?: { metrics?: Record<string, PlayerMetrics> } };
@@ -21,7 +22,7 @@ console.log(`| 玩家 | 设备 | 移动 秒 | 施法 秒 | 打倒魔物 秒 | �
 console.log('|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|');
 for (const m of rows) {
   const sys = SYSTEMS.filter((k) => m.sys[k] !== undefined);
-  console.log(`| ${m.name} | ${m.touch === undefined ? '?' : m.touch ? '手机' : '桌面'}${m.view === '25d' ? '·2.5D' : m.view === 'top' ? '·俯视' : ''}${m.fps ? ` · ${Math.round(1000 / Math.max(1, m.fps.p50))} fps（p95 ${Math.round(m.fps.p95)} ms，3D ${m.fps.scale}x ${m.fps.q}${m.fps.gpu ? `，${m.fps.gpu}` : ''}）` : ''} | ${s(m.move)} | ${s(m.cast)} | ${s(m.kill)} | ${m.tut ?? 1}/${TUT_STEPS} | ${m.kosEarly} | ${sys.length}/10 ${sys.map((k) => SYSTEM_ZH[k]).join('、')} | ${m.chats} | ${Math.round(m.online / 60)} | ${m.sessions} |`);
+  console.log(`| ${m.name} | ${m.touch === undefined ? '?' : m.touch ? '手机' : '桌面'}${m.view === '25d' ? '·2.5D' : m.view === 'top' ? '·俯视' : ''}${m.fps ? ` · ${frameLabel(m.fps)}` : ''} | ${s(m.move)} | ${s(m.cast)} | ${s(m.kill)} | ${m.tut ?? 1}/${TUT_STEPS} | ${m.kosEarly} | ${sys.length}/10 ${sys.map((k) => SYSTEM_ZH[k]).join('、')} | ${m.chats} | ${Math.round(m.online / 60)} | ${m.sessions} |`);
 }
 
 // the round against docs/PLAYTEST_METRICS.md's first targets

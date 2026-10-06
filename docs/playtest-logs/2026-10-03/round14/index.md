@@ -35,7 +35,7 @@
 
 ## 工程检查与重跑
 
-恢复锁定依赖后：`npm run typecheck` 通过；`npm test -- --maxWorkers=2` 为 **80 文件、813 项通过**；`npm run build` 通过（Vite 8.3.1）。只有客户端 CSS 和验证文档变动；无内核规则或形式化源码变动。尚未取得远程 CI 结果。
+恢复锁定依赖后：`npm run typecheck` 通过；`npm test -- --maxWorkers=2` 为 **80 文件、813 项通过**；`npm run build` 通过（Vite 8.3.1）。只有客户端 CSS 和验证文档变动；无内核规则或形式化源码变动。随后 GitHub check/formal 均通过，PR #17 已合入 main `ff556bc`。
 
 ```bash
 npm ci
