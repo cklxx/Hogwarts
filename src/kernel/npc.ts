@@ -25,6 +25,12 @@ export const PERSONAS: Persona[] = [
   { name: 'Gregory Goyle', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'pitch'], lines: NPC_LINES['Gregory Goyle'] },
   { name: 'Madam Rosmerta', house: 'Hufflepuff', favourite: 'Aguamenti', patrol: ['hogsmeade', 'road'], lines: NPC_LINES['Madam Rosmerta'] ?? [] },
   { name: 'Ambrosius Flume', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['hogsmeade', 'lake_shore'], lines: NPC_LINES['Ambrosius Flume'] ?? [] },
+  { name: 'Neville Longbottom', house: 'Gryffindor', favourite: 'Episkey', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Neville Longbottom'] ?? [] },
+  { name: 'Luna Lovegood', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['lake', 'courtyard', 'grounds'], lines: NPC_LINES['Luna Lovegood'] ?? [] },
+  { name: 'Ginny Weasley', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Ginny Weasley'] ?? [] },
+  { name: 'Draco Malfoy', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'seventh_floor'], lines: NPC_LINES['Draco Malfoy'] ?? [] },
+  { name: 'Cho Chang', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['pitch', 'lake_shore', 'courtyard'], lines: NPC_LINES['Cho Chang'] ?? [] },
+  { name: 'Cedric Diggory', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'grounds', 'courtyard'], lines: NPC_LINES['Cedric Diggory'] ?? [] },
 ];
 
 /**
