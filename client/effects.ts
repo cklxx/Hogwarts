@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { heightAt } from './terrain';
 import { OVERLAY } from './layers';
+import { spriteTex } from './textures';
 
 /**
  * Short-lived spell effects (rings, puffs, pillars of light, floating damage numbers, lightning), pooled.
@@ -41,7 +42,7 @@ export function createEffects(scene: THREE.Scene) {
     const gr = g.createLinearGradient(0, 0, 0, 64);
     gr.addColorStop(0, 'rgb(0,0,0)'); gr.addColorStop(0.55, 'rgb(40,40,40)'); gr.addColorStop(0.9, 'rgb(200,200,200)'); gr.addColorStop(1, 'rgb(255,255,255)');
     g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
-    return new THREE.CanvasTexture(c);
+    return spriteTex(c, false);
   })();
   const columnGeo = new THREE.CylinderGeometry(0.9, 1.05, 8, 20, 1, true);
   const columns = pool(() => new THREE.Mesh(columnGeo, new THREE.MeshBasicMaterial({ alphaMap: fade, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })));
@@ -65,7 +66,7 @@ export function createEffects(scene: THREE.Scene) {
     g.font = 'bold 44px Georgia'; g.textAlign = 'center';
     g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(text, 64, 48);
     g.fillStyle = color; g.fillText(text, 64, 48);
-    t = new THREE.CanvasTexture(c);
+    t = spriteTex(c); // 伤害数字永不平铺、极少缩小：去 mipmap（省 x1.33 显存）
     textTex.set(key, t);
     for (const [k, old] of textTex) {
       if (textTex.size <= 96) break;
