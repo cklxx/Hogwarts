@@ -708,7 +708,7 @@ function disposeOwned(root: THREE.Object3D, keep: Set<unknown>) {
     if (!(o as THREE.Sprite).isSprite && x.geometry && !keep.has(x.geometry)) x.geometry.dispose();
   });
 }
-const sharedParts = () => new Set<unknown>([...cache.values(), _shieldMat]);
+const sharedParts = () => new Set<unknown>([...cache.values(), ..._lamCache.values(), ..._auraMats.values(), _shieldMat]);
 /** A wizard gone for good (see main.ts: models of wizards that merely walked out of view are kept a while). */
 export function disposeWizard(m: WizardModel) {
   releaseWizardLook(m);
@@ -718,7 +718,7 @@ export function disposeWizard(m: WizardModel) {
 /** A creature model no pool wants any more (every creature builds its own parts). */
 export function disposeCreature(c: { root: THREE.Object3D; label: Label }) {
   c.label.dispose();
-  disposeOwned(c.root, new Set([glowTex()]));
+  disposeOwned(c.root, new Set<unknown>([glowTex(), ..._lamCache.values(), ..._auraMats.values()]));
 }
 
 // ------------------------------------------------------------------ the far wizard (crowd.ts)

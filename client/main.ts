@@ -881,7 +881,7 @@ function hudRender() {
     ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
     : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
   // bottom-left: Point Me lights the minimap
-  $('#minimap').hidden = !has('point-m');
+  $('#minimap').hidden = !has('point-me');
   setHtml($('#pointme'), m.year >= 2
     ? rune('compass', L('点一下施放「给我指路」，点亮小地图', 'Click to cast Point Me and light the minimap'), 'tip-up', 'Point Me')
     : rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
