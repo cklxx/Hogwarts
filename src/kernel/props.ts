@@ -25,7 +25,7 @@ declare module './world.js' {
       /** Broken props: when each comes back; who broke each and when (an encounter counts them, kernel/encounters.ts). */
       broken: Map<string, number>; who: Map<string, { by: string; at: number }>;
       /** Awake props: until when, and who woke it (wizard id). */
-      awake: Map<string, { until: number; by: string }>;
+      awake: Map<string, { until: number; by: Set<string> }>;
       /** This term's counts: breaks per wizard, groups paid per wizard. */
       term: number; breaks: Map<string, number>; paid: Map<string, Set<string>>;
     };
@@ -76,7 +76,10 @@ export function touch(world: World, p: Prop, element: Element, by: string, depth
   }
   if (def.quench === element && s.awake.has(p.id)) { s.awake.delete(p.id); world.fx({ k: 'hit', x: p.x, z: p.z, e: element }); return true; }
   if (def.wakes !== element) return false;
-  s.awake.set(p.id, { until: world.now + (def.secs ?? 30), by });
+  const existing = s.awake.get(p.id);
+  const bySet = existing?.by ?? new Set<string>();
+  bySet.add(by);
+  s.awake.set(p.id, { until: world.now + (def.secs ?? 30), by: bySet });
   world.fx({ k: 'hit', x: p.x, z: p.z, e: element });
   if (p.group) solve(world, p.group);
   return true;
@@ -89,7 +92,7 @@ function solve(world: World, gid: string) {
   const g = PROP_GROUPS.find((x) => x.id === gid)!;
   const c = ps.reduce((a, p) => ({ x: a.x + p.x / ps.length, z: a.z + p.z / ps.length }), { x: 0, z: 0 });
   world.fx({ k: 'nova', x: c.x, z: c.z, r: 5, e: PROP_DEFS[g.kind].wakes ?? 'arcane' });
-  for (const wid of new Set(ps.map((p) => s.awake.get(p.id)!.by))) {
+  for (const wid of new Set(ps.flatMap((p) => [...(s.awake.get(p.id)!.by)]))) {
     const w = world.wizards.get(wid);
     if (!w || w.npc) continue;
     const paid = s.paid.get(wid) ?? s.paid.set(wid, new Set()).get(wid)!;

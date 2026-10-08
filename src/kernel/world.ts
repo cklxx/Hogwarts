@@ -141,8 +141,8 @@ export const PROVOKED_SECS = 8, PROVOKED_LEASH = 60;
 /** 看 Agent 玩: how many of an agent's calls its owner's panel keeps, and how long after its last call an agent counts as playing. */
 export const AGENT_LOG_MAX = 12, AGENT_ACTIVE_S = 120;
 
-/** 熟能生厌 (World.freshness): full rewards for the first GRIND_FREE_KILLS of one creature kind in GRIND_FATIGUE_S seconds, then less, down to GRIND_FLOOR. */
-export const GRIND_FREE_KILLS = 6, GRIND_FATIGUE_S = 600, GRIND_FLOOR = 0.05;
+/** 熟能生厌 (World.freshness): full rewards for the first GRIND_FREE_KILLS of one creature kind in GRIND_FATIGUE_S seconds, then less, down to GRIND_FLOOR. Shared globally per kind (not per wizard) to prevent multi-character fatigue bypass. */
+export const GRIND_FREE_KILLS = 12, GRIND_FATIGUE_S = 600, GRIND_FLOOR = 0.05;
 
 /** What counts as NPC news for World.emit's gate, and how often the school hears any. */
 const NPC_NEWS = new Set<EventType>(['level', 'combat', 'creature', 'achievement']);
@@ -1574,8 +1574,10 @@ export class World {
    */
   private freshness(w: Wizard, kind: Creature['kind']): number {
     if (w.npc) return 1;
-    const byKind = this.fatigue.get(w.id) ?? {};
-    this.fatigue.set(w.id, byKind);
+    // Global per-kind fatigue (shared across all wizards) prevents multi-character bypass.
+    // 12 free kills per kind per 10 min globally (was 6 per wizard).
+    const byKind = this.fatigue.get('global') ?? {};
+    this.fatigue.set('global', byKind);
     const recent = (byKind[kind] ?? []).filter((t) => this.now - t < GRIND_FATIGUE_S);
     const n = recent.length;
     recent.push(this.now);
@@ -1701,7 +1703,10 @@ export class World {
     if (!c) throw new Error(`No closed chest within reach (${chestsLeft(this).length} left this term; they refill every term). 附近没有没打开的宝箱（本学期还剩 ${chestsLeft(this).length} 个，每学期刷新）。`);
     this.flags.chests = { term: this.term.n, opened: { ...this.flags.chests.opened, [c.id]: w.name } };
     const g = this.cupGain(w, 5, 'chests');
-    this.gainXp(w, CHEST_XP);
+    // Diminishing chest XP: first 10 chests per term pay full (8 XP), rest pay 2 XP.
+    // Prevents 140 chests × 8 XP = 1120 XP/term inflation from 10x content expansion.
+    const openedByMe = Object.values(this.flags.chests.opened).filter((n) => n === w.name).length;
+    this.gainXp(w, openedByMe <= 10 ? CHEST_XP : 2);
     this.fx({ k: 'seal', x: c.x, z: c.z, h: w.handle });
     const loot = this.chestLoot(w, { zh: `${c.zh}的宝箱`, en: `The chest ${c.en.toLowerCase()}` });
     return { chest: c.id, where: c.en, whereZh: c.zh, housePoints: g, ...loot, left: chestsLeft(this).length };
