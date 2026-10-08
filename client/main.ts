@@ -578,7 +578,10 @@ function apply(s: Snap) {
   if (s.elder) elderGlint.position.set(s.elder.x, 2.6 + heightAt(s.elder.x, s.elder.z), s.elder.z);
 }
 
-const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "Devil's Snare", spider: 'Acromantula', troll: 'Mountain Troll', dementor: 'Dementor', inferius: 'Inferius', unicorn: 'Unicorn', phoenix: 'Fawkes', serpent: 'Serpent', birds: 'Birds' };
+const NAMES: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "Devil's Snare", spider: 'Acromantula', troll: 'Mountain Troll', dementor: 'Dementor', inferius: 'Inferius', unicorn: 'Unicorn', phoenix: 'Fawkes', serpent: 'Serpent', birds: 'Birds',
+  bowtruckle: 'Bowtruckle', hinkypunk: 'Hinkypunk', redcap: 'Red Cap', niffler: 'Niffler', grindylow: 'Grindylow', erkling: 'Erkling', kelpie: 'Kelpie', thestral: 'Thestral', hippogriff: 'Hippogriff',
+  occamy: 'Occamy', boggart: 'Boggart', runespoor: 'Runespoor', skrewt: 'Blast-Ended Skrewt', thunderbird: 'Thunderbird', werewolf: 'Werewolf',
+  lethifold: 'Lethifold', manticore: 'Manticore', chimera: 'Chimera', aragog: 'Aragog', basilisk: 'Basilisk', nundu: 'Nundu', dragon: 'Hungarian Horntail' };
 
 // ------------------------------------------------------------------ effects
 const particles = createFx(scene, world.chimneys);

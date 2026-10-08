@@ -561,5 +561,5 @@ describe('a whole term with NPCs and events', () => {
     }
     expect(w.houseCups.length).toBe(1);
     expect(w.wheel.seq).toBeGreaterThanOrEqual(4);
-  });
+  }, 60000); // 30 wild kinds now spawn (was 8): the whole-term sim needs headroom
 });

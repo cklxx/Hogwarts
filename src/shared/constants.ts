@@ -20,7 +20,10 @@ export const ELEMENT_COLORS: Record<Element, number> = {
 };
 
 /** Creatures that spawn in the wild (and can be toggled by decree). */
-export const CREATURE_KINDS = ['pixie', 'snare', 'spider', 'troll', 'dementor', 'inferius', 'unicorn', 'phoenix'] as const;
+export const CREATURE_KINDS = ['pixie', 'snare', 'spider', 'troll', 'dementor', 'inferius', 'unicorn', 'phoenix',
+  'bowtruckle', 'hinkypunk', 'redcap', 'niffler', 'grindylow', 'erkling', 'kelpie', 'thestral', 'hippogriff',
+  'occamy', 'boggart', 'runespoor', 'skrewt', 'thunderbird', 'werewolf', 'lethifold', 'manticore', 'chimera',
+  'aragog', 'basilisk', 'nundu', 'dragon'] as const;
 export type WildKind = (typeof CREATURE_KINDS)[number];
 /** Creatures conjured by the summon primitive. */
 export const SUMMON_KINDS = ['serpent', 'birds'] as const;

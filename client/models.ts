@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
+import { CREATURES } from '../src/kernel/creatures';
 import { parseGlamourKey, type Glamour, type GlamourMaterial } from '../src/shared/glamour';
 import { OVERLAY } from './layers';
 import { STORYBOOK, rimLit } from './textures';
@@ -1240,6 +1241,28 @@ export function makeCreature(kind: CreatureKind): { root: THREE.Group; label: La
       root.add(hood);
       anim = (t) => { root.children[0].position.y = 2.5 + Math.sin(t * 1.5) * 0.3; hood.position.y = 4 + Math.sin(t * 1.5) * 0.3; };
       label.sprite.position.y = 4.9;
+      break;
+    }
+    default: {
+      // Content-expansion kinds get a generic body (scaled by the kernel's radius) until bespoke art lands.
+      const s = CREATURES[kind]?.radius ?? 0.7;
+      const body = new THREE.Mesh(new THREE.SphereGeometry(s, 10, 8), lam(0x6a5a48));
+      body.position.y = s * 1.2;
+      root.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(s * 0.55, 8, 8), lam(0x7d6c55));
+      head.position.set(0, s * 2.1, s * 0.5);
+      root.add(head);
+      if (CREATURES[kind]?.flying) {
+        const wingG = new THREE.PlaneGeometry(s * 1.6, s * 0.7);
+        const wingM = new THREE.MeshStandardMaterial({ color: 0x5a4c3e, roughness: 0.9, side: THREE.DoubleSide });
+        const wl = new THREE.Mesh(wingG, wingM); wl.position.set(-s * 0.9, s * 1.6, 0); wl.rotation.z = 0.35;
+        const wr = new THREE.Mesh(wingG, wingM); wr.position.set(s * 0.9, s * 1.6, 0); wr.rotation.z = -0.35;
+        root.add(wl, wr);
+        anim = (t) => { const f = Math.sin(t * 6) * 0.4; wl.rotation.z = 0.35 + f; wr.rotation.z = -0.35 - f; body.position.y = s * 1.2 + Math.sin(t * 2) * 0.1; };
+      } else {
+        anim = (t) => { body.position.y = s * 1.2 + Math.sin(t * 2.2) * 0.08; head.position.y = s * 2.1 + Math.sin(t * 2.2 + 0.6) * 0.06; };
+      }
+      label.sprite.position.y = s * 2.9;
       break;
     }
   }
