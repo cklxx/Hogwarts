@@ -98,6 +98,21 @@ const open = (x: number, z: number, scene: SceneId, minGap: number, mine: Prop[]
 };
 
 const out: Prop[] = [], groups: { id: string; zh: string; en: string; kind: PropKind }[] = [];
+/** A clump that burns must leave one clear Incendio line from a 6 m ring point (test/dressing.test.ts). */
+const clearFire = (clump: Prop[]) => {
+  const p = clump[0];
+  const s = sceneAt(p.x, p.z)?.id;
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI) / 4, at = { x: p.x + Math.cos(a) * 6, z: p.z + Math.sin(a) * 6 };
+    if (sceneAt(at.x, at.z)?.id !== s || world.solids.blocked(at, 0.5) || world.solids.hitSegment(at.x, at.z, p.x, p.z)) continue;
+    const onLine = placed.some((q) => q !== p && Math.hypot(q.x - p.x, q.z - p.z) > 0.1 && (() => {
+      const dx = p.x - at.x, dz = p.z - at.z, t = Math.max(0, Math.min(1, ((q.x - at.x) * dx + (q.z - at.z) * dz) / (dx * dx + dz * dz)));
+      return Math.hypot(q.x - at.x - dx * t, q.z - at.z - dz * t) < 1.3;
+    })());
+    if (!onLine) return true;
+  }
+  return false;
+};
 const rnd = mulberry32(20261001);
 for (const s of SCENES) {
   let n = 0;
@@ -123,7 +138,7 @@ for (const s of SCENES) {
         }
         if (!ok) break;
       }
-      if (mine.length === r.size) {
+      if (mine.length === r.size && (!['bush', 'hay', 'web'].includes(r.kind) || clearFire(mine))) {
         out.push(...mine);
         if (r.group && gid) groups.push({ id: gid, zh: r.group.zh, en: r.group.en, kind: r.kind });
         break;

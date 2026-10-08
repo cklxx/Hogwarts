@@ -60,7 +60,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   hinkypunk: {
     kind: 'hinkypunk', name: 'Hinkypunk', faction: 'hostile', hp: 30, speed: 3, damage: 4, range: 2, cooldown: 1.2, aggro: 8, radius: 0.4,
-    xp: 14, rep: 1, galleons: 1, weak: { light: 2 }, spawn: { x: -80, z: 50, r: 10, max: 4 },
+    xp: 14, rep: 1, galleons: 1, weak: { light: 2 }, spawn: { x: -80, z: 50, r: 9, max: 4 },
     lore: 'It dangles a lantern to lure travellers into bogs. Its own light is its undoing — answer with light.',
   },
   redcap: {
@@ -70,17 +70,17 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   niffler: {
     kind: 'niffler', name: 'Niffler', faction: 'hostile', hp: 40, speed: 5, damage: 2, range: 1.2, cooldown: 0.9, aggro: 6, radius: 0.35,
-    xp: 20, rep: 2, galleons: 8, weak: {}, spawn: { x: 40, z: 40, r: 12, max: 4 },
+    xp: 20, rep: 2, galleons: 8, weak: {}, spawn: { x: 90, z: 40, r: 9, max: 4 },
     lore: 'It loves anything shiny and carries a pouch full of it. Barely fights back — but its pouch is worth the chase.',
   },
   grindylow: {
     kind: 'grindylow', name: 'Grindylow', faction: 'hostile', hp: 55, speed: 4, damage: 7, range: 1.8, cooldown: 1.2, aggro: 10, radius: 0.5,
-    xp: 25, rep: 3, galleons: 2, weak: { fire: 2 }, spawn: { x: -70, z: 20, r: 10, max: 4 },
+    xp: 25, rep: 3, galleons: 2, weak: { fire: 2 }, spawn: { x: -80, z: 20, r: 9, max: 4 },
     lore: 'A horned water demon of the Black Lake. It drags swimmers down; heat breaks its grip.',
   },
   erkling: {
     kind: 'erkling', name: 'Erkling', faction: 'hostile', hp: 65, speed: 5, damage: 8, range: 1.6, cooldown: 1.1, aggro: 10, radius: 0.5,
-    xp: 30, rep: 3, galleons: 3, weak: { light: 1.5 }, spawn: { x: 100, z: 60, r: 10, max: 4 },
+    xp: 30, rep: 3, galleons: 3, weak: { light: 1.5 }, spawn: { x: 100, z: 43, r: 8, max: 4 },
     lore: 'An elfish creature that lures children with its grin. It hates bright light.',
   },
   kelpie: {
@@ -90,7 +90,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   thestral: {
     kind: 'thestral', name: 'Thestral', faction: 'hostile', hp: 85, speed: 7, damage: 7, range: 2, cooldown: 1.2, aggro: 8, radius: 0.8,
-    xp: 38, rep: 4, galleons: 2, weak: { light: 1.5 }, flying: true, spawn: { x: 150, z: -10, r: 10, max: 3 },
+    xp: 38, rep: 4, galleons: 2, weak: { light: 1.5 }, flying: true, spawn: { x: 145, z: 0, r: 8, max: 3 },
     lore: 'Winged and skeletal, visible only to those who have seen death. The herd does not forgive a threat.',
   },
   hippogriff: {
@@ -110,7 +110,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   runespoor: {
     kind: 'runespoor', name: 'Runespoor', faction: 'hostile', hp: 105, speed: 5, damage: 11, range: 2, cooldown: 1.2, aggro: 12, radius: 0.7,
-    xp: 58, rep: 6, galleons: 5, weak: { fire: 1.5 }, spawn: { x: 120, z: 55, r: 8, max: 3 }, bite: { aura: 'poison', secs: 3, mag: 2 },
+    xp: 58, rep: 6, galleons: 5, weak: { fire: 1.5 }, spawn: { x: 120, z: 44, r: 7, max: 3 }, bite: { aura: 'poison', secs: 3, mag: 2 },
     lore: 'Three heads: the planner, the dreamer, the critic. The right head’s fangs are the ones to watch.',
   },
   skrewt: {
@@ -132,7 +132,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   lethifold: {
     kind: 'lethifold', name: 'Lethifold', faction: 'hostile', hp: 140, speed: 3.5, damage: 13, range: 3, cooldown: 1.3, aggro: 12, radius: 1.2,
-    xp: 80, rep: 8, galleons: 0, weak: { light: 3 }, nightOnly: true, spawn: { x: -30, z: -70, r: 8, max: 2 },
+    xp: 80, rep: 8, galleons: 0, weak: { light: 3 }, nightOnly: true, spawn: { x: -30, z: -65, r: 7, max: 2 },
     lore: 'A living shroud that smothers sleepers. Only a Patronus drives it off — nothing else even slows it.',
   },
   manticore: {
@@ -142,7 +142,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   chimera: {
     kind: 'chimera', name: 'Chimera', faction: 'hostile', hp: 180, speed: 5.5, damage: 18, range: 3, cooldown: 1.6, aggro: 14, radius: 1.2,
-    xp: 95, rep: 10, galleons: 12, weak: { ice: 1.5 }, spawn: { x: 145, z: 42, r: 10, max: 2 },
+    xp: 95, rep: 10, galleons: 12, weak: { ice: 1.5 }, spawn: { x: 145, z: 42, r: 9, max: 2 },
     ranged: { range: 24, power: 14, cooldown: 4, element: 'fire', kind: 'bolt' },
     lore: 'Lion, goat, dragon — one bad temper in three parts. Its dragon head breathes fire; ice answers.',
   },
@@ -154,13 +154,13 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   basilisk: {
     kind: 'basilisk', name: 'Basilisk', faction: 'hostile', hp: 220, speed: 5.5, damage: 22, range: 3.5, cooldown: 1.8, aggro: 18, radius: 1.2,
-    xp: 110, rep: 12, galleons: 15, weak: { light: 1.5 }, spawn: { x: 140, z: -2, r: 10, max: 1 },
+    xp: 110, rep: 12, galleons: 15, weak: { light: 1.5 }, spawn: { x: 140, z: -2, r: 9, max: 1 },
     ranged: { range: 20, power: 0, cooldown: 8, element: 'arcane', kind: 'root', secs: 2 },
     lore: 'The King of Serpents. Its gaze petrifies — do not look it in the eye. Fifty feet of nightmare.',
   },
   nundu: {
     kind: 'nundu', name: 'Nundu', faction: 'hostile', hp: 240, speed: 6, damage: 24, range: 3, cooldown: 1.7, aggro: 16, radius: 1.3,
-    xp: 115, rep: 12, galleons: 15, weak: { fire: 1.5 }, allDamage: 0.8, spawn: { x: 125, z: 40, r: 12, max: 1 }, bite: { aura: 'poison', secs: 5, mag: 5 },
+    xp: 115, rep: 12, galleons: 15, weak: { fire: 1.5 }, allDamage: 0.8, spawn: { x: 125, z: 40, r: 11, max: 1 }, bite: { aura: 'poison', secs: 5, mag: 5 },
     lore: 'Its breath alone fells a village. It takes a hundred wizards to subdue one — you are not a hundred wizards.',
   },
   dragon: {

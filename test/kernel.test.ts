@@ -176,10 +176,10 @@ describe('duels, progression and reputation', () => {
       w.damage(a.id, c.id, 5, 'ice');
     }
     // 20 pixies in a row: the first GRIND_FREE_KILLS pay in full, then each teaches less (熟能生厌, World.freshness)
-    expect(a.xp).toBeCloseTo(12 * (6 + [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].reduce((s, n) => s + Math.max(0.05, 6 / (n + 1)), 0)), 6);
+    expect(a.xp).toBeCloseTo(12 * (12 + [12, 13, 14, 15, 16, 17, 18, 19].reduce((s, n) => s + Math.max(0.05, 12 / (n + 1)), 0)), 6);
     expect(a.year).toBe(2);
     expect(a.spells.some((s) => s.name === 'Expelliarmus')).toBe(true);
-    expect(a.galleons).toBe(20 + 12);
+    expect(a.galleons).toBe(20 + 20);
   });
 
   it('熟能生厌: the same creature over and over pays less and less, another kind pays in full, and it wears off', () => {
@@ -188,9 +188,9 @@ describe('duels, progression and reputation', () => {
     a.pos = { x: 60, z: 60 };
     const kill = (kind: 'pixie' | 'snare') => { const c = addCreature(w, kind, 60, 66); c.hp = 1; const x0 = a.xp; w.damage(a.id, c.id, 5, 'fire'); return a.xp - x0; };
     const pix = Array.from({ length: 60 }, () => kill('pixie'));
-    expect(pix.slice(0, 6)).toEqual(Array(6).fill(12));
-    expect(pix[6]).toBeLessThan(12);
-    expect(pix.at(-1)).toBeCloseTo(12 * 0.1, 6); // 6/60
+    expect(pix.slice(0, 12)).toEqual(Array(12).fill(12));
+    expect(pix[12]).toBeLessThan(12);
+    expect(pix.at(-1)).toBeCloseTo(12 * 0.2, 6); // 12/60
     expect(kill('snare')).toBe(10); // a different kind: full pay
     expect(w.events.filter((e) => e.to === a.id && /学会了/.test(e.zh ?? '')).length).toBe(1); // told once
     w.now += 601; // ten minutes later

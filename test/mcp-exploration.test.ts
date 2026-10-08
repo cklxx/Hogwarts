@@ -44,7 +44,7 @@ describe('MCP exploration query bounds', () => {
   it('keeps the original default prop output and 25 metre cap for larger look radii', async () => {
     const { wizard, call } = await fixture();
     const original = (await call('look')).props as SeenProp[];
-    expect(original).toHaveLength(31);
+    expect(original).toHaveLength(73);
     expect(original.every((p) => distance(wizard.pos, p) <= 25)).toBe(true);
     expect((await call('look', { radius: 25 })).props).toEqual(original);
     expect((await call('look', { radius: 40 })).props).toEqual(original);
@@ -52,8 +52,8 @@ describe('MCP exploration query bounds', () => {
   });
 
   it('includes a prop exactly at the radius and preserves its state without changing game resources', async () => {
-    const { world, wizard, call } = await fixture({ x: 0, z: -20 });
-    const prop = propById('brazier-courtyard-1')!; // exactly 8 metres east
+    const { world, wizard, call } = await fixture({ x: 10, z: -19 });
+    const prop = propById('ctf02-3')!; // exactly 8 metres south
     touch(world, prop, 'fire', wizard.id);
     const before = { hp: wizard.hp, mana: wizard.mana, xp: wizard.xp, galleons: wizard.galleons, props: world.serialize().features.props };
     const edge = (await call('look', { radius: 8 })).props as SeenProp[];
