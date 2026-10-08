@@ -53,9 +53,10 @@ const PAPERS: readonly Paper[] = [
 const gradeFor = (papers: number): Grade | null => (papers >= 5 ? 'O' : papers === 4 ? 'E' : papers === 3 ? 'A' : null);
 
 // ------------------------------------------------------------------ the daily Bounty Board
-interface HuntZone { zone: ZoneId; name: string }
+interface HuntZone { zone: ZoneId; name: string; bx?: number; bz?: number }
 const HUNT_ZONES: readonly HuntZone[] = [
-  { zone: 'grounds', name: 'Hogwarts Grounds' },
+  // the grounds zone center (0,-30) sits inside the Courtyard box, so the bounty marker uses an open point
+  { zone: 'grounds', name: 'Hogwarts Grounds', bx: 75, bz: -55 },
   { zone: 'greenhouses', name: 'Greenhouses' },
   { zone: 'dungeons', name: 'Dungeon Stair' },
   { zone: 'forest', name: 'The Forbidden Forest' },
@@ -228,9 +229,10 @@ function bountyBoard(world: World, wid: string) {
   return {
     day: st.day, resetsIn: (st.day + 1) * 86400 - world.now,
     bounties: pickBounties(st.day).map((b) => {
+      const hz = HUNT_ZONES.find((q) => q.zone === b.zone)!;
       const z = ZONES.find((q) => q.id === b.zone)!;
       return {
-        zone: b.zone, place: z.name, x: z.x, z: z.z, needed: b.n,
+        zone: b.zone, place: z.name, x: hz.bx ?? z.x, z: hz.bz ?? z.z, needed: b.n,
         slain: Math.min(b.n, st.done[b.zone] ?? 0), claimed: st.claimed.includes(b.zone),
         reward: { reputation: b.rep, galleons: b.galleons },
       };
