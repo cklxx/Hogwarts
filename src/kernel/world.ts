@@ -41,7 +41,7 @@ import {
   duelSteal, electMinister, focusAfter, stealPct, stunPaysRep,
 } from './progression.js';
 import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook.js';
-import { chestClues, chestNear, chestsLeft, CHESTS, rollCard, RUNES_FRAGMENTS } from './cards.js';
+import { chestClues, chestNear, chestsLeft, CHESTS, CHEST_XP, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
 import { duelFoes, inFight, inMatch, sideOf } from './duelclub.js';
@@ -1701,6 +1701,7 @@ export class World {
     if (!c) throw new Error(`No closed chest within reach (${chestsLeft(this).length} left this term; they refill every term). 附近没有没打开的宝箱（本学期还剩 ${chestsLeft(this).length} 个，每学期刷新）。`);
     this.flags.chests = { term: this.term.n, opened: { ...this.flags.chests.opened, [c.id]: w.name } };
     const g = this.cupGain(w, 5, 'chests');
+    this.gainXp(w, CHEST_XP);
     this.fx({ k: 'seal', x: c.x, z: c.z, h: w.handle });
     const loot = this.chestLoot(w, { zh: `${c.zh}的宝箱`, en: `The chest ${c.en.toLowerCase()}` });
     return { chest: c.id, where: c.en, whereZh: c.zh, housePoints: g, ...loot, left: chestsLeft(this).length };

@@ -45,7 +45,7 @@ export const PROP_RESPAWN_S = 60;
 /** A spell passing this near a prop touches it (a bolt's own reach is 0.45 past its target's radius). */
 export const PROP_R = 0.8;
 /** Breaking pays this much experience, at most PROP_BREAKS_PER_TERM times a term (RULES: rewards are capped). */
-export const PROP_BREAK_XP = 2, PROP_BREAKS_PER_TERM = 50;
+export const PROP_BREAK_XP = 2, PROP_BREAKS_PER_TERM = 100;
 /** A group woken together pays each wizard who woke one of its three (within its window) this, once a term. */
 export const PROP_GROUP_XP = 25, PROP_GROUP_GALLEONS = 2;
 /** A whizbang's blast hurts wild creatures this much (fire). */
