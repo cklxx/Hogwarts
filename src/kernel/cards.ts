@@ -1,6 +1,6 @@
 import { CARD_DUP_GALLEONS, CARD_RARITIES, type CardRarity } from '../shared/constants.js';
 import { CARDS, CARD_BY_ID, CARD_SETS, cardsOfSet, type Card, type CardSetId } from '../lore/cards.js';
-import { CHESTS, type ChestSpot } from '../shared/chests.js';
+import { CHESTS, CHEST_XP, type ChestSpot } from '../shared/chests.js';
 import { dist } from './physics.js';
 import { compass } from '../shared/reveal.js';
 import type { Wizard } from './types.js';
@@ -139,4 +139,4 @@ export function chestClues(world: World, w?: Wizard) {
     ...(near ? { nearest: { en: near.c.en, zh: near.c.zh, distance: warm(near.d).en, distanceZh: warm(near.d).zh, ...(w ? { bearing: compass(Math.atan2(near.c.x - w.pos.x, -(near.c.z - w.pos.z))) } : {}) } } : {}),
   };
 }
-export { CHESTS, CARD_BY_ID };
+export { CHESTS, CHEST_XP, CARD_BY_ID };
