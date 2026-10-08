@@ -67,7 +67,7 @@ export function floo(world: World, wid: string, to: string) {
   world.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z, h: w.handle });
   w.pos = { x: dest.x, z: dest.z };
   world.solids.resolve(w.pos, 0.5, true);
-  w.goal = null; w.route = []; w.goalBy = null;
+  world.stopWalk(w); // clears goal/route and the cross-scene continuation (via), like main
   world.moved(w);
   world.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z, h: w.handle });
   world.emit('system', `Green flames roar: you step out at ${dest.en}.`, { to: wid, zh: `绿色火焰一闪：你从${dest.zh}的壁炉里走了出来。` });
