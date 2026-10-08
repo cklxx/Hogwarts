@@ -274,10 +274,19 @@ const now = () => performance.now() / 1000;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 const BENIGN = new Set<CreatureKind>(['unicorn', 'phoenix']);
-const EN_CREATURE: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "Devil's Snare", spider: 'Acromantula', troll: 'Mountain Troll', dementor: 'Dementor', inferius: 'Inferius', unicorn: 'Unicorn', phoenix: 'Fawkes', serpent: 'Serpent', birds: 'Birds' };
+const EN_CREATURE: Record<CreatureKind, string> = { pixie: 'Cornish Pixie', snare: "Devil's Snare", spider: 'Acromantula', troll: 'Mountain Troll', dementor: 'Dementor', inferius: 'Inferius', unicorn: 'Unicorn', phoenix: 'Fawkes', serpent: 'Serpent', birds: 'Birds',
+  bowtruckle: 'Bowtruckle', hinkypunk: 'Hinkypunk', redcap: 'Red Cap', niffler: 'Niffler', grindylow: 'Grindylow', erkling: 'Erkling', kelpie: 'Kelpie', thestral: 'Thestral', hippogriff: 'Hippogriff',
+  occamy: 'Occamy', boggart: 'Boggart', runespoor: 'Runespoor', skrewt: 'Blast-Ended Skrewt', thunderbird: 'Thunderbird', werewolf: 'Werewolf',
+  lethifold: 'Lethifold', manticore: 'Manticore', chimera: 'Chimera', aragog: 'Aragog', basilisk: 'Basilisk', nundu: 'Nundu', dragon: 'Hungarian Horntail' };
 /** Rough body heights and footprints, for screen-space picking and the size of the target ring. */
-const HEIGHT: Record<CreatureKind, number> = { pixie: 1.5, snare: 1.3, spider: 1.4, troll: 3.8, dementor: 3.2, inferius: 1.9, unicorn: 2.1, phoenix: 3, serpent: 0.7, birds: 2.4 };
-const SIZE: Record<CreatureKind, number> = { pixie: 0.8, snare: 1.4, spider: 1.2, troll: 1.7, dementor: 1.1, inferius: 0.9, unicorn: 1.2, phoenix: 1, serpent: 0.9, birds: 1.2 };
+const HEIGHT: Record<CreatureKind, number> = { pixie: 1.5, snare: 1.3, spider: 1.4, troll: 3.8, dementor: 3.2, inferius: 1.9, unicorn: 2.1, phoenix: 3, serpent: 0.7, birds: 2.4,
+  bowtruckle: 0.8, hinkypunk: 1.2, redcap: 1.2, niffler: 1.0, grindylow: 1.4, erkling: 1.6, kelpie: 2.0, thestral: 2.4, hippogriff: 2.6,
+  occamy: 2.2, boggart: 1.8, runespoor: 1.6, skrewt: 1.5, thunderbird: 2.8, werewolf: 2.2,
+  lethifold: 1.0, manticore: 2.4, chimera: 2.8, aragog: 3.0, basilisk: 3.2, nundu: 3.0, dragon: 4.5 };
+const SIZE: Record<CreatureKind, number> = { pixie: 0.8, snare: 1.4, spider: 1.2, troll: 1.7, dementor: 1.1, inferius: 0.9, unicorn: 1.2, phoenix: 1, serpent: 0.9, birds: 1.2,
+  bowtruckle: 0.5, hinkypunk: 0.6, redcap: 0.7, niffler: 0.7, grindylow: 0.8, erkling: 0.8, kelpie: 1.0, thestral: 1.1, hippogriff: 1.2,
+  occamy: 1.0, boggart: 0.9, runespoor: 1.0, skrewt: 1.1, thunderbird: 1.3, werewolf: 1.0,
+  lethifold: 1.5, manticore: 1.3, chimera: 1.5, aragog: 1.7, basilisk: 1.5, nundu: 1.6, dragon: 2.0 };
 const REL_COLOR: Record<Rel, number> = { self: 0x9fd3ff, ally: 0x6cff8a, hostile: 0xff4a4a, neutral: 0xffe08a };
 /** The target frame's ink (it is parchment): red for a foe, verdigris for a friend, ochre for a bystander, indigo for you. */
 const REL_CSS: Record<Rel, string> = { self: '#27466f', ally: '#245548', hostile: '#a3262a', neutral: '#74500f' };

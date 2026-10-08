@@ -7,6 +7,11 @@ export const ZH_HOUSE: Record<string, string> = { Gryffindor: '格兰芬多', Hu
 export const ZH_CREATURE: Record<string, string> = {
   pixie: '康沃尔郡小精灵', snare: '魔鬼网', spider: '八眼巨蛛', troll: '巨怪', dementor: '摄魂怪', inferius: '阴尸',
   unicorn: '独角兽', phoenix: '福克斯', serpent: '召唤出的蛇', birds: '召唤出的鸟群',
+  bowtruckle: '护树罗锅', hinkypunk: '欣克庞克', redcap: '红帽子', niffler: '嗅嗅', grindylow: '格林迪洛',
+  erkling: '恶尔克林', kelpie: '凯尔皮', thestral: '夜骐', hippogriff: '鹰头马身有翼兽', occamy: '奥卡姆',
+  boggart: '博格特', runespoor: '三头蛇', skrewt: '炸尾螺', thunderbird: '雷鸟', werewolf: '狼人',
+  lethifold: '活活吞', manticore: '蝎尾兽', chimera: '奇美拉', aragog: '阿拉戈克', basilisk: '蛇怪',
+  nundu: '努杜', dragon: '火龙',
 };
 
 export const ZH_SPELL: Record<string, string> = {

@@ -13,6 +13,31 @@ const BUILTIN: Record<string, string> = {
   'Point Me': 'compass', 'Homenum Revelio': 'figures', Expelliarmus: 'expelliarmus', Glacius: 'ice', Depulso: 'depulso',
   'Expecto Patronum': 'patronus', 'Petrificus Totalus': 'chain', Bombarda: 'burst', 'Lumos Solem': 'light', Reducto: 'lightning',
   Apparition: 'swirl', Confringo: 'burst', Vestimentum: 'robe', Reparifarge: 'robe',
+  // year 1 additions
+  Rictusempra: 'stupefy', Flipendo: 'depulso', 'Lumos Maxima': 'lumos', Immobulus: 'chain', 'Everte Statum': 'stupefy',
+  'Protego Totalum': 'protego', Velocitas: 'swirl', 'Fulgur Minima': 'lightning', Crepitatio: 'burst', 'Nimbus Procella': 'lightning',
+  // year 2 additions
+  'Incendio Duo': 'incendio', 'Stupefy Duo': 'stupefy', 'Bombarda Minima': 'burst', Fulgur: 'lightning', 'Depulso Maxima': 'depulso',
+  'Immobulus Duo': 'chain', 'Protego Duo': 'protego', Sanare: 'episkey', Irradio: 'light', 'Serpensortia Major': 'snake',
+  'Glacius Duo': 'ice', Tempestas: 'lightning', 'Everte Statum Duo': 'stupefy',
+  // year 3 additions
+  'Bombarda Maxima': 'burst', 'Incendio Maxima': 'incendio', 'Glacius Maxima': 'ice', 'Fulgur Maxima': 'lightning',
+  'Stupefy Maxima': 'stupefy', 'Immobulus Maxima': 'chain', 'Protego Maxima': 'protego', 'Depulso Horribilis': 'depulso',
+  Tonitrus: 'burst', 'Irradio Maxima': 'light', 'Reducto Minima': 'lightning', 'Avis Maxima': 'bird',
+  'Serpensortia Maxima': 'snake', Medicus: 'episkey',
+  // year 4 additions
+  'Incendio Horribilis': 'incendio', 'Glacius Horribilis': 'ice', 'Stupefy Horribilis': 'stupefy', 'Bombarda Horribilis': 'burst',
+  'Tonitrus Major': 'burst', 'Fulgur Horribilis': 'lightning', 'Tempestas Major': 'lightning', 'Irradio Horribilis': 'light',
+  'Reducto Duo': 'lightning', 'Incarcerous Maxima': 'chain', 'Flipendo Horribilis': 'depulso', 'Protego Horribilis': 'protego',
+  'Sanare Maxima': 'episkey', 'Ferula Maxima': 'ferula', 'Avis Horribilis': 'bird', 'Serpensortia Horribilis': 'snake',
+  'Velocitas Maxima': 'swirl', 'Expelliarmus Maxima': 'expelliarmus',
+  // year 5 additions
+  'Reducto Maxima': 'lightning', 'Confringo Duo': 'burst', 'Tonitrus Horribilis': 'burst', Fulmen: 'lightning',
+  'Tempestas Horribilis': 'lightning', 'Glacius Suprema': 'ice', 'Aegis': 'protego', 'Stupefy Ultima': 'stupefy', 'Incendio Ultima': 'incendio',
+  // year 6 additions
+  Fiendfyre: 'burst', 'Glacius Ultima': 'ice', 'Tempestas Ultima': 'lightning', 'Aegis Maxima': 'protego',
+  // year 7 additions
+  'Confringo Maxima': 'burst', 'Fulmen Ultima': 'lightning', 'Tempestas Maxima': 'lightning',
 };
 export const ELEMENT_ICON: Record<string, string> = { arcane: 'arcane', fire: 'fire', ice: 'ice', lightning: 'lightning', light: 'light' };
 /** What a written spell does, most telling first: the first effect in this list names its icon. */
