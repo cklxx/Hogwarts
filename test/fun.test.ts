@@ -505,9 +505,9 @@ describe('巧克力蛙画片: Chocolate Frog cards', () => {
 
 // ------------------------------------------------------------------ 隐藏宝箱
 describe('隐藏宝箱: hidden chests', () => {
-  it('10–15 chests, each in a nook: clear of every collider, on dry land, inside the walkable world, reachable', () => {
-    expect(CHESTS.length).toBeGreaterThanOrEqual(10);
-    expect(CHESTS.length).toBeLessThanOrEqual(15);
+  it('100–150 chests, each in a nook: clear of every collider, on dry land, inside the walkable world, reachable', () => {
+    expect(CHESTS.length).toBeGreaterThanOrEqual(100);
+    expect(CHESTS.length).toBeLessThanOrEqual(150);
     const lake = OBSTACLES.find((o) => o.style === 'water')!;
     for (const c of CHESTS) {
       for (const col of STATIC_COLLIDERS) expect(signedDistance(col, c.x, c.z), `${c.id} vs ${col.label ?? col.style}`).toBeGreaterThan(0.6);
