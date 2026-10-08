@@ -81,7 +81,9 @@ for (let i = 0; ; i++) {
   let h = 2166136261;
   for (const ch of me.name) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
   const assigned = board.bounties[Math.abs(h) % board.bounties.length];
-  if (assigned && !assigned.claimed && me.where !== assigned.place) {
+  // Always camp at the ASSIGNED hunt-zone, even after someone claimed that bounty: a bot left in a
+  // transit spot (e.g. the courtyard) finds no prey and stalls until a random spawn.
+  if (assigned && me.where !== assigned.place) {
     await call('move_to', { x: assigned.x, z: assigned.z });
     await call('wait', { seconds: 3, until: 'event' });
     continue;
