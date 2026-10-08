@@ -242,7 +242,7 @@ export const PROPS: readonly Prop[] = [
   at('frf01-1', 'brazier', 94.6, 11.5, 'forest-fire-01'),
   at('frf01-2', 'brazier', 89.4, 11.5, 'forest-fire-01'),
   at('frf01-3', 'brazier', 92, 7, 'forest-fire-01'),
-  at('frf02-1', 'brazier', 132.0, 31.5, 'forest-fire-02'),
+  at('frf02-1', 'brazier', 131.0, 25.0, 'forest-fire-02'),
   at('frf02-2', 'brazier', 132.4, 31.5, 'forest-fire-02'),
   at('frf02-3', 'brazier', 135, 27, 'forest-fire-02'),
   at('frf03-1', 'brazier', 150.6, 11.5, 'forest-fire-03'),
