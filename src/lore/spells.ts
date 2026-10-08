@@ -78,7 +78,7 @@ export const CURRICULUM: Curriculum[] = [
   { year: 4, name: 'Bombarda Horribilis', incantation: 'Bombarda Horribilis!', note: 'An explosion that shakes the castle.', source: '(nova 7 24 :fire)' },
   { year: 4, name: 'Tonitrus Major', incantation: 'Tonitrus Major!', note: 'Thunder you can stand inside.', source: '(nova 7 22 :lightning)' },
   { year: 4, name: 'Fulgur Horribilis', incantation: 'Fulgur Horribilis!', note: 'Lightning that refuses to stop.', source: '(chain (or target (first (enemies 28))) 30)' },
-  { year: 4, name: 'Tempestas Major', incantation: 'Tempestas Major!', note: 'A storm that answers only to you.', source: '(storm (or target aim) 7 30 :lightning)' },
+  { year: 7, name: 'Tempestas Major', incantation: 'Tempestas Major!', note: 'A storm that answers only to you.', source: '(storm (or target aim) 7 30 :lightning)' },
   { year: 4, name: 'Irradio Horribilis', incantation: 'Irradio Horribilis!', note: 'Sunlight focused to a killing point.', source: '(bolt (or target aim) 32 :light)' },
   { year: 4, name: 'Reducto Duo', incantation: 'Reducto Duo!', note: 'A near-full reductor.', source: '(bolt (or target aim) 32 :lightning)' },
   { year: 4, name: 'Incarcerous Maxima', incantation: 'Incarcerous Maxima!', note: 'Iron ropes. No struggling free.', source: '(let t (or target (first (enemies 28))))\n(when t (root t 2.2))' },
@@ -95,7 +95,7 @@ export const CURRICULUM: Curriculum[] = [
   { year: 5, name: 'Confringo Duo', incantation: 'Confringo Duo!', note: 'A blasting curse, barely contained.', source: '(nova 8 28 :fire)' },
   { year: 5, name: 'Tonitrus Horribilis', incantation: 'Tonitrus Horribilis!', note: 'The sky itself objects.', source: '(nova 8 26 :lightning)' },
   { year: 5, name: 'Fulmen', incantation: 'Fulmen!', note: 'A lightning bolt with a grudge.', source: '(chain (or target (first (enemies 30))) 35)' },
-  { year: 5, name: 'Tempestas Horribilis', incantation: 'Tempestas Horribilis!', note: 'A thunderstorm on demand.', source: '(storm (or target aim) 8 36 :lightning)' },
+  { year: 7, name: 'Tempestas Horribilis', incantation: 'Tempestas Horribilis!', note: 'A thunderstorm on demand.', source: '(storm (or target aim) 8 36 :lightning)' },
   { year: 5, name: 'Glacius Suprema', incantation: 'Glacius Suprema!', note: 'Absolute zero, weaponised.', source: '(bolt (or target aim) 38 :ice)' },
   { year: 5, name: 'Aegis', incantation: 'Aegis!', note: 'An aegis of solid air. Nothing passes.', source: '(shield self 65 7)' },
   { year: 5, name: 'Stupefy Ultima', incantation: 'Stupefy Ultima!', note: 'An almost irresistible stunning spell.', source: '(bolt (or target aim) 38)' },
@@ -103,7 +103,7 @@ export const CURRICULUM: Curriculum[] = [
   // ---- year 6 additions (4) ----
   { year: 6, name: 'Fiendfyre', incantation: 'Fiendfyre!', note: 'Cursed fire that hungers. Cast it only if you can master it.', source: '(nova 9 32 :fire)' },
   { year: 6, name: 'Glacius Ultima', incantation: 'Glacius Ultima!', note: 'The cold between the stars.', source: '(bolt (or target aim) 44 :ice)' },
-  { year: 6, name: 'Tempestas Ultima', incantation: 'Tempestas Ultima!', note: 'Weather as a weapon.', source: '(storm (or target aim) 9 42 :lightning)' },
+  { year: 7, name: 'Tempestas Ultima', incantation: 'Tempestas Ultima!', note: 'Weather as a weapon.', source: '(storm (or target aim) 9 42 :lightning)' },
   { year: 6, name: 'Aegis Maxima', incantation: 'Aegis Maxima!', note: 'A fortress no curse can breach.', source: '(shield self 75 8)' },
   // ---- year 7 additions (3) ----
   { year: 7, name: 'Confringo Maxima', incantation: 'Confringo Maxima!', note: 'The Blasting Curse at full power. Cities fear it.', source: '(nova 10 36 :fire)' },

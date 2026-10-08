@@ -95,7 +95,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   hippogriff: {
     kind: 'hippogriff', name: 'Hippogriff', faction: 'hostile', hp: 95, speed: 6.5, damage: 10, range: 2.2, cooldown: 1.4, aggro: 10, radius: 0.9,
-    xp: 42, rep: 4, galleons: 4, weak: {}, flying: true, spawn: { x: 60, z: -50, r: 10, max: 3 },
+    xp: 42, rep: 4, galleons: 4, weak: { light: 1.5 }, flying: true, spawn: { x: 60, z: -50, r: 10, max: 3 },
     lore: 'Proud and easily insulted. Bow first — or be taloned. Hagrid’s favourite, after Fang.',
   },
   occamy: {
@@ -115,13 +115,13 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   skrewt: {
     kind: 'skrewt', name: 'Blast-Ended Skrewt', faction: 'hostile', hp: 110, speed: 2.5, damage: 12, range: 2.5, cooldown: 1.6, aggro: 10, radius: 0.8,
-    xp: 60, rep: 6, galleons: 4, weak: { ice: 2 }, spawn: { x: 20, z: -60, r: 8, max: 3 },
+    xp: 60, rep: 6, galleons: 4, weak: { ice: 2, lightning: 1.5 }, spawn: { x: 20, z: -60, r: 8, max: 3 },
     ranged: { range: 20, power: 10, cooldown: 3, element: 'fire', kind: 'bolt', provoked: true },
     lore: 'Hagrid’s crossbreed: it explodes from the rear. Do not stand behind it. Ice calms the blast.',
   },
   thunderbird: {
     kind: 'thunderbird', name: 'Thunderbird', faction: 'hostile', hp: 120, speed: 8, damage: 12, range: 2.5, cooldown: 1.4, aggro: 14, radius: 1.0,
-    xp: 65, rep: 7, galleons: 6, weak: {}, flying: true, spawn: { x: 80, z: 80, r: 12, max: 3 },
+    xp: 65, rep: 7, galleons: 6, weak: { ice: 1.5 }, flying: true, spawn: { x: 80, z: 80, r: 12, max: 3 },
     ranged: { range: 30, power: 12, cooldown: 4, element: 'lightning', kind: 'bolt' },
     lore: 'Its wings beat up storms as it flies. When the sky darkens over the pitch, look up.',
   },
@@ -160,7 +160,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   nundu: {
     kind: 'nundu', name: 'Nundu', faction: 'hostile', hp: 240, speed: 6, damage: 24, range: 3, cooldown: 1.7, aggro: 16, radius: 1.3,
-    xp: 115, rep: 12, galleons: 15, weak: {}, allDamage: 0.8, spawn: { x: -160, z: -60, r: 12, max: 1 }, bite: { aura: 'poison', secs: 5, mag: 5 },
+    xp: 115, rep: 12, galleons: 15, weak: { fire: 1.5 }, allDamage: 0.8, spawn: { x: -160, z: -60, r: 12, max: 1 }, bite: { aura: 'poison', secs: 5, mag: 5 },
     lore: 'Its breath alone fells a village. It takes a hundred wizards to subdue one — you are not a hundred wizards.',
   },
   dragon: {
