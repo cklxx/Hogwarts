@@ -60,7 +60,7 @@ describe('props: where they stand', () => {
 describe('props: what spells do', () => {
   it('repeatedly lighting or relighting a single prop cannot farm experience', () => {
     const w = mk();
-    const lamp = p('brazier-courtyard-1');
+    const lamp = p('dun-1');
     const a = wiz(w, 'Lamplighter', lamp);
     const xp = a.xp;
     for (let i = 0; i < 100; i++) {
@@ -93,7 +93,7 @@ describe('props: what spells do', () => {
   it('three Incendios at the dungeon braziers, one by one: the group pays once this term; the next term again', () => {
     const w = mk();
     const ms = PROPS.filter((q) => q.group === 'dungeon-fire');
-    const a = wiz(w, 'Lighter', { x: -40, z: -18 });
+    const a = wiz(w, 'Lighter', { x: -40, z: -24 });
     const xp = a.xp, g = a.galleons;
     for (const q of ms) { expect(w.cast(a.id, 'Incendio', { aim: { x: q.x, z: q.z } }).ok).toBe(true); run(w, 1.6); }
     for (const q of ms) expect(w.props.awake.has(q.id), q.id).toBe(true);

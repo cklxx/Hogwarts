@@ -399,7 +399,7 @@ export const HAND_PROPS: readonly Prop[] = [
   at('bx-castle-097', 'pumpkin', -59.8, -60.4), at('bx-castle-098', 'pumpkin', 34.6, -5.2), at('bx-castle-099', 'pumpkin', 50.8, 3.9), at('bx-castle-100', 'pot', -44.4, -12.6),
   at('bx-castle-101', 'crate', -12.6, 4.2), at('bx-castle-102', 'barrel', 48, -12), at('bx-castle-103', 'barrel', 42.8, -49.5), at('bx-castle-104', 'barrel', -51, -4.2),
   at('bx-castle-105', 'crate', 66.7, -42.5), at('bx-castle-106', 'pot', 42.4, 10.9), at('bx-castle-107', 'crate', 61.7, -11), at('bx-castle-108', 'crate', -0.6, 29.1),
-  at('bx-castle-109', 'crate', -2.1, -1), at('bx-castle-110', 'pot', 66, -34.9), at('bx-castle-111', 'crate', 13.4, 28.8), at('bx-castle-112', 'barrel', -40.7, -34.4),
+  at('bx-castle-109', 'crate', -2.1, -1), at('bx-castle-110', 'pot', 66, -34.9), at('bx-castle-111', 'crate', 13.4, 28.8), at('bx-castle-112', 'barrel', -53, -40),
   at('bx-castle-113', 'crate', -37.2, 15.7), at('bx-castle-114', 'pot', 31.7, -49), at('bx-castle-115', 'crate', -60, -26.1), at('bx-castle-116', 'barrel', -59.9, -52.1),
   at('bx-castle-117', 'crate', -57.4, -31.5), at('bx-castle-118', 'crate', -47.4, -2.6), at('bx-castle-119', 'barrel', 5.2, -23.6), at('bx-castle-120', 'crate', 25.2, -62.5),
   at('bx-castle-121', 'pot', 19.6, -37.9), at('bx-castle-122', 'pot', 27.1, 33.1), at('bx-castle-123', 'pot', 34.2, 1.9), at('bx-castle-124', 'crate', -1.3, 17),
