@@ -18,4 +18,7 @@ export const FLOO_R = 3;
 export const FLOO_CD_S = 30, FLOO_HURT_S = 6;
 /** On a broom, outside the castle: this much faster; mounting takes a moment's calm. */
 export const BROOM_MULT = 2.0, BROOM_MOUNT_CD_S = 3, BROOM_HURT_S = 4;
+/** Broom stamina: a full bar of 100; drains while riding (25 s to empty), regenerates on foot (10 s to full), then a 5 s weak window where remounting is refused. */
+/** 扫帚耐力：满格 100；骑行消耗（25 秒耗尽），步行恢复（10 秒回满），耗尽后 5 秒虚弱期不可再骑。 */
+export const BROOM_STAMINA_MAX = 100, BROOM_STAMINA_DRAIN_S = 4, BROOM_STAMINA_REGEN_S = 10, BROOM_STAMINA_WEAK_S = 5;
 export const fireplaceNear = (p: { x: number; z: number }, r = FLOO_R) => FIREPLACES.find((f) => Math.hypot(f.x - p.x, f.z - p.z) <= r) ?? null;

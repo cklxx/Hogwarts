@@ -35,7 +35,7 @@ const LEVELS: Record<'low' | 'high', Level> = {
 const BLADES = 4;
 function clumpGeometry() {
   const pos: number[] = [], nrm: number[] = [], uv: number[] = [], idx: number[] = [];
-  const SEG = 3;
+  const SEG = 2;
   for (let b = 0; b < BLADES; b++) {
     const a = (b / BLADES) * Math.PI + Math.sin(b * 2.3) * 0.25;
     const ca = Math.cos(a), sa = Math.sin(a);

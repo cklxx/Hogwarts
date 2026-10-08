@@ -6,6 +6,9 @@
  */
 export interface ChestSpot { id: string; x: number; z: number; zh: string; en: string }
 
+/** Opening a chest pays this much experience (once per chest per term). */
+export const CHEST_XP = 8;
+
 export const CHESTS: ChestSpot[] = [
   { id: 'pillar', x: -21, z: -33, zh: '庭院石柱后面', en: 'Behind a courtyard pillar' },
   { id: 'hall', x: -10.4, z: -70.2, zh: '礼堂的角落', en: 'A corner of the Great Hall' },

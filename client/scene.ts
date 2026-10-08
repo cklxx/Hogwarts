@@ -662,7 +662,8 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   }
 
   // every window: a recessed pane of leaded glass inside a stone frame, all in two draw calls
-  // (at 'low' the frames swap to a coarser arch: 216 vertices each instead of 456, over some 400 windows)
+  // (the frames default to a coarser arch: 216 vertices each instead of 456, over some 400 windows;
+  // 'high' quality swaps back to the fine arch)
   const frameGeos: Record<'low' | 'high', THREE.BufferGeometry> = { high: null!, low: null! };
   let frames: THREE.InstancedMesh;
   {
@@ -675,7 +676,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     frameGeos.high = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 8 });
     frameGeos.low = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 3 });
     const panes = new THREE.InstancedMesh(paneGeo, windowMat, windows.length);
-    frames = new THREE.InstancedMesh(frameGeos.high, M.darkStone, windows.length);
+    frames = new THREE.InstancedMesh(frameGeos.low, M.darkStone, windows.length);
     const mm = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
     windows.forEach((w, i) => {
       mm.compose(v.set(w.x, w.y, w.z), q.setFromAxisAngle(Y, w.yaw), sc.set(w.w, w.h / 2, 1));

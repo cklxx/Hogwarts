@@ -3,6 +3,7 @@ import { L } from './i18n';
 import { OVERLAY } from './layers';
 import { heightAt } from './terrain';
 import type { ClientFeatureFactory } from './feature';
+import { spriteTex } from './textures';
 import { edgeFaces, edgeTo, GATES, SCENES, SIDES, sceneAt, sceneById, type Gate, type Scene, type Side } from '../src/shared/scenes';
 
 /**
@@ -54,8 +55,7 @@ function labelTexture(text: string, sub = '') {
     g.lineWidth = 5; g.strokeText(sub, 128, 74);
     g.fillStyle = '#e8eefc'; g.fillText(sub, 128, 74);
   }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
+  const t = spriteTex(c);
   return t;
 }
 function label(text: string) {
@@ -142,7 +142,7 @@ function veil(group: THREE.Group) {
 function gateModel(g: Gate) {
   const root = new THREE.Group();
   const col = GLOW[g.to] ?? 0xffffff;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.12, 10, 40), new THREE.MeshBasicMaterial({ color: col }));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.12, 10, 16), new THREE.MeshBasicMaterial({ color: col }));
   ring.position.y = 1.5;
   const disc = new THREE.Mesh(new THREE.CircleGeometry(1.15, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }));
   disc.position.y = 1.5;

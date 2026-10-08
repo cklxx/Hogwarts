@@ -24,6 +24,18 @@ function tex(c: HTMLCanvasElement, srgb = true) {
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+/**
+ * A texture for sprites / UI quads (labels, signs, banners, glow sprites): never tiles and is
+ * rarely minified, so mipmaps are pure waste (x1.33 memory) — disable them (docs/PERF.md 2026-10-06).
+ */
+export function spriteTex(c: HTMLCanvasElement, srgb = true) {
+  const t = new THREE.CanvasTexture(c);
+  t.generateMipmaps = false;
+  t.minFilter = THREE.LinearFilter;
+  t.anisotropy = 4;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 const shade = (base: [number, number, number], k: number) => `rgb(${base.map((v) => Math.max(0, Math.min(255, Math.round(v * k)))).join(',')})`;
 function speckle(g: CanvasRenderingContext2D, size: number, n: number, alpha: number) {
   for (let i = 0; i < n; i++) {
@@ -224,9 +236,7 @@ export function glowSprite(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,
   rg.addColorStop(1, outer);
   g.fillStyle = rg;
   g.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return spriteTex(c);
 }
 
 /** A house banner: field colour, gold trim, and the house initial in the middle. */
@@ -243,9 +253,7 @@ export function bannerTexture(color: string, letter: string) {
   g.font = 'bold 180px Georgia';
   g.textAlign = 'center';
   g.fillText(letter, 128, 290);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return spriteTex(c); // banner 永不平铺：去 mipmap（省 x1.33 显存），srgb 保持
 }
 
 /** Scale a BoxGeometry's UVs so the texture repeats every `tile` metres on every face. */
@@ -750,20 +758,32 @@ function storybookMaterials() {
 }
 
 /** ?style=real: the open-source PBR sets (procedural canvas textures stay as fallbacks). */
+
+/**
+ * stone/darkStone 共用的 PBR 贴图组：模块级缓存，fileTex().load() 只跑一次。
+ * flagstone 不走缓存——它的 repeat 是 0.5（stone/darkStone 是 1），共享纹理会改视觉。
+ */
+let stoneSetCache: { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture; aoMap: THREE.Texture } | null = null;
+
 function realMaterials() {
   const st = stone([150, 144, 132]);
   const cob = cobbles();
   const grassTex = grass();
   grassTex.repeat.set(90, 90);
-  const stoneSet = () => ({
+  const stoneSetRaw = () => ({
     map: fileTex('stone_color.webp', { fallback: st.map }),
     normalMap: fileTex('stone_normal.webp', { srgb: false }),
     roughnessMap: fileTex('stone_rough.webp', { srgb: false }),
     aoMap: fileTex('stone_ao.webp', { srgb: false }),
   });
+  /** stone/darkStone：同一组贴图，repeat 相同，共享安全。 */
+  const stoneSet = () => {
+    if (!stoneSetCache) stoneSetCache = stoneSetRaw();
+    return stoneSetCache;
+  };
   const grassFile = fileTex('grass_color.webp', { fallback: grassTex, repeat: 110 });
   const woodSet = { map: fileTex('wood_color.webp', { fallback: wood() }), bumpMap: fileTex('wood_bump.webp', { srgb: false }), roughnessMap: fileTex('wood_rough.webp', { srgb: false }) };
-  const flag = stoneSet();
+  const flag = stoneSetRaw(); // 独立纹理：下面把 repeat 改成 0.5，不能污染 stone/darkStone 的共享组
   for (const t of Object.values(flag)) t.repeat.set(0.5, 0.5);
   return {
     stone: new THREE.MeshStandardMaterial({ ...stoneSet(), normalScale: new THREE.Vector2(1.2, 1.2), aoMapIntensity: 0.8 }),
