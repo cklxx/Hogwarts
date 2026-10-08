@@ -16,6 +16,7 @@ import { OBSTACLES, WORLD_HALF } from '../src/shared/map.js';
 import { findPath, walkableAt } from '../src/kernel/pathfind.js';
 import { analyze } from '../src/runes/checker.js';
 import { ensureNpcs } from '../src/kernel/npc.js';
+import { questStatus, QUEST_REP } from '../src/kernel/quests.js';
 import {
   CARD_DUP_GALLEONS, CUP_CAP_DEFAULT, CUP_CAP_MAX, CUP_FINAL_S, CUP_MULT_MAX, CURFEW_CLOSE_S, CURFEW_GRACE_S, CURFEW_PENALTY, EVENT_IDS, EVENT_INTERVAL_MAX, EVENT_INTERVAL_MIN, EVENT_MAX_S,
   SNITCH_CAP_PER_TERM, SNITCH_POINTS,
@@ -275,7 +276,10 @@ describe('校园事件轮盘: the event wheel', () => {
     a.pos = { x: e2.d.sx!, z: e2.d.sz! };
     run(w, 0.6, () => { const d = w.wheel.active?.d; if (d?.sx !== undefined) a.pos = { x: d.sx, z: d.sz! }; });
     expect(e2.outcome).toBe('won');
-    expect(a.cup!.pts).toBe(SNITCH_CAP_PER_TERM);
+    // daily lessons also add house points ('events'); the second snitch itself adds none (term cap)
+    const lessons = questStatus(w, a.id);
+    const questPts = lessons.lessons.filter((l) => l.done).length * QUEST_REP;
+    expect(a.cup!.pts).toBe(SNITCH_CAP_PER_TERM + questPts);
   });
 
   it('金色飞贼, lost: it escapes after 90 s', () => {

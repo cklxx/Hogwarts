@@ -818,7 +818,7 @@ export class World {
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
-      ui: [], seals: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0, auras: [], tearsAt: 0,
+      ui: [], seals: 0, graduates: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0, auras: [], tearsAt: 0,
       hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, agentPaused: false, agentSeen: null, goalBy: null,
       look: null, jinxLook: null,
     };

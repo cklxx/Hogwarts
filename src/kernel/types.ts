@@ -158,6 +158,8 @@ export interface Wizard {
   ui: string[];
   /** Restricted-Section seals broken (0..4): it lifts the Runes caps (the quest itself: kernel/seals.ts). */
   seals: number;
+  /** Graduations (prestige count): each gives +10 maxHp and +5 maxMana (kernel/endgame.ts). */
+  graduates: number;
   wasMinister: boolean;
   /** Server-driven non-player wizard. */
   npc: boolean;
