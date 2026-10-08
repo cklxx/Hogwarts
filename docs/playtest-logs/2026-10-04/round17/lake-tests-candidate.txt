@@ -1,0 +1,14 @@
+(node:16237) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ cold low binds initialized linear color and updates eye from camera world matrix without a render pass (9.011193ms)
+✔ low-high-low restores the same RT sampler and reuses the single low texture (0.955563ms)
+✔ disposing the owning Water material releases the low texture once (4.807735ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 577.559105

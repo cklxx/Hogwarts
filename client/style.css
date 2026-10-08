@@ -405,7 +405,10 @@ html:lang(en) #overlay > div { font: 700 calc(38px * var(--t))/1.2 var(--latin);
 #target .tf-sub { font-size: calc(14px * var(--t)); color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* the F prompt: a parchment pill with a wax key */
+/* SVG border-image can leave the paper unpainted (including desktop ANGLE/SwiftShader).
+   Keep a paper-coloured edge; the longhand survives production CSS minification. */
 #prompt { position: fixed; left: 50%; top: 60%; transform: translate(-50%, -100%); z-index: 3; padding: calc(3px * var(--u)) calc(16px * var(--u)) calc(3px * var(--u)) calc(6px * var(--u)); white-space: nowrap; cursor: pointer; font-size: var(--fs-body);
+  border-image-source: none; border-color: var(--paper2);
   box-shadow: inset 0 0 calc(12px * var(--u)) rgba(120, 72, 22, .4), var(--shadow); animation: bob 2.2s ease-in-out infinite; }
 #prompt kbd { margin-right: calc(8px * var(--u)); color: #fff4e4; border-color: transparent; background: radial-gradient(circle at 35% 30%, #c0403a, #7a1418 72%); box-shadow: 0 calc(1px * var(--u)) calc(2px * var(--u)) rgba(0, 0, 0, .4); font-size: calc(15px * var(--t)); }
 @keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
@@ -635,6 +638,11 @@ html:lang(zh) #book .fld input#sp-inc:placeholder-shown { font-family: var(--cjk
 #helppanel .row { justify-content: flex-end; margin-top: calc(14px * var(--u)); }
 
 #board, #menu { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(640px * var(--u)), calc(100vw - calc(28px * var(--u)))); max-height: 86vh; }
+/* Owl Post keeps its exit above a separately scrolling body, even halfway through setup instructions. */
+#menu { display: flex; flex-direction: column; overflow: hidden; }
+#menu > h2 { flex: none; }
+#menu > h2 .x { flex: none; min-width: 44px; min-height: 44px; }
+#menu > .op-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(91, 64, 41, .45) transparent; }
 #board table { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
 #board td, #board th { padding: calc(5px * var(--u)) calc(8px * var(--u)); border-bottom: calc(1px * var(--u)) solid var(--hair); text-align: left; }
 #board td:is(:first-child, :nth-child(5), :nth-child(6)) { font-family: var(--latin); font-weight: 700; font-size: calc(17px * var(--t)); font-feature-settings: 'lnum' 1, 'tnum' 1; }
@@ -903,6 +911,7 @@ body.observing #view { outline: 3px solid color-mix(in srgb, var(--indigo) 55%, 
 /* the coach mark over an open panel sits at the top: the spellbook and the seals make room under it (--tut-over, main.ts trackBars) */
 body:has(#tutorial[data-over]:not([hidden])) #book { top: calc(var(--tut-over, calc(48px * var(--u))) + calc(8px * var(--u))); height: min(calc(680px * var(--u)), calc(100vh - var(--tut-over, calc(48px * var(--u))) - calc(24px * var(--u)))); }
 body:has(#tutorial[data-over]:not([hidden])) #seals { top: calc(var(--tut-over, calc(48px * var(--u))) + calc(8px * var(--u))); }
+body:has(#tutorial[data-over]:not([hidden])) #menu { top: calc(var(--tut-over, 48px) + 8px); transform: translateX(-50%); max-height: calc(100dvh - var(--tut-over, 48px) - 16px); }
 /* a portrait phone: the top pieces stack under your card instead of overlaying it (--stack-n, main.ts trackBars) */
 @media (max-width: 520px) {
   body #cupstrip { top: calc(var(--tl-bottom, calc(84px * var(--u))) + calc(6px * var(--u))); }
@@ -991,3 +1000,7 @@ body.touch:has(.sheet:not([hidden])) #quests { display: none; }
 #bars .vitals .lbl { display: none; }
 #bars .bar.full > span { visibility: hidden; }
 body.tut-done #help .mini { display: none; }
+/* the press buffer (controls.ts castGate): a spell you cannot afford now is greyed; out of mana, the bar flashes */
+#hotbar > div.poor { filter: grayscale(0.75) brightness(0.82); }
+#bars .mana.flash { animation: manaflash 0.45s ease-out; }
+@keyframes manaflash { 0%, 100% { filter: none; } 30% { filter: brightness(1.8) saturate(1.4); transform: scaleY(1.25); } }

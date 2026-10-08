@@ -58,6 +58,18 @@ describe('props: where they stand', () => {
 });
 
 describe('props: what spells do', () => {
+  it('repeatedly lighting or relighting a single prop cannot farm experience', () => {
+    const w = mk();
+    const lamp = p('brazier-courtyard-1');
+    const a = wiz(w, 'Lamplighter', lamp);
+    const xp = a.xp;
+    for (let i = 0; i < 100; i++) {
+      touch(w, lamp, 'fire', a.id);
+      if (i % 2 === 0) touch(w, lamp, 'ice', a.id);
+    }
+    expect(a.xp).toBe(xp);
+  });
+
   it('a straight Stupefy at a crate breaks it (the bolt is spent), pays a little, and the crate comes back', () => {
     const w = mk();
     const crate = p('lawn-1');
@@ -87,7 +99,7 @@ describe('props: what spells do', () => {
     for (const q of ms) expect(w.props.awake.has(q.id), q.id).toBe(true);
     expect(a.xp - xp).toBe(PROP_GROUP_XP);
     expect(a.galleons - g).toBe(PROP_GROUP_GALLEONS);
-    // again this term: nothing more
+    // again this term: the group pays only once
     w.props.awake.clear();
     for (const q of ms) touch(w, q, 'fire', a.id);
     expect(a.xp - xp).toBe(PROP_GROUP_XP);
@@ -161,6 +173,9 @@ describe('props: what spells do', () => {
     const look = w.look(a.id) as unknown as { props?: { id: string; state: string }[] };
     const seen = JSON.stringify(look);
     expect(seen).toContain('dun-1');
+    const d1 = (look.props ?? []).find((q) => q.id === 'dun-1') as unknown as { secondsLeft?: number; groupLit?: string };
+    expect(d1.secondsLeft).toBeGreaterThan(30);
+    expect(d1.groupLit).toBe('1/3');
     const back = World.restore(JSON.parse(JSON.stringify(w.serialize())));
     expect(back.props.breaks.get(a.id)).toBe(1);
   });

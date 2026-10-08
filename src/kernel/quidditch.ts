@@ -186,7 +186,7 @@ export function qdChase(world: World, wid: string, on: boolean) {
   const m = world.qd.match, p = m?.roster[wid];
   if (!m || !p) throw new Error('You are not on a team. Call quidditch join first. 你还没上场：先 quidditch join。');
   p.chase = on;
-  if (!on) { const w = world.wizards.get(wid); if (w && w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; } }
+  if (!on) { const w = world.wizards.get(wid); if (w && w.goalBy === 'agent') { world.stopWalk(w); } }
   return qdStatus(world, wid);
 }
 
@@ -216,7 +216,7 @@ function roleOf(m: QdMatch, side: 0 | 1, role: QdRole) { return Object.keys(m.ro
 function place(world: World, w: Wizard, side: 0 | 1) {
   const e = QD_ENDS[side], n = Object.values(world.qd.match!.roster).filter((x) => x.side === side).length;
   w.pos = { x: e.x + ((n % 5) - 2) * 3, z: e.z };
-  w.goal = null; w.route = []; w.goalBy = null;
+  world.stopWalk(w);
   world.moved(w);
 }
 
@@ -225,7 +225,7 @@ function bench(world: World, m: QdMatch, wid: string) {
   const p = m.roster[wid];
   delete m.roster[wid];
   const w = world.wizards.get(wid);
-  if (w && p?.chase && w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; }
+  if (w && p?.chase && w.goalBy === 'agent') { world.stopWalk(w); }
 }
 
 // ------------------------------------------------------------------ the match
@@ -263,7 +263,7 @@ function startPlay(world: World, m: QdMatch) {
     if (!w) continue;
     const e = QD_ENDS[p.side];
     w.pos = { x: e.x + ((bySide[p.side]++ % 5) - 2) * 3, z: e.z };
-    w.goal = null; w.route = []; w.goalBy = null;
+    world.stopWalk(w);
     world.moved(w);
   }
   m.quaffle = { x: QD_PITCH.x, z: QD_PITCH.z, vx: 0, vz: 0, flying: 0, carrier: null, thrower: null, deadUntil: world.now + 1 };
@@ -298,7 +298,7 @@ function endPlay(world: World, m: QdMatch) {
   const res = m.winner === null ? { en: 'a draw', zh: '平局' } : { en: `${m.sides[m.winner]} win`, zh: `${houseZh[m.sides[m.winner]]}获胜` };
   lee(world, `Full time: ${A} ${m.score[0]} – ${m.score[1]} ${B}, ${res.en}${c ? ` — ${c} caught the Snitch!` : '.'}${lines.length ? ` (${lines.join(', ')})` : ''}`,
     `终场：${houseZh[A]} ${m.score[0]} : ${m.score[1]} ${houseZh[B]}，${res.zh}${c ? `——${c} 抓住了金色飞贼！` : '。'}${zh.length ? `（${zh.join('，')}）` : ''}`);
-  for (const [id, p] of Object.entries(m.roster)) { const w = world.wizards.get(id); if (w && p.chase && w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; } }
+  for (const [id, p] of Object.entries(m.roster)) { const w = world.wizards.get(id); if (w && p.chase && w.goalBy === 'agent') { world.stopWalk(w); } }
 }
 
 // ------------------------------------------------------------------ the league
@@ -557,15 +557,15 @@ function steer(world: World, m: QdMatch) {
     const w = world.wizards.get(id);
     if (!w || !world.isActive(w) || (!w.npc && world.playerSteering(w))) continue;
     let to: Vec2 | null = null;
-    if (p.role === 'seeker') to = m.snitch ? { x: m.snitch.x, z: m.snitch.z } : QD_ENDS[p.side];
-    else if (p.role === 'keeper' && q.carrier !== id) {
-      // mark the Quaffle along the hoop line, a little out in front of the middle hoop
-      const mid = QD_HOOPS[p.side][1], out = p.side === 0 ? 3 : -3;
-      to = { x: Math.max(mid.x - 7, Math.min(mid.x + 7, q.x)), z: mid.z + out };
-    } else if (q.carrier === id) {
+    if (q.carrier === id) {
       const h = [...QD_HOOPS[1 - p.side]].sort((a, b) => d2(w.pos, a) - d2(w.pos, b))[0];
       if (d2(w.pos, h) <= QD_AUTO_THROW) { launch(m, w, h); continue; }
       to = { x: h.x, z: h.z + (p.side === 0 ? -8 : 8) };
+    } else if (p.role === 'seeker') to = m.snitch ? { x: m.snitch.x, z: m.snitch.z } : QD_ENDS[p.side];
+    else if (p.role === 'keeper') {
+      // mark the Quaffle along the hoop line, a little out in front of the middle hoop
+      const mid = QD_HOOPS[p.side][1], out = p.side === 0 ? 3 : -3;
+      to = { x: Math.max(mid.x - 7, Math.min(mid.x + 7, q.x)), z: mid.z + out };
     } else if (!q.carrier || m.roster[q.carrier]?.side !== p.side) to = { x: q.x, z: q.z };
     else to = { x: QD_PITCH.x + (p.side === 0 ? 6 : -6), z: QD_HOOPS[1 - p.side][1].z + (p.side === 0 ? -12 : 12) }; // get open for a pass
     if (to) { w.goal = { ...to }; w.route = []; w.goalBy = 'agent'; }
@@ -602,7 +602,7 @@ export function qdStatus(world: World, wid: string | null) {
     you: you ? { side: m!.sides[you.side], role: you.role, goals: you.goals, autopilot: you.chase, carrying: m!.quaffle.carrier === wid } : null,
     pitch: QD_PITCH,
     league: leagueView(world),
-    rules: { goal: QD_GOAL, snitch: QD_SNITCH, bludgerDamage: QD_BLUDGER_DMG, reputationMax: QD_REP_MAX, housePointsMax: QD_CUP_MAX, howTo: 'join during the call; touch the Quaffle to take it, throw it (quidditch throw) through a hoop at the other end; a spell that passes a Bludger beats it away; a seeker who stays within 1.5 m of the Snitch for 0.5 s catches it. quidditch chase = autopilot.' },
+    rules: { goal: QD_GOAL, snitch: QD_SNITCH, bludgerDamage: QD_BLUDGER_DMG, reputationMax: QD_REP_MAX, housePointsMax: QD_CUP_MAX, howTo: `join during the call; touch the Quaffle to take it, throw it (quidditch throw) through a hoop at the other end; a spell that passes a Bludger beats it away; a seeker who stays within ${QD_CATCH_R} m of the Snitch for ${QD_CATCH_S} s catches it. quidditch chase = autopilot.` },
   };
 }
 

@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="霍格沃茨" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="color-scheme" content="light" />
-  <title>Hogwarts — a world where spells are code</title>
+  <title data-zh="霍格沃兹：找回写代码的乐趣">Hogwarts: Rediscover the joy of coding</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
   <!-- the reading hand first; the brush and the Latin arrive with font-display: swap -->
   <link rel="preload" href="/fonts/LXGWWenKai-Regular.woff2" as="font" type="font/woff2" crossorigin />
@@ -95,9 +95,9 @@
   <!-- the gate: a letter from Hogwarts -->
   <section id="gate" class="letter" hidden>
     <div class="crest" aria-hidden="true"><svg viewBox="0 0 64 40"><path d="M4 22c8-2 14-8 18-16M60 22c-8-2-14-8-18-16M22 6c3 5 6 7 10 7s7-2 10-7M32 13v22M24 30c3 2 5 3 8 3s5-1 8-3" /><circle cx="32" cy="22" r="3.2" /></svg></div>
-    <h1 data-zh="霍格沃茨">Hogwarts</h1>
-    <p class="motto">Draco dormiens nunquam titillandus</p>
-    <p class="greet" data-zh="亲爱的同学：我们愉快地通知您，您已获准在霍格沃茨魔法学校就读。在这里，咒语就是<em>程序</em>。">Dear student, we are pleased to inform you that you have a place at Hogwarts School of Witchcraft and Wizardry. Spells here are <em>programs</em>.</p>
+    <h1 data-zh="霍格沃兹">Hogwarts</h1>
+    <p class="motto" data-zh="找回写代码的乐趣">Rediscover the joy of coding</p>
+    <p class="greet" data-zh="亲爱的同学：写几行<em>咒语</em>，让点子在世界里发生。免费模拟，亲手施放，看见回应，再改几行。你的 Agent 可以陪你一起创作。">Dear student, write a few lines of <em>magic</em> and see your ideas come to life. Simulate for free, cast your spell, see what happens, and try a new twist. Your Agent can create alongside you.</p>
     <label class="field"><span data-zh="你的名字">Your name</span><input id="gate-name" maxlength="24" autocomplete="off" placeholder="e.g. Hermione Granger" data-zh-ph="例如 Hermione Granger" /></label>
     <div class="field"><span data-zh="分院帽会考虑你的意愿">The Sorting Hat may consider</span>
       <div id="gate-house" class="houses" role="radiogroup">
@@ -154,6 +154,7 @@
         <button id="tb-menu" title="Owl Post" data-zh-title="猫头鹰邮递（菜单）"><svg class="ic"><use href="#i-letter"/></svg></button>
         <button id="tb-owl" title="Owl (your agent)" data-zh-title="猫头鹰（你的 Agent）"><svg class="ic"><use href="#i-owl"/></svg></button>
         <button id="tb-trunk" title="Trunk" data-zh-title="行囊"><svg class="ic"><use href="#i-trunk"/></svg></button>
+        <button id="tb-album" title="Chocolate Frog album" data-zh-title="巧克力蛙画册"><svg class="ic"><use href="#i-frog"/></svg></button>
         <button id="tb-chat" title="Speak" data-zh-title="说话"><svg class="ic"><use href="#i-quill"/></svg></button>
         <button id="tb-help" title="Help" data-zh-title="帮助"><svg class="ic"><use href="#i-help"/></svg></button>
         <button id="tb-view" class="tb-txt" title="2.5D / follow view (Z)" data-zh-title="2.5D / 跟随视角（Z）">◎</button>

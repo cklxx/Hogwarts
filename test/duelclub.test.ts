@@ -5,6 +5,7 @@ import {
   duelGrant, duelJoin, duelLeave, duelStatus,
 } from '../src/kernel/duelclub.js';
 import { ensureNpcs } from '../src/kernel/npc.js';
+import { possessNpc } from '../src/kernel/possess.js';
 import { World } from '../src/kernel/world.js';
 import type { Wizard } from '../src/kernel/types.js';
 
@@ -169,6 +170,10 @@ describe('the duel slip (client/panels/duel.ts) reads what the kernel sends', ()
     const line = duelLine(du, null, names, a.handle)!;
     expect(line).toMatchObject({ title: 'Harry ⚔ Ron', mine: true });
     expect(duelLine(du, null, names, 'someone')?.mine).toBe(false);
+    // A spectator in another scene has neither duellist in its entity/name cache.
+    expect(duelLine(du, null, () => '?', 'far-away')?.title).toBe('Harry ⚔ Ron');
+    expect(JSON.stringify(du)).not.toContain(a.id);
+    expect(JSON.stringify(du)).not.toContain(b.id);
   });
 });
 
@@ -227,5 +232,20 @@ describe('the Duelling Club, 2v2', () => {
     expect(m.sides.flat()).toHaveLength(4);
     expect(m.npc).toBe(true);
     expect(m.sides.flat()).toEqual(expect.arrayContaining([a.id, b.id]));
+  });
+
+  it('an NPC someone is playing (附身) is never drafted into the match, nor walked off by its own brain', () => {
+    const w = mk();
+    ensureNpcs(w, 3);
+    const npcs = [...w.wizards.values()].filter((x) => x.npc);
+    const p = join(w, 'Hermione', 'Gryffindor');
+    possessNpc(w, p.id, npcs[0].handle);
+    const at = { ...npcs[0].pos };
+    const a = join(w, 'Neville'), b = join(w, 'Luna', 'Ravenclaw');
+    duelJoin(w, a.id, '2v2'); duelJoin(w, b.id, '2v2');
+    run(w, DUEL_NPC_AFTER_S + 0.2);
+    const m = w.duel.match!;
+    expect(m.sides.flat()).not.toContain(npcs[0].id);
+    expect(npcs[0].pos).toEqual(at);
   });
 });

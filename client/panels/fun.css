@@ -110,22 +110,29 @@ html:lang(en) .fc-mono { font: 700 calc(44px * var(--t))/1 var(--latin); }
 .fc.missing .fc-name { color: var(--ink2); }
 
 /* ------------------------------------------------------------------ the album (C) */
-#album { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; width: min(calc(920px * var(--u)), calc(100vw - calc(24px * var(--u)))); max-height: calc(100vh - calc(40px * var(--u))); display: flex; flex-direction: column; }
+#album { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; width: min(calc(920px * var(--u)), calc(100vw - calc(24px * var(--u)))); max-height: calc(100dvh - calc(40px * var(--u))); display: flex; flex-direction: column; }
 #album .sub { margin: 0 0 calc(6px * var(--u)); font-size: calc(15px * var(--t)); color: var(--ink2); }
 #album .al-tabs { display: flex; gap: calc(6px * var(--u)); margin-bottom: calc(6px * var(--u)); }
 #album .al-tabs button { padding: calc(3px * var(--u)) calc(14px * var(--u)); font-size: calc(15px * var(--t)); }
 #album .al-tabs button.on { background: rgba(150, 32, 36, .12); box-shadow: inset 0 0 0 calc(1.5px * var(--u)) var(--wax); }
-#album .al-body { display: flex; gap: calc(14px * var(--u)); min-height: 0; flex: 1; }
-#album .al-groups { flex: 1; overflow: auto; padding-right: calc(4px * var(--u)); }
+#album > * { flex-shrink: 0; }
+#album .al-body { display: flex; gap: calc(14px * var(--u)); }
+#album .al-groups { flex: 1; min-width: 0; padding-right: calc(4px * var(--u)); }
 #album .al-g h3 { margin: calc(10px * var(--u)) 0 calc(6px * var(--u)); font: 400 calc(21px * var(--t))/1.3 var(--brush); color: var(--ink); display: flex; flex-wrap: wrap; align-items: baseline; gap: calc(8px * var(--u)); letter-spacing: .05em; }
 html:lang(en) #album .al-g h3 { font: 700 calc(18px * var(--t))/1.3 var(--latin); }
 #album .al-g h3 small { font: 400 calc(15px * var(--t))/1.4 var(--cjk); letter-spacing: 0; }
 #album .al-rw.done { color: var(--verdigris); font-weight: 600; }
 #album .al-rw svg.ic { width: calc(18px * var(--u)); height: calc(18px * var(--u)); }
 #album .al-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(128px * var(--u)), 1fr)); gap: calc(12px * var(--u)); justify-items: center; padding: calc(4px * var(--u)); }
-#album .al-pick { flex: none; width: calc(220px * var(--u)); }
+#album .al-pick { width: min(100%, calc(360px * var(--u))); margin: calc(8px * var(--u)) auto; padding: calc(4px * var(--u)); outline: none; }
 #album .al-pick .fc { width: 100%; cursor: default; }
-@media (max-width: 700px) { #album .al-pick { display: none; } }
+#album .al-pick .fc-flav { font-size: var(--fs-body); }
+#album .al-back { align-self: flex-start; min-height: calc(40px * var(--u)); }
+#album .al-chests { margin-bottom: calc(10px * var(--u)); font-size: calc(15px * var(--t)); }
+#album .al-chests summary { cursor: pointer; }
+#album .fc[role="button"]:focus-visible { outline: calc(3px * var(--u)) solid var(--wax); outline-offset: calc(4px * var(--u)); }
+#album .al-tabs button { min-height: calc(40px * var(--u)); }
+@media (max-height: 450px) { #album { max-height: calc(100dvh - calc(16px * var(--u))); } }
 
 /* ------------------------------------------------------------------ 刚拿到: the card reveal */
 #cardreveal { position: fixed; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 5; perspective: calc(900px * var(--u)); cursor: pointer; }

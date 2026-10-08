@@ -87,6 +87,8 @@ export interface ClientFeature {
   /** Something of this feature's on the ground at (x, z) that a click or tap casts the chosen spell at (its point), or
    *  null; `hover`: the pointer is only over it (show what it is). */
   claim?(x: number, z: number, hover: boolean): { x: number; z: number } | null;
+  /** What stands under (x, z) when the terrain there is `h`: a feature's own ground (the lake's ice), else h. */
+  ground?(x: number, z: number, h: number): number;
   /** Every visual effect the world sends (after main.ts drew its own): a reaction's name, say. */
   fx?(f: { k: string; x: number; z: number; r?: number; e?: string; h?: string; n?: number }): void;
   /** Metres above the ground this wizard's model rides now (Quidditch brooms). */

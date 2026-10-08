@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
 import { LANDMARKS, OBSTACLES } from '../src/shared/map';
+import { FIREPLACES } from '../src/shared/travel';
 import { createDecor, type Look } from './decor';
 import { createFx } from './fx';
 import { createWatch } from './watch';
@@ -10,7 +11,7 @@ import { createRenderer } from './render';
 import { buildWorld } from './scene';
 import { createView } from './view';
 import { heightAt } from './terrain';
-import { disposeCreature, disposeWizard, farColors, makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
+import { disposeCreature, disposeWizard, farColors, labelFrameBegin, makeAuraRing, makeBolt, makeCreature, makeWizard, setAuraRing, setWizardLook, wizardColor, type WizardModel } from './models';
 import { createLightBudget } from './lights';
 import { createCrowd } from './crowd';
 import { mergeStatic } from './batch';
@@ -18,6 +19,7 @@ import { createEffects } from './effects';
 import { createBoltBatch } from './bolts';
 import { createHerd } from './herd';
 import { createDynRes } from './dynres';
+import { FrameMetrics, rendererName } from './frame-metrics';
 import { instanceAlike } from './instancer';
 import { createPartBatcher } from './partbatch';
 import { captureFocus } from './capture';
@@ -201,8 +203,8 @@ const candles = instanceAlike(scene, scene.children.filter((o) => o.name === 'ca
 // UI scale: boxes (--u) follow the window (1600x900 = 1), text (--t) shrinks half as much so it stays readable;
 // phones keep their own layout (1). The 界面大小 setting in the Owl Post multiplies it (小 0.85 / 标准 1 / 大 1.15).
 const UI_KEY = 'hogwarts.ui';
-const uiSizes = { s: 0.85, m: 1, l: 1.15 } as const;
-let uiSize: keyof typeof uiSizes = (() => { try { const v = localStorage.getItem(UI_KEY); return v === 's' || v === 'l' ? v : 'm'; } catch { return 'm'; } })();
+const uiSizes = { s: 0.85, m: 1, l: 1.15, xl: 1.35 } as const;
+let uiSize: keyof typeof uiSizes = (() => { try { const v = localStorage.getItem(UI_KEY); return v === 's' || v === 'l' || v === 'xl' ? v : 'm'; } catch { return 'm'; } })();
 function applyUiScale() {
   const phone = innerWidth < 820 || innerHeight < 500;
   const base = phone ? 1 : Math.max(0.66, Math.min(1.1, Math.min(innerWidth / 1600, innerHeight / 900)));
@@ -300,21 +302,40 @@ probe.mark('quality');
  */
 const FRAME_MIN_MS = handheld && !capturing ? 12 : 0;
 /**
- * Frames on the player's own GPU (this box only has a software renderer): the last 15 s of frame intervals go to the
+ * Visible rendered-frame pacing (not GPU execution time): the last 15 s of intervals go to the
  * server's playtest metrics (kernel/metrics.ts `fps`, scripts/playtest/report.ts) as p50 / p95, with the render scale,
  * the quality and the GPU's name — the numbers "卡" is argued from.
  */
-const frameMs: number[] = [];
-const gpuName = (() => { try { const gl = R.renderer.getContext(); return String(gl.getParameter(gl.RENDERER) ?? ''); } catch { return ''; } })();
+const frameMetrics = new FrameMetrics();
+const gpuName = rendererName(R.renderer.getContext());
+document.addEventListener('visibilitychange', () => frameMetrics.reset());
 setInterval(() => {
-  if (!snap || frameMs.length < 30 || document.hidden) { frameMs.length = 0; return; }
-  const s = frameMs.splice(0).sort((a, b) => a - b), at = (p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
-  send({ t: 'metrics', fps: { p50: at(0.5), p95: at(0.95), scale: R.scale, q: quality, dpr: devicePixelRatio, gpu: gpuName } });
+  if (!snap || document.hidden) { frameMetrics.reset(); return; }
+  const sample = frameMetrics.take();
+  if (sample) send({ t: 'metrics', fps: { ...sample, scale: R.scale, q: quality, dpr: devicePixelRatio, gpu: gpuName } });
 }, 15000);
 const DEFAULT_LOOK: Look = { skyTint: '#ffffff', sunIntensity: 1, fogDensity: 1, glow: 1, lanterns: false, fireworks: false, aurora: false, banner: null, cupHouse: null, statues: [] };
+const weatherUniforms = { uTime: { value: 0 }, uFall: { value: 30 }, uSize: { value: 0.15 }, uScale: { value: 500 } };
 const weatherPts = new THREE.Points(
   new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 3000 * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 40 : (Math.random() - 0.5) * 120)), 3)),
-  new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.8 }),
+  // the fall is integrated in the vertex shader (y = (y0 - fall * t) mod 40): the CPU never touches a live drop
+  new THREE.ShaderMaterial({
+    uniforms: weatherUniforms,
+    transparent: true, depthWrite: false,
+    vertexShader: `uniform float uTime; uniform float uFall; uniform float uSize; uniform float uScale;
+      void main() {
+        vec3 p = position;
+        p.y = mod(p.y - uTime * uFall, 40.0);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = min(64.0, uSize * uScale / max(0.2, -mv.z));
+      }`,
+    fragmentShader: `void main() {
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        if (d > 1.0) discard;
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 0.8 * (1.0 - d * d));
+      }`,
+  }),
 );
 weatherPts.visible = false;
 scene.add(weatherPts);
@@ -341,7 +362,7 @@ const creatures = new Map<string, CreatureEntry>();
 const actors = new THREE.Group();
 actors.name = 'actors';
 scene.add(actors);
-const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number }>();
+const bolts = new Map<string, THREE.Object3D & { tx?: number; tz?: number; gy?: number; gx?: number; gz?: number }>();
 const phone = matchMedia('(hover: none) and (pointer: coarse)').matches;
 /** 手机壳 (client/phone.ts): on a phone one owner lays out the screen, and every line of words goes through its queue. */
 const shell = phone ? createPhoneShell() : null;
@@ -395,9 +416,11 @@ function connect() {
     else if (msg.t === 'evs') for (const e of msg.es) { fun.onEvent(e); for (const f of feats) f.onEvent?.(e, true); feed(e, true); }
     else if (msg.t === 'chest') onChest(msg.r);
     else if (msg.t === 'cast') {
-      if (msg.r.ok && msg.r.mana > 0) manaCost.set(msg.r.spell, Math.round(msg.r.mana));
+      if (msg.r.ok && msg.r.mana > 0) { manaCost.set(msg.r.spell, Math.round(msg.r.mana)); manaCostVer++; }
       ctl.onCast(msg.r);
-      if (!msg.r.ok) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
+      // (too fast / still recharging / short of mana: the press buffer waits those out, controls.ts castGate — a refusal
+      // that slips past it still says nothing: a red line per mashed key was most of what a fight showed)
+      if (!msg.r.ok && !/retry_after=|not enough mana|^There is no "/.test(msg.r.error ?? '')) toast(`✗ ${spellName(msg.r.spell)}：${tr(msg.r.error)}`);
       else if (msg.r.notes?.length) toast(msg.r.notes.map(tr).join(' · '));
     }
     else if (msg.t === 'book') { ctl.onArmory(msg.armory.spells); renderBook(msg.armory, msg.grimoire); market.onBook(); }
@@ -446,14 +469,15 @@ const watch = createWatch({ send: rawSend, toast: (s) => toast(s) });
  */
 /** Where an entity last stood (gx, gz) and the ground's height there: see groundOf. */
 type Grounded = { root: THREE.Object3D; gx?: number; gz?: number; gy?: number };
-type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number };
+type WizardEntry = WizardModel & Grounded & { tx: number; tz: number; tf: number; aura: THREE.Mesh; far?: boolean; bob?: number; seen?: number; tt?: number; pv?: number };
 type CreatureEntry = ReturnType<typeof makeCreature> & Grounded & { k: CreatureKind; tx: number; tz: number; tf: number; aura: THREE.Mesh; seen?: number; /** hp / max at the last snapshot */ hpr?: number };
 /** A creature that vanishes at or under this share of its hp was brought down, not out of sight. */
 const KILL_HPR = 0.35;
-/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame). */
+/** The ground under an entity, looked up again only when it has moved (heightAt is most of the per-entity cost of a frame);
+ *  a feature may stand it on its own ground (ClientFeature.ground). */
 const groundOf = (e: Grounded) => {
   const p = e.root.position;
-  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; e.gy = heightAt(p.x, p.z); }
+  if (p.x !== e.gx || p.z !== e.gz) { e.gx = p.x; e.gz = p.z; let h = heightAt(p.x, p.z); for (const f of feats) if (f.ground) h = f.ground(p.x, p.z, h); e.gy = h; }
   return e.gy!;
 };
 const parked = new Map<string, { m: WizardEntry; at: number }>();
@@ -485,7 +509,7 @@ function apply(s: Snap) {
     let m = wizards.get(w.h);
     if (!m) {
       const p = parked.get(w.h);
-      if (p) { parked.delete(w.h); m = p.m; }
+      if (p) { parked.delete(w.h); m = p.m; hiddenTags.delete(m); }
       else {
         m = Object.assign(makeWizard(w.ho, w.h === myHandle, w.h), { tx: w.x, tz: w.z, tf: w.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as WizardEntry;
         m.root.add(m.aura);
@@ -499,7 +523,11 @@ function apply(s: Snap) {
       wizards.set(w.h, m);
     }
     m.seen = g;
-    m.tx = w.x; m.tz = w.z; m.tf = w.f;
+    {
+      const nowMs = performance.now();
+      if (m.tt) { const dts = (nowMs - m.tt) / 1000; if (dts > 0.02) m.pv = Math.min(9, Math.hypot(w.x - m.tx, w.z - m.tz) / dts); }
+      m.tx = w.x; m.tz = w.z; m.tf = w.f; m.tt = nowMs;
+    }
     const extra = badges(w.h) + (w.s.includes('M') ? '⚖️' : '') + (w.s.includes('E') ? '🪄' : '') + (w.s.includes('N') ? '🤖' : '');
     m.label.draw(`[${w.t}] ${w.n}`, wizardColor(w.ho), w.hp / w.m, w.say, extra, w.mm);
     setAuraRing(m.aura, w.s, clock);
@@ -527,6 +555,7 @@ function apply(s: Snap) {
     let m = creatures.get(c.i);
     if (!m) {
       m = herdPool.get(c.k)?.pop();
+      if (m) hiddenTags.delete(m);
       if (!m) {
         m = Object.assign(makeCreature(c.k), { k: c.k, tx: c.x, tz: c.z, tf: c.f, aura: makeAuraRing(), gx: NaN, gz: NaN, gy: 0.5 }) as CreatureEntry;
         m.root.add(m.aura);
@@ -764,67 +793,42 @@ const setStyle = (el: HTMLElement, k: string, v: string) => { if (el.style.getPr
 /** Longest cooldown seen per hotbar spell since it was last ready: the sweep's full circle. */
 const cdMax = new Map<string, number>();
 
+$('#clock').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-time]');
+  if (b?.dataset.time) shell?.say(b.dataset.time, PRIO.note);
+});
+
+/** Signature of everything hudRender() reads (10 Hz). Unchanged signature => the guarded block would produce
+ * byte-identical DOM, so it is skipped. Not covered: ctl.hud() (target frame follows the mouse), the jailed/stunned
+ * overlay (countdowns), drawMinimap/drawMarauder, linkHud() (owl timers), renderGoal()/pn/fun/feats huds, watchBars() —
+ * those have time- or pointer-driven inputs and keep running every tick. `phone` is session-constant. */
+let lastHudSig = '';
+const q4 = (x: number | undefined) => x === undefined ? '?' : String(Math.round(x * 4) / 4); // 0.25 m tile
+function hudSig(): string {
+  const m = me!, s = snap!;
+  const hh = Math.floor(s.hour), mm = Math.floor((s.hour % 1) * 60);
+  // identity card, clock, bars, hotbar: hp/mana/xp at 0.01 (the bar width's toFixed(2) granularity)
+  let sig = `${m.ui.join(',')}|${m.title.zh}|${m.title.en}|${m.name}|${m.house}|${m.year}|${m.galleons}|${m.reputation}|${m.seals}|${m.title.next?.zh}|${m.title.next?.en}|${m.title.next?.how}|${m.decree ? 1 : 0}|${m.proclamation}|${hh}:${mm}|${s.night ? 1 : 0}|${s.weather}|${s.term.n}|${fmtT(s.term.left)}|${Math.round(m.hp * 100) / 100}|${m.maxHp}|${Math.round(m.mana * 100) / 100}|${m.maxMana}|${Math.round(m.xp * 100) / 100}|${m.xpNext}|`;
+  // hotbar: cd only changes on server 'me' messages, so 0.1 s is exact; plus selected, cost map, armory version
+  sig += m.hotbar.map((x) => x ? `${x.id}|${x.name}|${x.kind}|${x.mana}|${x.cd > 0 ? x.cd.toFixed(1) : 0}` : '').join(';') + `|${ctl.selected}|${manaCostVer}|${bookVer}|`;
+  // homenum presence: my tile, camera yaw, hash over every entity's tile + display flags
+  const my = wizards.get(myHandle);
+  let wh = 0;
+  const mix = (v: string) => { for (let i = 0; i < v.length; i++) wh = (wh * 31 + v.charCodeAt(i)) | 0; };
+  for (const w of s.w) mix(`${w.h},${q4(w.x)},${q4(w.z)},${w.ho},${w.s},${w.n};`);
+  for (const c of s.c) mix(`${c.i},${q4(c.x)},${q4(c.z)};`);
+  sig += `${my ? `${q4(my.root.position.x)},${q4(my.root.position.z)}` : '?'}|${Math.round(camYaw * 1000) / 1000}|${wh}|${s.w.length}|${s.c.length}|`;
+  // marauder's map
+  sig += `|${m.map ? m.map.map((w) => `${w.name}|${w.registry}|${w.house}|${w.year}|${w.where}|${q4(w.x)}|${q4(w.z)}`).join(';') : ''}`;
+  return sig;
+}
 function hud() {
   shell?.tick();
   if (!me || !snap) return;
-  const has = (k: string) => me!.ui.includes(k);
-  // top-left: one quiet line (title · name · house); Revelio reveals your own measure
-  const stats = has('revelio')
-    ? `<div class="stats">${L(`声望 <span class="num">${me.reputation}</span> · 封印 <span class="num">${me.seals}</span>/4`, `<span class="num">${me.reputation}</span> reputation · <span class="num">${me.seals}</span>/4 seals`)}${me.title.next ? ` · <span title="${esc(tr(me.title.next.how))}">${L('下一级', 'next')}: ${esc(L(me.title.next.zh, me.title.next.en))}</span>` : ''}</div>`
-    : '';
-  setHtml($('#me'), meCard(me, has('revelio')) + stats +
-    (me.decree ? `<div class="decree">${L('魔法部长 —— 你手握一道未颁布的法令（MCP: decree）', 'Minister for Magic — you hold an unspent decree (MCP: decree)')}</div>` : ''));
-  $('#me').classList.add('veiled');
-  // top-right: Tempus
-  const h = snap.hour;
-  const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
-  const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather, snap.weather);
-  // (the motto is the default proclamation: only a Minister's own words take the corner — the quiet HUD)
-  const procl = me.proclamation && me.proclamation !== SCHOOL_MOTTO ? `<div class="procl" title="${esc(me.proclamation)}">${esc(me.proclamation)}</div>` : '';
-  setHtml($('#clock'), has('tempus')
-    ? `<div class="time veiled">${ic(snap.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${snap.term.n} 学期 剩 <span class="num">${fmtT(snap.term.left)}</span>`, `term ${snap.term.n} · <span class="num">${fmtT(snap.term.left)}</span> left`)}</span></div>${procl}`
-    : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
-  // bottom-right: Homenum Revelio
-  const pres = $('#presence');
-  if (has('homenum')) {
-    const my = wizards.get(myHandle);
-    // the same sense MCP look.homenum reports (src/shared/reveal.ts), from where you are drawn
-    const near = my ? homenum({ x: my.root.position.x, z: my.root.position.z }, snap.w.filter((x) => x.h !== myHandle)) : [];
-    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ o: x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span class="hn" data-house="${x.ho}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L(`${HOMENUM_RANGE} 米内没有人。`, `No one within ${HOMENUM_RANGE}m.`)}</div>`) + '</div>');
-  } else setHtml(pres, me.year >= 3
-    ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
-    : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
-  // bottom-left: Point Me lights the minimap
-  $('#minimap').hidden = !has('point-me');
-  setHtml($('#pointme'), me.year >= 2
-    ? rune('compass', L('点一下施放「给我指路」，点亮小地图', 'Click to cast Point Me and light the minimap'), 'tip-up', 'Point Me')
-    : rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
-  bar('.hp', me.hp, me.maxHp, `${Math.round(me.hp)}/${me.maxHp}`);
-  bar('.mana', me.mana, me.maxMana, `${Math.round(me.mana)}/${me.maxMana}`);
-  bar('.xp', me.xpNext ? me.xp : 1, me.xpNext ?? 1, '');
-  const hb = $('#hotbar');
-  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => `<div><span></span><b></b><i></i><em></em>${ic('wand')}<u class="cost"></u></div>`).join('');
-  me.hotbar.forEach((s, i) => {
-    const el = hb.children[i] as HTMLElement;
-    // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
-    el.classList.toggle('sel', i === ctl.selected);
-    el.classList.toggle('empty', !s);
-    const kind = s?.kind ?? '';
-    if (el.dataset.kind !== kind) el.dataset.kind = kind;
-    setText(el.children[0], s ? spellName(s.name) : '·');
-    setText(el.children[1], String(i + 1));
-    const cd = s && s.cd > 0 ? s.cd : 0;
-    if (s) { if (cd > 0) cdMax.set(s.id, Math.max(cdMax.get(s.id) ?? 0, cd)); else cdMax.delete(s.id); }
-    setStyle(el.children[2] as HTMLElement, '--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
-    setText(el.children[3], cd >= 1 ? String(Math.ceil(cd)) : '');
-    // the tile's drawing (a written spell by what it does, once the armory has said) and its last mana cost
-    const info = s ? bookSpells.find((x) => x.id === s.id) : null;
-    const icon = `#i-${s ? spellIcon(s.name, info?.effects, info?.source) : 'wand'}`;
-    const use = el.children[4].firstElementChild as SVGUseElement;
-    if (use.getAttribute('href') !== icon) use.setAttribute('href', icon);
-    setText(el.children[5], s ? String(manaCost.get(s.name) ?? s.mana ?? '') : '');
-    el.onclick ??= () => ctl.castSlot(i);
-  });
+  // dirty check: the pure-render block is a function of hudSig(); the time-/pointer-driven parts below
+  // (target frame, overlay countdowns, minimap, marauder, owl timers, goal/panels/features) run every tick.
+  const sig = hudSig();
+  if (sig !== lastHudSig) { lastHudSig = sig; hudRender(); }
   ctl.hud();
   const ov = $('#overlay');
   if (me.jailed) { ov.hidden = false; setHtml(ov, L(`<div>阿兹卡班<small>摄魂怪会在 <span class="num">${me.jailed.toFixed(0)}</span> 秒后放你出去</small></div>`, `<div>Azkaban<small>The Dementors will release you in <span class="num">${me.jailed.toFixed(0)}</span>s</small></div>`)); }
@@ -845,6 +849,79 @@ function hud() {
   for (const f of feats) f.hud?.();
   watchBars();
 }
+/** The pure-render half of hud(): identity card, clock, presence, minimap setup, bars, hotbar.
+ * Runs only when hudSig() changed. */
+function hudRender() {
+  const m = me!, s = snap!;
+  const has = (k: string) => m!.ui.includes(k);
+  // top-left: one quiet line (title · name · house); Revelio reveals your own measure
+  const stats = has('revelio')
+    ? `<div class="stats">${L(`声望 <span class="num">${m.reputation}</span> · 封印 <span class="num">${m.seals}</span>/4`, `<span class="num">${m.reputation}</span> reputation · <span class="num">${m.seals}</span>/4 seals`)}${m.title.next ? ` · <span title="${esc(tr(m.title.next.how))}">${L('下一级', 'next')}: ${esc(L(m.title.next.zh, m.title.next.en))}</span>` : ''}</div>`
+    : '';
+  setHtml($('#me'), meCard(m, has('revelio')) + stats +
+    (m.decree ? `<div class="decree">${L('魔法部长 —— 你手握一道未颁布的法令（MCP: decree）', 'Minister for Magic — you hold an unspent decree (MCP: decree)')}</div>` : ''));
+  $('#me').classList.add('veiled');
+  // top-right: Tempus
+  const h = s.hour;
+  const hh = Math.floor(h), mm = Math.floor((h % 1) * 60);
+  const weather = L(({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[s.weather] ?? s.weather, s.weather);
+  // (the motto is the default proclamation: only a Minister's own words take the corner — the quiet HUD)
+  const procl = m.proclamation && m.proclamation !== SCHOOL_MOTTO ? `<div class="procl" title="${esc(m.proclamation)}">${esc(m.proclamation)}</div>` : '';
+  const timeLabel = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  const timeDetails = `${timeLabel} · ${weather} · ${L(`第 ${s.term.n} 学期 剩 ${fmtT(s.term.left)}`, `term ${s.term.n} · ${fmtT(s.term.left)} left`)}`;
+  if (has('tempus') && phone) {
+    const clockEl = $('#clock');
+    if (!clockEl.querySelector('.phone-time')) setHtml(clockEl, '<button type="button" class="time veiled phone-time"><span class="num"></span></button>');
+    const b = clockEl.querySelector<HTMLButtonElement>('.phone-time')!;
+    const num = b.querySelector('.num')!;
+    if (num.textContent !== timeLabel) num.textContent = timeLabel;
+    if (b.dataset.time !== timeDetails) { b.dataset.time = timeDetails; b.setAttribute('aria-label', timeDetails); }
+  } else setHtml($('#clock'), has('tempus')
+    ? `<div class="time veiled">${ic(s.night ? 'moon' : 'light')}<span><span class="num">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</span> · ${weather} · ${L(`第 ${s.term.n} 学期 剩 <span class="num">${fmtT(s.term.left)}</span>`, `term ${s.term.n} · <span class="num">${fmtT(s.term.left)}</span> left`)}</span></div>${procl}`
+    : rune('hourglass', L('点一下施放「时间显现 Tempus」，才知道现在几点', 'Click to cast Tempus and know the hour'), 'tip-r', 'Tempus') + procl);
+  // bottom-right: Homenum Revelio
+  const pres = $('#presence');
+  if (has('homenum')) {
+    const my = wizards.get(myHandle);
+    // the same sense MCP look.homenum reports (src/shared/reveal.ts), from where you are drawn
+    const near = my ? homenum({ x: my.root.position.x, z: my.root.position.z }, s.w.filter((x) => x.h !== myHandle)) : [];
+    setHtml(pres, `<div class="pl veiled"><b>${L('人形显身', 'Homenum Revelio')}</b>` + (near.length ? near.map(({ o: x, d, a }) => `<div><span class="arrow" style="transform:rotate(${(a + camYaw).toFixed(2)}rad)">↑</span> <span class="hn" data-house="${x.ho}">${esc(x.n)}</span> <span class="num">${Math.round(d)}</span>m${x.s.includes('X') ? ' ✧' : ''}</div>`).join('') : `<div class="hint">${L(`${HOMENUM_RANGE} 米内没有人。`, `No one within ${HOMENUM_RANGE}m.`)}</div>`) + '</div>');
+  } else setHtml(pres, m.year >= 3
+    ? rune('figures', L('点一下施放「人形显身」，感知身边的人', 'Click to cast Homenum Revelio and sense who is near'), 'tip-r tip-up', 'Homenum Revelio')
+    : rune('figures', L('三年级：施放「人形显身」，感知身边的人', 'Year 3: cast Homenum Revelio to sense who is near'), 'tip-r tip-up'));
+  // bottom-left: Point Me lights the minimap
+  $('#minimap').hidden = !has('point-me');
+  setHtml($('#pointme'), m.year >= 2
+    ? rune('compass', L('点一下施放「给我指路」，点亮小地图', 'Click to cast Point Me and light the minimap'), 'tip-up', 'Point Me')
+    : rune('compass', L('二年级：施放「给我指路」，点亮这一角', 'Year 2: cast Point Me to light this corner'), 'tip-up'));
+  bar('.hp', m.hp, m.maxHp, `${Math.round(m.hp)}/${m.maxHp}`);
+  bar('.mana', m.mana, m.maxMana, `${Math.round(m.mana)}/${m.maxMana}`);
+  bar('.xp', m.xpNext ? m.xp : 1, m.xpNext ?? 1, '');
+  const hb = $('#hotbar');
+  if (hb.children.length !== 6) hb.innerHTML = Array.from({ length: 6 }, () => `<div><span></span><b></b><i></i><em></em>${ic('wand')}<u class="cost"></u></div>`).join('');
+  m.hotbar.forEach((s, i) => {
+    const el = hb.children[i] as HTMLElement;
+    // (10 Hz: every write only when the value changed, so an idle HUD costs no style or layout work)
+    el.classList.toggle('sel', i === ctl.selected);
+    el.classList.toggle('empty', !s);
+    el.classList.toggle('poor', !!s && s.mana != null && m!.mana + 0.5 < s.mana); // (not enough mana for it now)
+    const kind = s?.kind ?? '';
+    if (el.dataset.kind !== kind) el.dataset.kind = kind;
+    setText(el.children[0], s ? spellName(s.name) : '·');
+    setText(el.children[1], String(i + 1));
+    const cd = s && s.cd > 0 ? s.cd : 0;
+    if (s) { if (cd > 0) cdMax.set(s.id, Math.max(cdMax.get(s.id) ?? 0, cd)); else cdMax.delete(s.id); }
+    setStyle(el.children[2] as HTMLElement, '--cd', s && cd > 0 ? (cd / Math.max(cd, cdMax.get(s.id) ?? cd)).toFixed(3) : '0');
+    setText(el.children[3], cd >= 1 ? String(Math.ceil(cd)) : '');
+    // the tile's drawing (a written spell by what it does, once the armory has said) and its last mana cost
+    const info = s ? bookSpells.find((x) => x.id === s.id) : null;
+    const icon = `#i-${s ? spellIcon(s.name, info?.effects, info?.source) : 'wand'}`;
+    const use = el.children[4].firstElementChild as SVGUseElement;
+    if (use.getAttribute('href') !== icon) use.setAttribute('href', icon);
+    setText(el.children[5], s ? String(manaCost.get(s.name) ?? s.mana ?? '') : '');
+    el.onclick ??= () => ctl.castSlot(i);
+  });
+}
 /** The identity card: a wax crest in your house's colour, your title and name, then house (and, once Revelio has shown you, year and Galleons). */
 function meCard(me: Me, revealed: boolean) {
   const title = L(me.title.zh, me.title.en);
@@ -858,6 +935,8 @@ function meCard(me: Me, revealed: boolean) {
 const YEAR_ZH: Record<number, string> = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七' };
 /** The last mana each spell cost (from your own cast reports), shown on its hotbar tile. */
 const manaCost = new Map<string, number>();
+/** Bumped whenever manaCost changes (read by hudSig, so the hotbar's cost line refreshes). */
+let manaCostVer = 0;
 const bar = (sel: string, v: number, max: number, text: string) => {
   const b = $(`#bars ${sel}`);
   setStyle(b.children[0] as HTMLElement, 'width', `${Math.max(0, Math.min(100, (v / Math.max(1, max)) * 100)).toFixed(2)}%`);
@@ -889,6 +968,14 @@ function drawMinimap() {
   }
   for (const c2 of snap.c) { const [a, b] = P(c2.x, c2.z); g.fillStyle = '#a3262a'; g.fillRect(a - 1.5, b - 1.5, 3, 3); }
   for (const w of snap.w) { const [a, b] = P(w.x, w.z); g.fillStyle = w.h === myHandle ? '#2a1b0f' : '#' + HOUSE_COLORS[w.ho].toString(16).padStart(6, '0'); g.beginPath(); g.arc(a, b, w.h === myHandle ? 4 : 3, 0, 7); g.fill(); }
+  // Floo fireplaces: green flame dots so new players can find the network
+  g.fillStyle = '#1a7a3a';
+  for (const f of FIREPLACES) {
+    const [a, b] = P(f.x, f.z);
+    if (a < 0 || a > 220 || b < 0 || b > 220) continue;
+    g.beginPath(); g.arc(a, b, 4, 0, 7); g.fill();
+    g.fillStyle = '#1a7a3a'; // reset (arc doesn't change it, but be safe)
+  }
   g.fillStyle = '#3a2716'; g.font = '600 13px "LXGW WenKai", Georgia, serif';
   for (const l of LANDMARKS) { const [a, b] = P(l.x, l.z); if (a > 0 && a < 220 && b > 0 && b < 220) g.fillText(l.name, a + 3, b); }
   fun.drawMinimap(g, P); // the event's marker (and Filch's round)
@@ -966,7 +1053,8 @@ function menuInfo(url?: string) {
   const switchKey = esc(shell?.keys?.switch ?? 'Ctrl+Shift+S');
   const bridge = shell?.claudeCode ?? `claude mcp add -s user hogwarts -- npx tsx "$PWD/src/mcp/stdio-bridge.ts" ${mcpUrl}`;
   const header = `claude mcp add -s user --transport http hogwarts ${mcpUrl} -H 'Authorization: Bearer \${HOGWARTS_TOKEN}'`;
-  $('#menu').innerHTML = `<h2>${ic('letter')}<span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button class="x" data-close="menu" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
+  $('#menu').innerHTML = `<h2>${ic('letter')}<span>${L('猫头鹰邮递', 'Owl Post')} <small><kbd>Esc</kbd></small></span> <button type="button" class="x" data-close="menu" title="${L('关闭（Esc）', 'Close (Esc)')}" aria-label="${L('关闭猫头鹰邮递，回到城堡', 'Close Owl Post and return to the castle')}"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></h2>
+    <div class="op-body">
     <section class="op-first">
       <h3>${ic('owl')}${L('连接你的 Agent', 'Connect your agent')}</h3>
       <div id="op-pair"></div>
@@ -988,8 +1076,8 @@ function menuInfo(url?: string) {
     <p class="op-registry">${L('你的登记号', 'Your registry number')}: <code>${esc(account.registry || '—')}</code><br/><span class="hint">${L('登记号是魔法部的公开记录，猫头鹰凭它投递包裹。', 'Your registry number is a public Ministry record: owls deliver parcels by it.')}</span></p>
     <p id="op-msg" class="hint"></p>
     <div class="op-foot"><span>${L('语言 Language', 'Language 语言')} <button id="lang-zh" class="${lang === 'zh' ? '' : 'ghost'}">中文</button> <button id="lang-en" class="${lang === 'en' ? '' : 'ghost'}">English</button></span>
-    <span>${L('界面大小', 'UI size')} ${(['s', 'm', 'l'] as const).map((k) => `<button data-ui="${k}" class="${uiSize === k ? '' : 'ghost'}">${L({ s: '小', m: '标准', l: '大' }[k], { s: 'Small', m: 'Normal', l: 'Large' }[k])}</button>`).join(' ')}</span>
-    <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div>`;
+    <span>${L('界面大小', 'UI size')} ${(['s', 'm', 'l', 'xl'] as const).map((k) => `<button data-ui="${k}" class="${uiSize === k ? '' : 'ghost'}">${L({ s: '小', m: '标准', l: '大', xl: '特大' }[k], { s: 'Small', m: 'Normal', l: 'Large', xl: 'X-Large' }[k])}</button>`).join(' ')}</span>
+    <span><button id="logout" class="ghost quiet">${L('离开霍格沃茨（忘记密钥）', 'Leave Hogwarts (forget key)')}</button> <button id="close-menu">${L('回到城堡', 'Back to the castle')}</button></span></div></div>`;
   $('#lang-zh').onclick = () => setLang('zh');
   $('#lang-en').onclick = () => setLang('en');
   document.querySelectorAll<HTMLButtonElement>('#menu [data-ui]').forEach((b) => { b.onclick = () => {
@@ -1372,6 +1460,9 @@ function linkHud() {
 // ------------------------------------------------------------------ spellbook (in-browser Runes editor)
 type ArmorySpell = { id: string; name: string; incantation: string; builtin: boolean; minYear: number; nodes: number; effects: string[]; source: string };
 let bookSpells: ArmorySpell[] = [];
+/** Bumped when the armory reloads; bookById mirrors bookSpells so the hotbar avoids 6 full scans per tick. */
+let bookVer = 0;
+const bookById = new Map<string, ArmorySpell>();
 let bookSel: string | null = null;
 /** The hotbar as spell ids (from the last armory; changed at once when you move a spell, then confirmed by the server). */
 let bookBar: (string | null)[] = [null, null, null, null, null, null];
@@ -1397,6 +1488,7 @@ function bookOut(text: string, cls = '') {
 }
 function renderBook(armory: { spells: ArmorySpell[]; hotbar: { slot: number; spell: string | null }[] }, grimoireText: string) {
   bookSpells = armory.spells;
+  bookVer++; bookById.clear(); for (const x of bookSpells) bookById.set(x.id, x);
   const idOf = (name: string | null) => (name ? bookSpells.find((s) => s.name === name)?.id ?? null : null);
   bookBar = Array.from({ length: 6 }, (_, i) => idOf(armory.hotbar.find((h) => h.slot === i + 1)?.spell ?? null));
   $('#grimoire').textContent = grimoireText;
@@ -1716,6 +1808,7 @@ probe.mark("preControls");
 const ctl = createControls({
   canvas, camera, scene, ground: world.ground, hoverRing: aimRing, wizards, creatures,
   snap: () => snap, me: () => me, myHandle: () => myHandle, send, toast, lens: (f: boolean) => R.setLens(f),
+  flashMana: () => { const m = document.querySelector('#bars .mana'); if (!m) return; m.classList.remove('flash'); void (m as HTMLElement).offsetWidth; m.classList.add('flash'); },
   cam: {
     get yaw() { return camYaw; }, set yaw(v: number) { camYaw = v; },
     get pitch() { return camPitch; }, set pitch(v: number) { camPitch = v; },
@@ -1881,8 +1974,24 @@ const litPool: { x: number; y: number; z: number; color: number; d: number }[] =
 const FR = { k: 0.5, dt: 0.5, lod: LOD.high, focus: null as string | null, eye: new THREE.Vector3(), tag: 1 };
 function animWizard(w: WizardEntry, h: string) {
   const px = w.root.position.x, pz = w.root.position.z;
-  w.root.position.x += (w.tx - w.root.position.x) * FR.k;
-  w.root.position.z += (w.tz - w.root.position.z) * FR.k;
+  if (h === myHandle) {
+    // own wizard: client-side prediction bridges late snapshots (network jitter), then a crisp reconcile
+    const mv = ctl.move();
+    const age = w.tt ? (performance.now() - w.tt) / 1000 : 1;
+    if (Math.hypot(mv.dx, mv.dz) >= 0.05 && age > 0.12) {
+      const sp = w.pv || 6; // last authoritative speed, data-driven (no rulebook/collision copy)
+      w.root.position.x += mv.dx * sp * FR.dt;
+      w.root.position.z += mv.dz * sp * FR.dt;
+    } else {
+      const kOwn = 1 - Math.exp(-FR.dt * 22); // τ≈45ms: tight, no rubbery ease-in
+      const ex = w.tx - w.root.position.x, ez = w.tz - w.root.position.z;
+      if (Math.hypot(ex, ez) > 3) { w.root.position.x = w.tx; w.root.position.z = w.tz; } // collision/stun: snap
+      else { w.root.position.x += ex * kOwn; w.root.position.z += ez * kOwn; }
+    }
+  } else {
+    w.root.position.x += (w.tx - w.root.position.x) * FR.k;
+    w.root.position.z += (w.tz - w.root.position.z) * FR.k;
+  }
   let lift = 0;
   for (const f of feats) if (f.lift) lift += f.lift(h); // 魁地奇: riders fly
   w.root.position.y = groundOf(w) + lift;
@@ -1895,7 +2004,7 @@ function animWizard(w: WizardEntry, h: string) {
   // (a stunned wizard lies down: only the full model does that)
   w.far = !mine && !focused && d > FR.lod.wizard + (w.far ? 0 : 4) && Math.abs(w.body.rotation.z) < 0.1;
   w.body.visible = !w.far;
-  w.label.show(focused || (!w.far && d < FR.lod.label));
+  w.label.show((focused || (!w.far && d < FR.lod.label)) && !hiddenTags.has(w));
   w.label.zoom(FR.tag);
   if (w.patronus.visible) {
     w.patronus.position.set(Math.cos(clock * 3) * 2, 1.5, Math.sin(clock * 3) * 2);
@@ -1923,6 +2032,9 @@ function animWizard(w: WizardEntry, h: string) {
 type Tagged = { root: THREE.Object3D; label: { sprite: THREE.Sprite; show(on: boolean): void } };
 const tagsNow: { m: Tagged; d: number; x: number; y: number; hw: number; hh: number }[] = [];
 const tagV = new THREE.Vector3();
+let hiddenTags = new WeakSet<Tagged>();
+let nextTagRefresh = 0;
+let tagFocus: string | null = null;
 function declutterTags() {
   tagsNow.length = 0;
   const f = innerHeight / 2 / Math.tan((camera.fov * Math.PI) / 360);
@@ -1945,7 +2057,7 @@ function declutterTags() {
     for (let j = 0; j < i; j++) {
       const b = tagsNow[j];
       if (b.hw < 0 || Math.abs(a.x - b.x) > a.hw + b.hw || Math.abs(a.y - b.y) > a.hh + b.hh) continue;
-      a.m.label.show(false); a.hw = -1; break;
+      hiddenTags.add(a.m); a.m.label.show(false); a.hw = -1; break;
     }
   }
 }
@@ -1958,15 +2070,21 @@ function animCreature(c: CreatureEntry, i: string) {
   const focused = i === FR.focus;
   // near: the animated model; far: a statue in the herd; beyond `creature`: not drawn
   c.root.visible = focused || d < FR.lod.anim;
-  c.label.show(focused || d < FR.lod.label);
+  c.label.show((focused || d < FR.lod.label) && !hiddenTags.has(c));
   c.label.zoom(FR.tag);
   if (c.root.visible) c.anim(clock);
   else if (d < FR.lod.creature) herd.put(c.k, c.root.position, c.root.rotation.y);
 }
-function animBolt(b: THREE.Object3D & { tx?: number; tz?: number }) {
+function animBolt(b: THREE.Object3D & { tx?: number; tz?: number; gy?: number; gx?: number; gz?: number }) {
   b.position.x += ((b.tx ?? b.position.x) - b.position.x) * Math.min(1, FR.k * 2);
   b.position.z += ((b.tz ?? b.position.z) - b.position.z) * Math.min(1, FR.k * 2);
-  b.position.y = 1.3 + heightAt(b.position.x, b.position.z);
+  // the ground height is FBM noise: resample only after the bolt has travelled 3 m
+  const dx = b.position.x - (b.gx ?? 1e9), dz = b.position.z - (b.gz ?? 1e9);
+  if (b.gy === undefined || dx * dx + dz * dz > 9) {
+    b.gy = heightAt(b.position.x, b.position.z);
+    b.gx = b.position.x; b.gz = b.position.z;
+  }
+  b.position.y = 1.3 + b.gy;
   particles.trail(b, b.position, b.userData.color ?? 0xffffff);
   const spin = b.children[0];
   if (spin) spin.rotation.set(clock * 7, clock * 5, 0);
@@ -1976,12 +2094,13 @@ function frame() {
   const now = performance.now();
   if (now - prev < FRAME_MIN_MS) return;
   probe.frameBegin();
+  labelFrameBegin(); // reopen the name-tag paint budget (models.ts: at most 2 repaints this frame)
   let tp = probe.begin();
   const dtReal = Math.min(0.1, (now - prev) / 1000);
   // (a hit-stop slows the world's motion to a crawl for its few frames; the camera and the HUD keep real time)
   const dt = stopT > 0 ? dtReal * 0.08 : dtReal;
   stopT -= dtReal;
-  if (snap) { dyn?.frame(now - prev); if (frameMs.length < 4000) frameMs.push(now - prev); }
+  if (snap) { dyn?.frame(now - prev); frameMetrics.frame(now, !document.hidden); }
   prev = now;
   clock += dt;
   FR.k = 1 - Math.exp(-dt * 12);
@@ -1991,6 +2110,9 @@ function frame() {
   // (2.5D: the tag's 1.5 m shown TAG_PX tall on screen, whatever the zoom and the lens: size / (2 d tan(fov / 2)) of the height, d the camera's real distance — lens.ts brings it in)
   FR.tag = ctl.flat() ? Math.max(1, Math.min(3.2, ((phone ? 84 : 92) / innerHeight) * 2 * view.rig.arm * Math.tan((camera.fov * Math.PI) / 360) / 1.5)) : 1;
   FR.focus = ctl.targetKey();
+  // Retain the overlap decision between refreshes; animation must not re-show culled tags.
+  const refreshTags = now >= nextTagRefresh || tagFocus !== FR.focus;
+  if (refreshTags) { hiddenTags = new WeakSet(); nextTagRefresh = now + 100; tagFocus = FR.focus; }
   crowd.begin();
   parts.begin();
   wizards.forEach(animWizard);
@@ -1999,7 +2121,8 @@ function frame() {
   herd.begin();
   creatures.forEach(animCreature);
   herd.end();
-  declutterTags();
+  // (the overlap test is O(n²): 10 Hz is plenty for hiding stacked name tags)
+  if (refreshTags) declutterTags();
   bolts.forEach(animBolt);
   boltBatch.update(bolts.values());
   fxm.update(dt);
@@ -2030,12 +2153,13 @@ function frame() {
     for (const m of world.nightGlow) m.emissiveIntensity = (0.35 + 3.2 * night) * look.glow;
     decor.update(look, R.day, clock, dt);
     weatherPts.visible = snap.weather === 'rain' || snap.weather === 'snow';
+    const pScale = R.renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    decor.pointScale(pScale);
     if (weatherPts.visible) {
-      const pos = weatherPts.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const fall = snap.weather === 'rain' ? 30 : 3;
-      for (let i = 0; i < pos.count; i++) { let y = pos.getY(i) - fall * dt; if (y < 0) y += 40; pos.setY(i, y); }
-      pos.needsUpdate = true;
-      (weatherPts.material as THREE.PointsMaterial).size = snap.weather === 'rain' ? 0.08 : 0.2;
+      weatherUniforms.uTime.value = clock;
+      weatherUniforms.uFall.value = snap.weather === 'rain' ? 30 : 3;
+      weatherUniforms.uSize.value = snap.weather === 'rain' ? 0.08 : 0.2;
+      weatherUniforms.uScale.value = pScale;
     }
     let nearWillow = false;
     if (!snap.willowCalm) for (const w of wizards.values()) { const x = w.root.position.x - 45, z = w.root.position.z; if (x * x + z * z < 81) { nearWillow = true; break; } }
@@ -2067,7 +2191,8 @@ function frame() {
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { $('#banner').classList.add('out'); setTimeout(() => { if (bannerT <= 0) $('#banner').hidden = true; }, 1000); } }
   lights.update(captureFocus(my ? my.root.position : camera.position));
   probe.end('ctl', tp); tp = probe.begin();
-  R.renderer.shadowMap.needsUpdate = fullDetail || (++frameNo & 1) === 1;
+  frameNo++;
+  R.renderer.shadowMap.needsUpdate = fullDetail || (frameNo & 1) === 1;
   R.render();
   probe.end('render', tp);
   if (snap) probe.mark('firstFrame');
@@ -2143,4 +2268,3 @@ const warmed = (async () => {
   await warmed;
   frame();
 })();
-

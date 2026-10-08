@@ -7,19 +7,28 @@
  * three bolts do. Shared by the kernel (src/kernel/props.ts: state, rewards) and the browser (client/props3d.ts).
  */
 import type { Element } from './constants.js';
+import { DRESSING, DRESSING_GROUPS } from './dressing.js';
 
-export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'web' | 'brazier' | 'rune' | 'basin' | 'crystal';
+export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'web' | 'hay' | 'bush' | 'mushroom' | 'ice' | 'brazier' | 'rune' | 'basin' | 'crystal' | 'lantern' | 'cauldron' | 'puddle' | 'lamppost' | 'signpost' | 'bench';
 export interface PropDef {
   zh: string; en: string;
   /** Any hurting spell breaks it (back after PROP_RESPAWN_S). */
   breaks?: boolean;
-  /** The element that wakes it (then it stays awake `secs`). */
-  wakes?: Element;
+  /** The element that wakes it (or `also`; then it stays awake `secs`). */
+  wakes?: Element; also?: Element;
   secs?: number;
   /** The element that puts it out again (a brazier under ice, a basin under fire). */
   quench?: Element;
   /** Fire sets it off: a fire blast of this radius (WHIZBANG_POWER unless `power`) that touches the props in it. */
   blast?: number; power?: number;
+  /** Any hurting spell bursts it: a blast of r, `power` of `element` to wild creatures, touching the props in it. */
+  pop?: { r: number; power: number; element: Element };
+  /** Breaking it always drops this many things (kernel/loot.ts); other breakables drop one now and then. */
+  loot?: number;
+  /** Woken, it brews a potion (a drop beside it), once a waking. */
+  brews?: boolean;
+  /** It wets whoever stands within PUDDLE_R (src/shared/chem.ts: a wet zone of its own). */
+  wets?: boolean;
   /** Hint for the look-over (MCP look, the hover line). */
   hintZh: string; hintEn: string;
 }
@@ -31,10 +40,21 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   whizbang: { zh: '韦斯莱烟火桶', en: 'Weasley whizbang barrel', breaks: true, blast: 4, hintZh: '火一碰就炸，炸到旁边的东西和魔物', hintEn: 'fire sets it off: it blasts what stands near' },
   // (a web's blast is its fire running along the strands: the webs it touches burn too, a cluster at once)
   web: { zh: '蛛网', en: 'spider web', breaks: true, blast: 2.6, power: 8, hintZh: '火一碰，连着的蛛网一起烧；任何攻击咒能打掉一片', hintEn: 'fire runs along to the webs it touches; any hurting spell tears one' },
-  brazier: { zh: '火盆', en: 'brazier', wakes: 'fire', secs: 40, quench: 'ice', hintZh: '用火点燃；三个同时燃着有奖励', hintEn: 'light it with fire; all three lit at once pays' },
-  rune: { zh: '符文石', en: 'rune stone', wakes: 'lightning', secs: 30, hintZh: '用雷电充能；三块同时亮着有奖励', hintEn: 'charge it with lightning; all three at once pays' },
-  basin: { zh: '水盆', en: 'basin', wakes: 'ice', secs: 35, quench: 'fire', hintZh: '用冰冻住；三个同时冻着有奖励', hintEn: 'freeze it with ice; all three at once pays' },
-  crystal: { zh: '光之水晶', en: 'light crystal', wakes: 'light', secs: 35, hintZh: '用光照亮；三颗同时亮着有奖励', hintEn: 'light it with light; all three at once pays' },
+  // (hay and bushes burn like the webs: fire runs from one to the next)
+  hay: { zh: '干草堆', en: 'hay bale', breaks: true, blast: 2.4, power: 6, hintZh: '火一碰就烧，连着旁边的干草和灌木', hintEn: 'fire sets it alight, and the hay and bushes by it' },
+  bush: { zh: '灌木', en: 'bush', breaks: true, blast: 2.4, power: 6, hintZh: '火一碰就烧，连着旁边的灌木和干草', hintEn: 'fire sets it alight, and the bushes and hay by it' },
+  mushroom: { zh: '毒蘑菇', en: 'toadstool', breaks: true, pop: { r: 3, power: 8, element: 'arcane' }, hintZh: '一打就炸出孢子，伤到旁边的魔物，连着炸旁边的蘑菇', hintEn: 'any hit bursts it: spores hurt the creatures round it, and burst the toadstools by it' },
+  ice: { zh: '冰块', en: 'ice block', breaks: true, loot: 1, hintZh: '打碎它：里面一定冻着东西', hintEn: 'break it: something is always frozen inside' },
+  brazier: { zh: '火盆', en: 'brazier', wakes: 'fire', secs: 40, quench: 'ice', hintZh: '用火点燃', hintEn: 'light it with fire' },
+  rune: { zh: '符文石', en: 'rune stone', wakes: 'lightning', secs: 30, hintZh: '用雷电充能', hintEn: 'charge it with lightning' },
+  basin: { zh: '水盆', en: 'basin', wakes: 'ice', secs: 35, quench: 'fire', hintZh: '用冰冻住', hintEn: 'freeze it with ice' },
+  crystal: { zh: '光之水晶', en: 'light crystal', wakes: 'light', secs: 35, hintZh: '用光照亮', hintEn: 'light it with light' },
+  lantern: { zh: '灯笼', en: 'lantern', wakes: 'fire', also: 'light', secs: 60, quench: 'ice', hintZh: '用火或光点亮', hintEn: 'light it with fire or light' },
+  cauldron: { zh: '坩埚', en: 'cauldron', wakes: 'fire', secs: 20, brews: true, hintZh: '用火煮：煮出一瓶药水', hintEn: 'heat it with fire: it brews a potion' },
+  puddle: { zh: '水洼', en: 'puddle', wets: true, hintZh: '站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发', hintEn: 'step in and you are wet: then lightning conducts, ice freezes, fire steams' },
+  lamppost: { zh: '路灯', en: 'lamppost', hintZh: '夜里会自己亮起', hintEn: 'lights itself at night' },
+  signpost: { zh: '路牌', en: 'signpost', hintZh: '指着附近的地名', hintEn: 'points to nearby places' },
+  bench: { zh: '长椅', en: 'bench', hintZh: '坐下歇会儿', hintEn: 'sit and rest a while' },
 };
 
 export interface Prop { id: string; kind: PropKind; x: number; z: number; group?: string }
@@ -54,7 +74,7 @@ export const WHIZBANG_POWER = 18;
  *  (A whizbang's own reach: every spot Zonko's pixies are born on is within it of a barrel, kernel/creatures.ts.) */
 export const IGNITE_R = 4;
 
-export const PROP_GROUPS: readonly PropGroup[] = [
+const HAND_GROUPS: readonly PropGroup[] = [
   { id: 'dungeon-fire', zh: '地窖火盆', en: 'the dungeon braziers', kind: 'brazier' },
   { id: 'willow-runes', zh: '打人柳旁的符文石', en: 'the rune stones by the Willow', kind: 'rune' },
   { id: 'tomb-light', zh: '白色墓前的水晶', en: 'the crystals by the white tomb', kind: 'crystal' },
@@ -130,8 +150,8 @@ export const PROP_GROUPS: readonly PropGroup[] = [
 ];
 
 const at = (id: string, kind: PropKind, x: number, z: number, group?: string): Prop => ({ id, kind, x, z, ...(group ? { group } : {}) });
-/** Every prop (positions checked by test/props.test.ts: open ground inside a scene, out of the safe zones). */
-export const PROPS: readonly Prop[] = [
+/** The hand-placed props (scripts/dress.ts scatters the rest round them, src/shared/dressing.ts). */
+export const HAND_PROPS: readonly Prop[] = [
   // the castle: the south lawn's crates, the greenhouse pots and pumpkins, and four groups
   at('lawn-1', 'crate', -8, 6), at('lawn-2', 'crate', -6.5, 7.5), at('lawn-3', 'barrel', -9.5, 8), at('lawn-4', 'crate', 18, 4), at('lawn-5', 'barrel', 22.0, 5.5),
   at('gh-1', 'pot', 30.5, -37), at('gh-2', 'pot', 35, -34.5), at('gh-3', 'pumpkin', 51.5, -38), at('gh-4', 'pumpkin', 51.5, -36), at('gh-5', 'pot', 30, -22),
@@ -470,4 +490,17 @@ export const PROPS: readonly Prop[] = [
   at('bx-pitch-031', 'crate', 71.2, -136.9), at('bx-pitch-032', 'pot', 68.1, -156.6), at('bx-pitch-033', 'pot', 49.7, -189.6), at('bx-pitch-034', 'pot', 66.7, -185.9),
   at('bx-pitch-035', 'crate', 10.8, -146.5), at('bx-pitch-036', 'pumpkin', 25.3, -122.4), at('bx-pitch-037', 'pumpkin', 30, -134.8), at('bx-pitch-038', 'pumpkin', 50.1, -124.9),
 ];
+/** Every prop (positions checked by test/props.test.ts: open ground inside a scene, out of the safe zones). */
+export const PROPS: readonly Prop[] = [...HAND_PROPS, ...DRESSING];
+export const PROP_GROUPS: readonly PropGroup[] = [...HAND_GROUPS, ...DRESSING_GROUPS];
 export const propById = (id: string) => PROPS.find((p) => p.id === id) ?? null;
+
+const rewardGroups = new Set(PROP_GROUPS.map(g => g.id));
+
+/** A reward hint belongs to an actual puzzle group, never merely to the prop's kind. */
+export function propHint(p: Prop): { zh: string; en: string } {
+  const d = PROP_DEFS[p.kind];
+  return p.group && rewardGroups.has(p.group)
+    ? { zh: `${d.hintZh}；同组全部激活有奖励`, en: `${d.hintEn}; activating the whole group pays` }
+    : { zh: d.hintZh, en: d.hintEn };
+}

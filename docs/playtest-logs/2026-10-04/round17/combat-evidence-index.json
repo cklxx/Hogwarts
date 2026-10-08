@@ -1,0 +1,128 @@
+[
+  {
+    "case": "Rune code misleading metadata",
+    "firstLine": 1,
+    "lastLine": 38,
+    "utcStart": "2026-10-04T11:16:14.155Z",
+    "utcEnd": "2026-10-04T11:17:18.493Z"
+  },
+  {
+    "case": "Driver incoming instant-wait cooldown failures",
+    "firstLine": 206,
+    "lastLine": 310,
+    "utcStart": "2026-10-04T11:20:43.019Z",
+    "utcEnd": "2026-10-04T11:21:12.803Z"
+  },
+  {
+    "case": "Named 1v1 automatic dodge forfeit",
+    "firstLine": 425,
+    "lastLine": 487,
+    "utcStart": "2026-10-04T11:24:02.735Z",
+    "utcEnd": "2026-10-04T11:24:57.712Z"
+  },
+  {
+    "case": "OWLs real score optimization",
+    "firstLine": 488,
+    "lastLine": 577,
+    "utcStart": "2026-10-04T11:25:17.487Z",
+    "utcEnd": "2026-10-04T11:28:03.761Z"
+  },
+  {
+    "case": "2v2 NPC dummy and true KO",
+    "firstLine": 576,
+    "lastLine": 610,
+    "utcStart": "2026-10-04T11:28:00.730Z",
+    "utcEnd": "2026-10-04T11:28:38.004Z"
+  },
+  {
+    "case": "Mistaken courtyard AOE friendly damage (driver fault)",
+    "firstLine": 950,
+    "lastLine": 958,
+    "utcStart": "2026-10-04T11:37:41.283Z",
+    "utcEnd": "2026-10-04T11:38:43.520Z"
+  },
+  {
+    "case": "Wet fire cooperation and support economy",
+    "firstLine": 986,
+    "lastLine": 1338,
+    "utcStart": "2026-10-04T11:42:19.383Z",
+    "utcEnd": "2026-10-04T11:45:18.575Z"
+  },
+  {
+    "case": "Effect cap and gas atomic failure",
+    "firstLine": 1437,
+    "lastLine": 1458,
+    "utcStart": "2026-10-04T11:51:28.188Z",
+    "utcEnd": "2026-10-04T11:51:50.215Z"
+  },
+  {
+    "case": "Market v1-v2 immutability and payment",
+    "firstLine": 1433,
+    "lastLine": 1495,
+    "utcStart": "2026-10-04T11:51:00.834Z",
+    "utcEnd": "2026-10-04T11:53:52.262Z"
+  },
+  {
+    "case": "Social true Mend +12 HP",
+    "firstLine": 1496,
+    "lastLine": 1500,
+    "utcStart": "2026-10-04T11:54:05.461Z",
+    "utcEnd": "2026-10-04T11:54:17.577Z"
+  },
+  {
+    "case": "Lore incantation triple Troll damage",
+    "firstLine": 1527,
+    "lastLine": 1542,
+    "utcStart": "2026-10-04T11:56:17.228Z",
+    "utcEnd": "2026-10-04T11:56:40.079Z"
+  },
+  {
+    "case": "Boss won true Combat + Social damage",
+    "firstLine": 1578,
+    "lastLine": 1595,
+    "utcStart": "2026-10-04T11:59:07.176Z",
+    "utcEnd": "2026-10-04T11:59:52.767Z"
+  },
+  {
+    "case": "Zonko isolated environment puzzle",
+    "firstLine": 1616,
+    "lastLine": 1622,
+    "utcStart": "2026-10-04T12:03:21.165Z",
+    "utcEnd": "2026-10-04T12:03:27.279Z"
+  },
+  {
+    "case": "Chain2 +3 hops and fresh player abort",
+    "firstLine": 1627,
+    "lastLine": 1670,
+    "utcStart": "2026-10-04T12:04:19.065Z",
+    "utcEnd": "2026-10-04T12:04:59.523Z"
+  },
+  {
+    "case": "Public seal1 and changed budget",
+    "firstLine": 1671,
+    "lastLine": 1699,
+    "utcStart": "2026-10-04T12:05:38.283Z",
+    "utcEnd": "2026-10-04T12:06:58.092Z"
+  },
+  {
+    "case": "Public seal2 three pages first answer",
+    "firstLine": 1700,
+    "lastLine": 1721,
+    "utcStart": "2026-10-04T12:07:55.212Z",
+    "utcEnd": "2026-10-04T12:09:18.572Z"
+  },
+  {
+    "case": "Chain primitive versus rune",
+    "firstLine": 1722,
+    "lastLine": 1754,
+    "utcStart": "2026-10-04T12:10:10.371Z",
+    "utcEnd": "2026-10-04T12:10:57.030Z"
+  },
+  {
+    "case": "Term boundary, final-hour stop",
+    "firstLine": 1771,
+    "lastLine": 1787,
+    "utcStart": "2026-10-04T12:14:15.398Z",
+    "utcEnd": "2026-10-04T12:17:23.983Z"
+  }
+]

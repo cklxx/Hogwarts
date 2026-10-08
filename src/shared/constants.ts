@@ -71,6 +71,9 @@ export const PAIR_TTL_S = 600;
 /** A new wizard's first minutes: creatures hit 30% softer (the Hogwarts nurses call it 新生护符). */
 export const NEWCOMER_WARD_S = 180;
 export const NEWCOMER_WARD = 0.3;
+/** For this long after enrolling, a wild creature goes only for a newcomer who has hurt it (the 2026-10-01 phone playtest:
+ *  new players were killed reading the tutorial and a rune's card, and swarmed by Dementors before the first lesson). */
+export const NEWCOMER_PEACE_S = 300;
 /** No wild creature's single blow takes more than this share of a wizard's maximum health (docs/RULES.md). */
 export const CREATURE_HIT_CAP = 0.4;
 /**

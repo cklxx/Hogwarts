@@ -249,13 +249,19 @@ textarea.runes:focus { background: rgba(120, 80, 30, .14); border-left-color: va
 #helppanel h3.pillar .pl-n { font: 400 calc(22px * var(--t))/1 var(--brush); color: var(--wax); }
 [data-study].warn { color: var(--wax); box-shadow: inset 0 0 0 calc(1.5px * var(--u)) var(--wax); }
 /* 符文零件 (panels/runes.ts): the card over the hotbar, and a rune's mark on its spell's tile */
-#runecard { position: fixed; left: 50%; bottom: calc(var(--bars-h, 150px) + 14px); transform: translateX(-50%); z-index: 7; max-width: min(30em, calc(100vw - 32px));
+#runecard { position: fixed; left: 50%; bottom: calc(var(--bars-h, 150px) + 14px); transform: translateX(-50%); z-index: 7; width: min(30em, calc(100vw - 32px));
   padding: calc(10px * var(--u)) calc(16px * var(--u)); background: rgb(var(--sheen2) / .96); color: var(--ink); border: 1px solid var(--ink3); border-radius: calc(8px * var(--u));
   box-shadow: 0 0 0 2px rgba(214, 170, 50, .55), var(--shadow); font-size: calc(15px * var(--t)); text-align: center; animation: fadein .4s var(--ease) both; }
 #runecard b { display: block; font-size: calc(18px * var(--t)); color: var(--wax, #962024); margin-bottom: 2px; }
+#runecard .rc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#runecard [data-code] { flex: none; background: transparent; color: var(--ink2); box-shadow: none; text-shadow: none; }
+#runecard [data-code]::after { content: ' ▾'; }
+#runecard [data-code][aria-expanded="true"]::after { content: ' ▴'; }
 #runecard code { display: block; margin: 6px 0; font-size: calc(12px * var(--t)); opacity: .75; }
+#runecard code[hidden], #runecard .rc-short { display: none; }
 #runecard .rc-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
 #runecard button { font-size: calc(14px * var(--t)); padding: calc(5px * var(--u)) calc(10px * var(--u)); }
+body:has(#runecard:not([hidden])) #tutorial[data-at="bottom"]:not([data-over]) { bottom: calc(var(--bars-h, 150px) + var(--runecard-h, 140px) + 26px); }
 #hotbar > div[data-rune]::before { content: attr(data-rune); position: absolute; left: 50%; top: 3px; transform: translateX(-50%); font-size: 11px; line-height: 1; padding: 2px 4px; border-radius: 6px;
   background: rgba(214, 170, 50, .92); color: #2b1d0e; font-weight: 700; pointer-events: none; }
 /* 遭遇 (panels/encounters.ts): the goal line at the top while you are in one, and the doors when you clear it */

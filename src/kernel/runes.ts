@@ -18,6 +18,7 @@ import { BURST_LV, CHAIN_DMG, CHAIN_LV, CHAIN_R, RUNE_IDS, RUNE_MAX, RUNES, rune
 import type { Feature } from './feature.js';
 import type { Projectile, Wizard } from './types.js';
 import type { World } from './world.js';
+import { userSpellTag } from '../shared/spell-tags.js';
 
 declare module './world.js' {
   interface World {
@@ -43,7 +44,7 @@ function runeOf(world: World, w: Wizard | undefined, tags: readonly string[]): {
   if (!w || w.npc) return null;
   const r = world.runes.of.get(w.id);
   if (!r) return null;
-  for (const s of w.spells) if (tags.includes(s.name) && r.on[s.id]) return { k: r.on[s.id], lv: runeLevel(world, w.id, r.on[s.id]) };
+  for (const s of w.spells) if (tags.includes(userSpellTag(s.name)) && r.on[s.id]) return { k: r.on[s.id], lv: runeLevel(world, w.id, r.on[s.id]) };
   return null;
 }
 const RUNE_TAG = 'rune';
@@ -87,6 +88,8 @@ export const unequipRune = (world: World, wid: string, spellId: string) => { con
 function status(world: World, wid: string) {
   const w = world.need(wid), r = mine(world, wid);
   return {
+    codeKind: 'illustration',
+    codeNote: '效果示意不是可运行源码；获得符文后即可装备，不受示意原语的年级限制。 Effect sketches are not executable source; an owned rune can be equipped regardless of the illustrated primitive\'s year requirement.',
     runes: RUNE_IDS.map((k) => {
       const lv = runeLevel(world, wid, k), at = runeAt(k, Math.max(1, lv)), spell = Object.entries(r.on).find(([, x]) => x === k)?.[0];
       return { id: k, zh: RUNES[k].zh, en: RUNES[k].en, level: lv, maxLevel: RUNE_MAX, does: `${at.zh} / ${at.en}`, owned: lv > 0, on: spell ? w.spells.find((s) => s.id === spell)?.name ?? null : null, howToGet: `${RUNES[k].howZh} / ${RUNES[k].howEn}`, code: RUNES[k].code };
@@ -153,7 +156,7 @@ export const RUNES_FEATURE: Feature = {
   view: { key: 'runes', me: (world, w) => { const r = world.runes.of.get(w.id); return r ? { bag: r.bag, on: r.on, ...(r.lv ? { lv: r.lv } : {}) } : null; } },
   tools: [{
     name: 'runes', title: 'Runes', cost: 0,
-    description: '符文零件: pieces that change how a spell lands — split (a bolt goes out as three), chain (a hit leaps on to two more foes), burst (a hit bursts 3 m round); levels 1–3 (an encounter door raises one). See what you own, each one\'s level and how to get the rest; put one on a spell with {rune, spell} (one rune per spell), take it off with {spell, off: true}.',
+    description: '符文零件: pieces that change how a spell lands — split (a bolt goes out as three), chain (a hit leaps on to two more foes), burst (a hit bursts 3 m round); levels 1–3 (an encounter door raises one). See what you own, each one\'s level and how to get the rest; put one on a spell with {rune, spell} (one rune per spell), take it off with {spell, off: true}. The code fields are illustrative effect sketches, not executable Runes source; an owned rune needs no higher-year primitives to equip.',
     input: { rune: z.enum(RUNE_IDS as [RuneId, ...RuneId[]]).optional(), spell: z.string().max(60).optional(), off: z.boolean().optional() },
     run(world, wid, a) {
       if (a.spell && a.off) return unequipRune(world, wid, world.need(wid).spells.find((s) => s.name === a.spell || s.id === a.spell)?.id ?? String(a.spell));

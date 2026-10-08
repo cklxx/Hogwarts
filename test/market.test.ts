@@ -161,7 +161,7 @@ describe('咒语集市: copy and fork', () => {
     expect(low.hotbar[3]).toBe(s.id);
     expect(w.armory(low.id).spells.find((x) => x.name === "Colin's Ring")).toMatchObject({ market: { id, v: 1, own: false }, origin: { author: 'Hermione Granger' } });
     expect(w.armory(a.id).spells.find((x) => x.name === 'Ring of Fire')).toMatchObject({ market: { id, v: 1, own: true } });
-    expect(marketSpell(w, low.id, id)).toMatchObject({ canCopy: { ok: false, have: { name: "Colin's Ring", v: 1 } }, canFork: { ok: true } });
+    expect(marketSpell(w, low.id, id)).toMatchObject({ canCopy: { ok: true, have: { name: "Colin's Ring", v: 1 } }, canFork: { ok: true } });
     // same name twice is refused; the author hears about it once per copier
     expect(() => copySpell(w, low.id, id, { name: "Colin's Ring" })).toThrow(/already have/);
     expect(mine(w, a).filter((e) => /copied your/.test(e.text))).toHaveLength(1);

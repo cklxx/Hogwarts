@@ -1,0 +1,9 @@
+
+ RUN  v5.0.2 /workspace/Hogwarts
+
+
+ Test Files  2 passed (2)
+      Tests  28 passed (28)
+   Start at  07:45:50
+   Duration  20.72s (tests 93%, transform 4%, import 3%)
+

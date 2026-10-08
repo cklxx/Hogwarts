@@ -43,6 +43,7 @@ const setHtml = (el: HTMLElement, html: string) => { if (el.dataset.h !== html) 
 const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 
 export function createFun(d: FunDeps) {
+  const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
   const hud = () => $('hud')!;
   const strip = slot('cupstrip', hud);
   strip.setAttribute('aria-live', 'off');
@@ -60,6 +61,7 @@ export function createFun(d: FunDeps) {
   album.hidden = true;
   let albumFilter: 'all' | 'owned' | 'missing' = 'all';
   let albumPick: string | null = null;
+  let albumScroll = 0;
   let shownTerm = 0, dismissed = 0;
   const queue = new RevealQueue();
   let revealUntil = 0;
@@ -152,11 +154,11 @@ export function createFun(d: FunDeps) {
   }
 
   // ------------------------------------------------------------------ the card reveal
-  function cardHtml(c: Card, owned = true, extra = '') {
+  function cardHtml(c: Card, owned = true, extra = '', selectable = false) {
     const r = RARITY_INK[c.rarity];
     const set = c.set ? CARD_SETS.find((s) => s.id === c.set) : null;
     if (!owned) return `<div class="fc ${r.cls} missing" data-card="${c.id}" title="${esc(L(`${r.zh} · 还没有`, `${r.en} · not yet`))}"><div class="fc-art"><span class="fc-mono">?</span></div><div class="fc-name">${L('？？？', '???')}</div><div class="fc-rar">${L(r.zh, r.en)}</div></div>`;
-    return `<div class="fc ${r.cls}" data-card="${c.id}"><div class="fc-art"><span class="fc-mono">${esc(monogram(c))}</span>${ic('frog', 'fc-frog')}</div><div class="fc-name">${esc(L(c.zh, c.en))}</div><div class="fc-rar">${L(r.zh, r.en)}${set ? ` · ${esc(L(set.zh, set.en))}` : ''}</div>${extra}</div>`;
+    return `<div class="fc ${r.cls}" data-card="${c.id}"${selectable ? ` role="button" tabindex="0" aria-label="${esc(L(`查看 ${c.zh}`, `Read about ${c.en}`))}"` : ''}><div class="fc-art"><span class="fc-mono">${esc(monogram(c))}</span>${ic('frog', 'fc-frog')}</div><div class="fc-name">${esc(L(c.zh, c.en))}</div><div class="fc-rar">${L(r.zh, r.en)}${set ? ` · ${esc(L(set.zh, set.en))}` : ''}</div>${extra}</div>`;
   }
   function startReveal() {
     if (!reveal.hidden || !queue.size) return;
@@ -165,7 +167,7 @@ export function createFun(d: FunDeps) {
     if (!c) return;
     const back = `<div class="fc-back">${ic('frog')}<span>${L('巧克力蛙', 'Chocolate Frog')}</span></div>`;
     reveal.innerHTML = `<div class="cr-wrap${reduced() ? ' still' : ''}"><div class="cr-flip">${back}<div class="cr-front">${cardHtml(c, true, `<p class="fc-flav">${esc(L(c.flavour.zh, c.flavour.en))}</p>`)}</div></div>
-      <p class="cr-cap">${n.dup ? L(`刚拿到 · 重复了，换成 ${({ common: 5, rare: 12, epic: 30, legendary: 80 } as const)[c.rarity]} 加隆`, `Just got · a duplicate: ${({ common: 5, rare: 12, epic: 30, legendary: 80 } as const)[c.rarity]} Galleons`) : L('刚拿到！按 C 打开画册', 'Just got! C opens your album')}</p></div>`;
+      <p class="cr-cap">${n.dup ? L(`刚拿到 · 重复了，换成 ${({ common: 5, rare: 12, epic: 30, legendary: 80 } as const)[c.rarity]} 加隆`, `Just got · a duplicate: ${({ common: 5, rare: 12, epic: 30, legendary: 80 } as const)[c.rarity]} Galleons`) : touch ? L('刚拿到！点「更多」里的画册查看', 'Just got! Find your album under More.') : L('刚拿到！按 C 打开画册', 'Just got! C opens your album')}</p></div>`;
     reveal.hidden = false;
     revealUntil = performance.now() + 6500;
     clearTimeout(revealTimer);
@@ -180,30 +182,61 @@ export function createFun(d: FunDeps) {
 
   // ------------------------------------------------------------------ the album (C)
   function renderAlbum() {
-    const me = d.me();
-    const owned = me?.fun?.cards ?? [];
+    const owned = d.me()?.fun?.cards ?? [];
     const m = albumModel(owned, albumFilter);
-    const pick = albumPick ? CARD_BY_ID[albumPick] : null;
-    const tab = (k: typeof albumFilter, zh: string, en: string) => `<button type="button" class="ghost${albumFilter === k ? ' on' : ''}" data-af="${k}">${L(zh, en)}</button>`;
-    album.innerHTML = `<h2>${ic('frog')}<span>${L('巧克力蛙画片', 'Chocolate Frog cards')} <small>${L(`${m.owned}/${m.total} 张 · <kbd>C</kbd>`, `${m.owned}/${m.total} · <kbd>C</kbd>`)}</small></span> <button class="x" data-close="album" title="Esc"><svg class="ic"><use href="#i-x"/></svg></button></h2>
-      <p class="sub">${L('画片不卖：打怪偶尔掉落、校园事件的奖励、藏在宝箱里（按 F 打开）。重复的换成加隆；集齐一套得称号。', 'Never sold: creatures drop them now and then, events reward them, chests hide them (F opens one). Duplicates become Galleons; a full set earns a title.')}</p>
-      ${(() => { const closed = new Set(d.snap()?.cup?.ch ?? CHESTS.map((c) => c.id)), left = CHESTS.filter((c) => closed.has(c.id)); return `<p class="sub al-chests">${ic('chest')}${L(`本学期还剩 ${left.length} 个宝箱，藏在：`, `${left.length} chests still closed this term, hidden at: `)}${left.map((c) => esc(L(c.zh, c.en))).join(L('、', ' · '))}</p>`; })()}
+    const pick = albumPick && owned.includes(albumPick) ? CARD_BY_ID[albumPick] : null;
+    const tab = (k: typeof albumFilter, zh: string, en: string) => `<button type="button" class="ghost${albumFilter === k ? ' on' : ''}" data-af="${k}" aria-pressed="${albumFilter === k}">${L(zh, en)}</button>`;
+    const count = L(`${m.owned}/${m.total} 张`, `${m.owned}/${m.total}`);
+    const close = esc(L('关闭画册', 'Close album'));
+    album.innerHTML = `<h2>${ic('frog')}<span>${L('巧克力蛙画片', 'Chocolate Frog cards')} <small>${count}${touch ? '' : ' · <kbd>C</kbd>'}</small></span> <button type="button" class="x" data-close="album" aria-label="${close}" title="${close}${touch ? '' : ' · Esc'}">${ic('x')}</button></h2>
+      ${pick ? `<button type="button" class="ghost al-back" data-al-back>← ${L('返回画册', 'Back to album')}</button>
+      <div class="al-body"><aside class="al-pick" tabindex="-1" aria-label="${esc(L(pick.zh, pick.en))}">${cardHtml(pick, true, `<p class="fc-flav">${esc(L(pick.flavour.zh, pick.flavour.en))}</p>`)}</aside></div>` : `
+      <p class="sub">${L(`画片不卖：打怪偶尔掉落、校园事件的奖励、藏在宝箱里（${touch ? '靠近后点交互打开' : '按 F 打开'}）。重复的换成加隆；集齐一套得称号。`, `Never sold: creatures drop them now and then, events reward them, chests hide them (${touch ? 'tap Interact nearby to open' : 'F opens one'}). Duplicates become Galleons; a full set earns a title.`)}</p>
+      ${(() => { const closed = new Set(d.snap()?.cup?.ch ?? CHESTS.map((c) => c.id)), left = CHESTS.filter((c) => closed.has(c.id)); return `<details class="al-chests"><summary>${ic('chest')}${L(`本学期还有 ${left.length} 个宝箱 · 查看线索`, `${left.length} chests left this term · Show clues`)}</summary><p class="sub">${left.map((c) => esc(L(c.zh, c.en))).join(L('、', ' · '))}</p></details>`; })()}
       <div class="al-tabs">${tab('all', '全部', 'All')}${tab('owned', '已有', 'Owned')}${tab('missing', '还缺', 'Missing')}</div>
-      <div class="al-body"><div class="al-groups">${m.groups.filter((g) => g.cards.length).map((g) => `<section class="al-g"><h3>${esc(L(g.zh, g.en))} <small class="num">${g.have}/${g.of}</small>${g.reward.zh ? ` <small class="al-rw${g.have === g.of ? ' done' : ''}">${g.have === g.of ? ic('check') : ''}${esc(L(`称号「${g.reward.zh}」`, `title "${g.reward.en}"`))}</small>` : ''}</h3><div class="al-grid">${g.cards.map((x) => cardHtml(x.c, x.owned)).join('')}</div></section>`).join('')}</div>
-      ${pick && owned.includes(pick.id) ? `<aside class="al-pick">${cardHtml(pick, true, `<p class="fc-flav">${esc(L(pick.flavour.zh, pick.flavour.en))}</p>`)}</aside>` : ''}</div>`;
+      <div class="al-body"><div class="al-groups">${m.groups.filter((g) => g.cards.length).map((g) => `<section class="al-g"><h3>${esc(L(g.zh, g.en))} <small class="num">${g.have}/${g.of}</small>${g.reward.zh ? ` <small class="al-rw${g.have === g.of ? ' done' : ''}">${g.have === g.of ? ic('check') : ''}${esc(L(`称号「${g.reward.zh}」`, `title "${g.reward.en}"`))}</small>` : ''}</h3><div class="al-grid">${g.cards.map((x) => cardHtml(x.c, x.owned, '', x.owned)).join('')}</div></section>`).join('')}</div></div>`}`;
+    // The sheet scrolls as a whole, so short landscape windows can still reach every control.
+    if (!pick) album.scrollTop = albumScroll;
+  }
+  function backToAlbum() {
+    const selected = albumPick;
+    albumPick = null;
+    renderAlbum();
+    const card = selected ? album.querySelector<HTMLElement>(`[data-card="${selected}"]`) : null;
+    card?.focus({ preventScroll: true });
+  }
+  function selectCard(card: HTMLElement) {
+    albumScroll = album.scrollTop;
+    albumPick = card.dataset.card ?? null;
+    renderAlbum();
+    album.scrollTop = 0;
+    album.querySelector<HTMLElement>('.al-pick')?.focus({ preventScroll: true });
   }
   album.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
+    if (t.closest('[data-al-back]')) { backToAlbum(); return; }
     const f = t.closest('[data-af]') as HTMLElement | null;
-    if (f) { albumFilter = f.dataset.af as typeof albumFilter; renderAlbum(); return; }
+    if (f) { albumFilter = f.dataset.af as typeof albumFilter; albumScroll = 0; renderAlbum(); return; }
     if (t.closest('[data-close="album"]')) { album.hidden = true; return; }
-    const c = t.closest('.fc:not(.missing)') as HTMLElement | null;
-    if (c) { albumPick = c.dataset.card ?? null; renderAlbum(); }
+    const c = t.closest('.fc[role="button"]') as HTMLElement | null;
+    if (c) selectCard(c);
+  });
+  album.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    // Native buttons and the clue disclosure keep their keyboard action without opening chat behind the sheet.
+    if ((e.target as HTMLElement).closest('button, summary')) e.stopPropagation();
+    const c = (e.target as HTMLElement).closest('.fc[role="button"]') as HTMLElement | null;
+    if (c) { e.preventDefault(); e.stopPropagation(); selectCard(c); }
   });
   function toggleAlbum(force?: boolean) {
     const show = force ?? album.hidden;
     if (show) { renderAlbum(); d.solo(album); }
     album.hidden = !show;
+  }
+  const albumButton = $('tb-album');
+  if (albumButton) {
+    albumButton.dataset.lb = L('画册', 'Album');
+    albumButton.onclick = () => toggleAlbum();
   }
   let albumSig = '';
 
@@ -233,7 +266,7 @@ export function createFun(d: FunDeps) {
     closeTop(): boolean {
       if (!reveal.hidden) { endReveal(); return true; }
       if (!cer.hidden) { cer.hidden = true; dismissed = shownTerm; return true; }
-      if (!album.hidden) { album.hidden = true; return true; }
+      if (!album.hidden) { if (albumPick) backToAlbum(); else album.hidden = true; return true; }
       return false;
     },
     toggleAlbum,

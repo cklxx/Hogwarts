@@ -1,0 +1,212 @@
+{
+  "you": {
+    "x": 0.4,
+    "z": -33.6,
+    "facing": -3.1,
+    "place": "The Courtyard",
+    "safeZone": false,
+    "onGrounds": true,
+    "lawless": false
+  },
+  "time": {
+    "hour": 6.3,
+    "night": false,
+    "weather": "clear",
+    "remark": {
+      "zh": "天刚亮。猫头鹰正从猫头鹰棚里飞出去送早报。",
+      "en": "Dawn. The owls are leaving the Owlery with the morning post."
+    }
+  },
+  "wizards": [],
+  "creatures": [],
+  "landmarks": [
+    {
+      "id": "courtyard",
+      "name": "The Courtyard",
+      "dist": 11.6,
+      "x": 0,
+      "z": -22
+    },
+    {
+      "id": "great_hall",
+      "name": "The Great Hall",
+      "dist": 22.4,
+      "x": 0,
+      "z": -56
+    },
+    {
+      "id": "erised",
+      "name": "A disused classroom",
+      "dist": 39.7,
+      "x": 30,
+      "z": -60
+    },
+    {
+      "id": "seventh_floor",
+      "name": "Seventh-Floor Corridor",
+      "dist": 40.5,
+      "x": -32,
+      "z": -58
+    },
+    {
+      "id": "greenhouses",
+      "name": "Greenhouses",
+      "dist": 40.8,
+      "x": 41,
+      "z": -30
+    }
+  ],
+  "yourHits": [],
+  "schoolEvent": {
+    "id": "curfew",
+    "x": -39.8,
+    "z": -46.2,
+    "dist": 42.1,
+    "more": "school_events"
+  },
+  "chests": [],
+  "chestHint": {
+    "en": "Behind a courtyard pillar",
+    "zh": "庭院石柱后面",
+    "distance": "within 30 m",
+    "distanceZh": "30 米内",
+    "bearing": "W"
+  },
+  "elderWand": "resting in Dumbledore's tomb (-52, 28)",
+  "tempus": {
+    "clock": "06:16",
+    "night": false,
+    "weather": "clear",
+    "term": 6,
+    "termSecondsLeft": 92,
+    "proclamation": "Draco dormiens nunquam titillandus."
+  },
+  "revelio": {
+    "year": 2,
+    "galleons": 46,
+    "reputation": 1,
+    "seals": "0/4",
+    "title": "Apprentice",
+    "nextTitle": {
+      "title": "Wizard",
+      "how": "Reach year 3."
+    }
+  },
+  "darkCorners": [
+    {
+      "section": "pointMe",
+      "lights": "the bottom-left corner: a radar that always points north",
+      "cast": "Point Me"
+    },
+    {
+      "section": "homenum",
+      "lights": "the bottom-right corner: everyone near you",
+      "cast": "Homenum Revelio",
+      "fromYear": 3
+    }
+  ],
+  "props": [
+    {
+      "id": "brazier-courtyard-2",
+      "kind": "brazier",
+      "zh": "火盆",
+      "x": -8,
+      "z": -20,
+      "state": "rest",
+      "wakes": "fire",
+      "hint": "用火点燃；三个同时燃着有奖励 / light it with fire; all three lit at once pays"
+    },
+    {
+      "id": "basin-courtyard-1",
+      "kind": "basin",
+      "zh": "水盆",
+      "x": 0,
+      "z": -30,
+      "state": "rest",
+      "wakes": "ice",
+      "hint": "用冰冻住；三个同时冻着有奖励 / freeze it with ice; all three at once pays"
+    },
+    {
+      "id": "castle-crate-62",
+      "kind": "crate",
+      "zh": "木箱",
+      "x": 7.4,
+      "z": -19.9,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "castle-crate-63",
+      "kind": "crate",
+      "zh": "木箱",
+      "x": 6.8,
+      "z": -18.6,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "road1-lamp-0-0",
+      "kind": "lamppost",
+      "zh": "路灯",
+      "x": 3.5,
+      "z": -22,
+      "state": "rest",
+      "hint": "夜里会自己亮起 / lights itself at night"
+    },
+    {
+      "id": "sign-courtyard",
+      "kind": "signpost",
+      "zh": "路牌",
+      "x": 6,
+      "z": -18,
+      "state": "rest",
+      "hint": "指着附近的地名 / points to nearby places"
+    },
+    {
+      "id": "castle-puddle-40",
+      "kind": "puddle",
+      "zh": "水洼",
+      "x": 9,
+      "z": -25.4,
+      "state": "rest",
+      "hint": "站进去就湿了：湿的挨雷会导电，挨冰会冻住，挨火会蒸发 / step in and you are wet: then lightning conducts, ice freezes, fire steams"
+    },
+    {
+      "id": "bench-courtyard",
+      "kind": "bench",
+      "zh": "长椅",
+      "x": 9,
+      "z": -26,
+      "state": "rest",
+      "hint": "坐下歇会儿 / sit and rest a while"
+    },
+    {
+      "id": "brazier-courtyard-1",
+      "kind": "brazier",
+      "zh": "火盆",
+      "x": 8,
+      "z": -20,
+      "state": "rest",
+      "wakes": "fire",
+      "hint": "用火点燃；三个同时燃着有奖励 / light it with fire; all three lit at once pays"
+    },
+    {
+      "id": "castle-crate-60",
+      "kind": "crate",
+      "zh": "木箱",
+      "x": 18.5,
+      "z": -48.2,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    },
+    {
+      "id": "castle-crate-61",
+      "kind": "crate",
+      "zh": "木箱",
+      "x": 19.2,
+      "z": -47,
+      "state": "rest",
+      "hint": "任何攻击咒都能打碎 / any hurting spell breaks it"
+    }
+  ]
+}

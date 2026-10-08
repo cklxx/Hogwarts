@@ -24,6 +24,18 @@ function tex(c: HTMLCanvasElement, srgb = true) {
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+/**
+ * A texture for sprites / UI quads (labels, signs, banners, glow sprites): never tiles and is
+ * rarely minified, so mipmaps are pure waste (x1.33 memory) — disable them (docs/PERF.md 2026-10-06).
+ */
+export function spriteTex(c: HTMLCanvasElement, srgb = true) {
+  const t = new THREE.CanvasTexture(c);
+  t.generateMipmaps = false;
+  t.minFilter = THREE.LinearFilter;
+  t.anisotropy = 4;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 const shade = (base: [number, number, number], k: number) => `rgb(${base.map((v) => Math.max(0, Math.min(255, Math.round(v * k)))).join(',')})`;
 function speckle(g: CanvasRenderingContext2D, size: number, n: number, alpha: number) {
   for (let i = 0; i < n; i++) {
@@ -224,9 +236,7 @@ export function glowSprite(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,
   rg.addColorStop(1, outer);
   g.fillStyle = rg;
   g.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return spriteTex(c);
 }
 
 /** A house banner: field colour, gold trim, and the house initial in the middle. */
@@ -243,9 +253,7 @@ export function bannerTexture(color: string, letter: string) {
   g.font = 'bold 180px Georgia';
   g.textAlign = 'center';
   g.fillText(letter, 128, 290);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return spriteTex(c); // banner 永不平铺：去 mipmap（省 x1.33 显存），srgb 保持
 }
 
 /** Scale a BoxGeometry's UVs so the texture repeats every `tile` metres on every face. */
@@ -342,9 +350,8 @@ function spans(total: number, mean: number, jitter: number) {
 }
 
 /**
- * Painted ashlar: courses of blocks in a limited palette, each block laid in with a few broad
- * strokes, a lit top edge and a shaded foot (a painted bevel), soft mortar, a little lichen.
- * The block heights double as a bump map for a hint of relief.
+ * Dressed limestone: broad, quiet faces and fine recessed joints. Edge wear stays narrow, so
+ * the stone reads as cut masonry rather than rows of rounded cushions at the playing camera.
  */
 function paintedStone(colors: string[], mortar: string, o: { S?: number; rows?: number; lichen?: number; light?: string; shade?: string } = {}) {
   const S = o.S ?? 512, rows = o.rows ?? 8, bh = S / rows;
@@ -353,33 +360,33 @@ function paintedStone(colors: string[], mortar: string, o: { S?: number; rows?: 
   const P = pal(...colors), lit = hexRGB(o.light ?? '#fff1cf'), dim = hexRGB(o.shade ?? '#4a2f1a');
   g.fillStyle = mortar;
   g.fillRect(0, 0, S, S);
-  h.fillStyle = '#000';
+  h.fillStyle = '#909090';
   h.fillRect(0, 0, S, S);
-  const m = Math.max(2, S / 170);
+  const m = Math.max(1, S / 340);
   for (let r = 0; r < rows; r++) {
     let x = (r % 2 ? bh * 0.8 : 0) + rnd() * bh * 0.3;
     for (const bw of spans(S, bh * 1.9, 0.35)) {
-      const base = pick(P), k = 0.9 + rnd() * 0.2, y0 = r * bh + m, hh = bh - m * 2, w = bw - m * 2, hv = (150 + rnd() * 90) | 0;
+      const base = pick(P), k = 0.96 + rnd() * 0.08, y0 = r * bh + m, hh = bh - m * 2, w = bw - m * 2, hv = (184 + rnd() * 8) | 0;
       const block = (X: number) => {
         const x0 = X + m;
         g.save();
         g.beginPath();
-        g.roundRect(x0, y0, w, hh, bh * 0.12);
+        g.roundRect(x0, y0, w, hh, m);
         g.fillStyle = paint(base, 1, k);
         g.fill();
         g.clip();
-        for (let i = 0; i < 6; i++) brush(g, x0 + rnd() * w, y0 + rnd() * hh, w * (0.35 + rnd() * 0.5), hh * (0.2 + rnd() * 0.3), (rnd() - 0.5) * 0.25, paint(base, 0.45, k * (0.84 + rnd() * 0.3)));
+        for (let i = 0; i < 6; i++) brush(g, x0 + rnd() * w, y0 + rnd() * hh, w * (0.35 + rnd() * 0.5), hh * (0.2 + rnd() * 0.3), (rnd() - 0.5) * 0.25, paint(base, 0.25, k * (0.94 + rnd() * 0.12)));
         const lg = g.createLinearGradient(0, y0, 0, y0 + hh);
-        lg.addColorStop(0, paint(lit, 0.42));
-        lg.addColorStop(0.22, paint(lit, 0));
-        lg.addColorStop(0.7, paint(dim, 0));
-        lg.addColorStop(1, paint(dim, 0.42));
+        lg.addColorStop(0, paint(lit, 0.18));
+        lg.addColorStop(0.04, paint(lit, 0));
+        lg.addColorStop(0.96, paint(dim, 0));
+        lg.addColorStop(1, paint(dim, 0.16));
         g.fillStyle = lg;
         g.fillRect(x0, y0, w, hh);
         g.restore();
         h.fillStyle = `rgb(${hv},${hv},${hv})`;
         h.beginPath();
-        h.roundRect(x0, y0, w, hh, bh * 0.12);
+        h.roundRect(x0, y0, w, hh, m);
         h.fill();
       };
       const xs = x % S;
@@ -389,8 +396,8 @@ function paintedStone(colors: string[], mortar: string, o: { S?: number; rows?: 
     }
   }
   // lichen and weathering dabs, soft value washes over the whole wall
-  strokes(g, S, o.lichen ?? 90, pal('#7d8a46', '#94925a', '#6b7a3e'), { len: [4, 12], w: [2, 5], ang: () => rnd() * 6.28, alpha: 0.35 });
-  washes(g, S, 26, pal('#fff0d0', '#5a3a22'), [S * 0.06, S * 0.18], 0.1);
+  strokes(g, S, o.lichen ?? 40, pal('#7d8a46', '#94925a', '#6b7a3e'), { len: [4, 12], w: [2, 5], ang: () => rnd() * 6.28, alpha: 0.12 });
+  washes(g, S, 26, pal('#e8dfcd', '#6c6254'), [S * 0.06, S * 0.18], 0.06);
   return { map: tex(c), bump: tex(hc, false) };
 }
 
@@ -514,25 +521,37 @@ function paintedFlags() {
   return tex(c);
 }
 
-/** Dark planks: long grain strokes, a lighter streak or two, dark seams. */
+/** Broad walnut boards: understated grain, fine seams and staggered end joints. */
 function paintedWood() {
-  const S = 256, n = 6, pw = S / n;
+  const S = 256, n = 4, pw = S / n;
   const [c, g] = canvas(S);
-  const P = pal('#5c3c25', '#4e331f', '#66452b', '#553722');
+  const P = pal('#705239', '#6c4e36', '#795a40', '#72533a');
   for (let i = 0; i < n; i++) {
-    const base = pick(P), k = 0.9 + rnd() * 0.2;
+    const base = pick(P), k = 0.97 + rnd() * 0.06;
     g.fillStyle = paint(base, 1, k);
     g.fillRect(i * pw, 0, pw, S);
-    for (let s = 0; s < 14; s++) {
-      const x = i * pw + 3 + rnd() * (pw - 6), len = S * (0.3 + rnd() * 0.6), y = rnd() * S;
-      const col = rnd() < 0.3 ? paint(hexRGB('#8a603c'), 0.45) : paint(hexRGB('#2c1a0e'), 0.4);
-      const w = 1.5 + rnd() * 3;
+    for (let s = 0; s < 5; s++) {
+      const x = i * pw + 5 + rnd() * (pw - 10), len = S * (0.4 + rnd() * 0.5), y = rnd() * S;
+      const col = rnd() < 0.4 ? paint(hexRGB('#b69a70'), 0.1) : paint(hexRGB('#463426'), 0.12);
+      const w = 4 + rnd() * 3;
       tiled(S, x, y, len, (X, Y) => brush(g, X, Y, len, w, Math.PI / 2 + (rnd() - 0.5) * 0.04, col));
     }
-    g.fillStyle = 'rgba(20,10,4,0.7)';
-    g.fillRect(i * pw, 0, 2.5, S);
-    g.fillStyle = 'rgba(255,220,170,0.12)';
-    g.fillRect(i * pw + 2.5, 0, 2, S);
+    // Fine flowing fibres sit inside the broad board tone, not bright scratches across it.
+    g.strokeStyle = 'rgba(42,29,19,0.2)';
+    g.lineWidth = 0.65;
+    for (let s = 0; s < 12; s++) {
+      const x = i * pw + 5 + rnd() * (pw - 10), bend = (rnd() - 0.5) * 6;
+      g.beginPath(); g.moveTo(x, 0);
+      g.bezierCurveTo(x + bend, S / 3, x - bend, S * 2 / 3, x, S);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(35,27,20,0.45)';
+    g.fillRect(i * pw, 0, 1.5, S);
+    const joint = Math.round(S * (0.15 + rnd() * 0.7));
+    g.fillRect(i * pw, joint, pw, 1.5);
+    g.fillStyle = 'rgba(222,203,169,0.16)';
+    g.fillRect(i * pw + 1.5, 0, 1, S);
+    g.fillRect(i * pw + 1.5, joint + 1.5, pw - 1.5, 1);
   }
   return tex(c);
 }
@@ -665,15 +684,57 @@ export function paintedMoon() {
   return t;
 }
 
+/** A painted ice sheet: pale blue-white with drifting snow dust, crack veins and a soft marbled wash. */
+export function paintedIce() {
+  const S = 512;
+  const [c, g] = canvas(S);
+  // base wash: pale ice blue, a touch deeper toward the rim
+  const base = g.createRadialGradient(S / 2, S / 2, S * 0.1, S / 2, S / 2, S * 0.55);
+  base.addColorStop(0, '#dceef7');
+  base.addColorStop(0.7, '#c3dfee');
+  base.addColorStop(1, '#a9cde4');
+  g.fillStyle = base;
+  g.fillRect(0, 0, S, S);
+  // marbled wash: broad soft strokes of white and deeper blue
+  for (let i = 0; i < 40; i++) {
+    const x = rnd() * S, y = rnd() * S, r = S * (0.04 + rnd() * 0.12);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    const white = rnd() < 0.6;
+    gr.addColorStop(0, white ? 'rgba(255,255,255,0.16)' : 'rgba(120,170,210,0.14)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+  // crack veins: jagged white-blue polylines wandering across the sheet
+  for (let i = 0; i < 14; i++) {
+    let x = rnd() * S, y = rnd() * S, a = rnd() * Math.PI * 2;
+    g.strokeStyle = `rgba(240,250,255,${0.35 + rnd() * 0.3})`;
+    g.lineWidth = 1 + rnd() * 1.6;
+    g.beginPath(); g.moveTo(x, y);
+    const segs = 6 + Math.floor(rnd() * 8);
+    for (let s = 0; s < segs; s++) {
+      a += (rnd() - 0.5) * 1.1;
+      const len = S * (0.03 + rnd() * 0.06);
+      x += Math.cos(a) * len; y += Math.sin(a) * len;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  // snow dust: soft white speckles
+  speckle(g, S, 900, 0.10);
+  const t = tex(c);
+  return t;
+}
+
 /** The world's surface materials in the current STYLE. */
 export function makeMaterials() {
   return STORYBOOK ? storybookMaterials() : realMaterials();
 }
 
 function storybookMaterials() {
-  // warm honey stone for the castle, a cooler, darker stone for trim, merlons and window frames
-  const st = paintedStone(['#d8b079', '#cfa46c', '#e2c08c', '#c8995f', '#d5ab74', '#dcb884'], '#6f5236');
-  const dk = paintedStone(['#8f7b66', '#83705d', '#9b8770', '#786653'], '#3d2f24', { S: 256, rows: 4, lichen: 30, light: '#f4e2c4', shade: '#20160e' });
+  // Warm grey limestone, with a darker dressed stone for trim and window frames.
+  const st = paintedStone(['#cbb498', '#c4ad92', '#d3bda2', '#c8b196', '#cfb99d', '#c6af94'], '#91826b');
+  const dk = paintedStone(['#887f70', '#807768', '#918777', '#827969'], '#5f584e', { S: 256, rows: 4, lichen: 20, light: '#ded4bf', shade: '#49443c' });
   const grassTex = paintedGrass();
   grassTex.repeat.set(52, 52); // ~12 m per tile: big enough for the strokes to read as brushwork
   const path = paintedPath();
@@ -683,8 +744,8 @@ function storybookMaterials() {
   sand.repeat.set(30, 30);
   const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, ...p });
   return {
-    stone: std({ map: st.map, bumpMap: st.bump, bumpScale: 0.9 }),
-    darkStone: std({ map: dk.map, bumpMap: dk.bump, bumpScale: 0.8 }),
+    stone: std({ map: st.map, bumpMap: st.bump, bumpScale: 0.18 }),
+    darkStone: std({ map: dk.map, bumpMap: dk.bump, bumpScale: 0.16 }),
     roof: std({ map: paintedSlate(), roughness: 0.7 }),
     grass: std({ map: grassTex, vertexColors: true, roughness: 1 }),
     path: std({ map: path.map, bumpMap: path.bump, bumpScale: 0.8, roughness: 0.95 }),
@@ -697,20 +758,32 @@ function storybookMaterials() {
 }
 
 /** ?style=real: the open-source PBR sets (procedural canvas textures stay as fallbacks). */
+
+/**
+ * stone/darkStone 共用的 PBR 贴图组：模块级缓存，fileTex().load() 只跑一次。
+ * flagstone 不走缓存——它的 repeat 是 0.5（stone/darkStone 是 1），共享纹理会改视觉。
+ */
+let stoneSetCache: { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture; aoMap: THREE.Texture } | null = null;
+
 function realMaterials() {
   const st = stone([150, 144, 132]);
   const cob = cobbles();
   const grassTex = grass();
   grassTex.repeat.set(90, 90);
-  const stoneSet = () => ({
+  const stoneSetRaw = () => ({
     map: fileTex('stone_color.webp', { fallback: st.map }),
     normalMap: fileTex('stone_normal.webp', { srgb: false }),
     roughnessMap: fileTex('stone_rough.webp', { srgb: false }),
     aoMap: fileTex('stone_ao.webp', { srgb: false }),
   });
+  /** stone/darkStone：同一组贴图，repeat 相同，共享安全。 */
+  const stoneSet = () => {
+    if (!stoneSetCache) stoneSetCache = stoneSetRaw();
+    return stoneSetCache;
+  };
   const grassFile = fileTex('grass_color.webp', { fallback: grassTex, repeat: 110 });
   const woodSet = { map: fileTex('wood_color.webp', { fallback: wood() }), bumpMap: fileTex('wood_bump.webp', { srgb: false }), roughnessMap: fileTex('wood_rough.webp', { srgb: false }) };
-  const flag = stoneSet();
+  const flag = stoneSetRaw(); // 独立纹理：下面把 repeat 改成 0.5，不能污染 stone/darkStone 的共享组
   for (const t of Object.values(flag)) t.repeat.set(0.5, 0.5);
   return {
     stone: new THREE.MeshStandardMaterial({ ...stoneSet(), normalScale: new THREE.Vector2(1.2, 1.2), aoMapIntensity: 0.8 }),

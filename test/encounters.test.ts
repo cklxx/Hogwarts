@@ -31,7 +31,9 @@ function mob(w: World, kind: Creature['kind'], x: number, z: number, hp = 1000):
   return c;
 }
 const run = (w: World, s: number) => { for (let i = 0; i < Math.round(s * 20); i++) w.tick(); };
-const webs = PROPS.filter((p) => p.kind === 'web');
+const NEST = encounterById('nest')!;
+/** The nest's webs (the forest has others, scripts/dress.ts, outside it). */
+const webs = PROPS.filter((p) => p.kind === 'web' && Math.hypot(p.x - NEST.x, p.z - NEST.z) <= NEST.r);
 const row = PROPS.filter((p) => p.id.startsWith('zk-'));
 /** A new first-year's hotbar attack spells, by slot. */
 const attacks = () => {

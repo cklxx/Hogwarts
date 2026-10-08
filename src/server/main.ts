@@ -2,7 +2,7 @@
 import { adoptedSessionId, clientIp, realm, realmWorker } from './realms.js';
 import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,7 @@ import { examLeaderboard, listExams, sitExam } from '../kernel/exams.js';
 import { marketMessage } from '../kernel/market.js';
 import { schoolEvents } from '../kernel/wheel.js';
 import { actingAs, FEATURE_BY_ID } from '../kernel/features.js';
-import { TICK, World } from '../kernel/world.js';
+import { World } from '../kernel/world.js';
 import { visibleTo } from '../kernel/types.js';
 import { HISTORY } from '../lore/history.js';
 import { grimoire } from '../mcp/grimoire.js';
@@ -30,6 +30,8 @@ import { serveStatic } from './static.js';
 import { PROTOCOL, buildId, serverName, startDiscovery } from './discovery.js';
 import { keyOf, pickProtocol } from './key.js';
 import { admit, corked, enqueue, flushInputs, forget, meDue, netState, readyForSnapshot, sendMeIfChanged } from './net.js';
+import { Checkpoints, familiarSave, readSave, restoreWorld } from './persistence.js';
+import { startRuntime } from './runtime.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = Number(process.env.PORT ?? 7777);
@@ -64,19 +66,11 @@ function inviteFor(req: IncomingMessage): string {
 
 // ------------------------------------------------------------------ world + persistence
 function load(): World {
-  if (existsSync(DATA)) {
-    try {
-      const w = World.restore(JSON.parse(readFileSync(DATA, 'utf8')));
-      console.log(`[hogwarts] restored ${w.wizards.size} wizards from ${DATA}`);
-      // TERM_SECONDS applies to a restored world too (it used to count only for a fresh one)
-      if (process.env.TERM_SECONDS) w.setTermLength(Number(process.env.TERM_SECONDS));
-      return w;
-    } catch (e) {
-      console.error('[hogwarts] could not restore world, starting fresh:', e);
-    }
-  }
-  const w = new World();
-  w.setTermLength(Number(process.env.TERM_SECONDS) || w.rules.terms.lengthSeconds);
+  const saved = readSave(DATA, restoreWorld);
+  const w = saved ?? new World();
+  if (saved) console.log(`[hogwarts] restored ${w.wizards.size} wizards from ${DATA}`);
+  // TERM_SECONDS applies to a restored world too; otherwise preserve its elected rules.
+  if (process.env.TERM_SECONDS || !saved) w.setTermLength(Number(process.env.TERM_SECONDS) || w.rules.terms.lengthSeconds);
   return w;
 }
 const world = load();
@@ -85,31 +79,6 @@ warmPathfinding();
 ensureNpcs(world, Number(process.env.NPC_COUNT ?? 4));
 // 校园事件轮盘: EVENT_FIRST_S rolls the first event sooner (demos, e2e tests); the interval itself is a rule (rules.events)
 if (process.env.EVENT_FIRST_S) world.wheel.nextAt = world.now + Math.max(0, Number(process.env.EVENT_FIRST_S) || 0);
-/** Write a file whole or not at all (a crash mid-write leaves the last good copy). */
-function writeAtomic(path: string, data: unknown) {
-  writeFileSync(path + '.tmp', JSON.stringify(data));
-  renameSync(path + '.tmp', path);
-}
-function save() {
-  mkdirSync(dirname(DATA), { recursive: true });
-  writeAtomic(DATA, world.serialize());
-  if (familiars) writeAtomic(FAMILIARS_DATA, familiars.save());
-}
-
-// ------------------------------------------------------------------ the clock
-let last = performance.now();
-let acc = 0;
-setInterval(() => {
-  const t = performance.now();
-  acc += Math.min(1, (t - last) / 1000);
-  last = t;
-  while (acc >= TICK) { flushInputs(); world.tick(TICK); acc -= TICK; } // flush: inputs merged over the rate limit (net.ts)
-}, 1000 * TICK);
-setInterval(save, 30_000);
-for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => { save(); console.log('\n[hogwarts] saved. Mischief managed.'); process.exit(0); });
-// One bad request must never take the castle down: log, persist, keep running.
-process.on('uncaughtException', (e) => { console.error('[hogwarts] uncaught:', e); try { save(); } catch { /* ignore */ } });
-process.on('unhandledRejection', (e) => { console.error('[hogwarts] unhandled rejection:', e); });
 
 // Enrolment rate limit per client address (stops scripted throwaway wizards).
 const enrolLog = new Map<string, number[]>();
@@ -161,12 +130,16 @@ const json = (res: ServerResponse, code: number, body: unknown) => {
   res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
   res.end(JSON.stringify(body));
 };
+class InvalidJsonBody extends Error {
+  constructor() { super('Invalid JSON body. JSON 格式错误。'); }
+}
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const c of req) { size += (c as Buffer).length; if (size > 1_000_000) throw new Error('body too large'); chunks.push(c as Buffer); }
   const s = Buffer.concat(chunks).toString('utf8');
-  return s ? JSON.parse(s) : undefined;
+  try { return s ? JSON.parse(s) : undefined; }
+  catch { throw new InvalidJsonBody(); } // JSON parser diagnostics can contain credentials from the body.
 }
 
 // MCP: one transport + one McpServer per MCP session.
@@ -216,9 +189,7 @@ const familiarCfg = familiarConfig();
 const familiars = familiarCfg
   ? new Familiars({ world, config: familiarCfg, create: anthropicCreate(), externalAgents: (wid) => sessionsOf(wid, AGENT_AWAY_MS), session: { baseUrl: PUBLIC_URL, forgeFails, sessionsOf } })
   : null;
-if (familiars && existsSync(FAMILIARS_DATA)) {
-  try { familiars.restore(JSON.parse(readFileSync(FAMILIARS_DATA, 'utf8'))); } catch (e) { console.error('[familiar] could not restore familiars:', (e as Error).message); }
-}
+if (familiars) familiars.restore(readSave(FAMILIARS_DATA, familiarSave));
 if (familiarCfg) console.error(`[familiar] on: model ${familiarCfg.model}, effort ${familiarCfg.effort}, ${familiarCfg.daily}/wizard/day, ${familiarCfg.globalDaily}/day in all, ${familiarCfg.concurrency} at once`);
 /** Close code for a socket whose key was changed (it reconnects only with the new key). */
 const KEY_CHANGED = 4001;
@@ -276,8 +247,14 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, url: URL) {
   await entry.transport.handleRequest(req, res, body);
 }
 
+let shuttingDown = false;
+function requestUrl(req: IncomingMessage): URL | null {
+  try { return new URL(req.url ?? '/', 'http://x'); } catch { return null; }
+}
 const http = createServer(async (req, res) => {
-  const url = new URL(req.url ?? '/', 'http://x');
+  if (shuttingDown) return json(res, 503, { error: 'Server is saving and stopping. 服务器正在保存并退出。' });
+  const url = requestUrl(req);
+  if (!url) return json(res, 400, { error: 'Invalid URL. 请求地址无效。' });
   try {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS' });
@@ -318,6 +295,7 @@ const http = createServer(async (req, res) => {
     if (url.pathname === '/api/rules') return json(res, 200, { rules: world.rules, decrees: world.decrees });
     return serveStatic(DIST, req, res, url.pathname);
   } catch (e) {
+    if (e instanceof InvalidJsonBody) return json(res, 400, { error: e.message });
     console.error(e);
     if (!res.headersSent) json(res, 500, { error: String(e) });
   }
@@ -443,7 +421,9 @@ const clients = new Map<WebSocket, string>();
   }, 3000).unref();
 }
 http.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url ?? '/', 'http://x');
+  if (shuttingDown) return socket.destroy();
+  const url = requestUrl(req);
+  if (!url) { socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); return; }
   if (url.pathname !== '/ws') return socket.destroy();
   const w = checkKey(req, keyOf(req));
   if (w === 'throttled') { socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return socket.destroy(); }
@@ -456,6 +436,7 @@ http.on('upgrade', (req, socket, head) => {
     ws.send(JSON.stringify({ t: 'welcome', handle: w.handle, name: w.name, house: w.house, registry: w.id, events: recent, owls: w.owlbox.slice(-30), pair: world.pairCodeOf(w.id), mcpUrl: `${baseFor(req)}/mcp`, invite: inviteFor(req), build: buildId(DIST), ...(familiars ? { familiar: familiars.stateOf(w.id) } : {}) }));
     const handle = (x: unknown) => handleClient(ws, w.id, x as ClientMsg); // one per socket, not one per message
     ws.on('message', (raw) => {
+      if (shuttingDown) return;
       let m: ClientMsg;
       try { m = JSON.parse(String(raw)); } catch { return; }
       admit(ws, m, handle); // per-socket rate limits (net.ts)
@@ -518,7 +499,7 @@ function sendFrame(ws: WebSocket, wid: string) {
 function send(ws: WebSocket, wid: string) {
   if (clients.has(ws)) corked(ws, sendFrame, wid); // (a socket closed since the broadcast began is skipped)
 }
-setInterval(() => {
+function broadcast() {
   while (fanning) fanSlice();
   if (!clients.size) { world.drainFx(); return; }
   broadcasts++;
@@ -530,7 +511,7 @@ setInterval(() => {
   bc.agents = null;
   fanning = { rest: [...clients], i: 0 };
   fanSlice();
-}, 100);
+}
 
 function realmStats() {
   let players = 0;
@@ -538,7 +519,7 @@ function realmStats() {
   return { players, wizards: world.wizards.size, clients: clients.size, mcp: mcpSessions.size };
 }
 
-// Failing to bind is fatal (the uncaughtException guard above must not keep a deaf process alive).
+// Failing to bind is fatal.
 /** What this server is (GET /api/version, the LAN discovery answer): the desktop client checks it before connecting. */
 const PKG_VERSION = (() => { try { return String(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version); } catch { return '0'; } })();
 const onlinePlayers = () => { let n = 0; for (const w of world.wizards.values()) if (!w.npc && world.online(w)) n++; return n; };
@@ -547,6 +528,43 @@ const version = () => ({ name: serverName(), version: PKG_VERSION, build: buildI
 if (realm.mode === 'single' && !/^127\.|^localhost$|^::1$/.test(HOST)) startDiscovery(PORT, () => ({ ...version(), port: PORT }));
 
 http.on('error', (e) => { console.error(`[hogwarts] cannot listen on ${HOST}:${PORT}:`, (e as Error).message); process.exit(1); });
+// stop() clears familiar bonds; retain their final save before cancelling in-flight Agent work.
+let stoppedFamiliars: ReturnType<Familiars['save']> | undefined;
+const checkpoints = new Checkpoints(() => [
+  { path: DATA, data: world.serialize() },
+  ...(familiars ? [{ path: FAMILIARS_DATA, data: stoppedFamiliars ?? familiars.save() }] : []),
+]);
+startRuntime({
+  tick: (dt) => { flushInputs(); world.tick(dt); },
+  checkpoints,
+  stop: () => {
+    shuttingDown = true;
+    clearInterval(broadcastTimer);
+    fanning = null;
+    stoppedFamiliars = familiars?.save();
+    familiars?.stop();
+    for (const [id, session] of mcpSessions) closeMcp(id, session);
+    http.close();
+    http.closeAllConnections();
+    for (const ws of clients.keys()) { forget(ws); ws.terminate(); }
+  },
+});
+// Event-loop stall / GC watcher: client-visible hitches show up here with their cause and timing.
+{
+  let last = performance.now();
+  setInterval(() => {
+    const now = performance.now(), lag = now - last - 1000; last = now;
+    if (lag > 120) console.log(`[hogwarts] event-loop lag ${Math.round(lag)}ms 事件循环卡顿`);
+  }, 1000);
+  try {
+    const obs = new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) if (e.duration > 80) console.log(`[hogwarts] GC ${Math.round(e.duration)}ms (${(e as any).entryType})`);
+    });
+    obs.observe({ entryTypes: ['gc'] });
+  } catch { /* older node */ }
+}
+// Preserve the original order at coincident deadlines: update the world before broadcasting it.
+const broadcastTimer = setInterval(broadcast, 100);
 http.listen(PORT, HOST, () => {
   if (!process.env.PUBLIC_URL) console.log(`[hogwarts] 本机 http://localhost:${PORT}${LAN ? `   局域网 http://${LAN}:${PORT}（别的电脑用这个；游戏里的连接命令会自动填上玩家实际访问的地址）` : ''}`);
   console.log(`[hogwarts] ${PUBLIC_URL}  (MCP: ${PUBLIC_URL}/mcp, WS: /ws)  term ${world.term.n}, ${world.rules.terms.lengthSeconds}s per term${realm.mode === 'worker' ? `  [realm ${realm.id}]` : ''}`);

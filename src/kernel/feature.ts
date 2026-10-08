@@ -87,8 +87,8 @@ export interface Feature {
     me?(world: World, w: Wizard): unknown;
     whoami?(world: World, w: Wizard): unknown;
     look?(world: World, x: Wizard): unknown;
-    /** What stands round wizard `w` in their own MCP look (things on the ground: the props). */
-    here?(world: World, w: Wizard): unknown;
+    /** What stands round wizard `w` in their own MCP look; radius is the bounded query radius (features may cap it further). */
+    here?(world: World, w: Wizard, radius?: number): unknown;
     board?(world: World): Record<string, unknown>;
   };
   /** What survives a restart (world.json `features[id]`); `load` gets it back (or undefined for an old save). */

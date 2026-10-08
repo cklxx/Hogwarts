@@ -34,6 +34,7 @@ import type { Feature } from './feature.js';
 import { qdOnTeam, qdPlaying } from './quidditch.js';
 import { stunPaysRep } from './progression.js';
 import { DODGE_DIST } from '../shared/constants.js';
+import { ZONES } from '../shared/map.js';
 import type { World } from './world.js';
 import type { Projectile, Vec2, Wizard } from './types.js';
 
@@ -244,8 +245,13 @@ export function duelWire(world: World) {
   const m = world.duel.match;
   if (!m) return undefined;
   const h = (id: string) => world.wizards.get(id)?.handle;
+  const names: Record<string, string> = {};
+  for (const id of [...m.sides[0], ...m.sides[1]]) {
+    const w = world.wizards.get(id);
+    if (w) names[w.handle] = w.name;
+  }
   const two = m.sides[0].length > 1 || m.sides[1].length > 1;
-  return { a: h(m.a), b: h(m.b), ...(two ? { a2: h(m.sides[0][1] ?? ''), b2: h(m.sides[1][1] ?? '') } : {}), ph: m.phase, t: Math.max(0, Math.ceil(phaseEnd(m) - world.now)), ...(Object.keys(m.out).length ? { out: Object.keys(m.out).map(h) } : {}) };
+  return { a: h(m.a), b: h(m.b), names, ...(two ? { a2: h(m.sides[0][1] ?? ''), b2: h(m.sides[1][1] ?? '') } : {}), ph: m.phase, t: Math.max(0, Math.ceil(phaseEnd(m) - world.now)), ...(Object.keys(m.out).length ? { out: Object.keys(m.out).map(h) } : {}) };
 }
 
 function heal(world: World, w: Wizard) {
@@ -265,7 +271,7 @@ function startMatch(world: World, sides: [Wizard[], Wizard[]], npc: boolean) {
   sides.forEach((team, s) => team.forEach((w, i) => {
     const end = DUEL_ENDS[s];
     w.pos = { x: end.x, z: end.z + (team.length > 1 ? (i === 0 ? -2.5 : 2.5) : 0) };
-    w.goal = null; w.route = []; w.goalBy = null;
+    world.stopWalk(w);
     w.input = { dx: 0, dz: 0 };
     w.st.shield = 0; w.st.shieldUntil = 0; w.st.dodgeUntil = 0;
     heal(world, w);
@@ -519,7 +525,7 @@ function spar(world: World, w: Wizard, m: DuelMatch) {
   const foes = m.sides[1 - sideOf(m, w.id)].filter((id) => !m.out[id]).map((id) => world.wizards.get(id)).filter((x): x is Wizard => !!x);
   const opp = foes.sort((p, q) => dist(p.pos, w.pos) - dist(q.pos, w.pos))[0];
   if (!opp) { if (w.goal) world.setGoal(w.id, null); return; }
-  const d = dist(opp.pos, w.pos), clear = world.inBlast(w.pos, opp.pos);
+  const d = dist(opp.pos, w.pos), clear = world.inAim(w.pos, opp.pos);
   if (d > DUEL_NPC_REACH || !clear) {
     // a spot nearer the foe, pulled toward the middle of the stage
     const k = Math.max(0, d - DUEL_NPC_REACH * 0.6) / (d || 1);
@@ -565,22 +571,51 @@ function creditReflect(world: World, w: Wizard, p: Projectile, from: string) {
   st.returned = (st.returned ?? 0) + v;
 }
 
-/**
- * A duellist's roll stays on the stage (the 2026-09-30 society playtest: the duel reflex rolled Mia and Jake off it
- * and into the Great Hall's safe zone — out of the match, twice). The roll's end must be inside the leash with a
- * metre to spare and outside every safe zone; if it would not be, the opposite way, then either side, is tried;
- * if none is, it is left alone (a roll nowhere is no better).
- */
+/** Continuous safe-zone intersection: two legal endpoints can still cross a safe corner. */
+function crossesSafe(world: World, a: Vec2, b: Vec2): boolean {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  for (const zone of ZONES) {
+    if (!world.rules.combat.safeZones.includes(zone.id as never)) continue;
+    if (!zone.box) {
+      const l2 = dx * dx + dz * dz;
+      const t = l2 ? Math.max(0, Math.min(1, ((zone.x - a.x) * dx + (zone.z - a.z) * dz) / l2)) : 0;
+      if (Math.hypot(a.x + dx * t - zone.x, a.z + dz * t - zone.z) <= (zone.r ?? 0)) return true;
+    } else {
+      let lo = 0, hi = 1;
+      const [x0, z0, x1, z1] = zone.box;
+      for (const [v, d, min, max] of [[a.x, dx, x0, x1], [a.z, dz, z0, z1]]) {
+        if (Math.abs(d) < 1e-12) { if (v < min || v > max) { hi = -1; break; } }
+        else { const t0 = (min - v) / d, t1 = (max - v) / d; lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1)); }
+      }
+      if (lo <= hi) return true;
+    }
+  }
+  return false;
+}
+
+/** Guard every actual collision-resolved dash step, even when dt or solids change after direction selection. */
+export function duelRollStepAllowed(world: World, w: Wizard, from: Vec2, to: Vec2): boolean {
+  if (!inFight(world.duel, w.id)) return true;
+  return Math.hypot(to.x - DUEL_STAGE.x, to.z - DUEL_STAGE.z) <= DUEL_LEASH && !crossesSafe(world, from, to);
+}
+
+/** Try the original, opposite, then sideways rolls against collision-resolved paths. No safe path: hold position. */
 function stageRoll(world: World, w: Wizard, dx: number, dz: number): [number, number] | null {
   const m = world.duel.match;
   if (!m || m.phase !== 'fight' || m.out[w.id] || ![...m.sides[0], ...m.sides[1]].includes(w.id)) return null;
   const ok = (x: number, z: number) => {
     const ex = w.pos.x + x * DODGE_DIST, ez = w.pos.z + z * DODGE_DIST;
-    return Math.hypot(ex - DUEL_STAGE.x, ez - DUEL_STAGE.z) <= DUEL_LEASH - 1 && !world.inSafe({ x: ex, z: ez });
+    if (Math.hypot(ex - DUEL_STAGE.x, ez - DUEL_STAGE.z) > DUEL_LEASH - 1 || crossesSafe(world, w.pos, { x: ex, z: ez })) return false;
+    let p = w.pos;
+    for (const next of world.previewDodge(w.pos, x, z)) {
+      if (!duelRollStepAllowed(world, w, p, next)) return false;
+      p = next;
+    }
+    return true;
   };
   if (ok(dx, dz)) return null;
   for (const [x, z] of [[-dx, -dz], [-dz, dx], [dz, -dx]] as const) if (ok(x, z)) return [x, z];
-  return null;
+  return [0, 0];
 }
 
 export const DUEL_FEATURE: Feature = {

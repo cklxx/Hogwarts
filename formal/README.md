@@ -15,6 +15,7 @@ Run everything: `TLA2TOOLS=/path/to/tla2tools.jar LEAN=/path/to/lean formal/run.
 |---|---|---|
 | `Hostility` | `World.canHarm`, `allies.ts` `strikes` | 15 invariants over every combination of houses, activity, safe zones, liveness, PvP, friendly-fire and a Duelling Club match (1,572,864 states): no self-harm, safe zones are safe, the stunned are untouchable, benign creatures never attack, the phoenix can't be harmed, summons never harm their owner and harm exactly what their owner may, wild creatures only hunt wizards and summons, attacking a summon counts as attacking its owner (or its owner's duel), **`DuelMutual`** (the two duellists, and their summons, may harm each other whatever their houses, outside a safe zone) and **`DuelIsolated`** (while they fight nobody else harms them and they harm nobody else); and 误伤 (`allies.ts` `strikes`): **`NoAllyStray`** (a spell meant for someone else never strikes an ally in its way), **`FriendlyFireOffUnchanged`**, **`DuellistsNotAllied`**. Beyond the model (a strict reduction, re-checked on the random worlds): an NPC's spell passes players other than its target by. Dropping the duel branch's isolation or its safe-zone clause each makes TLC fail. **Re-checked on 3,000 random real worlds in `test/formal.test.ts`**, whose wizards carry random jinx auras, silences, shields and cursed wards: every jinx effect must obey `World.jinxBites` (implied by `canHarm(sender, victim)`), bite whenever it should, never exceed its table rate and never go below the hex floor. |
 | `CastTxn` | `magic.ts execute`, `(after …)` | mana never negative; a fizzle changes nothing; each transaction applies ≤ E effects; only top-level casts schedule delayed blocks (≤ A each); the pending queue is bounded. |
+| `Navigation` | `World.setGoal` / `stopWalk` / `unstick`, `stageRoll` / `duelRollStepAllowed` | Finite movement abstraction: no stunned route or orphan continuation, route scene matches current scene, NPC mist-crossing restrictions, human/pause priority, resolved roll segments stay legal, and a fixed walk terminates under fair progress checks. Scripted cross-scene NPC placement is outside this navigation abstraction. Continuous geometry and concrete stale-route cases are covered separately by `test/navigation-regressions.test.ts`. |
 | `Lifecycle` | `tick`, `stun`, `revive`, `sendToAzkaban`, summons | summons exist only while their owner is active; *liveness*: nobody stays stunned or in Azkaban forever; a summon vanishes when its life runs out unless recast. |
 | `ElderWand` | `placeEggs`, `transferElderWand`, `elderWandUpkeep` | exactly one Elder Wand, ever: in the tomb or in one wizard's trunk. |
 | `TermDecree` | `endTerm` (`progression.ts` `electMinister`), `decree`, `applyPatch` | at most one decree charge in the world; NPCs never rule and **`MinisterIsPlayer`** (the office is a player's or vacant, whatever the NPCs' reputation); **`MinisterWasPresent`** (only a player who played the term takes office: who played is any subset; dropping the guard makes TLC fail); only the Minister decrees; ≤ 1 decree per term; rules stay within their constitutional bounds. The election itself is proved in Lean (`elect_never_npc`, `elect_top_player`, `elect_vacant`) and bound to the kernel by the `minister` vectors. |
@@ -74,3 +75,20 @@ The bridge is (1) the conformance vectors and (2) the randomized re-check of the
 against the real `World.canHarm`. Timing (continuous physics, AI steering) is not modelled.
 
 Tool versions used: TLA+ Tools 2.0 (2026-03-02), Lean 4.33.0.
+
+### Night ice integration (PR #11)
+
+Night ice extends walkable water until dawn; spell ice retains its own expiry.
+The continuous skating and shore collision geometry are outside the models above.
+`test/ice.test.ts` checks both kinds of thaw, movement locks, arrival braking and
+teleport exclusion against the real kernel. Walking and skating share
+`World.movementMult`, so feature movement locks also stop residual momentum.
+The merge removes uncapped per-hit prop wake XP and retains the existing
+once-per-group-per-term reward ledger (`test/props.test.ts`). No proved invariant
+or conformance vector is relaxed by this integration.
+
+## Effective water cooperation
+
+`lean/WaterAssist.lean` proves the bounded helper count, the quarter-budget bound, conservation of the killer's existing XP budget, integer quotient/remainder allocation, self-credit exclusion and expiry exclusion. `water-assist-vectors.json` binds 40 reward boundary cases, 10 display-tag encodings and constants to the TypeScript splitter in `test/water-assist.test.ts`; runtime tests cover provenance, real reactions, damage, proximity, possession, fatigue and reward delivery. The display-tag proofs additionally establish injective encoding, exactly two display fields and exclusion of reserved engine tags. These arithmetic and encoding proofs do not prove the entire chemistry or movement implementation.
+
+`run.sh` checks every Lean file, regenerates both vector files, and CI rejects stale vectors.

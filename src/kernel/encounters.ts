@@ -5,13 +5,14 @@
  * What counts: a creature of the goal's kind downed inside the encounter's circle, credited to whoever hit it last
  * there (the `hit` hook writes it down: the creature may be gone before the sweep looks); a prop of the goal's kind
  * broken inside it, credited to whoever broke it (kernel/props.ts `who`, a whole chain to the one who lit it). With
- * `within`, only what you did in the last that many seconds counts (Zonko's: one chain). Reaching `need` clears the
+ * `within`, only what you did in the last that many seconds counts (Zonko's: one chain); a reach goal counts
+ * whoever stands on its spot (REACH_R), checked once a second. Reaching `need` clears the
  * encounter for you this term and opens three doors (fewer once every rune is at RUNE_MAX): the encounter's own rune
  * (new, or a level on it), another rune (new ones first), and a purse; pick one — the browser's card
  * (client/panels/encounters.ts) or MCP `encounters {pick}`. Once per encounter per wizard per term (docs/RULES.md).
  */
 import { z } from 'zod';
-import { doorText, ENCOUNTERS, encounterAt, encounterById, PURSE_GALLEONS, PURSE_XP, STUDY_XP, type Door, type EncounterDef, type EncounterId } from '../shared/encounters.js';
+import { doorText, ENCOUNTERS, encounterAt, encounterById, PURSE_GALLEONS, PURSE_XP, REACH_R, STUDY_XP, type Door, type EncounterDef, type EncounterId } from '../shared/encounters.js';
 import { PROPS } from '../shared/props.js';
 import { RUNE_IDS, RUNE_MAX, type RuneId } from '../shared/runes.js';
 import type { Feature } from './feature.js';
@@ -139,6 +140,8 @@ export const ENCOUNTERS_FEATURE: Feature = {
       s.alive.delete(id);
       credit(world, a.by, encounterById(a.enc)!, world.now);
     }
+    // whoever stands on a reach goal's spot
+    for (const e of ENCOUNTERS) if (e.goal.t === 'reach') for (const w of world.nearWizards(e, REACH_R)) if (world.isActive(w) && Math.hypot(w.pos.x - e.x, w.pos.z - e.z) <= REACH_R) credit(world, w.id, e, world.now);
     // the props broken since last second (a chain: each to the one who lit it, at the time it went)
     const props = world.props;
     for (const [eid, ps] of GOAL_PROPS) {
@@ -173,7 +176,7 @@ export const ENCOUNTERS_FEATURE: Feature = {
   },
   tools: [{
     name: 'encounters', title: 'Encounters', cost: 0,
-    description: '遭遇: each scene has one — the greenhouse (Devil’s Snare, always wet), the acromantula nest in the forest (webs that burn in clusters), Zonko’s yard in Hogsmeade (a row of whizbangs). Lists each one’s goal, tip, where it is and your progress this term; clearing one opens doors (a new rune, a level on one, a purse): take one with {pick: n}. Once per encounter per term.',
+    description: '遭遇: each scene has one — the greenhouse (Devil’s Snare, always wet), the acromantula nest in the forest (webs that burn in clusters), Zonko’s yard in Hogsmeade (a row of whizbangs), the Black Lake (Glacius over the water freezes a road out to the float in the middle). Lists each one’s goal, tip, where it is and your progress this term; clearing one opens doors (a new rune, a level on one, a purse): take one with {pick: n}. Once per encounter per term.',
     input: { pick: z.number().int().min(0).max(5).optional() },
     run(world, wid, a) { return typeof a.pick === 'number' ? pickDoor(world, wid, a.pick) : status(world, wid); },
   }],

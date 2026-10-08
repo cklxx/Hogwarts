@@ -130,10 +130,12 @@ export function derivedUncached(w: Wizard, rb: Rulebook): Derived {
   const core = CORE_BONUS[w.wand.core] ?? {};
   const elder = equippedItems(w).some((i) => i.unique === 'elder_wand');
   const baseMana = rb.magic.baseMaxMana + rb.magic.manaPerYear * (w.year - 1);
+  // alumni perk: every graduation (prestige) grants +10 maxHp and +5 maxMana, permanent (kernel/endgame.ts)
+  const alumni = w.graduates ?? 0;
   return {
     // a unicorn's curse: a half-life (auras are pruned every tick, so presence means active)
-    maxHp: Math.max(hpFloor(w.year), Math.round((yearBaseHp(w.year) + mod(w, 'maxHp')) * ((w.auras ?? []).some((a) => a.k === 'cursed') ? 0.7 : 1))),
-    maxMana: Math.max(manaFloor(baseMana), baseMana + mod(w, 'maxMana')),
+    maxHp: Math.max(hpFloor(w.year), Math.round((yearBaseHp(w.year) + mod(w, 'maxHp') + alumni * 10) * ((w.auras ?? []).some((a) => a.k === 'cursed') ? 0.7 : 1))),
+    maxMana: Math.max(manaFloor(baseMana), baseMana + mod(w, 'maxMana') + alumni * 5),
     manaRegen: Math.max(manaRegenFloor(rb.magic.manaRegen), rb.magic.manaRegen + mod(w, 'manaRegen') + (core.regen ?? 0)),
     speedMult: speedMultFor(mod(w, 'speed')),
     power: powerFor(mod(w, 'power') + (core.power ?? 0) + (elder ? 25 : 0)),
@@ -152,7 +154,7 @@ export function derivedUncached(w: Wizard, rb: Rulebook): Derived {
  * The returned object is shared: treat it as read-only.
  */
 interface DerivedCache {
-  year: number; core: string; items: Item[]; nItems: number; eqKeys: string[]; eqVals: (string | undefined)[]; cursed: boolean;
+  year: number; grads: number; core: string; items: Item[]; nItems: number; eqKeys: string[]; eqVals: (string | undefined)[]; cursed: boolean;
   base: number; perYear: number; regen: number; value: Derived;
 }
 const derivedCache = new WeakMap<Wizard, DerivedCache>();
@@ -177,12 +179,12 @@ export function derived(w: Wizard, rb: Rulebook): Derived {
   const cursed = isCursed(w);
   const m = rb.magic;
   const c = derivedCache.get(w);
-  if (c && c.year === w.year && c.core === w.wand.core && c.items === w.items && c.nItems === w.items.length && c.cursed === cursed
+  if (c && c.year === w.year && c.grads === (w.graduates ?? 0) && c.core === w.wand.core && c.items === w.items && c.nItems === w.items.length && c.cursed === cursed
     && c.base === m.baseMaxMana && c.perYear === m.manaPerYear && c.regen === m.manaRegen && sameEquip(c, w.equipped)) return c.value;
   const value = derivedUncached(w, rb);
   const eqKeys = Object.keys(w.equipped);
   derivedCache.set(w, {
-    year: w.year, core: w.wand.core, items: w.items, nItems: w.items.length, cursed, base: m.baseMaxMana, perYear: m.manaPerYear, regen: m.manaRegen, value,
+    year: w.year, grads: w.graduates ?? 0, core: w.wand.core, items: w.items, nItems: w.items.length, cursed, base: m.baseMaxMana, perYear: m.manaPerYear, regen: m.manaRegen, value,
     eqKeys, eqVals: eqKeys.map((k) => w.equipped[k as keyof Wizard['equipped']]),
   });
   return value;

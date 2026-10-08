@@ -1,0 +1,108 @@
+{
+  "scope": "Deterministic offline kernel fixes and focused regression validation; no additional hour gameplay, browser or live server operation.",
+  "implementation": {
+    "duel_roll": "Direction selection checks continuous safe-zone intersections and collision-resolved preview steps. Actual duel dash movement checks each resolved substep again when dt or geometry changes. No safe direction holds position while preserving existing cooldown/immunity. Non-duel rolls retain their movement behavior.",
+    "route_lifecycle": "New routes are refused while stunned. Knock-out and respawn clear goal, route, goalBy, via and unstick state; stale input is reset. stopWalk is shared by stop, human input takeover, agent pause and relocation callers; agent cancellation preserves human-owned walks.",
+    "first_leg": "Start-cell selection sweeps against solids using the existing 0.45 m path-leg clearance, including physically open origins in coarse blocked cells. Same-cell paths cannot bypass a rejected direct line: they connect through the verified start centre with a checked remaining leg or return unreachable. Route waypoint skipping also requires a swept clear connection.",
+    "unstick": "One-second windows compare net distance decrease toward the current waypoint against movement budget. Sideways or backward oscillation cannot repeatedly erase the no-progress interval. Existing bounded replanning and give-up remain.",
+    "npc_navigation": "Cross-scene setGoal requests from NPCs are refused with a bilingual reason before via installation. Invalid/unreachable requests leave no half-installed continuation.",
+    "collaboration_boundary": "Root owns additional stopWalk call sites in scenes/travel/quidditch/ice/possess and startMatch; this report does not claim those separate fixtures as the 26 navigation tests."
+  },
+  "files": [
+    "src/kernel/duelclub.ts",
+    "src/kernel/pathfind.ts",
+    "src/kernel/world.ts (movement/control sections)",
+    "test/navigation-regressions.test.ts",
+    "formal/tla/Navigation.tla",
+    "formal/tla/Navigation.cfg"
+  ],
+  "red_to_green": [
+    {
+      "scope": "Initial 21 dedicated cases",
+      "before": {
+        "failed": 18,
+        "passed": 3
+      },
+      "after": "Covered by the final 26-case passing suite"
+    },
+    {
+      "scope": "Added same-cell Tomb and dynamic thin-column legs",
+      "before": {
+        "failed": 2
+      },
+      "after": {
+        "passed": 2
+      },
+      "limit": "These reproduce a collider-crossing route leg; no claim that either case caused an actual gameplay stall."
+    }
+  ],
+  "final_focused_validation": {
+    "command": "npx vitest run test/navigation-regressions.test.ts test/scenes.test.ts test/collide.test.ts test/round10.test.ts test/travel.test.ts",
+    "dedicated_cases": 26,
+    "related_existing_cases": 47,
+    "files_passed": 5,
+    "tests_passed": 73,
+    "tests_failed": 0,
+    "typecheck": {
+      "command": "npx tsc --noEmit",
+      "exit_code": 0
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    "logs": [
+      "/workspace/scratch/playtest-hour-2026-10-04/repro/navigation-before.txt",
+      "/workspace/scratch/playtest-hour-2026-10-04/repro/navigation-samecell-before.txt",
+      "/workspace/scratch/playtest-hour-2026-10-04/repro/navigation-after.txt",
+      "/workspace/scratch/playtest-hour-2026-10-04/repro/navigation-tsc.txt"
+    ],
+    "full_repository_validation": "Not run by this subagent; root started full tests/build/formal separately after source and test freeze."
+  },
+  "formal_scope": {
+    "model": "Navigation is a finite abstraction alongside unchanged Control/Lifecycle properties. Resolved segments include their interior points; circle/box geometry and concrete collision sweeps are bound by kernel regressions, not proven for the entire continuous map by this finite model.",
+    "properties": [
+      "No orphan continuation",
+      "Route belongs to current scene",
+      "Down state has no walk",
+      "Navigation cannot send NPCs through the mist",
+      "Human input and pause beat agent walks",
+      "Accepted resolved roll segments exclude forbidden points",
+      "Fixed-goal walk terminates with fair progress/no-progress windows"
+    ],
+    "fixed_goal_limit": "Termination assumes no endless replacement with new goals; scripted or player route replacement is a new walk.",
+    "npc_limit": "NpcStaysInItsScene concerns navigation through the mist. Relocate excludes cross-scene NPC relocation in this abstraction. Scripted NPC placement by Quidditch or duel startMatch is outside the model; this is not a proof that every NPC always remains in one scene.",
+    "relocation": "Final model adds Relocate(destination) clearing owner, via, distance and retries while retaining the human manual-input state. No existing property was weakened.",
+    "isolated_check_before_relocate": {
+      "result": "passed",
+      "distinct_states": 2304,
+      "log": "/workspace/scratch/playtest-hour-2026-10-04/repro/navigation-formal.txt"
+    },
+    "final_model_with_relocate": "Await root full formal result; subagent did not rerun TLC while the full chain was active."
+  },
+  "disclosure": "No credentials, full registry identifiers, private world data, puzzle answers or player spell source are included.",
+  "integration_followup": {
+    "problem": "The integrated suite exposed two unchanged ice regressions: spell road to float and night shore-to-float walking. The added waypoint-shortening sweep treated supported frozen water as a solid, preventing advancement through iceWay waypoints.",
+    "before": {
+      "ice_tests_passed": 16,
+      "ice_tests_failed": 2,
+      "log": "/workspace/scratch/joy-fixes/navigation-ice-before.txt"
+    },
+    "fix": "Waypoint shortening now uses walkSegmentClear. Ordinary paths retain the existing 0.45 m solid sweep. For a water hit, a second sweep ignoring water must find no other solid, and each 0.25 m sample must pass the actual 0.5 m body blocked check, respecting Solids.walkOn support. Walls/columns and unsupported water remain checked.",
+    "after": {
+      "command": "npx vitest run test/ice.test.ts test/navigation-regressions.test.ts",
+      "files_passed": 2,
+      "tests_passed": 44,
+      "tests_failed": 0,
+      "existing_ice_tests": 18,
+      "dedicated_navigation_tests": 26,
+      "log": "/workspace/scratch/joy-fixes/navigation-ice-after.txt"
+    },
+    "typecheck": {
+      "command": "npx tsc --noEmit",
+      "exit_code": 0,
+      "log": "/workspace/scratch/joy-fixes/navigation-ice-tsc.txt"
+    },
+    "limits": "No original ice assertion or formal property was weakened. Concrete bridge support is sampled at 0.25 m; this is not a continuous geometric proof of every possible bridge. No full suite was run by this subagent."
+  }
+}

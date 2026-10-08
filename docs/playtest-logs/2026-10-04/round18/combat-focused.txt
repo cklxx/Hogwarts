@@ -1,0 +1,13 @@
+
+ RUN  v5.0.2 /workspace/Hogwarts
+
+
+ Test Files  4 passed (4)
+      Tests  50 passed (50)
+   Start at  15:46:20
+   Duration  2.77s (transform 50%, tests 25%, import 25%)
+
+  Transform  transforming modules took 3.52s · 50% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

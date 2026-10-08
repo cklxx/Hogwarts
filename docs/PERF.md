@@ -1494,3 +1494,337 @@ No frame-rate claim (SwiftShader).
 - Client: the webs are one instanced mesh, one more draw call (plus its shadow). The goal line and the doors are DOM,
   rewritten only when their text changes.
 - No frame-rate claim (SwiftShader).
+
+## 2026-10-01 — the ice road (`wf/ice`)
+
+- Kernel: an ice bolt over the lake freezes the squares within 1.4 m of it each tick. That is about 16 point tests,
+  and only for ice bolts over the water.
+- `Solids.walkOn` is asked only for a 'water' collider in the cells round a walker, so only at the lake shore. It
+  costs nothing while there is no ice (`ice.size > 0` first).
+- Walking onto the ice: a breadth-first search over the frozen squares (a 15 m road is about 40 squares), once per
+  walk order.
+- The snapshot head carries `ice` only while there is ice: three numbers per square, about 120 numbers for one road.
+- Client: one instanced mesh for all the squares (one draw call), rewritten when the snapshot's `ice` changes. The
+  float is three meshes. `ClientFeature.ground` adds one optional call per feature when an entity's ground is looked
+  up again; that happens only after it moved.
+- Seen in passing, not changed: the lake's water reads almost black from the 2.5D camera at q=low (dark grey at high).
+  The water shader's mirror shows only the sky at grazing angles. Worth a look with the art pass.
+- No frame-rate claim (SwiftShader).
+
+## 2026-10-02 — the night freeze + skating (merged into the `ice` feature, `wf/ice-merge`)
+
+On top of the ice road: at night the whole lake freezes (`iceNight`, flipped by the 1 Hz sweep),
+and any ice skates 25% faster (`moveMult`) with a glide (`stepLate`: let go and the last velocity
+carries on, decaying; it digs in when a walk goal completes so you stop at the float). `onIce` is
+the one predicate both use; `walkOn` needs no change. The thaw at dawn reuses the melt handler.
+Isolated cost at 1 000 wizards: `moveMult` 0.044 ms/tick, `stepLate` ~0.03 ms/tick while skating.
+The snapshot's `ice` wire is `{ night, cells }` now; the client draws the night sheet (one painted
+`paintedIce` disc, one draw call, faded over 2.5 s) plus the road's tiles.
+
+A `moveWizard` fast path: a wizard with no keys, no goal and no dodge in progress returns before
+the four-hook `moveMult` chain. Idle `moveWizard` for 1 000 wizards: 0.173 ms → 0.030 ms per tick
+(the chain alone, measured in isolation). No frame-rate claim (SwiftShader).
+
+## 2026-10-01 — dressing, seven new prop kinds, drops (`wf/dress`)
+
+The owner: 「内容太少了……丰富内容元素」. Things to do per screen of open ground, at 571 m² per 16:9 screen: props,
+chests, fireplaces, gates, encounters and creature spawn places. The same count is a test now
+(`test/dressing.test.ts`, ≥ 4 in every scene).
+
+| scene | screens | before | after |
+|---|---:|---:|---:|
+| castle | 24.0 | 43 (1.8/screen) | 112 (4.7) |
+| lake | 2.7 | 12 (4.4) | 33 (12.2) |
+| forest | 7.8 | 29 (3.7) | 73 (9.4) |
+| pitch | 12.0 | 10 (0.8) | 56 (4.7) |
+| Hogsmeade | 18.7 | 22 (1.2) | 81 (4.3) |
+| all | 65.2 | 116 (1.8) | 355 (5.4) |
+
+Cost (`perf-client --bots=0`; SwiftShader, so only the direction counts):
+
+| view | q | draw calls before → after | triangles before → after | JS ms/frame before → after |
+|---|---|---:|---:|---:|
+| the 2.5D camera at spawn | high | 139 → 132 | 271 k → 260 k | 8.1 → 11.4 |
+| the 2.5D camera at spawn | low | 108 → 98 | 184 k → 176 k | 6.8 → 6.0 |
+| wide capture shot, castle | high | 501 → 575 | 278 k → 288 k | 16.1 → 14.8 |
+| wide capture shot, overview | high | 1016 → 1140 | 445 k → 449 k | 25.0 → 26.1 |
+
+- At first the new kinds cost +21 draw calls at spawn (high: 139 → 160), because each kind was one instanced mesh
+  for the whole world and never culled. Each kind is now cut into 24 m tiles, one instanced mesh per tile, and
+  each tile is culled on its own. A frame now draws only the tiles round you, so the gameplay view ends up below
+  where it started.
+- The wide capture shots see most tiles and pay +12–15 %. They are promo cameras, not play.
+- JS per frame is noise at these sizes (8.1 → 11.4 at high, 6.8 → 6.0 at low).
+- Kernel: the props grid (8 m cells) holds 300 props as easily as 60.
+- Puddles join the wet zones through a square-then-circle test per entity per second.
+- Drops: one map; pickups are checked each tick only while something lies about. A player is sent what lies
+  within 30 m of them only, never the whole ground's list.
+
+## 2026-10-01 — the first minutes, after the phone playtest (`wf/newbie`)
+
+The three headless-phone new players (Ivy, Leo, Nina) were all stuck in the first minutes. What was changed, and how it was checked:
+
+- **Tab / the target button locked on to players, not pixies (3/3).** A first-year's Tab and auto-aim never pick a
+  wizard; clicking a wizard still targets them. With nothing within 30 m, Tab looks out to 60 m. The phone's line
+  said "tap ◎", which is the view button; it now shows the target icon. Emulated phone (390×844, touch), six
+  other-house players standing round the newcomer: one tap gave 「康沃尔郡小精灵 · 22 米」.
+- **The Tempus step (3/3).** The step names the hourglass and has its own 施放 button. Before, the book opened on a
+  template that covered the list. Emulated phone: tap 打开 → book open, step 5 → tap 施放 → clock lit, step 6.
+- **Buttons needing several taps (3/3).** Two causes, both fixed:
+  - The coach mark wrote `data-at` and `data-over` every HUD tick, changed or not. Each write woke main.ts's
+    MutationObserver, which measured the HUD (`trackBars`), so there were ten forced layouts a second while the
+    tutorial showed.
+  - The phone drawer re-appended its pieces every tick whenever its page held anything else, and a node moved
+    mid-tap loses the tap.
+
+  On the emulated phone, the centre of every tutorial button is the button itself (`elementFromPoint`): 带我去
+  walked (38 → 34 m in 2.5 s), and 打开 and 施放 worked. The offset the agents saw may be partly their screenshot
+  driver; that part is not verified.
+- **Killed while reading (2/3), Dementors before the first lesson (1/3).** For NEWCOMER_PEACE_S = 300 s a wild
+  creature goes only for a newcomer who has hurt it (`test/playability.test.ts`). The pixies stay on their wet
+  lawn, so the first-reaction guarantee is not touched.
+- **Night too dark (2/3).** The night floor was raised: hemisphere 0.35 → 0.6 of day, moon 1.2 → 1.7, image light
+  0.25 → 0.4, exposure at night 1.1 → 1.35. Day is unchanged. Same spot, 23:00, q=high, play area clear of the HUD:
+  mean luminance 23.2 → 40.6, pixels under 40 went from 93 % to 48 %.
+
+## 2026-10-01 — the agents' day-2/day-3 list, and the 2.5D canopy (`wf/day3`)
+
+Each fix below has a test (`test/lockon.test.ts`, `test/lookcast.test.ts`, `test/agents.test.ts`,
+`test/duelclub.test.ts`, `test/props.test.ts`):
+
+- **2v2 "locked on to Mia, hit Seamus"**: reproduced. Every kernel attack spell named at Mia landed on Mia. A spell
+  written as `(first (enemies 25))` went for the nearest foe, Seamus standing in front. `(enemies r)` now puts the
+  target you named first.
+- **look vs cast**: no disagreement in the kernel (604 casts from 400 spots: look's canHarm / blocked matched every
+  outcome). What changes between the two is the world moving on, so a refused "no clear shot" now says where the
+  target is now.
+- **Possession**:
+  - When it runs out or the body falls, the next MCP result begins with a notice; nothing acts as you unannounced.
+  - Your own body's reflexes pause while you play a vessel.
+  - A held NPC is never drafted into a duel or a match.
+- **Balance**:
+  - Seals give +10 % per seal on the caps (was +20 %).
+  - A reflex answers only someone who struck at you (a hit, or a spell of theirs flying at you, parried or not). Your
+    own splash on a friend no longer starts it.
+  - look shows a lit prop's seconds left and its group's `1/3`. The Willow's stones stay lit 30 s; the agents thought
+    they had 2–3.
+- **2.5D in the forest**: the lens's nearer camera put tree crowns between it and you, and the view solids do not
+  model them. You showed as an x-ray under a solid crown. Two changes:
+  - In 2.5D the cut-out round you is always on (radius 1.9 → 2.6 m). The cut only takes what is nearer the camera than
+    you and above your feet.
+  - A new `canopy` term in the same fragment fade dithers away 65 % of whatever is nearer than you and more than 3.2 m
+    over your feet, anywhere on the screen: crowns, the tops of walls. It is one extra `step` and `smoothstep` in a
+    shader that already ran, with no new draw calls.
+  - `view-audit --flat`, 300 spots: player seen 99.7 % → 100 % (the castle battlement miss is gone).
+
+## 2026-10-01 — hitting what you aim at (`wf/aim`)
+
+The owner: 「火打不到后面的怪物……索敌还是问题很大，聚焦基础的体验」. Measured first:
+
+- **Kernel**: a locked Incendio hits a monster standing behind another, or behind you, every time (pixie, spider, troll; 5, 10, 20 m). An unlocked shot aimed at the far one hits the near one first, which is right for a straight shot.
+- **What blocks a locked shot**: from 3000 random spots per scene, each pair of you and a monster within 25 m:
+
+  | scene | blocked | cause |
+  |---|---:|---|
+  | forest | 12.4 % | all tree trunks |
+  | castle | 4.0 % | mostly the greenhouse walls (the snares stand in front of them: legitimate) |
+  | Hogsmeade | 4.9 % | a building |
+
+  A spell with a target now weaves past trunks (`World.inAim`). Walls and buildings still stop it. A straight shot and a blast still stop at a tree. `test/lockon.test.ts` walks every forest trunk with a monster squarely behind it; that test fails without the change.
+- **Client auto-aim and Tab in 2.5D**:
+  - Before: auto-aim took the camera's 42° forward cone, which missed foes beside you and below you on screen; Tab took a 180° cone, which reached behind the camera to foes you could not see.
+  - Now: both take exactly the foes on screen, nearest first, and a lock is kept only while its target is on screen.
+  - With no foe on screen and no mouse (a phone), the shot goes the way you face, not up the screen.
+  - Browser, the lawn, desktop and phone: every press locked an on-screen pixie (14–28 m) and every lock hit.
+
+## 2026-10-02 — the basic loop: find, cast, hit, down (`wf/basics`)
+
+The owner: 「基础体验优化下」. Measured first, in the kernel (`World.cast` at a fixed spot on the lawn, one wizard mashing 5 presses a second for 3 minutes at the nearest pixie, first year, default rules):
+
+| | before | after |
+|---|---:|---:|
+| pixies downed in 3 min (Stupefy) | 44 | 69 |
+| Incendio | 51 | 79 |
+| a rotation of three spells | 13 | 39 |
+| presses refused "not enough mana" (Stupefy) | 621 | 464 |
+| red toasts per mash, browser | 1+ (the ghost target) | 0 |
+
+What changed:
+- **战斗回蓝** (`src/kernel/focus.ts`): a direct hit on a wild creature gives 6 mana back, at most 10 a second. Before, mana (7/s regen, about 15 a Stupefy) ran dry after about 6 casts, and from then on only one press in ten went out.
+- **The press buffer** (`castGate` in `client/controls.ts`): a press during a cooldown or short of mana waits up to 0.6 s and goes out by itself, instead of reaching the server and coming back as a red toast. The client mirrors the server's cooldowns (global 0.25 s, the spell's 0.3 + mana/60 s). A tile you cannot pay for turns grey. Past the 0.6 s, one quiet line every 3 s and the mana bar flashes.
+- **Ghost targets**: the server says the target is gone ("There is no …") when this screen still draws it. The lock is dropped, auto-aim, lock and hover all skip that id for 4 s, and the press goes again at whoever is really there. Nothing was spent.
+
+The browser A/B (30 s mash on the lawn, SwiftShader, about 1 fps) cannot measure hits. The page log shows all 14 sends between 26.9 and 48.8 s, and all 9 replies in one burst at 58.4 s: the starved main thread runs key events first and WebSocket messages last, so the client never sees a pixie fall. Only the toasts count from it (before: a red ghost toast; after: none). Hit counts come from the kernel loop above and `test/castgate.test.ts` (a 60 s mash lands > 1.5 × what mana alone pays for).
+
+## 2026-10-03 — client CPU: particles to the GPU (`wf/ice`)
+
+The owner: 「客户端性能优化下」. A census at spawn (high quality, `?perf=1`) showed the shadow map doing ~60% of all draw calls (157 prop buckets casting), and code review found the per-frame CPU particle loops. All ambient particle motion now integrates in the vertex shader; the CPU never touches a live particle.
+
+| per frame before | after |
+|---|---|
+| weather: 3000 × getY/setY + buffer upload | 3 uniform writes |
+| fireflies: 500 × setXYZ (1500 sin/cos) + upload | 2 uniform writes |
+| lanterns: 260 × getY/setY/getX + upload | 2 uniform writes |
+| prop glow breathe: N_awake × matrix compose (Vector3 alloc + FBM heightAt each) + full buffer upload | 1 uniform write |
+| name-tag declutter: O(n²) every frame | O(n²) every 6th frame |
+| bolt ground height: FBM heightAt per bolt per frame | resampled after 3 m of travel |
+
+What changed:
+- **Weather** (`client/main.ts`): `PointsMaterial` → `ShaderMaterial`; `y = mod(y0 − fall·t, 40)` in the vertex shader; `uTime/uFall/uSize/uScale` uniforms.
+- **Fireflies, lanterns** (`client/decor.ts`): same treatment; each mote's phase comes from a hash of its seed position, so no extra attributes. The glow sprite textures are kept as `uMap`.
+- **Prop glow breathing** (`client/props3d.ts`): `onBeforeCompile` injects `transformed *= 1 + 0.08·sin(uTime·9 + phase)`; instance matrices are now written only when awake/broken state changes.
+- **Small props skip the shadow map** (`client/props3d.ts`): mushroom, web, pumpkin, pot, ice, hay — their shadows were invisible at 2.5D distance.
+- **Tag declutter** (`client/main.ts`): every 6th frame; **bolt height** (`client/main.ts`): cached, resampled after 3 m.
+
+Verified: `tsc` clean, `test/props.test.ts` 11/11, browser smoke test renders with no errors (the new shaders compile). SwiftShader (~0.15 fps) cannot resolve the JS delta — the win is structural: ~3760 CPU particle updates and 2 full buffer uploads per frame are gone.
+
+## 2026-10-03 — flat-ground CPU cost and persistent name-tag decluttering
+
+`heightAt` now stops evaluating the flatness mask as soon as it reaches zero, and skips the five rolling-noise
+octaves on completely flat ground. Lake, mountain and island terms still run. Name-tag decluttering now keeps
+its hidden set between 100 ms refreshes: previously animation re-enabled those labels on the five frames
+between overlap checks. Changing the target refreshes the set immediately.
+
+Raw results, the benchmark scripts and reproduction commands are in
+[`playtest-logs/2026-10-03/perf/`](playtest-logs/2026-10-03/perf/README.md).
+Baseline: `4d968113a31b56b59c8b91215384244965968bd1`; the after build adds these terrain/label changes and the
+accompanying basic UI fixes. Environment: Node **24.19.0**, Chromium **151.0.7922.173**, Linux, SwiftShader.
+
+### Terrain CPU, eight regions
+
+Each region has 8,192 deterministic points (seed `20261003`). Each version runs seven alternating samples of
+163,840 calls; the table is median process CPU time (`process.cpuUsage`, user + system), not wall-clock time.
+The repeat run below confirmed the initial measurement. All **65,536 points were numerically identical** to
+the old implementation, maximum absolute difference **0**. Thirty saved height vectors around flat boundaries,
+the lake, forest, mountains and Azkaban also pass alongside the existing collision/view tests (68 tests total).
+
+| Region | Before, CPU ns/call | After, CPU ns/call | Reduction |
+|---|---:|---:|---:|
+| Spawn | 256 | 69 | 73.0% |
+| Castle | 260 | 127 | 51.0% |
+| Lake | 230 | 198 | 13.8% |
+| Forest | 233 | 192 | 17.7% |
+| Quidditch pitch | 223 | 90 | 59.6% |
+| Hogsmeade | 237 | 120 | 49.5% |
+| Highlands | 356 | 351 | 1.3% |
+| Azkaban | 195 | 194 | 0.7% |
+
+These are costs of one terrain query. They do not imply the same percentage improvement in frame time; the
+small differences outside flat areas are close to measurement noise.
+
+### Same-snapshot rendering check
+
+The first moving-world run increased draw calls, so a second check held the scene constant. Both builds used
+the same saved identities and positions, 20 connected stationary bots, 27 total wizards (including the viewer
+and the six NPCs actually created by `NPC_COUNT=12`), and 83 creatures. A benchmark-only preload freezes
+`World.tick` and `setInput`; the latter otherwise still changes facing. The real HTTP/WebSocket server and
+client remain in use. A fixed browser random seed also keeps procedural decorations identical.
+
+Settings: low quality, 1280×720, `dyn=0`, fixed `crowd` capture camera, two seconds without drawing to settle
+camera/LOD, four seconds warm-up, sixteen seconds sampled. Each build produced 17 measured frames. The complete
+protocol snapshots matched byte for byte; both SHA-256 witnesses are
+`7ae2842dd33e858cce2b1348ada538f144cb00f36e426495a6b9d7af92e99a9c`.
+
+| Per frame | Before | After |
+|---|---:|---:|
+| Total draw calls | 689.00 | 678.41 |
+| Triangles | 314,934.76 | 314,913.59 |
+| Shadow-map calls | 81.41 | 81.41 |
+| Main scene render calls, including its shadow work | 658.41 | 658.41 |
+| Screen overlay calls | 29.59 | 19.00 |
+| Actor drawables in end-of-run census | 350 | 338 |
+| Actor shadow casters | 85 | 85 |
+
+The shadow-map row is nested in the scene-render row and must not be added to it. Calls still alternate with
+shadow refreshes: before `{609, 770, 782}`, after `{597, 770}`. The scene and shadow work are identical; the
+reduction is the overlapping labels. The end-of-run census loses exactly 12 label quads (24 triangles), with
+no change in casters. This controlled case rules out the draw-call increase seen in the moving-world sample
+as a rendering regression for the same scene. It does not establish a universal draw-call reduction.
+
+### Moving-world results and limits
+
+The original A/B used low quality, 1280×720, `dyn=0`, 20 moving/casting bots, 10 of them near spawn,
+`NPC_COUNT=12`, four seconds warm-up and eight seconds per view. Each `--nodraw` window contains 480 frames:
+
+| No-draw CPU, ms/frame | Follow before → after | Crowd before → after |
+|---|---:|---:|
+| Total frame JS, excluding message/HUD callbacks | 1.49 → 1.42 | 1.54 → 1.64 |
+| Entity animation | 0.46 → 0.41 | 0.48 → 0.51 |
+| World/camera update | 0.21 → 0.15 | 0.20 → 0.15 |
+| Controls/features | 0.80 → 0.84 | 0.84 → 0.95 |
+
+Both no-draw runs maintained 60 Hz with no frame over 50 ms. Overall JS did **not** improve consistently.
+With drawing enabled, follow calls were 179 → 202 and crowd 637 → 727, but those windows contained only 15 and
+9 frames while entities and the follow camera continued moving. Those observations prompted the fixed-world
+check above; they are retained in `browser-dynamic.jsonl`, not silently discarded. Draw-enabled first frame
+was 19.37 → 19.62 s; the separately launched no-draw runs initially drew a frame at 19.30 → 18.90 s. These do
+not show a consistent loading improvement.
+
+SwiftShader rendered around 1–2 fps in these tests. Its software rasterization competes for CPU with the
+client, so neither this fps nor draw-enabled JS timing describes a player's hardware experience. The supported
+claims are lower flat-ground query cost, unchanged sampled terrain, stable name-tag suppression, and no
+same-scene increase in scene/shadow drawing. Real-GPU frame-time improvement remains unmeasured.
+
+## 2026-10-03: smaller MCP exploration responses
+
+`look({radius:10})` previously returned props out to 25 metres. Passing the bounded query radius into the
+props view now filters that section to `min(radius, 25)`, while retaining the default 25 metre cap and order.
+This reduces irrelevant information for agents requesting a small area.
+
+Controlled before/after: World seed 43, Query Reader at the lake floo point (-82, 26), no ticking, identical
+prop states. Count and UTF-8 byte size refer only to compact `JSON.stringify(look.props)`, not the whole MCP
+response. [Reproduction script](playtest-logs/2026-10-03/round11/bench/props-query.mts) and
+[before](playtest-logs/2026-10-03/round11/bench/props-query-before.jsonl) /
+[after](playtest-logs/2026-10-03/round11/bench/props-query-after.jsonl) raw measurements are archived.
+
+| Requested radius | Props before → after | Farthest prop, metres before → after | Props JSON bytes before → after |
+|---|---:|---:|---:|
+| 10 | 31 → 13 | 25 → 9.847 | 5,671 → 2,159 (−61.9%) |
+| 12 | 31 → 15 | 25 → 11.621 | 5,671 → 2,605 (−54.1%) |
+| 40 | 31 → 31 | 25 → 25 | 5,671 → 5,671 |
+| 80 | 31 → 31 | 25 → 25 | 5,671 → 5,671 |
+
+The default and explicit 25/40/80 metre results are also tested for equality. This fixture measures query
+payload size, not latency, CPU savings or FPS. Actual exploration reproductions are recorded separately in
+the round 11 playtest report.
+
+## 2026-10-04：石灰岩、胡桃木与飞路台材质（第 16 轮）
+
+实现 `0d185f5`、`8a174a2`；基线 `ff556bc`。这是材质调整，不新增灯光或模型部件。石墙与木板贴图尺寸不变；飞路台新增一张原创 512×256 RGBA8 图集（含 mipmaps 约 0.67 MiB），继续使用既有六实例箱体和六点 Points。图集、几何与实例资源在插件重载时释放。
+
+生产构建，Chromium / ANGLE / SwiftShader 软件渲染，`?capture=1&perf=1&q=high`，固定 1× 渲染比例；同一私有世界存档分别从正午、晴天、7200 秒一天开始，每视图 20 个已渲染帧。基线实际时段为 12.2 / 12.3 / 12.4 时，最终版为 12.2 / 12.4 / 12.4 时。机位、原始采样、实机截图见[第 16 轮](playtest-logs/2026-10-04/round16/index.md)。
+
+| 视图 | 帧间隔中位数 ms（前→后） | 全场景绘制次数中位数（前→后） | 三角形中位数（前→后） | 程序 / 几何 / 纹理（前→后） |
+|---|---|---|---|---|
+| 礼堂 900×600 | 1111.2 → 1134.6 | 132 → 132 | 218512 → 218622 | 178/196/44 → 180/196/45 |
+| 城堡 900×600 | 1551.5 → 1577.4 | 268 → 270 | 229463 → 229734 | 180/223/46 → 182/224/47 |
+| 窄屏 390×844 | 844.9 → 862.1 | 177 → 182 | 215406 → 215758 | 183/238/47 → 185/239/48 |
+
+这些短窗口的帧间隔变化约为 +2.1% / +1.7% / +2.0%，没有观察到大幅变化。服务器正常运行，随机事件、实体、粒子与裁剪并不逐帧相同，因此全场景绘制次数和资源计数不能作为静态材质成本的严格对照；飞路静态部分的箱体与 Points 数量不变，明确的新增资源是一张图集。软件渲染帧间隔不是硬件 GPU 数据，不能据此推导真机 FPS 或手机流畅度。夜间与 `?style=real` 附加检查只验证显示、加载和交互，不计入这张性能表。
+
+
+## 2026-10-06：异步检查点与服务器恢复
+
+基线 `308cbda`，实现 `2781f0c`。存档与时钟／进程生命周期从入口拆出；坏存档拒绝启动，进程级异常退出并保留上次检查点，格式错误的 HTTP／升级 URL 及 JSON 在请求边界返回 400，解析输入不回显。自动保存改成同步捕获、异步写盘，同步文件字节后原子替换；慢盘只保留一个在写任务。正常信号等待最终保存，失败／10 秒超时不会误报成功。
+
+Node 24.19.0、Linux、5 核可见 AMD EPYC 7763；同一静止世界、三轮预热后九轮交替，每次保存字节一致。旧实现没有文件同步，新实现包含文件同步：
+
+| 角色数／保存体积 | 主线程同步阻塞中位数（旧→新） | 完整保存中位数（旧→新） |
+|---|---:|---:|
+| 500／1.56 MB | 5.54 → 5.16 ms | 5.54 → 6.73 ms |
+| 2000／6.23 MB | 26.93 → 23.62 ms | 26.94 → 27.99 ms |
+
+主线程阻塞约少 7%／12%；完整写入因额外文件同步略长。序列化仍是主要同步成本，不能推导整个游戏同幅度变快。复现：`npx tsx scripts/bench-persistence.ts --n=500,2000 --rounds=9`。
+
+200 客户端真实 HTTP／WebSocket、20 Hz 输入、每秒施法、单 realm 的首轮 60 秒对照及交替复测，全部保持连接、施法回复 100%。最终三次 32 秒样本的 loop p99 为 12.03–13.50 ms、cast RTT p99 为 8.63–10.10 ms；基线为 12.07–12.79 ms、8.19–8.68 ms，不能声称整体吞吐或尾延迟改善。运行中场景未逐帧固定，也不作严格无退化结论。全部九次数字、原始记录、验证和限制见 [服务器恢复回归](playtest-logs/2026-10-06/server-recovery/index.md)。这不是小时级浸泡或硬件 GPU／实体手机验收。
+
+
+## 2026-10-06：PR #29 道具几何精简与分桶复测
+
+基线 `c2332a6`；原 PR `ac9e110` 同步当前 main 后为 `a9ee76e`。20 种 body、7 种 glow 和 ring 的非 UV 属性、索引、包围盒，以及 361 件道具四种状态的实例矩阵完全一致。现有材质与发光 shader 不使用 UV；悬浮提示的 Sprite 贴图保留。唯一几何数组及索引从 192248 减到 159408 字节（−17.1%）；这是道具几何数据，不是整场景显存或帧率。
+
+原 PR 同时将分桶 24→48 米，总 body/glow/ring 桶从 250 降到 194，但这不是实际 draw call。相同静止世界、相同快照 witness 的庭院高画质单帧，不更新阴影时调用 103→104、三角形 245684→247388；更新阴影时调用 231→220、三角形 295066→298354。城堡无阴影调用约 542→527。分桶变大有减少调用与多提交视锥外实例的取舍，未证明整个管线更快，故最终恢复 24 米及 250 桶，只保留 UV 精简。
+
+短窗口的阴影更新次数不同，直接比较原始整体帧平均会产生误导：庭院均值 145.7→181.3 不是可靠的 24% 退化证据。最终版庭院两类帧的调用／三角形集合与基线完全相同（103/231、245684/295066），独立验证几何减量未改变这处实际提交开销。
+
+Node 24.19.0 / Chromium 151.0.7922.173，1280×720，SwiftShader 软件渲染；静止世界 1 名观察者、0 bot、0 NPC、81 个生物，高／低画质各五机位，预热 2 秒、采样 5 秒。每窗口仅少量渲染帧，计数可揭示上述剔除开销，不用于声称硬件 GPU、手机 FPS 或稳定 CPU 帧时间提升。原始计数、最终版对照、画面截图和复现命令见 [PR #29 审阅记录](playtest-logs/2026-10-06/props-pipeline/index.md)。

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../src/kernel/world.js';
 import type { Creature, Wizard } from '../src/kernel/types.js';
-import type { CreatureKind } from '../src/shared/constants.js';
+import { NEWCOMER_PEACE_S, type CreatureKind } from '../src/shared/constants.js';
 import { XP_FOR_YEAR } from '../src/kernel/progression.js';
 const SECRET = 'test-secret';
 function mk() {
@@ -29,12 +29,32 @@ describe('playability: the first minutes', () => {
     const w = mk();
     const a = join(w, 'Hermione Granger');
     a.pos = { x: 60, z: 60 };
+    a.createdAt = -1e6; // (past a newcomer's peace)
     const c = creature(w, 'pixie', 68.5, 60);
     run(w, 0.5);
     expect(c.target).toBeNull();
     c.pos = { x: 66, z: 60 };
     run(w, 0.5);
     expect(c.target).toBe(a.id);
+  });
+
+  it('a newcomer is left alone for NEWCOMER_PEACE_S — by whatever they have not hurt; what they hurt fights back', () => {
+    const w = mk();
+    const a = join(w, 'Luna Lovegood');
+    a.pos = { x: 60, z: 60 };
+    const c = creature(w, 'pixie', 62, 60), d = creature(w, 'pixie', 58, 60);
+    const hp = a.hp;
+    run(w, 3);
+    expect(c.target).toBeNull();
+    expect(d.target).toBeNull();
+    expect(a.hp).toBe(hp);
+    w.damage(a.id, c.id, 5, 'arcane');
+    run(w, 1);
+    expect(c.target).toBe(a.id);
+    expect(d.target).toBeNull();
+    a.createdAt = w.now - NEWCOMER_PEACE_S - 1;
+    run(w, 1);
+    expect(d.target).toBe(a.id);
   });
 
   it('creatures hit a brand-new wizard 30% softer for the first three minutes', () => {

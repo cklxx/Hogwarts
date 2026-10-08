@@ -1,0 +1,30 @@
+{
+  "stage": "after",
+  "mid": {
+    "menuVisible": true,
+    "scrollTop": 0,
+    "scrollHeight": 746,
+    "clientHeight": 746,
+    "close": {
+      "top": 93,
+      "bottom": 139,
+      "left": 313,
+      "right": 359
+    },
+    "closeInsideViewport": true
+  },
+  "bottom": {
+    "menuVisible": true,
+    "scrollTop": 0,
+    "scrollHeight": 746,
+    "clientHeight": 746,
+    "close": {
+      "top": 93,
+      "bottom": 139,
+      "left": 313,
+      "right": 359
+    },
+    "closeInsideViewport": true
+  },
+  "closed": true
+}

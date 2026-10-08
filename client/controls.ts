@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WARD_CD_S, WARD_MANA, WARD_MAX_S, type CreatureKind, type House } from '../src/shared/constants';
 import { inZoneId } from '../src/shared/map';
 import { L, creatureName, houseName, spellName } from './i18n';
+import { ic } from './ink';
 import { heightAt, rayGround } from './terrain';
 
 /**
@@ -17,8 +18,21 @@ export interface CCreature { i: string; k: CreatureKind; hp: number; m: number; 
 export interface CSnap { w: CWizard[]; c: CCreature[] }
 /** What a spell is for (World.privateState reads it off Spell.effects): harm aims at a foe, help at a friend or you, self needs no target. */
 export type SpellKind = 'harm' | 'help' | 'self';
-export interface CSlot { id: string; name: string; cd: number; kind?: SpellKind }
-export interface CMe { name: string; house: House; year: number; seals: number; ui: string[]; hotbar: (CSlot | null)[]; stunned: number; jailed: number }
+export interface CSlot { id: string; name: string; cd: number; kind?: SpellKind; mana?: number | null }
+
+/**
+ * The press buffer (the 2026-10-02 loop measure: 70 % of a mashing first-year's presses were refused — too fast, still
+ * recharging, out of mana — and each refusal was a red toast): a press that cannot go yet waits up to BUFFER_S and goes
+ * the moment it can; a held key keeps it waiting, so holding casts again and again. Pure, for tests: may slot `s` go
+ * now, given the local cooldowns since our own last sends (the server's reach us a tick later) and the mana we have?
+ */
+export const BUFFER_S = 0.6, GCD_S = 0.25;
+export function castGate(s: CSlot, mana: number | undefined, t: number, gcdUntil: number, readyAt: number): 'go' | 'cd' | 'mana' {
+  if (t < gcdUntil || t < readyAt || s.cd > 0.05) return 'cd';
+  if (s.mana != null && mana !== undefined && mana + 0.5 < s.mana) return 'mana';
+  return 'go';
+}
+export interface CMe { name: string; house: House; year: number; seals: number; ui: string[]; hotbar: (CSlot | null)[]; stunned: number; jailed: number; mana?: number }
 type Model = { root: THREE.Object3D };
 export type Rel = 'self' | 'ally' | 'hostile' | 'neutral';
 
@@ -38,6 +52,8 @@ export interface ControlsDeps {
   /** Live view of main.ts' camera orbit. */
   cam: { yaw: number; pitch: number; dist: number };
   toast: (text: string) => void;
+  /** Out of mana: the mana bar flashes (main.ts). */
+  flashMana?: () => void;
   panels: { book: () => void; menu: () => void; owl: (force?: boolean) => void; trunk: () => void };
   /** The player's agent as the HUD sees it (me.agent), or null before the first 'me'. */
   agent: () => AgentView | null;
@@ -302,7 +318,7 @@ export function createControls(d: ControlsDeps) {
   let lastGoto = 0;
   const spellInfo = new Map<string, { incantation: string; effects: string[] }>();
   const fullCd = new Map<string, number>();
-  const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null }[] = [];
+  const pendingCasts: { name: string; kind: SpellKind; target: string | null; targetKind: CreatureKind | 'wizard' | null; slot?: number }[] = [];
   let hotbarSig = '';
   /** A phone or tablet: no hover, a coarse pointer. (Touch laptops keep the mouse UI; their touches still work.) */
   const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -373,6 +389,11 @@ export function createControls(d: ControlsDeps) {
     out.x = ((v3.x + 1) / 2) * d.canvas.clientWidth; out.y = ((1 - v3.y) / 2) * d.canvas.clientHeight;
     return out;
   }
+  /** On screen (a margin in, at chest height), clear of the bottom HUD strip. */
+  function onScreen(p: { x: number; y: number; z: number }) {
+    v3.set(p.x, p.y + 1, p.z).project(d.camera);
+    return v3.z > -1 && v3.z < 1 && Math.abs(v3.x) < 0.96 && v3.y < 0.94 && v3.y > -0.8;
+  }
   function segDist(px: number, py: number, a: { x: number; y: number }, b: { x: number; y: number }) {
     const vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy;
     const t = l2 ? Math.max(0, Math.min(1, ((px - a.x) * vx + (py - a.y) * vy) / l2)) : 0;
@@ -415,12 +436,13 @@ export function createControls(d: ControlsDeps) {
     if (raycaster.ray.intersectPlane(groundPlane, hit)) return out.copy(hit);
     return null;
   }
-  /** Where a spell goes when it has no target: the cursor on the ground, else straight ahead of the camera. */
+  /** Where a spell goes when it has no target: the cursor on the ground, else the way you face (where you last walked:
+   *  on a phone a shot with no foe on screen used to fly up the screen, whichever way you were going). */
   function fallbackAim() {
     if (mouseIn && overCanvas) return { x: aim.x, z: aim.z };
     const p = myPos();
     if (!p) return { x: aim.x, z: aim.z };
-    return { x: p.x - Math.sin(d.cam.yaw) * 14, z: p.z - Math.cos(d.cam.yaw) * 14 };
+    return { x: p.x + Math.sin(facing) * 14, z: p.z - Math.cos(facing) * 14 };
   }
 
   // ------------------------------------------------------------------ targets
@@ -437,14 +459,22 @@ export function createControls(d: ControlsDeps) {
     const cp = d.camera.position;
     const fx = -Math.sin(d.cam.yaw), fz = -Math.cos(d.cam.yaw), cosMax = Math.cos((coneDeg * Math.PI) / 180);
     const out: { k: string; dist: number; wiz: number }[] = [];
+    // a first-year's Tab and auto-aim never pick a wizard (the 2026-10-01 phone playtest: 3 of 3 locked on to the
+    // players crowding the spawn, never the pixies, and hit them); clicking a wizard still targets them
+    const firstYear = (d.me()?.year ?? 1) <= 1;
     for (const k of allKeys()) {
-      if (!harmable(k)) continue;
+      if (!harmable(k) || (firstYear && wIdx.has(k)) || ghost(k)) continue;
       const q = model(k)!.root.position;
       const dist = Math.hypot(q.x - p.x, q.z - p.z);
       if (dist > range) continue;
-      const cx = q.x - cp.x, cz = q.z - cp.z, cl = Math.hypot(cx, cz);
-      const cos = cl > 0.01 ? (cx * fx + cz * fz) / cl : 1;
-      if (cos < cosMax && dist > closeAnyway) continue;
+      // 2.5D: exactly what is on screen, whichever side of you (the camera's forward cone missed foes below and beside
+      // you, and a wide cone reached behind the camera: 「索敌还是问题很大」); the follow camera: its forward cone
+      if (topView) { if (!onScreen(q)) continue; }
+      else {
+        const cx = q.x - cp.x, cz = q.z - cp.z, cl = Math.hypot(cx, cz);
+        const cos = cl > 0.01 ? (cx * fx + cz * fz) / cl : 1;
+        if (cos < cosMax && dist > closeAnyway) continue;
+      }
       out.push({ k, dist, wiz: beastsFirst && wIdx.has(k) ? 1 : 0 });
     }
     return out.sort((a, b) => a.wiz - b.wiz || a.dist - b.dist).map((x) => x.k);
@@ -456,7 +486,8 @@ export function createControls(d: ControlsDeps) {
     lastTab = t;
     const p = myPos();
     // wild creatures first: a newcomer's Tab should find the pixie, not a rival player
-    const list = topView ? hostilesAhead(30, 180, true) : hostilesAhead(45, 42, true); // 2.5D: all round you is on screen
+    let list = topView ? hostilesAhead(30, 180, true) : hostilesAhead(45, 42, true);
+    if (!list.length) list = hostilesAhead(60, 180, true); // (nothing close: the nearest further out, any way you face) // 2.5D: all round you is on screen
     if (!list.length || !p) { d.toast(L(`前方没有可以攻击的目标。转动镜头（${LOOK_ZH} / Q E）再试试。`, `No foe ahead. Turn the camera (${LOOK_EN} / Q E) and try again.`)); return; }
     let next = list.find((k) => !tabbed.has(k) && k !== target);
     if (!next) { tabbed = new Set(); next = list.find((k) => k !== target) ?? list[0]; }
@@ -479,8 +510,8 @@ export function createControls(d: ControlsDeps) {
   function chooseTarget(s: CSlot): string | null {
     const kind = kindOf(s);
     if (kind === 'harm') {
-      if (target && attackable(target) && distTo(target) <= 45) return target;
-      if (hovered && harmable(hovered) && distTo(hovered) <= 45) return hovered;
+      if (target && !ghost(target) && attackable(target) && distTo(target) <= 45 && (!topView || onScreen(model(target)!.root.position))) return target;
+      if (hovered && !ghost(hovered) && harmable(hovered) && distTo(hovered) <= 45) return hovered;
       const auto = hostilesAhead(HARM_RANGE, 42, true)[0] ?? null;
       if (auto) setTarget(auto);
       return auto;
@@ -499,11 +530,34 @@ export function createControls(d: ControlsDeps) {
     }
     return null;
   }
+  // the press buffer (castGate): one press waiting, the local cooldowns after our own sends
+  let queued: { i: number; at: number; opts: { at?: { x: number; z: number } }; why: 'cd' | 'mana' } | null = null;
+  let gcdUntil = 0, lowManaHint = 0;
+  const readyAt = new Map<string, number>();
+  /** Targets the server said are gone, and when: auto-aim skips them a few seconds (onCast). */
+  const ghosts = new Map<string, number>();
+  const ghost = (k: string) => { const t = ghosts.get(k); if (t === undefined) return false; if (now() - t > 4) { ghosts.delete(k); return false; } return true; };
+  function flushQueue() {
+    if (!queued) return;
+    const me = d.me(), s = me?.hotbar[queued.i];
+    if (!me || !s) { queued = null; return; }
+    const g = castGate(s, me.mana, now(), gcdUntil, readyAt.get(s.id) ?? 0);
+    if (g === 'go') { const q = queued; queued = null; castSlot(q.i, q.opts); return; }
+    queued.why = g;
+    if (now() - queued.at > BUFFER_S) {
+      // out of mana for a while: one quiet word (and the mana bar flashes), never a toast per press
+      if (g === 'mana' && now() - lowManaHint > 3) { lowManaHint = now(); d.toast(L('魔力不够了 —— 稍等一下；打中魔物会回一点', 'Out of mana: a moment — hitting a creature gives some back')); }
+      if (g === 'mana') d.flashMana?.();
+      queued = null;
+    }
+  }
   function castSlot(i: number, opts: { at?: { x: number; z: number } } = {}) {
     const me = d.me();
     if (!me) return;
     const s = me.hotbar[i];
     if (!s) { d.toast(L(`快捷栏 ${i + 1} 是空的 —— 按 B 打开咒语书，把咒语放进来。`, `Hotbar slot ${i + 1} is empty — press B to put a spell there.`)); return; }
+    const g = castGate(s, me.mana, now(), gcdUntil, readyAt.get(s.id) ?? 0);
+    if (g !== 'go') { if (queued?.i !== i) queued = { i, at: now(), opts, why: g }; else { queued.at = Math.max(queued.at, now() - BUFFER_S * 0.5); queued.opts = opts; } return; }
     const kind = kindOf(s);
     // a revive ignores where it is aimed (the server lifts its target, else whoever is nearest), so it always picks its own
     const revive = kind === 'help' && isRevive(s);
@@ -516,7 +570,8 @@ export function createControls(d: ControlsDeps) {
     const m = tgt ? model(tgt) : null;
     const p = m ? { x: m.root.position.x, z: m.root.position.z } : opts.at ?? fallbackAim();
     d.send({ t: 'cast', key: String(i + 1), x: p.x, z: p.z, target: tgt ?? undefined });
-    pendingCasts.push({ name: s.name, kind, target: tgt, targetKind: tgt ? (cIdx.get(tgt)?.k ?? (wIdx.has(tgt) ? 'wizard' : null)) : null });
+    gcdUntil = now() + GCD_S; readyAt.set(s.id, now() + 0.3 + (s.mana ?? 0) / 60); // (as the server sets them, World.cast)
+    pendingCasts.push({ name: s.name, kind, target: tgt, targetKind: tgt ? (cIdx.get(tgt)?.k ?? (wIdx.has(tgt) ? 'wizard' : null)) : null, slot: i });
     if (pendingCasts.length > 20) pendingCasts.shift();
     if (kind === 'harm') selected = i;
   }
@@ -779,6 +834,7 @@ export function createControls(d: ControlsDeps) {
    */
   let moveSig = '', moveSince = 0, driftOff = 0, promptW = 0;
   function update(dt: number) {
+    flushQueue();
     index();
     d.camera.updateMatrixWorld();
     const t = now();
@@ -927,7 +983,13 @@ export function createControls(d: ControlsDeps) {
     action = findAction();
     const pr = $('#prompt');
     pr.hidden = !action;
-    if (action && pr.dataset.label !== action.label) { pr.dataset.label = action.label; pr.innerHTML = `<kbd>F</kbd> ${action.label.replace(/^按 F |^F — /, '')}`; promptW = 0; }
+    if (action && pr.dataset.label !== action.label) {
+      pr.dataset.label = action.label;
+      const label = action.label.replace(/^按 F |^F — /, '');
+      pr.setAttribute('aria-label', touch ? `${L('点按交互：', 'Tap to interact: ')}${label}` : action.label);
+      pr.innerHTML = `${touch ? ic('hand') : '<kbd>F</kbd>'} ${label}`;
+      promptW = 0;
+    }
     const tip = $('#tip');
     if (!tip.hidden && tipSlot >= 0) renderTip(tipSlot);
     tutorial.tick();
@@ -1085,7 +1147,9 @@ export function createControls(d: ControlsDeps) {
     yaw: () => d.cam.yaw,
     slotOf: (name) => (d.me()?.hotbar.findIndex((s) => s?.name === name) ?? -1),
     openMenu: () => d.panels.menu(),
+    closeMenu: () => { $('#menu').hidden = true; },
     openBook: () => d.panels.book(),
+    tempus: () => castOnSelf('Tempus'),
     openOwl: () => d.panels.owl(true),
     pair: () => d.pair(),
     agent: d.agent,
@@ -1094,9 +1158,16 @@ export function createControls(d: ControlsDeps) {
   });
 
   // ------------------------------------------------------------------ server replies (routed from main.ts)
-  function onCast(r: { ok: boolean }) {
+  function onCast(r: { ok: boolean; error?: string }) {
     const c = pendingCasts.shift();
     if (r.ok && c) tutorial.notify('cast', c);
+    // the server says the one we are locked on to is gone (this screen still drew it): drop the lock, and the next
+    // press aims afresh — it used to keep every press on the ghost (the 2026-10-02 mash test: 16 presses, no hit)
+    if (!r.ok && c?.target && /^There is no "/.test(r.error ?? '')) {
+      if (target === c.target) target = null;
+      ghosts.set(c.target, now());
+      if (c.slot !== undefined) castSlot(c.slot); // (the press itself goes again, at whoever is really there; nothing was spent)
+    }
   }
   function onGoto(goal: { x: number; z: number } | null) {
     if (!dest) return;
@@ -1133,6 +1204,8 @@ export function createControls(d: ControlsDeps) {
     /** The tutorial (or its closing word) is on screen. */
     tutorialActive: () => tutorial.active(),
     onCast, onGoto, onError, onArmory,
+    /** The world-space move vector the keys/joystick hold right now (client-side movement prediction). */
+    move: () => ({ dx: moveDx, dz: moveDz }),
   };
 }
 
@@ -1180,6 +1253,7 @@ interface TutorialDeps {
   yaw: () => number;
   slotOf: (spellName: string) => number;
   openMenu: () => void;
+  closeMenu: () => void;
   openBook: () => void;
   openOwl: () => void;
   pair: () => void;
@@ -1187,17 +1261,21 @@ interface TutorialDeps {
   walkTo: (x: number, z: number) => void;
   /** A big panel is open (the coach mark then moves above it instead of hiding behind it). */
   panelOpen: () => boolean;
+  /** Cast Tempus on yourself (the Tempus step's button). */
+  tempus: () => void;
   /** 试玩指标 (kernel/metrics.ts): the step reached, 1-based (0 when finished or skipped), and a coarse pointer. */
   report: (step: number) => void;
 }
 /** The door of the Great Hall faces the courtyard; walking to just inside it (shared/map.ts ZONES great_hall). */
 const HALL = { x: 0, z: -50 };
+/** The target button's own icon (the phone's 2×2 grid), for the tutorial's lines. */
+const TARGET_IC = '<svg class="ic"><use href="#i-target"/></svg>';
 function createTutorial(t: TutorialDeps) {
   const KEY = 'hogwarts.tutorial';
   const load = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
   const save = (v: string) => { try { localStorage.setItem(KEY, v); } catch { /* private mode */ } };
   const saved = load();
-  let step = saved === 'done' ? -1 : Math.max(0, Math.min(6, Number(saved) || 0));
+  let step = saved === 'done' ? -1 : Math.max(0, Math.min(7, Number(saved) || 0));
   // after the tutorial the H-help button goes (H still opens it): the quiet HUD
   document.body.classList.toggle('tut-done', step === -1);
   let start: { x: number; z: number } | null = null;
@@ -1211,9 +1289,13 @@ function createTutorial(t: TutorialDeps) {
     if (b.dataset.act === 'menu') { t.openMenu(); notify('menu'); }
     if (b.dataset.act === 'book') t.openBook();
     if (b.dataset.act === 'hall') t.walkTo(HALL.x, HALL.z);
+    if (b.dataset.act === 'tempus') t.tempus();
     if (b.dataset.act === 'pair') t.pair();
     if (b.dataset.act === 'owl') t.openOwl();
-    if (b.dataset.act === 'later') finish(true);
+    if (b.dataset.act === 'later') {
+      if (step === 5 || step === 6) { t.closeMenu(); step = 6; advance(); }
+      else finish(true);
+    }
     if (b.dataset.act === 'close') { doneUntil = 0; el.hidden = true; }
   });
 
@@ -1239,7 +1321,7 @@ function createTutorial(t: TutorialDeps) {
     return `<span class="dir"><span class="arrow" style="transform:rotate(${(a + t.yaw()).toFixed(2)}rad)">↑</span>${L(`大礼堂 ${Math.round(d)} 米`, `Great Hall ${Math.round(d)} m`)}</span>`;
   }
   /** One short line per step, placed beside the control it talks about (`at`); the help panel (H) has the long version. */
-  /** `short`: a phone's line (手机壳: one line of a dozen characters, beside the thumb, client/phone.ts). */
+  /** `short`: a phone's concise action prompt (wraps when needed, client/phone.css). */
   type Step = { at: 'bottom' | 'topleft' | 'topright'; line: () => string; short?: () => string; acts?: () => string; live?: () => string };
   const STEPS: Step[] = [
     {
@@ -1251,7 +1333,7 @@ function createTutorial(t: TutorialDeps) {
     },
     {
       at: 'bottom',
-      short: () => L('点 <b>◎</b> 选小精灵，再点 <b>1</b>', 'Tap <b>◎</b> for a pixie, then <b>1</b>'),
+      short: () => L(`点<b>小精灵</b>（或 ${TARGET_IC}）选它，再点 <b>1</b>`, `Tap a <b>pixie</b> (or ${TARGET_IC}), then <b>1</b>`),
       line: () => {
         const s = t.slotOf('Stupefy');
         const k = key(s >= 0 ? String(s + 1) : '1');
@@ -1283,8 +1365,10 @@ function createTutorial(t: TutorialDeps) {
         const s = t.slotOf('Tempus');
         return s >= 0
           ? L(`右上角还暗着 —— ${t.touch ? `点快捷栏第 ${s + 1} 格` : `按 ${key(String(s + 1))}`}施放<b>时间显现</b>点亮它`, `The top-right corner is dark: ${t.touch ? `tap hotbar slot ${s + 1}` : key(String(s + 1))} casts <b>Tempus</b> to light it`)
-          : L('右上角还暗着 —— 在咒语书里施放<b>时间显现</b>点亮它', 'The top-right corner is dark: cast <b>Tempus</b> from the spellbook');
+          : L('右上角还暗着 —— 点右上角的<b>沙漏</b>（或这里的按钮）施放<b>时间显现</b>点亮它', 'The top-right corner is dark: tap the <b>hourglass</b> there (or the button here) to cast <b>Tempus</b>');
       },
+      // (the 2026-10-01 phone playtest: 3 of 3 looked for Tempus in the spellbook, under its template, and stuck)
+      acts: () => `<button data-act="tempus">${L('施放', 'Cast')}</button>`,
     },
     {
       at: 'topleft',
@@ -1299,28 +1383,40 @@ function createTutorial(t: TutorialDeps) {
       line: () => L(`${t.touch ? '点<b>写信</b>' : `按 ${key('O')}`} 给你的 Agent 写一句话（只有你们俩看得见）`, `${t.touch ? 'Tap <b>Write</b>' : key('O')} to write your agent a line (only the two of you see it)`),
       acts: () => `<button data-act="owl">${L('写信', 'Write')}</button> <button data-act="later" class="ghost">${L('跳过', 'Skip')}</button>`,
     },
+    {
+      at: 'bottom',
+      short: () => L('站到<b>绿火</b>旁，点<b>手掌</b>选目的地', 'By a <b>green fire</b>, tap the <b>hand</b> to travel'),
+      line: () => L(`地图很大：按 <b>${key('M')}</b> 骑扫帚（2 倍速，城堡外），或站在<b>绿色火焰</b>旁按 <b>F</b> 选择目的地`, `The map is big: press <b>${key('M')}</b> for a broom (2× speed, outside the castle), or press <b>F</b> by a <b>green flame</b> to choose a Floo destination`),
+      acts: () => `<button data-act="later" class="ghost">${L('知道了', 'Got it')}</button>`,
+    },
   ];
 
   const X = `<button class="tut-skip" data-act="skip" title="${L('跳过新手引导', 'Skip the tutorial')}" aria-label="${L('跳过新手引导', 'Skip the tutorial')}"><svg class="ic"><use href="#i-x"/></svg></button>`;
+  /** Where the coach mark sits — written only when it changes (each write woke main.ts's observer, which measured
+   *  the HUD again: ten layouts a second, and a panel that could shift under a finger mid-tap). */
+  function place(at: string) {
+    if (el.dataset.at !== at) el.dataset.at = at;
+    const over = t.panelOpen();
+    if (over && el.dataset.over !== '1') el.dataset.over = '1';
+    else if (!over && 'over' in el.dataset) delete el.dataset.over;
+  }
   function render() {
     if (step < 0) {
       if (doneUntil > now()) {
-        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><span class="tut-acts"><button class="tut-skip" data-act="close" aria-label="×"><svg class="ic"><use href="#i-x"/></svg></button></span>`;
+        const html = `<span class="tut-n">✦</span><span class="tut-line">${t.touch ? L('引导完成，玩得开心！', 'All set. Enjoy!') : L(`引导完成。随时按 ${key('H')} 查看全部操作，祝你玩得开心！`, `You know the basics. ${key('H')} shows every control. Enjoy Hogwarts!`)}</span><button class="tut-skip" data-act="close" aria-label="${L('关闭引导', 'Close tutorial')}"><svg class="ic"><use href="#i-x"/></svg></button>`;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
-        el.dataset.at = 'bottom';
-        if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;
+        place('bottom');
         el.hidden = false;
       } else el.hidden = true;
       return;
     }
-    // the last step (talk to your agent) only appears while an agent is connected
+    // The optional owl step needs an agent; tick skips it if the connection goes away.
     if (step === 6 && !t.agent()?.connected) { el.hidden = true; return; }
     const s = STEPS[step];
-    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}${X}</span>`;
+    const html = `<span class="tut-n" title="${L('新手引导', 'Tutorial')}">${step + 1}/${STEPS.length}</span><span class="tut-line">${t.touch && s.short ? s.short() : s.line()}<span class="tut-live"></span></span><span class="tut-acts">${s.acts?.() ?? ''}</span>${X}`;
     if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
-    el.dataset.at = s.at;
     // never behind an open panel: above it instead
-    if (t.panelOpen()) el.dataset.over = '1'; else delete el.dataset.over;
+    place(s.at);
     const live = el.querySelector('.tut-live') as HTMLElement;
     const lv = s.live?.() ?? '';
     if (live.innerHTML !== lv) live.innerHTML = lv;
@@ -1356,6 +1452,7 @@ function createTutorial(t: TutorialDeps) {
     }
     if (step === 4 && me.ui.includes('tempus')) { advance(); return; }
     if (step === 5 && t.agent()?.connected) { advance(); return; }
+    if (step === 6 && !t.agent()?.connected) { advance(); return; }
     render();
   }
   function notify(ev: 'cast' | 'book' | 'menu' | 'owl', c?: CastInfo) {

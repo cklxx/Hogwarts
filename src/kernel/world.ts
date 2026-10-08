@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import { confirmWaterAssist, waterAssistXp, clearWaterAssist } from './chem.js';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
-  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, CREATURE_HIT_CAP,
+  ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, NEWCOMER_PEACE_S, CREATURE_HIT_CAP,
   SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource,
@@ -44,7 +45,7 @@ import { type Law, type Rulebook, applyPatch, defaultRulebook } from './rulebook
 import { chestClues, chestNear, chestsLeft, CHESTS, CHEST_XP, rollCard, RUNES_FRAGMENTS } from './cards.js';
 import { blankLedger, cupAward, cupDeduct, cupMult, termBest, type CupEntry, type CupLedger } from './housecup.js';
 import { wheelKissed, wheelRoom, wheelSlain, wheelView } from './wheel.js';
-import { duelFoes, inFight, inMatch, sideOf } from './duelclub.js';
+import { duelFoes, duelRollStepAllowed, inFight, inMatch, sideOf } from './duelclub.js';
 import { spared, strikes } from './allies.js';
 import { AGENT_TOOL_COST, FEATURE_SPELLS, FEATURE_TOOL_COST, FEATURES, HOOKS } from './features.js';
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
@@ -93,6 +94,8 @@ export { FRESH_SECONDS };
 const REVEAL_CHARM: Record<string, string> = Object.fromEntries(Object.entries(UI_CHARM_INFO).map(([k, v]) => [v.spell, k]));
 const TOMB = { x: -52, z: 28 };
 const WILLOW = { x: 45, z: 0 };
+/** What a spell with a target flies past (World.inAim): tree trunks. */
+const AIM_PASSES = 'tree';
 /** placeName's order: the most specific zone wins. */
 const PLACE_ORDER: ZoneId[] = ['azkaban', 'erised', 'great_hall', 'seventh_floor', 'tomb', 'willow', 'dungeons', 'greenhouses', 'courtyard', 'pitch', 'hogsmeade', 'deep_forest', 'forest', 'lake_shore', 'grounds'];
 
@@ -174,7 +177,7 @@ export class World {
   /** The statue list the solids were last built from (flags.statues is replaced, never mutated). */
   private statueRef: Statue[] | null = null;
   /** Seconds a wizard walking to a goal has made no headway, and how often it re-planned (transient). */
-  private stuck = new Map<string, { t: number; replans: number }>();
+  private stuck = new Map<string, { t: number; replans: number; waypoint: Vec2; distance: number; budget: number }>();
   projectiles = new Map<string, Projectile>();
   pending: Pending[] = [];
   events: WorldEvent[] = [];
@@ -815,7 +818,7 @@ export class World {
       achievements: [], titles: [], stats: { stuns: 0, stunned: 0, creatures: 0, casts: 0, forged: 0 },
       st: blankStatus(), cooldowns: {}, globalCd: 0, decreeCharges: 0, createdAt: this.now, lastMcpAt: -1e9, connections: 0,
       marauderUntil: 0, say: null, eggs: { rorCrossings: [], rorSide: 0, inErised: false }, lastDuel: {}, hurtAt: -1e9, lastHurtBy: null, lastSeenAt: this.now,
-      ui: [], seals: 0, wasMinister: false, npc: false, auras: [], tearsAt: 0,
+      ui: [], seals: 0, graduates: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0, auras: [], tearsAt: 0,
       hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, agentPaused: false, agentSeen: null, goalBy: null,
       look: null, jinxLook: null,
     };
@@ -965,9 +968,11 @@ export class World {
       return { ...fail(`You cannot harm ${t.name} right now: ${why}. No mana spent. 现在伤不到 ${t.name}：${whyZh}。没有消耗法力。`), spell: spell.name };
     }
     // …or behind a wall, a tree, a rock: the bolt would only hit that (playtest round 3: four casts, 72 mana, nothing)
-    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inBlast(w.pos, this.entity(target)!.pos)) {
+    if (!opts.dryRun && target && target !== wid && spellKind(spell.effects) === 'harm' && !this.inAim(w.pos, this.entity(target)!.pos)) {
       const t = this.entity(target)!;
-      return { ...fail(`Something stands between you and ${t.name}: no clear shot. Move for one. No mana spent. 你和 ${t.name} 之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
+      // (where it is now: between an agent's look and its cast the world moves on — say it, so no second look is needed)
+      const at = `(${Math.round(t.pos.x)}, ${Math.round(t.pos.z)}), ${dist(t.pos, w.pos).toFixed(1)} m`;
+      return { ...fail(`Something stands between you and ${t.name}, now at ${at}: no clear shot. Move for one. No mana spent. 你和 ${t.name}（现在在 ${at}）之间有东西挡着，打不中。换个位置。没有消耗法力。`), spell: spell.name };
     }
     const aim = opts.aim ?? (target ? { ...this.entity(target)!.pos } : this.defaultAim(w));
     if (!opts.dryRun && Math.hypot(aim.x - w.pos.x, aim.z - w.pos.z) > 0.1) w.facing = Math.atan2(aim.x - w.pos.x, -(aim.z - w.pos.z));
@@ -1155,6 +1160,16 @@ export class World {
 
   /** Is this wizard mid-dodge (projectiles and claws pass them by)? */
   dodging(id: string) { const w = this.wizards.get(id); return !!w && (w.st.dodgeUntil ?? 0) > this.now; }
+  /** Collision-resolved normal-tick dash preview, including a reflex's possible extra expiry step. */
+  previewDodge(from: Vec2, dx: number, dz: number): Vec2[] {
+    const path: Vec2[] = [];
+    let p = from;
+    for (let i = 0; i < Math.ceil(DODGE_S / TICK) + 1; i++) {
+      const next = { x: p.x + dx * DODGE_DIST / DODGE_S * TICK, z: p.z + dz * DODGE_DIST / DODGE_S * TICK };
+      this.solids.resolve(next, 0.5, true); path.push(next); p = next;
+    }
+    return path;
+  }
   /**
    * 翻滚闪避: a short dash (DODGE_DIST metres in DODGE_S) along (dx, dz), or straight ahead; untouchable by
    * projectiles and creature strikes while it lasts; DODGE_CD_S between dodges. `by` 'agent' yields to a steering
@@ -1272,6 +1287,14 @@ export class World {
   inBlast(from: Vec2, to: Vec2): boolean {
     return !this.solids.hitSegment(from.x, from.z, to.x, to.z);
   }
+  /**
+   * A spell with a target reaches it unless a wall or a building stands between: it weaves past tree trunks (the
+   * 2026-10-01 owner test: 「火打不到后面的怪物」 — in the forest one foe in eight within 25 m stood behind a trunk, and
+   * the cast at it was refused). A straight shot and a blast still stop at a tree.
+   */
+  inAim(from: Vec2, to: Vec2): boolean {
+    return !this.solids.hitSegment(from.x, from.z, to.x, to.z, undefined, 0, AIM_PASSES);
+  }
 
   reveal(w: Wizard, key: UiCharm) {
     this.fx({ k: 'reveal', x: w.pos.x, z: w.pos.z, h: w.handle });
@@ -1319,7 +1342,7 @@ export class World {
     this.syncSolids();
     this.solids.resolve(w.pos, 0.5);
     this.moved(w);
-    w.goal = null;
+    this.stopWalk(w);
     this.fx({ k: 'apparate', x: w.pos.x, z: w.pos.z });
   }
 
@@ -1340,7 +1363,21 @@ export class World {
     const m = this.memeOf.get(w.id);
     if (m) m.still = this.now; // speaking is not lying flat
     this.emit('chat', `${w.name}: ${t}`, { who: [w.id], zh: `${w.name}：${tz}` });
-    if (via !== 'npc') { this.chatEggs(w, t, via); for (const f of HOOKS.said) f.said(this, w, t); }
+    if (via !== 'npc') {
+      this.chatEggs(w, t, via);
+      for (const f of HOOKS.said) f.said(this, w, t);
+      // NPCs answer greetings: a nearby NPC wizard replies once (playtest: say was one-way)
+      if (!w.npc && /^(hi|hello|hey|嗨|你好|哈喽|hello!|hi!)/i.test(t.trim())) {
+        const near = [...this.nearWizards(w.pos, 12)].filter((n) => n.npc && n.id !== w.id && this.isActive(n) && dist(n.pos, w.pos) <= 12);
+        if (near.length && this.funRand() < 0.7) {
+          const npc = near[Math.floor(this.funRand() * near.length)];
+          const replies = ['Hello! 你好呀！', 'Hey there! 嗨！', 'Hi! 今天过得怎么样？', '哦，你好！', 'Hello, fellow wizard!'];
+          const reply = replies[Math.floor(this.funRand() * replies.length)];
+          // delay slightly so it doesn't look instant
+          setTimeout(() => { if (this.isActive(npc)) this.say(npc, reply, 'npc'); }, 800 + this.funRand() * 1200);
+        }
+      }
+    }
   }
 
   /**
@@ -1364,16 +1401,19 @@ export class World {
     return dealt;
   }
   /** Your last few hits (look.yourHits): an agent's bolt lands after cast returns, and nothing else said whether it hit. */
-  private hits = new Map<string, { at: number; id: string; name: string; dmg: number; down: boolean }[]>();
+  private hits = new Map<string, { at: number; id: string; target: string; name: string; dmg: number; down: boolean }[]>();
   private noteHit(by: string, id: string, name: string, dmg: number, down: boolean) {
     if (!this.wizards.has(by)) return;
     const l = this.hits.get(by) ?? [];
-    l.push({ at: this.now, id, name, dmg: Math.round(dmg * 10) / 10, down });
+    // Capture the public handle now, so removing a wizard cannot expose a registry id later.
+    const target = this.wizards.get(id)?.handle ?? id;
+    l.push({ at: this.now, id, target, name, dmg: Math.round(dmg * 10) / 10, down });
     if (l.length > HITS_KEPT) l.shift();
     this.hits.set(by, l);
   }
-  recentHits(wid: string) {
-    return (this.hits.get(wid) ?? []).filter((h) => this.now - h.at <= HITS_SHOWN_S).map((h) => ({ secondsAgo: round(this.now - h.at), target: h.id, name: h.name, damage: h.dmg, down: h.down || undefined })).reverse();
+  /** Reflexes consume internal ids; the player's look view requests public targets. */
+  recentHits(wid: string, publicTargets = false) {
+    return (this.hits.get(wid) ?? []).filter((h) => this.now - h.at <= HITS_SHOWN_S).map((h) => ({ secondsAgo: round(this.now - h.at), target: publicTargets ? h.target : h.id, name: h.name, damage: h.dmg, down: h.down || undefined })).reverse();
   }
   private damageInner(srcId: string | null, dstId: string, amount: number, element: Element, tags: string[] = [], opts: { patronus?: boolean; dot?: boolean; hex?: boolean } = {}): number {
     if (!(opts.hex ? this.jinxBites(srcId, dstId) : this.canHarm(srcId, dstId))) return 0;
@@ -1405,6 +1445,7 @@ export class World {
       const leviosa = c.kind === 'troll' && tags.some(isLeviosa);
       if (leviosa) a *= 3;
       c.hp -= a;
+      confirmWaterAssist(this, srcId, dstId, a, !opts.dot && !opts.hex);
       // the achievement says "knocked out a troll": it waits for the troll to go down to a Leviosa (playtest round 2)
       if (leviosa && sw && c.hp <= 0) this.achieve(sw, 'leviosa');
       const bw = by ? this.wizards.get(by) : undefined;
@@ -1464,7 +1505,8 @@ export class World {
   private stun(w: Wizard, by: string | null, element?: Element) {
     w.hp = 0;
     w.st.stunnedUntil = this.now + this.rules.combat.respawnSeconds;
-    w.goal = null;
+    this.stopWalk(w);
+    w.input = { dx: 0, dz: 0 };
     w.stats.stunned++;
     this.fx({ k: 'stun', x: w.pos.x, z: w.pos.z, h: w.handle });
     const kw = by ? this.wizards.get(by) : undefined;
@@ -1543,7 +1585,7 @@ export class World {
   private slay(c: Creature) {
     this.creatures.delete(c.id);
     const def = CREATURES[c.kind];
-    if (c.owner) { this.emit('creature', `Your ${def.name} is gone.`, { to: c.owner, zh: `你的${zhCreature(c.kind)}消散了。` }); return; }
+    if (c.owner) { clearWaterAssist(this, c.id); this.emit('creature', `Your ${def.name} is gone.`, { to: c.owner, zh: `你的${zhCreature(c.kind)}消散了。` }); return; }
     const pr = this.rules.progression;
     const loot = this.inLawless(c.pos) ? LAWLESS_MULT : 1; // 无规则区: double Galleons and XP
     const killer = c.lastHitBy ? this.wizards.get(c.lastHitBy) : undefined;
@@ -1554,11 +1596,20 @@ export class World {
       const isKiller = w === killer;
       if (!isKiller && dmg / total < 0.2) continue;
       const share = (isKiller ? 1 : 0.5) * this.freshness(w, c.kind);
-      this.gainXp(w, def.xp * pr.xpMultiplier * share * loot);
+      const xp = def.xp * pr.xpMultiplier * share * loot;
+      if (isKiller) {
+        const rewards = waterAssistXp(this, c, killer, xp);
+        this.gainXp(w, rewards.killerXp);
+        for (const assist of rewards.assists) {
+          this.gainXp(assist.wizard, assist.xp);
+          this.emit('system', `Water cooperation: your Aguamenti helped a teammate trigger a reaction. Shared ${assist.xp} XP.`, { to: assist.wizard.id, zh: `补水协作：你的清水如泉帮助队友触发反应，分享 ${assist.xp} 经验。` });
+        }
+      } else this.gainXp(w, xp);
       this.addRep(w, def.rep * pr.creatureRepMultiplier * share, 'creatures');
       w.galleons += Math.round(def.galleons * pr.galleonMultiplier * share * loot);
       if (isKiller) { w.stats.creatures++; this.grind(w); }
     }
+    clearWaterAssist(this, c.id);
     if (killer && (def.rep >= 10 || c.kind === 'troll')) this.emit('creature', `${killer.name} defeated a ${def.name}!`, { who: [killer.id], zh: `${killer.name} 击败了一只${zhCreature(c.kind)}！` });
     // 巧克力蛙画片: now and then a wild creature leaves a card behind (rules.cards.creatureDropPct; the fun stream)
     if (killer && !killer.npc && !c.ev && def.faction === 'hostile' && this.funRand() * 100 < this.rules.cards.creatureDropPct) rollCard(this, killer, 'plain', { zh: `${zhCreature(c.kind)}掉下了一张画片`, en: `The ${def.name} dropped something` });
@@ -1757,7 +1808,7 @@ export class World {
     w.pos = { x: AZKABAN.x + (this.rng() - 0.5) * 6, z: AZKABAN.z + (this.rng() - 0.5) * 6 };
     this.solids.resolve(w.pos, 0.5, false); // not inside the rock
     this.moved(w);
-    w.goal = null;
+    this.stopWalk(w);
     const lost = Math.round(w.reputation * 0.25);
     w.reputation -= lost;
     this.emit('azkaban', `${w.name} cast ${curse}. The Ministry has sentenced them to Azkaban (-${lost} reputation).`, { who: [w.id], zh: `${w.name} 使用了不可饶恕咒「${curse}」。魔法部判处其入狱阿兹卡班（声望 -${lost}）。` });
@@ -2088,13 +2139,19 @@ export class World {
   }
 
   // ------------------------------------------------------------------ movement / input
+  /** Cancel the entire walk, including a later scene crossing; never cancel the human's keys here. */
+  stopWalk(w: Wizard) {
+    w.goal = null; w.route = []; w.goalBy = null;
+    this.via.delete(w.id); this.stuck.delete(w.id);
+  }
+
   setInput(wid: string, dx: number, dz: number, facing?: number) {
     const w = this.wizards.get(wid);
     if (!w) return;
     const len = Math.hypot(dx, dz);
     w.input = len > 1 ? { dx: dx / len, dz: dz / len } : { dx: dx || 0, dz: dz || 0 };
     // the player's hands on the controls cancel any walk, their own or their agent's (formal/tla/Control.tla)
-    if (len > 0.01) { w.goal = null; w.route = []; w.goalBy = null; w.steerAt = this.now; }
+    if (len > 0.01) { this.stopWalk(w); w.steerAt = this.now; }
     if (typeof facing === 'number' && Number.isFinite(facing)) w.facing = facing;
   }
 
@@ -2119,16 +2176,14 @@ export class World {
     const w = this.need(wid);
     if (by === 'agent') {
       if (!goal) {
-        if (w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; }
+        if (w.goalBy === 'agent' || (!w.goal && this.via.get(w.id)?.by === 'agent')) this.stopWalk(w);
         return null;
       }
       if (w.agentPaused) throw new Error(AGENT_PAUSED);
       if (this.playerSteering(w)) throw new Error(PLAYER_STEERING);
     } else w.steerAt = this.now;
-    w.route = [];
-    w.goal = null;
-    w.goalBy = null;
-    this.via.delete(w.id);
+    if (goal && w.st.stunnedUntil) throw new Error('You are stunned: wait until you recover before setting a new route. 你被击晕了：恢复后再设置新路线。');
+    this.stopWalk(w);
     if (!goal) return null;
     if (w.st.jailedUntil) throw new Error('The walls of Azkaban are thick.');
     let to = { x: clampN(goal.x, -WORLD_HALF, WORLD_HALF), z: clampN(goal.z, -WORLD_HALF, WORLD_HALF) };
@@ -2136,16 +2191,22 @@ export class World {
     // into the mist, or into the scene that lies past this edge: walk to the edge and through it (边缘出口); another
     // scene: to its gate first; going through either walks on (the scenes Feature)
     this.syncSolids();
+    this.solids.resolve(w.pos, 0.5, !w.st.jailedUntil);
+    this.moved(w);
     let hop = edgeHop(w.pos, to);
     let route = hop ? findPath(w.pos, hop.at, this.solids) : null;
     // (the path ends where the grid lets it: that is the crossing, if it is still at the edge; else the gates)
     hop = hop && route?.length ? edgeAt(hop, route[route.length - 1]) : null;
     if (!hop) { hop = routeVia(w.pos, to); route = null; }
     if (!hop && sceneAt(w.pos.x, w.pos.z) && !sceneAt(to.x, to.z)) throw new Error(`(${Math.round(to.x)}, ${Math.round(to.z)}) is in the mist between the scenes: nobody walks there. Scenes: ${SCENES.map((s) => `${s.id} [${s.box.join(', ')}]`).join('; ')}. 那里在场景之间的雾里，走不过去。`);
-    if (hop) this.via.set(w.id, { to: sceneAt(to.x, to.z) ? to : hop.out, by, gate: hop });
+    if (hop && w.npc) throw new Error('NPCs cannot walk through the mist between scenes. NPC 不能穿越场景之间的迷雾。');
     route ??= findPath(w.pos, hop ? hop.at : to, this.solids);
+    // out onto water that bears you (Solids.walkOn, bridge: ice): the grid knows only land — to where it starts, then over it
+    const over = !hop && this.solids.walkOn?.(to.x, to.z) ? this.solids.bridge?.(w.pos, to) : null;
+    if (over) route = this.solids.walkOn!(w.pos.x, w.pos.z) ? over.slice(1) : [...(findPath(w.pos, over[0], this.solids) ?? []), ...over.slice(1)];
     this.stuck.delete(w.id);
     if (!route?.length) throw new Error(`There is no way to walk to (${Math.round(to.x)}, ${Math.round(to.z)}).`);
+    if (hop) this.via.set(w.id, { to: sceneAt(to.x, to.z) ? to : hop.out, by, gate: hop });
     w.route = route;
     w.goal = route[route.length - 1];
     w.goalBy = by;
@@ -2325,12 +2386,15 @@ export class World {
     for (const w of this.wizards.values()) {
       if (w.say && w.say.until < this.now) w.say = null;
       if (w.st.jailedUntil && this.now >= w.st.jailedUntil) {
+        this.stopWalk(w);
         w.st.jailedUntil = 0;
         w.pos = { ...SPAWN };
         this.moved(w);
         this.emit('azkaban', 'The Ministry releases you from Azkaban. Behave.', { to: w.id, zh: '魔法部把你从阿兹卡班放了出来。老实点。' });
       }
       if (w.st.stunnedUntil && this.now >= w.st.stunnedUntil) {
+        this.stopWalk(w);
+        w.input = { dx: 0, dz: 0 };
         // a fresh start, except the silence cooldown: a knock-out must not reopen the victim to a new Langlock
         w.st = { ...blankStatus(), silenceCdUntil: w.st.silenceCdUntil };
         const d = derived(w, rb);
@@ -2445,29 +2509,60 @@ export class World {
     if (this.memeOf.size > this.wizards.size) for (const id of this.memeOf.keys()) if (!this.wizards.has(id)) this.memeOf.delete(id);
   }
 
+  /** Shared by walking and ice momentum so both obey feature movement locks. */
+  movementMult(w: Wizard): number {
+    let mult = 1;
+    for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
+    return mult;
+  }
+
+  /** Route shortening uses collision sweeps, including a feature's supported water bridge. */
+  private walkSegmentClear(from: Vec2, to: Vec2): boolean {
+    const hit = this.solids.hitSegment(from.x, from.z, to.x, to.z, -1, 0.45);
+    if (!hit) return true;
+    if (hit.style !== 'water' || !this.solids.walkOn) return false;
+    // Supported water may be crossed, but it must never hide a wall/column or an unsupported gap.
+    if (this.solids.hitSegment(from.x, from.z, to.x, to.z, -1, 0.45, 'water')) return false;
+    const steps = Math.max(1, Math.ceil(dist(from, to) / 0.25));
+    for (let i = 0; i <= steps; i++) {
+      const p = { x: from.x + (to.x - from.x) * i / steps, z: from.z + (to.z - from.z) * i / steps };
+      if (this.solids.blocked(p, 0.5)) return false;
+    }
+    return true;
+  }
+
   private moveWizard(w: Wizard, dt: number, bounded: boolean) {
     if (w.st.rootedUntil > this.now) return;
-    let mult = 1; // the features' say (决斗俱乐部 holds you still through the bow, 魁地奇 lets you fly)
-    for (const f of HOOKS.moveMult) mult *= f.moveMult(this, w);
+    // fast path: no keys, no goal, not mid-dodge — standing still. Skips the features' moveMult chain
+    // (safe: a stationary wizard returns below anyway; mult===0 only matters while moving, and the dodge
+    // has its own branch which we don't take here).
+    if (!w.goal && (w.st.dodgeUntil ?? 0) <= this.now && Math.hypot(w.input.dx, w.input.dz) < 0.01) return;
+    const mult = this.movementMult(w);
     if (mult === 0) return;
     if ((w.st.dodgeUntil ?? 0) > this.now) {
       // 翻滚闪避: the dash overrides the keys and any walk while it lasts
       const v = DODGE_DIST / DODGE_S;
-      w.pos.x += (w.st.dashDx ?? 0) * v * dt;
-      w.pos.z += (w.st.dashDz ?? 0) * v * dt;
-      this.solids.resolve(w.pos, 0.5, bounded);
+      const steps = inFight(this.duel, w.id) ? Math.max(1, Math.ceil(dt / TICK)) : 1;
+      for (let i = 0; i < steps; i++) {
+        const next = { x: w.pos.x + (w.st.dashDx ?? 0) * v * dt / steps, z: w.pos.z + (w.st.dashDz ?? 0) * v * dt / steps };
+        this.solids.resolve(next, 0.5, bounded);
+        // Check the actual collision-resolved segment: the geometry or dt may have changed since dodge().
+        if (!duelRollStepAllowed(this, w, w.pos, next)) { w.st.dashDx = 0; w.st.dashDz = 0; break; }
+        w.pos = next;
+      }
       this.moved(w);
       return;
     }
     let { dx, dz } = w.input;
     if (w.goal && Math.hypot(dx, dz) < 0.01) {
-      while (w.route.length > 1 && dist(w.route[0], w.pos) < 1) w.route.shift();
+      while (w.route.length > 1 && dist(w.route[0], w.pos) < 1 && this.walkSegmentClear(w.pos, w.route[1])) w.route.shift();
       const wp = w.route[0] ?? w.goal;
       const gx = wp.x - w.pos.x, gz = wp.z - w.pos.z;
       const gl = Math.hypot(gx, gz);
       if (gl < 0.6 && w.route.length <= 1) {
         if (w.goalBy === 'player') w.steerAt = this.now; // the grace runs from the end of the player's walk
-        w.goal = null; w.route = []; w.goalBy = null;
+        // The scenes hook still needs the continuation until it crosses this leg's gate.
+        w.goal = null; w.route = []; w.goalBy = null; this.stuck.delete(w.id);
       }
       else if (gl > 1e-6) { dx = gx / gl; dz = gz / gl; w.facing = Math.atan2(dx, -dz); }
     }
@@ -2503,28 +2598,48 @@ export class World {
       w.pos.z += dx * speed * dt;
       this.solids.resolve(w.pos, 0.5, bounded);
     }
-    if (w.goal) this.unstick(w, Math.hypot(bx - w.pos.x, bz - w.pos.z) / (speed * dt), dt);
+    if (w.goal) this.unstick(w, dist({ x: bx, z: bz }, w.route[0] ?? w.goal), speed * dt, dt);
     this.moved(w);
+    // exploration XP: first time within a zone's radius, grant XP (casual play earns too)
+    if (!w.npc && (!w.lastExploreAt || this.now - w.lastExploreAt > 2)) {
+      w.lastExploreAt = this.now;
+      for (const z of ZONES) {
+        if (w.visited.includes(z.id)) continue;
+        const r = z.r ?? 20;
+        if (Math.hypot(z.x - w.pos.x, z.z - w.pos.z) <= r) {
+          w.visited.push(z.id);
+          this.gainXp(w, 5);
+          this.emit('system', `🗺️ Discovered ${z.name}! +5 XP.`, { to: w.id, zh: `🗺️ 发现了${z.name}！+5 经验。` });
+          break;
+        }
+      }
+    }
   }
 
   /**
    * A walk to a goal that makes no headway (a crowd, a statue that rose on the route, a corner the string-
    * pulled route clips) re-plans from where the walker stands after a second; after three re-plans it gives up.
    */
-  private unstick(w: Wizard, headway: number, dt: number) {
-    const s = this.stuck.get(w.id);
-    if (headway > 0.3) { if (s) s.t = 0; return; }
-    const st = s ?? { t: 0, replans: 0 };
-    if (!s) this.stuck.set(w.id, st);
+  private unstick(w: Wizard, beforeDistance: number, budget: number, dt: number) {
+    const waypoint = w.route[0] ?? w.goal!;
+    let st = this.stuck.get(w.id);
+    if (!st || st.waypoint !== waypoint) {
+      st = { t: 0, replans: st?.replans ?? 0, waypoint, distance: beforeDistance, budget: 0 };
+      this.stuck.set(w.id, st);
+    }
     st.t += dt;
+    st.budget += budget;
     if (st.t < 1) return;
     st.t = 0;
+    const distance = dist(w.pos, waypoint), advanced = st.distance - distance;
+    const progressed = advanced > 0.3 * st.budget;
+    st.distance = distance; st.budget = 0;
+    if (progressed) return;
     const goal = w.goal!;
     const route = st.replans < 3 ? findPath(w.pos, goal, this.solids) : null;
     st.replans++;
     if (route?.length) { w.route = route; w.goal = route[route.length - 1]; return; }
-    w.goal = null; w.route = []; w.goalBy = null;
-    this.stuck.delete(w.id);
+    this.stopWalk(w);
   }
 
   /**
@@ -2587,7 +2702,7 @@ export class World {
         p.pos.x += (p.vel.x * dt) / steps;
         p.pos.z += (p.vel.z * dt) / steps;
         // the whole sub-step's path, not just where it ends: a fast bolt never tunnels through a thin wall
-        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z);
+        const wall = this.solids.hitSegment(ax, az, p.pos.x, p.pos.z, undefined, 0, p.homing ? AIM_PASSES : undefined); // (one with a target weaves past trees: inAim)
         if (wall) {
           const t = this.solids.hitT;
           p.pos.x = ax + (p.pos.x - ax) * t;
@@ -2653,6 +2768,8 @@ export class World {
     const pickable = (c: Creature, e: { id: string; pos: Vec2 }) => {
       if (!this.canHarm(c.id, e.id) || !sameScene(c, e.pos)) return false;
       const w = this.wizards.get(e.id);
+      // (a newcomer is left alone by what they have not hurt: NEWCOMER_PEACE_S)
+      if (w && !w.npc && this.now - w.createdAt < NEWCOMER_PEACE_S && !(c.damageBy[w.id] > 0)) return false;
       return !w || w.year > 1 || (hunted.get(e.id) ?? 0) < NEWCOMER_PACK;
     };
     for (const c of [...this.creatures.values()]) {
@@ -3204,7 +3321,7 @@ export class World {
     const w = this.need(wid);
     const was = w.agentPaused;
     w.agentPaused = !!on;
-    if (w.agentPaused && w.goal && w.goalBy === 'agent') { w.goal = null; w.route = []; w.goalBy = null; }
+    if (w.agentPaused && (w.goalBy === 'agent' || (!w.goal && this.via.get(w.id)?.by === 'agent'))) this.stopWalk(w);
     if (was !== w.agentPaused) {
       this.emit('system', w.agentPaused ? '⏸ You paused your agent: it can look and talk to you, but not act.' : '▶ Your agent may act again.', {
         to: w.id, zh: w.agentPaused ? '⏸ 你暂停了你的 Agent：它还能看、能和你说话，但不能行动。' : '▶ 你的 Agent 可以继续行动了。',
@@ -3272,14 +3389,14 @@ export class World {
       handle: x.handle, name: x.name, house: x.house, year: x.year, hp: Math.round(x.hp), dist: round(dist(x.pos, w.pos)), x: round(x.pos.x), z: round(x.pos.z),
       title: this.title(x).zh, npc: x.npc || undefined, auras: live(x.auras, this.now).map((a) => a.k),
       state: x.st.stunnedUntil ? 'stunned' : x.st.jailedUntil ? 'in Azkaban' : 'active', canHarm: this.canHarm(w.id, x.id),
-      blocked: (this.canHarm(w.id, x.id) && !this.inBlast(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
+      blocked: (this.canHarm(w.id, x.id) && !this.inAim(w.pos, x.pos)) || undefined, // a wall between: an attack would hit it (cast refuses, free)
       elderWand: this.flags.elderWandHolder === x.id || undefined,
       ...this.views(HOOKS.look, (f) => f.view.look(this, x)), // e.g. darkLord
     })).sort((a, b) => a.dist - b.dist);
     const creatures = [...this.nearCreatures(w.pos, r)].filter((c) => dist(c.pos, w.pos) <= r).map((c) => ({
       id: c.id, kind: c.kind, name: CREATURES[c.kind].name, faction: CREATURES[c.kind].faction, owner: c.owner ? (c.owner === w.id ? 'you' : this.wizards.get(c.owner)?.name) : undefined,
       canHarm: this.canHarm(w.id, c.id), auras: live(c.auras, this.now).map((a) => a.k),
-      blocked: (this.canHarm(w.id, c.id) && !this.inBlast(w.pos, c.pos)) || undefined,
+      blocked: (this.canHarm(w.id, c.id) && !this.inAim(w.pos, c.pos)) || undefined,
       hp: Math.round(c.hp), maxHp: Math.round(c.maxHp), dist: round(dist(c.pos, w.pos)), x: round(c.pos.x), z: round(c.pos.z),
       weakTo: Object.entries(CREATURES[c.kind].weak).filter(([, v]) => (v ?? 1) > 1).map(([k]) => k),
       // what it shrugs off (the troll: arcane ×0.6), and whether a school event brought it (playtest round 4)
@@ -3295,14 +3412,14 @@ export class World {
       // hostile spells flying at you now (reflexes can meet them for you: the reflexes tool)
       ...(() => { const inc = this.incoming(w.id); return inc.length ? { incoming: inc } : {}; })(),
       // what an agent could not see before (playtest round 2): your own recent hits, the school event's target, a chest in sight
-      yourHits: this.recentHits(w.id),
+      yourHits: this.recentHits(w.id, true),
       schoolEvent: this.lookEvent(w),
       chests: chestsLeft(this).filter((c) => dist(c, w.pos) <= CHEST_SIGHT).map((c) => ({ id: c.id, x: round(c.x), z: round(c.z), dist: round(dist(c, w.pos)), howTo: 'walk within 2.6 m, then open_chest' })),
       chestHint: chestClues(this, w).nearest ?? null, // the nearest closed chest, as a place and how warm (school_events lists them all)
       elderWand: this.flags.elderWandHolder ? 'held by a wizard' : "resting in Dumbledore's tomb (-52, 28)",
       // the HUD corners your reveal charms have lit (tempus, revelio, pointMe, homenum), and how to light the rest
       ...revealView(this, w),
-      ...this.views(HOOKS.here, (f) => f.view.here(this, w)), // what stands round you (the props)
+      ...this.views(HOOKS.here, (f) => f.view.here(this, w, r)), // what stands round you (the props)
     };
   }
 
@@ -3589,7 +3706,7 @@ export class World {
     for (const x of data.wizards) {
       // fields added after v0.3 may be missing from older saves (v0.8: hexes, the owlbox)
       const later: Partial<Wizard> = {
-        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, wasMinister: false, npc: false,
+        auras: [], tearsAt: 0, lastHurtBy: null, ui: [], seals: 0, wasMinister: false, npc: false, visited: [], lastExploreAt: 0,
         hexLog: {}, hexWindow: [], respiteUntil: 0, owlbox: [], owlSeq: 0, agentReadUpTo: 0, agentGoal: null, look: null,
       };
       const wz: Wizard = {

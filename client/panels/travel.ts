@@ -9,7 +9,7 @@ import { L, lang } from '../i18n';
 import { makeBroom } from '../quidditch3d';
 import { heightAt } from '../terrain';
 import { glowSprite } from '../textures';
-import { FIREPLACES, fireplaceNear } from '../../src/shared/travel';
+import { BROOM_STAMINA_MAX, FIREPLACES, fireplaceNear } from '../../src/shared/travel';
 import { esc } from './logic';
 
 const RIDE = 0.7;
@@ -40,6 +40,40 @@ export const travelFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
   let riders: readonly string[] = [], t = 0;
   let picker: HTMLElement | null = null;
   const closePicker = () => { picker?.remove(); picker = null; };
+  /** M 面板耐力条：wire `trst` 只带 stamina < MAX 的条目，缺席即满。 */
+  let stamEl: HTMLElement | null = null, stamFill: HTMLElement | null = null, stamWasEmpty = false;
+  function staminaHud() {
+    const clock = document.getElementById('clock');
+    if (!clock) return;
+    if (!stamEl) {
+      const el = ctx.own(document.createElement('div'));
+      el.id = 'tr-stam';
+      el.hidden = true;
+      el.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px';
+      const icon = document.createElement('span');
+      icon.textContent = '🧹';
+      const track = document.createElement('div');
+      track.style.cssText = 'width:96px;height:8px;border-radius:4px;background:rgb(var(--ink3) / .35);overflow:hidden';
+      const fill = document.createElement('div');
+      fill.style.cssText = 'height:100%;width:100%;background:#7dd87d;border-radius:4px';
+      track.append(fill);
+      el.append(icon, track);
+      clock.after(el);
+      stamEl = el; stamFill = fill;
+    }
+    const el = stamEl, fill = stamFill;
+    if (!el || !fill || !d.me()) { if (el) el.hidden = true; return; }
+    const h = d.myHandle();
+    const v = d.wire<Record<string, number>>('trst')?.[h] ?? BROOM_STAMINA_MAX;
+    if (!riders.includes(h) && v >= BROOM_STAMINA_MAX) { el.hidden = true; stamWasEmpty = false; return; }
+    el.hidden = false;
+    const empty = v <= 0;
+    if (empty && !stamWasEmpty) d.toast(L('🧹 耐力耗尽，扫帚把你放了下来', '🧹 Stamina gone — the broom set you down'));
+    stamWasEmpty = empty;
+    fill.style.width = Math.max(0, Math.min(100, (v / BROOM_STAMINA_MAX) * 100)) + '%';
+    fill.style.background = empty ? (Math.floor(performance.now() / 200) % 2 ? '#ff453a' : '#8e1f19') : '#7dd87d';
+    el.title = L(`扫帚耐力 ${v}/${BROOM_STAMINA_MAX}`, `Broom stamina ${v}/${BROOM_STAMINA_MAX}`);
+  }
   function openPicker() {
     const p = d.myPos();
     const c = p ? flooChoices(p) : null;
@@ -61,6 +95,9 @@ export const travelFeature: ClientFeatureFactory = (d, ctx): ClientFeature => {
   return {
     id: 'travel',
     group,
+    widgets: [{ id: 'tr-stam', zh: '扫帚耐力条', en: 'Broom stamina bar' }],
+    /** 10 Hz: 耐力条。 */
+    hud: staminaHud,
     keydown(e) {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return false;
       if (e.key === 'Escape' && picker) { closePicker(); return true; }

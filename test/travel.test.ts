@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { broom, floo, flooStatus } from '../src/kernel/travel.js';
 import { walkableAt } from '../src/kernel/pathfind.js';
 import { STATIC_SOLIDS } from '../src/kernel/physics.js';
-import { BROOM_MULT, FIREPLACES, FLOO_CD_S, FLOO_HURT_S, fireplaceNear } from '../src/shared/travel.js';
+import { BROOM_MULT, BROOM_STAMINA_DRAIN_S, BROOM_STAMINA_MAX, BROOM_STAMINA_REGEN_S, BROOM_STAMINA_WEAK_S, FIREPLACES, FLOO_CD_S, FLOO_HURT_S, fireplaceNear } from '../src/shared/travel.js';
 import { ZONES, inZone } from '../src/shared/map.js';
 import { World } from '../src/kernel/world.js';
 import type { Wizard } from '../src/kernel/types.js';
@@ -85,5 +85,69 @@ describe('the Floo Network in the browser', () => {
     expect(c.at.id).toBe(FIREPLACES[0].id);
     expect(c.to).toHaveLength(FIREPLACES.length - 1);
     expect(c.to.map((f) => f.dist)).toEqual([...c.to.map((f) => f.dist)].sort((a, b) => a - b));
+  });
+});
+
+describe('broom stamina', () => {
+  const DRAIN_S = BROOM_STAMINA_MAX / BROOM_STAMINA_DRAIN_S; // 25 s of riding to empty
+  const REGEN_S = BROOM_STAMINA_MAX / BROOM_STAMINA_REGEN_S; // 10 s on foot to full
+
+  it('drains over 25 s of riding, then puts you on your feet with stamina 0 and a 5 s weak window', () => {
+    const w = mk();
+    const a = wiz(w, 'Marcus');
+    a.pos = { x: 60, z: 40 };
+    const t0 = w.now;
+    broom(w, a.id, true);
+    expect(w.travel.riding.has(a.id)).toBe(true);
+    let fellAt = -1, fellStamina = -1;
+    run(w, DRAIN_S + 1, () => {
+      if (fellAt < 0 && !w.travel.riding.has(a.id)) {
+        fellAt = w.now;
+        fellStamina = w.travel.stamina.get(a.id)!;
+      }
+    });
+    expect(fellAt).toBeGreaterThanOrEqual(t0 + DRAIN_S - 0.1);
+    expect(fellAt).toBeLessThanOrEqual(t0 + DRAIN_S + 0.2);
+    expect(fellStamina).toBe(0);
+    expect(w.travel.weakUntil.get(a.id)).toBeCloseTo(fellAt + BROOM_STAMINA_WEAK_S, 0);
+  });
+
+  it('refuses broom() during the weak window, then lets you mount again after it', () => {
+    const w = mk();
+    const a = wiz(w, 'Adrian');
+    a.pos = { x: 60, z: 40 };
+    broom(w, a.id, true);
+    run(w, DRAIN_S + 1);
+    expect(w.travel.riding.has(a.id)).toBe(false);
+    expect(() => broom(w, a.id, true)).toThrow(/休息/);
+    w.now += BROOM_STAMINA_WEAK_S + 1;
+    broom(w, a.id, true);
+    expect(w.travel.riding.has(a.id)).toBe(true);
+  });
+
+  it('regenerates to full after 10 s on foot', () => {
+    const w = mk();
+    const a = wiz(w, 'Graham');
+    a.pos = { x: 60, z: 40 };
+    broom(w, a.id, true);
+    run(w, DRAIN_S + 1);
+    expect(w.travel.riding.has(a.id)).toBe(false);
+    run(w, REGEN_S);
+    expect(w.travel.stamina.get(a.id)).toBe(BROOM_STAMINA_MAX);
+  });
+
+  it('never drops below 0 nor rises above MAX', () => {
+    const w = mk();
+    const a = wiz(w, 'Lucian');
+    a.pos = { x: 60, z: 40 };
+    expect(w.travel.stamina.get(a.id) ?? BROOM_STAMINA_MAX).toBe(BROOM_STAMINA_MAX);
+    const bounds = () => {
+      const s = w.travel.stamina.get(a.id) ?? 0;
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThanOrEqual(BROOM_STAMINA_MAX);
+    };
+    broom(w, a.id, true);
+    run(w, DRAIN_S + 5, bounds);
+    run(w, REGEN_S * 3, bounds);
   });
 });

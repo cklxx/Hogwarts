@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
+import { createLakeQuality } from './lake-quality';
 import { HOUSE_COLORS, type House } from '../src/shared/constants';
 import { AZKABAN, OBSTACLES, mulberry32, type Obstacle } from '../src/shared/map';
 import { HALL_BUTTRESS, HALL_BUTTRESSES, HALL_CANDLES, HALL_DOOR, HALL_LINTEL, HALL_ROOF, HALL_TABLES, MIRROR, TORCH_POST, TORCH_POSTS, TURRETS, interiorAt } from '../src/shared/layout';
@@ -232,6 +233,9 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   windowMat.roughness = 0.2;
   windowMat.metalness = 0.3;
   const candleMat = glowMat(0xfff1c4);
+  // Keep the wax body warm without blooming like a fluorescent tube at night; its flame
+  // sprite and the hall's existing light still provide the small bright core and illumination.
+  if (STORYBOOK) candleMat.emissive.multiplyScalar(0.4);
   const leaf = new THREE.MeshStandardMaterial({ color: STORYBOOK ? 0xffffff : 0x2a4a26, roughness: 1, flatShading: true });
   // tree crowns sway in the wind (more at the top), each tree with its own phase. The lean is worked
   // out in world space (every crown bends downwind, whatever its instance's yaw and scale; bigger
@@ -658,7 +662,8 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
   }
 
   // every window: a recessed pane of leaded glass inside a stone frame, all in two draw calls
-  // (at 'low' the frames swap to a coarser arch: 216 vertices each instead of 456, over some 400 windows)
+  // (the frames default to a coarser arch: 216 vertices each instead of 456, over some 400 windows;
+  // 'high' quality swaps back to the fine arch)
   const frameGeos: Record<'low' | 'high', THREE.BufferGeometry> = { high: null!, low: null! };
   let frames: THREE.InstancedMesh;
   {
@@ -671,7 +676,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     frameGeos.high = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 8 });
     frameGeos.low = new THREE.ExtrudeGeometry(frameShape, { depth: 0.24, bevelEnabled: false, curveSegments: 3 });
     const panes = new THREE.InstancedMesh(paneGeo, windowMat, windows.length);
-    frames = new THREE.InstancedMesh(frameGeos.high, M.darkStone, windows.length);
+    frames = new THREE.InstancedMesh(frameGeos.low, M.darkStone, windows.length);
     const mm = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
     windows.forEach((w, i) => {
       mm.compose(v.set(w.x, w.y, w.z), q.setFromAxisAngle(Y, w.yaw), sc.set(w.w, w.h / 2, 1));
@@ -720,7 +725,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(candleGeo, candleMat));
     const s = new THREE.Sprite(candleGlow);
-    s.scale.setScalar(1.1);
+    s.scale.setScalar(STORYBOOK ? 0.65 : 1.1);
     s.position.y = 0.35;
     g.add(s);
     g.position.set(c.x, c.y, c.z);
@@ -773,6 +778,7 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
     lakeMirror.apply(lake, args);
     grass.group.visible = was;
   });
+  const lakeQuality = lake && lakeReflect ? createLakeQuality(lake, lakeReflect) : null;
   let bannerKey: House | null | undefined;
   let roofK = -1;
   return {
@@ -784,8 +790,8 @@ export function buildWorld(scene: THREE.Scene): WorldScene {
       crownI.geometry = crownGeos[q];
       setWizardDetail(q); // the wizards in the world follow the world's quality
       if (outline) outline.visible = q === 'high';
-      // the lake's mirror pass re-renders the whole scene; freeze it on weak GPUs
-      if (lake && lakeReflect) (lake as Water).onBeforeRender = q === 'high' ? lakeReflect : () => {};
+      // low quality uses a flat reflection color, retaining camera uniforms without another render pass
+      lakeQuality?.(q);
     },
     tick(t, dt, willowAngry, sunDir, env = {}) {
       windTime.value = t;

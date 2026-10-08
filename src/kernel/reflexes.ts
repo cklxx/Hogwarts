@@ -38,7 +38,7 @@ type Ctx = { attacker?: string; vx?: number; vz?: number; enemy?: string; ex?: n
 declare module './world.js' {
   interface World {
     /** 反射 (this module's Feature): each wizard's rules, what each rule did, when their health was last seen. */
-    reflexes: { of: Map<string, Reflex[]>; stat: Map<string, Stat[]>; hp: Map<string, number>; acc: number };
+    reflexes: { of: Map<string, Reflex[]>; stat: Map<string, Stat[]>; hp: Map<string, number>; acc: number; came: Map<string, Map<string, number>> };
   }
 }
 
@@ -99,17 +99,23 @@ const d2 = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hy
 const BELL_GRACE_S = 3;
 /**
  * A wizard, or a wizard's summon, is a reflex's foe only once the fight is on: you are fighting on the duel stage
- * (canHarm leaves only your opponents), or one of you hit the other in the last 30 s (recentHits) and not before your
+ * (canHarm leaves only your opponents), or they hit you in the last 30 s (recentHits: your hit on them does not count) and not before your
  * last match together ended. A reflex never starts a fight (playtest round 5: the duelist preset went on Stupefying
  * the opponent after the match, and a passer-by's summon). Wild creatures are always fair game.
  */
+/** A wizard who struck at you this recently is someone you are fighting. */
+const FOE_S = 30;
 function fighting(world: World, w: Wizard, id: string) {
   const who = world.credit(id)!;
   if (!world.wizards.has(who) || inFight(world.duel, w.id)) return true;
   // ponytail: DuelResult keeps the two leaders only, so a 2v2 partner's hits from the match still count
   const bell = world.duel.last.reduce((t, r) => ((r.a === w.id && r.b === who) || (r.a === who && r.b === w.id) ? Math.max(t, r.at + BELL_GRACE_S) : t), -Infinity);
   const since = (h: { secondsAgo: number }) => world.now - h.secondsAgo > bell;
-  return world.recentHits(who).some((h) => h.target === w.id && since(h)) || world.recentHits(w.id).some((h) => (h.target === who || h.target === id) && since(h));
+  // only what they did to you counts — a hit, or a spell of theirs flying at you (parried or dodged, it was still theirs) —
+  // not yours on them: a reflex answers, it never takes up a fight you stumbled into (the 2026-10-01 playtest: your own
+  // splash on a friend made your preset Stupefy them over and over)
+  const came = world.reflexes.came.get(w.id)?.get(who) ?? -Infinity;
+  return (world.now - came <= FOE_S && came > bell) || world.recentHits(who).some((h) => h.target === w.id && since(h));
 }
 function nearestEnemy(world: World, w: Wizard, range: number) {
   return world.around(w.pos, range, (e) => world.canHarm(w.id, e.id) && !world.isBenign(e.id) && fighting(world, w, e.id), w.id, 8)[0];
@@ -177,7 +183,13 @@ function step(world: World, dt: number) {
     if (!w || (w.npc && !w.heldBy)) { R.of.delete(wid); R.stat.delete(wid); continue; } // gone, or an NPC its possessor gave back (possess.ts)
     const hp0 = R.hp.get(wid) ?? w.hp, hurt = w.hp < hp0 - 0.5;
     R.hp.set(wid, w.hp);
+    // whose spells are flying at you now (they started it, whether or not it lands: fighting below)
+    for (const t of world.threats(wid)) { const by = world.credit(t.owner) ?? t.owner; (R.came.get(wid) ?? R.came.set(wid, new Map()).get(wid)!).set(by, world.now); }
+    for (const [by, at] of R.came.get(wid) ?? []) if (world.now - at > FOE_S) R.came.get(wid)!.delete(by);
     if (!world.isActive(w) || w.agentPaused || world.playerSteering(w)) continue; // your human first (Control.tla)
+    // (away playing someone else — 附身, kernel/possess.ts: the body left standing does not fight on its own; the
+    // 2026-10-01 NPC playtest: a possessor's reflexes stunned whoever walked past their empty body)
+    if (world.possess?.of.has(wid)) continue;
     let stat = R.stat.get(wid);
     if (!stat || stat.length !== rules.length) { stat = rules.map(() => ({ n: 0, last: -1e9, why: '' })); R.stat.set(wid, stat); }
     for (let i = 0; i < rules.length; i++) {
@@ -214,7 +226,7 @@ function explain(world: World, wid: string) {
 
 export const REFLEX_FEATURE: Feature = {
   id: 'reflexes',
-  init(world) { world.reflexes = { of: new Map(), stat: new Map(), hp: new Map(), acc: 0 }; },
+  init(world) { world.reflexes = { of: new Map(), stat: new Map(), hp: new Map(), acc: 0, came: new Map() }; },
   step,
   save: (world) => Object.fromEntries(world.reflexes.of),
   load(world, data) {
@@ -226,7 +238,7 @@ export const REFLEX_FEATURE: Feature = {
   view: { key: 'reflexes', whoami: (world, w) => { const n = world.reflexes.of.get(w.id)?.length ?? 0; return n ? `${n} set (reflexes shows them and what they did)` : 'none: reflexes react for you faster than any tool call (try preset "duelist" or "hunter")'; } },
   tools: [{
     name: 'reflexes', title: 'Reflexes: standing orders', cost: 0,
-    description: `反射: rules the kernel runs for you the instant they apply — an MCP round trip is too slow to dodge or parry. Easiest: preset = ${Object.entries(PRESETS).map(([k, p]) => `${k} (${p.en})`).join('; ')}. Or rules = up to ${REFLEX_MAX} of {when, do, …}, tried in order (the first that applies and can act wins; one that cannot, e.g. ward recharging, lets the next try); [] clears. when: incoming (a hostile spell reaches you within ${REFLEX_ETA}s) | hurt | low_hp (below, default 0.35 of max) | enemy_near (range, default 12 m; a wizard or their summon only once you are fighting: a duel, or a hit either way in the last 30 s — a reflex never starts a fight) | ally_low (a housemate within range below "below"). do: dodge | cast (spell = one of yours; target = self | attacker | nearest_enemy | weakest_ally) | ward (perfect parry) | say (text). cooldown ≥ ${REFLEX_MIN_CD}s (default 2); keep = a share of your mana the rule leaves alone (e.g. 0.35: it acts only above 35 %, so a heal stays affordable). Each action spends concentration like the tool, yields to your human, and is a private "reflex" event (wait, inbox). No arguments: the rules, how often each fired and why one is not acting; explain: true — would each act right now. Saved with the world.`,
+    description: `反射: rules the kernel runs for you the instant they apply — an MCP round trip is too slow to dodge or parry. Easiest: preset = ${Object.entries(PRESETS).map(([k, p]) => `${k} (${p.en})`).join('; ')}. Or rules = up to ${REFLEX_MAX} of {when, do, …}, tried in order (the first that applies and can act wins; one that cannot, e.g. ward recharging, lets the next try); [] clears. when: incoming (a hostile spell reaches you within ${REFLEX_ETA}s) | hurt | low_hp (below, default 0.35 of max) | enemy_near (range, default 12 m; a wizard or their summon only once they have struck at you: a duel, or a hit or a spell of theirs at you in the last 30 s — your own hit on them does not count, a reflex never starts a fight; and none acts while you are away playing a vessel (附身)) | ally_low (a housemate within range below "below"). do: dodge | cast (spell = one of yours; target = self | attacker | nearest_enemy | weakest_ally) | ward (perfect parry) | say (text). cooldown ≥ ${REFLEX_MIN_CD}s (default 2); keep = a share of your mana the rule leaves alone (e.g. 0.35: it acts only above 35 %, so a heal stays affordable). Each action spends concentration like the tool, yields to your human, and is a private "reflex" event (wait, inbox). No arguments: the rules, how often each fired and why one is not acting; explain: true — would each act right now. Saved with the world.`,
     input: {
       preset: z.enum(Object.keys(PRESETS) as [string, ...string[]]).optional(),
       rules: z.array(z.object({

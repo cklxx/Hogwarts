@@ -6,6 +6,10 @@ used only by the photographic look, `?style=real` (plus the lens-flare sprites, 
 only). `moss_color.webp` (Poly Haven coast_sand_rocks_02) was loaded but never applied to anything
 and has been removed.
 
+The refined limestone/walnut surfaces and the Floo hearth's stone/brass/rune atlas
+(`client/textures.ts`, `client/hearth.ts`) are original procedural drawings. No game reference
+screenshots or generated concept images are used as runtime assets.
+
 All files here were resized/re-encoded to WebP; no other changes.
 
 | File | Source | Original | License |

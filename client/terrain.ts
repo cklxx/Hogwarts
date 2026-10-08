@@ -53,12 +53,18 @@ function freedomTo(x: number, z: number) {
   for (let i = 0; i < FLAT_BOXES.length; i++) {
     const b = FLAT_BOXES[i];
     f = Math.min(f, ss(0, 18, len(Math.max(b[0] - x, 0, x - b[2]), Math.max(b[1] - z, 0, z - b[3]))));
+    if (f === 0) { OUT[0] = 0; return; }
   }
-  for (let i = 0; i < FLAT_DISCS.length; i++) { const c = FLAT_DISCS[i]; f = Math.min(f, ss(c[2], c[2] + 16, len(x - c[0], z - c[1]))); }
+  for (let i = 0; i < FLAT_DISCS.length; i++) {
+    const c = FLAT_DISCS[i];
+    f = Math.min(f, ss(c[2], c[2] + 16, len(x - c[0], z - c[1])));
+    if (f === 0) { OUT[0] = 0; return; }
+  }
   for (let i = 0; i < FLAT_PATHS.length; i++) {
     const q = FLAT_PATHS[i], ax = q[0], az = q[1], vx = q[2] - ax, vz = q[3] - az, l2 = vx * vx + vz * vz;
     const t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / l2));
     f = Math.min(f, ss(3, 12, len(x - (ax + vx * t), z - (az + vz * t))));
+    if (f === 0) { OUT[0] = 0; return; }
   }
   OUT[0] = f;
 }
@@ -80,12 +86,16 @@ export const SEA_LEVEL = -9;
 /** Ground height at (x, z). */
 export function heightAt(x: number, z: number): number {
   const r = len(x, z + 20);
-  // rolling grounds (±3 m), stronger in the forest
-  const forest = 1 - ss(70, 110, len(x - 165, z - 15));
-  fbmTo(x * 0.012, z * 0.012, 5);
-  const roll = OUT[0] - 0.5;
+  // Flat built areas erase rolling noise entirely. Skip its five octaves there; keep the lake,
+  // Highlands and island terms below, which are independent of this mask.
   freedomTo(x, z);
-  let h = roll * (6 + 6 * forest) * OUT[0];
+  const free = OUT[0];
+  let h = 0;
+  if (free !== 0) {
+    const forest = 1 - ss(70, 110, len(x - 165, z - 15));
+    fbmTo(x * 0.012, z * 0.012, 5);
+    h = (OUT[0] - 0.5) * (6 + 6 * forest) * free;
+  }
   // the Black Lake basin
   const dl = len(x - LAKE.x, z - LAKE.z);
   h = h * ss(LAKE.r - 2, LAKE.r + 14, dl) - 5 * (1 - ss(LAKE.r * 0.2, LAKE.r + 2, dl));

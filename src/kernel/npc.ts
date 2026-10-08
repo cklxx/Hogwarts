@@ -23,6 +23,22 @@ export const PERSONAS: Persona[] = [
   { name: 'Hannah Abbott', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['greenhouses', 'courtyard', 'hagrid'], lines: NPC_LINES['Hannah Abbott'] },
   { name: 'Padma Patil', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['great_hall', 'seventh_floor', 'courtyard', 'lake'], lines: NPC_LINES['Padma Patil'] },
   { name: 'Gregory Goyle', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'pitch'], lines: NPC_LINES['Gregory Goyle'] },
+  { name: 'Madam Rosmerta', house: 'Hufflepuff', favourite: 'Aguamenti', patrol: ['hogsmeade', 'road'], lines: NPC_LINES['Madam Rosmerta'] ?? [] },
+  { name: 'Ambrosius Flume', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['hogsmeade', 'lake_shore'], lines: NPC_LINES['Ambrosius Flume'] ?? [] },
+  { name: 'Neville Longbottom', house: 'Gryffindor', favourite: 'Episkey', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Neville Longbottom'] ?? [] },
+  { name: 'Luna Lovegood', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['lake', 'courtyard', 'grounds'], lines: NPC_LINES['Luna Lovegood'] ?? [] },
+  { name: 'Ginny Weasley', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Ginny Weasley'] ?? [] },
+  { name: 'Draco Malfoy', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'seventh_floor'], lines: NPC_LINES['Draco Malfoy'] ?? [] },
+  { name: 'Cho Chang', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['pitch', 'lake_shore', 'courtyard'], lines: NPC_LINES['Cho Chang'] ?? [] },
+  { name: 'Cedric Diggory', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'grounds', 'courtyard'], lines: NPC_LINES['Cedric Diggory'] ?? [] },
+  { name: 'Dean Thomas', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['grounds', 'courtyard', 'pitch'], lines: NPC_LINES['Dean Thomas'] ?? [] },
+  { name: 'Parvati Patil', house: 'Gryffindor', favourite: 'Incendio', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Parvati Patil'] ?? [] },
+  { name: 'Lavender Brown', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Lavender Brown'] ?? [] },
+  { name: 'Pansy Parkinson', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Pansy Parkinson'] ?? [] },
+  { name: 'Marietta Edgecombe', house: 'Ravenclaw', favourite: 'Stupefy', patrol: ['seventh_floor', 'courtyard', 'great_hall'], lines: NPC_LINES['Marietta Edgecombe'] ?? [] },
+  { name: 'Justin Finch-Fletchley', house: 'Hufflepuff', favourite: 'Glacius', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Justin Finch-Fletchley'] ?? [] },
+  { name: 'Zacharias Smith', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Zacharias Smith'] ?? [] },
+  { name: 'Theodore Nott', house: 'Slytherin', favourite: 'Glacius', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Theodore Nott'] ?? [] },
 ];
 
 /**
@@ -53,9 +69,17 @@ export function npcMayFight(world: World, npc: Wizard, foe: Wizard): boolean {
   return dist(foe.pos, SPAWN) > NPC_CALM_R && dist(npc.pos, SPAWN) > NPC_CALM_R;
 }
 
-const brains = new Map<string, { patrol: number; next: number; lastSay: number; grudge: string | null; grudgeUntil: number }>();
+type Brain = { patrol: number; next: number; lastSay: number; grudge: string | null; grudgeUntil: number };
+// Exam sandboxes must never remove the live world's NPC brains.
+const brainsByWorld = new WeakMap<World, Map<string, Brain>>();
+function brainsFor(world: World) {
+  let brains = brainsByWorld.get(world);
+  if (!brains) { brains = new Map(); brainsByWorld.set(world, brains); }
+  return brains;
+}
 
 export function ensureNpcs(world: World, count: number) {
+  const brains = brainsFor(world);
   for (const p of PERSONAS.slice(0, Math.max(0, Math.min(PERSONAS.length, count)))) {
     let w = [...world.wizards.values()].find((x) => x.npc && x.name === p.name);
     if (!w) {
@@ -72,6 +96,8 @@ export function ensureNpcs(world: World, count: number) {
 
 /** Called every tick; each NPC thinks twice a second. */
 export function thinkNpcs(world: World) {
+  const brains = brainsByWorld.get(world);
+  if (!brains) return;
   for (const [id, b] of brains) {
     const w = world.wizards.get(id);
     if (!w || !w.npc) { brains.delete(id); continue; }
@@ -127,8 +153,11 @@ export function thinkNpcs(world: World) {
     // chatter (all NPCs together at most every MEME.NPC_GAP_S, so the feed stays readable), then patrol
     if (world.now - b.lastSay > 45 && world.rand() < 0.08) {
       const pool = chatterPool(world, w, p);
-      const line = pool[Math.floor(world.rand() * pool.length)];
-      if (world.banter(['npc', MEME.NPC_GAP_S])) world.say(w, line.en, 'npc', line.zh);
+      // personas without bespoke lines can have an empty pool (daytime, calm weather, no rival nearby)
+      if (pool.length) {
+        const line = pool[Math.floor(world.rand() * pool.length)];
+        if (world.banter(['npc', MEME.NPC_GAP_S])) world.say(w, line.en, 'npc', line.zh);
+      }
       b.lastSay = world.now;
     }
     if (!w.goal) {

@@ -260,7 +260,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a4a2a, 0.6);
   const sun = new THREE.DirectionalLight(0xfff1d6, 2.5);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024); // 1024 verified fine in low mode (docs/PERF.md); 2048 bought nothing visible
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.6;
   Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 500 });
@@ -320,7 +320,8 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   scene.add(clouds);
 
   // post-processing, rendered into a multisampled HDR target (MSAA survives the composer); stencil: view.ts x-ray
-  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4, stencilBuffer: true });
+  // 2x MSAA: 4x sits in the diminishing-returns zone on this art style; 2x halves multisample VRAM for no visible loss
+  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 2, stencilBuffer: true });
   const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.45, 1.1);
@@ -407,15 +408,17 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     moon.position.copy(focus).addScaledVector(moonDir, 200);
     moon.target.position.copy(focus);
     // by day the "moon" light is the cool fill from the side away from the sun
-    moon.intensity = (0.3 * dayFactor + 1.2 * night * night) * look.sunIntensity * (clear ? 1 : 0.7);
+    moon.intensity = (0.3 * dayFactor + 1.7 * night * night) * look.sunIntensity * (clear ? 1 : 0.7);
     moon.color.set(0x9db8ff).lerp(c1.set(0x8aa6ff), night);
     // sky light takes the painted sky's own colour: blue by day, rose-lavender at dusk, deep blue at night
-    hemi.intensity = (0.5 + 0.2 * dayFactor + 0.3 * dusk) * (0.35 + 0.65 * dayFactor) * (clear ? 1 : 1.2);
+    // (the night floor 0.35 → 0.6, the moon 1.2 → 1.7, the image light 0.25 → 0.4: the 2026-10-01 phone playtest could not
+    // tell the lake shore from the path at night — docs/PERF.md has the luminance before and after)
+    hemi.intensity = (0.5 + 0.2 * dayFactor + 0.3 * dusk) * (0.6 + 0.4 * dayFactor) * (clear ? 1 : 1.2);
     hemi.color.copy(su.uMid.value).lerp(su.uZenith.value, 0.3);
     hemi.color.multiplyScalar(1 / Math.max(1e-4, hemi.color.r, hemi.color.g, hemi.color.b)).lerp(WHITE, 0.35);
     hemi.groundColor.set(0x1a1826).lerp(c1.set(0x6b5a3a), dayFactor).lerp(c2.set(0x8a5a44), dusk * 0.5);
     scene.environment = night > 0.6 ? env.night : dusk > 0.45 ? env.dusk : env.day;
-    scene.environmentIntensity = 0.25 + 0.15 * dayFactor;
+    scene.environmentIntensity = 0.4;
     // rim light on characters: the key light's colour, from its side
     setVec(shared.storyKeyDir, dayFactor > 0.35 ? sunDir : moonDir);
     c1.copy(sun.color).multiplyScalar(0.35 + 0.45 * dusk).lerp(c2.set(0x8fb0ff).multiplyScalar(0.5), night);
@@ -425,7 +428,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     const fog = scene.fog as THREE.FogExp2;
     fog.color.copy(su.uHorizon.value).lerp(su.uMid.value, 0.2);
     if (weather === 'rain') fog.color.multiplyScalar(0.75);
-    fog.density = 0.0019 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
+    fog.density = 0.0025 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
     setVec(shared.fogSunDir, sunDir);
     setVec(shared.fogSunColor, c1.copy(su.uSunColor.value).multiplyScalar((0.15 + 0.5 * dusk) * (clear ? 1 : 0.3)));
     setVec(shared.fogSkyColor, c1.copy(su.uMid.value).sub(fog.color).multiplyScalar(0.35));
@@ -436,7 +439,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     moonSprite.material.opacity = Math.max(0, 1 - dayFactor * 1.4);
     if (painted) painted.position.copy(camera.position);
 
-    renderer.toneMappingExposure = 1.1 - 0.2 * dayFactor;
+    renderer.toneMappingExposure = 1.35 - 0.45 * dayFactor; // (night 1.1 → 1.35, day 0.9 as before)
     // clouds: white with lilac shade by day; peach tops and violet bellies at dusk; moonlit blue at night
     clouds.position.x = (performance.now() / 1000) * 3 % 2400;
     const cu = storyClouds!.mat.uniforms;
@@ -477,7 +480,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     if (weather === 'fog') tmp.lerp(new THREE.Color(0x9a9a9a), 0.6);
     const fog = scene.fog as THREE.FogExp2;
     fog.color.copy(tmp);
-    fog.density = 0.0022 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
+    fog.density = 0.0029 * look.fogDensity * (weather === 'fog' ? 4 : weather === 'rain' ? 1.8 : weather === 'snow' ? 1.5 : 1);
     su.rayleigh.value = weather === 'clear' ? 1.6 : 0.6;
     su.turbidity.value = weather === 'clear' ? 5 : 14;
     preetham!.visible = dayFactor > 0.02;
@@ -541,10 +544,10 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     /** 2.5D's lens (lens.ts flatLens), or the follow camera's. */
     setLens(on: boolean) { if (flat !== on) { flat = on; resize(); } },
     outRatio,
-    /** Low quality: smaller shadow map, no bloom pass (the render scale is dynres.ts's). Weak GPUs (auto-detected) or ?q=low. */
+    /** Low quality: no bloom pass (the render scale is dynres.ts's). Shadow map stays 1024 (verified fine). Weak GPUs (auto-detected) or ?q=low. */
     setQuality(q: 'low' | 'high') {
       const low = q === 'low';
-      sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
+      sun.shadow.mapSize.set(1024, 1024);
       sun.shadow.map?.dispose();
       sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
       bloom.enabled = !low;
