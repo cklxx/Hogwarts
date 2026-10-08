@@ -830,6 +830,9 @@ export class World {
   }
 
   private grantCurriculum(w: Wizard) {
+    // During the initial enrollment grant the starting kit fills the bar in order; replacement only
+    // makes sense when learning new spells later (year-up), not while the bar is being built.
+    const isInitial = w.spells.length === 0;
     for (const c of CURRICULUM) {
       if (c.year > w.year || w.spells.some((s) => s.builtin && s.name === c.name)) continue;
       const a = analyze(c.source);
@@ -837,7 +840,7 @@ export class World {
       w.spells.push(s);
       let slot = w.hotbar.indexOf(null);
       const kind = spellKind(s.effects);
-      if (slot < 0 && kind !== 'self') {
+      if (slot < 0 && kind !== 'self' && !isInitial) {
         // a full bar: a new attack or healing spell takes the slot of a light/reveal charm you no longer need to cast
         // (Lumos, or a reveal whose HUD corner is already unlocked), rightmost first
         const spent = (id: string | null) => {
