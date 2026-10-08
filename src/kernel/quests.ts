@@ -11,7 +11,7 @@ import type { Feature } from './feature.js';
 import type { Wizard } from './types.js';
 import type { World } from './world.js';
 
-export const QUEST_DAY_S = 86400, QUEST_PER_DAY = 3, QUEST_XP = 15, QUEST_GALLEONS = 5, QUEST_ALL_XP = 15;
+export const QUEST_DAY_S = 86400, QUEST_PER_DAY = 3, QUEST_XP = 15, QUEST_GALLEONS = 5, QUEST_REP = 3, QUEST_ALL_XP = 15, QUEST_ALL_REP = 8;
 export const QUEST_DAY_MAX_XP = QUEST_PER_DAY * QUEST_XP + QUEST_ALL_XP;
 const CHECK_S = 1;
 
@@ -75,13 +75,15 @@ function advance(world: World, w: Wizard) {
       p.paid[i] = true;
       world.gainXp(w, QUEST_XP);
       w.galleons += QUEST_GALLEONS;
-      world.emit('achievement', `📜 Today's lesson done: ${q.en}. +${QUEST_XP} XP, +${QUEST_GALLEONS} Galleons.`, { to: w.id, zh: `📜 今日课表完成一项：${q.zh}。经验 +${QUEST_XP}，加隆 +${QUEST_GALLEONS}。` });
+      world.addRep(w, QUEST_REP, 'events');
+      world.emit('achievement', `📜 Today's lesson done: ${q.en}. +${QUEST_XP} XP, +${QUEST_GALLEONS} Galleons, +${QUEST_REP} reputation.`, { to: w.id, zh: `📜 今日课表完成一项：${q.zh}。经验 +${QUEST_XP}，加隆 +${QUEST_GALLEONS}，声望 +${QUEST_REP}。` });
     }
   });
   if (!p.all && p.paid.every(Boolean)) {
     p.all = true;
     world.gainXp(w, QUEST_ALL_XP);
-    world.emit('achievement', `📜 Every lesson today done: +${QUEST_ALL_XP} XP. New ones tomorrow.`, { to: w.id, zh: `📜 今天的课全上完了：经验再 +${QUEST_ALL_XP}。明天有新的。` });
+    world.addRep(w, QUEST_ALL_REP, 'events');
+    world.emit('achievement', `📜 Every lesson today done: +${QUEST_ALL_XP} XP, +${QUEST_ALL_REP} reputation. New ones tomorrow.`, { to: w.id, zh: `📜 今天的课全上完了：经验再 +${QUEST_ALL_XP}，声望 +${QUEST_ALL_REP}。明天有新的。` });
   }
   return p;
 }
@@ -92,7 +94,7 @@ export function questStatus(world: World, wid: string) {
   return {
     day: p.day, resetsIn: Math.ceil((p.day + 1) * QUEST_DAY_S - world.now),
     lessons: p.ids.map((id, i) => { const q = BY_ID.get(id)!; return { id, zh: q.zh, en: q.en, got: p.got[i], of: q.n, done: p.paid[i] }; }),
-    reward: { each: { xp: QUEST_XP, galleons: QUEST_GALLEONS }, allThree: { xp: QUEST_ALL_XP } },
+    reward: { each: { xp: QUEST_XP, galleons: QUEST_GALLEONS, reputation: QUEST_REP }, allThree: { xp: QUEST_ALL_XP, reputation: QUEST_ALL_REP } },
   };
 }
 
