@@ -74,13 +74,22 @@ for (let i = 0; ; i++) {
     }
   }
   const look = (await call('look', { radius: 60 })).data;
+  // Spread (issue #27): each wizard is ASSIGNED one of today's bounties by a stable hash of its name, so the
+  // swarm spreads across the three zones in parallel instead of all chasing the first bounty. It hunts its
+  // assigned zone, claims there, then hunts in place once that bounty is done.
+  const board = (await call('bounty_board')).data as { bounties: { place: string; claimed: boolean; x: number; z: number }[] };
+  let h = 2166136261;
+  for (const ch of me.name) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const assigned = board.bounties[Math.abs(h) % board.bounties.length];
+  if (assigned && !assigned.claimed && me.where !== assigned.place) {
+    await call('move_to', { x: assigned.x, z: assigned.z });
+    await call('wait', { seconds: 3, until: 'event' });
+    continue;
+  }
   // hostile prey only: benign unicorns cost 50 reputation; trolls and dementors stay out of a bot's diet
   const prey = look.creatures.find((x: { faction: string; kind: string }) => x.faction === 'hostile' && x.kind !== 'troll' && x.kind !== 'dementor');
   if (!prey) {
-    // the daily Bounty Board points at a hunt-zone: follow the first unfinished bounty (rotates per day → spread)
-    const board = (await call('bounty_board')).data;
-    const target = board.bounties.find((b: { claimed: boolean }) => !b.claimed) ?? board.bounties[0];
-    if (target) await call('move_to', { x: target.x, z: target.z });
+    // hold the bounty zone and wait for spawns
     await call('wait', { seconds: 6, until: 'event' });
     continue;
   }
