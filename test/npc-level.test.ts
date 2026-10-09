@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../src/kernel/world.js';
 import { ensureNpcs } from '../src/kernel/npc.js';
-import { derived } from '../src/kernel/progression.js';
+import { derived, mod, powerFor } from '../src/kernel/progression.js';
+import { CORE_BONUS } from '../src/lore/wands.js';
 import { NPC_MAX_YEAR } from '../src/shared/constants.js';
 import type { Creature } from '../src/kernel/types.js';
 
@@ -63,15 +64,18 @@ describe('npc leveling', () => {
     const w = mk();
     const npc = npcOf(w);
     const p = w.enroll('TestPlayer', 'Gryffindor').wizard;
-    // year 1: no bonus for anyone
-    expect(derived(npc, w.rules).power).toBeCloseTo(derived(p, w.rules).power, 5);
+    // year 1: vet multiplier is exactly 1.0 (no bonus); wand core bonus is separate
+    const corePow = (CORE_BONUS[npc.wand.core] ?? {}).power ?? 0;
+    expect(derived(npc, w.rules).power).toBeCloseTo(powerFor(mod(npc, 'power') + corePow), 5);
     // level both to year 3
     w.gainXp(npc, 400);
     w.gainXp(p, 400);
     expect(npc.year).toBe(3);
     const dn = derived(npc, w.rules), dp = derived(p, w.rules);
-    // same year, same wand-less base: NPC gets 1.2x HP and 1.1x power
+    // same year: NPC gets 1.2x HP and 1.1x power vet multiplier (base incl. wand core differs)
     expect(dn.maxHp).toBe(Math.round(dp.maxHp * 1.2));
-    expect(dn.power).toBeCloseTo(dp.power * 1.1, 5);
+    const npcBase = powerFor(mod(npc, 'power') + ((CORE_BONUS[npc.wand.core] ?? {}).power ?? 0));
+    expect(dn.power / npcBase).toBeCloseTo(1.1, 5);
+    expect(dp.power).toBeCloseTo(1.0, 5); // player unaffected
   });
 });
