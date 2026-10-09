@@ -3,7 +3,6 @@
  * 用色块 + 字母占位绘制实体（sprite agent 后续替换为精美贴图）。
  */
 import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
-import { WORLD_HALF } from '../src/shared/map';
 
 // ------------------------------------------------------------------ snapshot types (mirror of World.snapshot, client/main.ts)
 export interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; mm?: string }
