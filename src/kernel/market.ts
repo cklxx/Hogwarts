@@ -35,6 +35,7 @@ import type { Rulebook } from './rulebook.js';
 import type { Spell, Wizard } from './types.js';
 import { FRESH_SECONDS } from '../shared/constants.js';
 import type { World } from './world.js';
+import { isShopClosed, shopPriceMultiplier } from './aftermath.js';
 
 declare module './world.js' {
   interface World {
@@ -311,6 +312,8 @@ export interface BrowseFilter { tag?: string; element?: string; year?: number; a
 
 /** market_browse: published listings (yours, unpublished ones too, with mine), filtered and sorted; the 推荐 shelf; your royalties. */
 export function browseMarket(world: World, wid: string | null, f: BrowseFilter = {}) {
+  // 战后世界 (kernel/aftermath.ts): 商店关门时集市关闭
+  if (isShopClosed(world)) throw new Error('The market is closed this term. 集市本学期关门。');
   const m = world.rules.market;
   const tag = f.tag?.trim().toLowerCase(), el = f.element?.trim().toLowerCase(), au = f.author?.trim().toLowerCase(), q = f.q?.trim().toLowerCase();
   let rows = Object.values(world.market.listings).filter((l) => (f.mine ? l.author === wid : !l.hidden));
@@ -436,7 +439,8 @@ const priceOf = (p: unknown) => (typeof p === 'number' && Number.isFinite(p) ? M
  * FRESH_SECONDS takes it free and the author gets nothing (as with royalties: a fresh alt cannot farm you).
  */
 function payPrice(world: World, w: Wizard, l: MarketListing, dry = false) {
-  const price = l.price ?? 0;
+  // 战后世界 (kernel/aftermath.ts): 商店折扣
+  const price = Math.max(0, Math.round((l.price ?? 0) * shopPriceMultiplier(world)));
   if (!price || l.copiers.includes(w.id) || world.now - w.createdAt < FRESH_SECONDS) return 0;
   if (w.galleons < price) throw new Error(`${latest(l).name} costs ${price} Galleons; you have ${w.galleons}. 「${latest(l).name}」要 ${price} 加隆，你只有 ${w.galleons}。`);
   if (dry) return price;

@@ -77,6 +77,7 @@ async function main() {
           hotbar: [],
           selected: 0,
           warweek: (s as any).warweek ?? { day: ((s.term.n - 1) % 7) + 1, total: 7 },
+          fates: (s as any).fates ?? [],
         });
       } catch (e) { console.warn('[2d] hud', e); }
     }

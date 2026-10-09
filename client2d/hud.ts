@@ -9,6 +9,15 @@ import { WORLD_HALF } from '../src/shared/map.js';
 
 // ------------------------------------------------------------------ types
 
+/** One fate chain, mirrored from kernel/fates.ts FateThread (defensive: extra fields ignored). */
+export interface HudFate {
+  id: string;
+  zh: string;
+  state: 'saved' | 'lost' | 'open';
+  deadlineDay: number;
+  hint?: string;
+}
+
 /** One hotbar slot, mirroring the server's 'me' hotbar shape. */
 export interface HudSlot {
   id: string;
@@ -27,7 +36,7 @@ export interface HudSnapshot {
   hotbar: (HudSlot | null)[];
   selected: number;
   warweek?: { day: number; total?: number };
-  fates?: { zh: string; state: 'saved' | 'lost' | 'open' }[];
+  fates?: HudFate[];
   worldHalf?: number;
 }
 
@@ -44,8 +53,16 @@ const CSS = `
 #ww.final .bar i{background:#ff5a5a}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 #fates{position:absolute;top:10px;right:10px;padding:8px 12px;max-width:240px;font-size:12px}
-#fates .ft{margin-top:4px;opacity:.9}
+#fates .ft{margin-top:4px;opacity:.9;pointer-events:auto;cursor:pointer}
 #fates .ft.saved{color:#7fd97f}#fates .ft.lost{color:#ff7f7f}
+#fates .ft .ic{display:inline-block;width:16px;text-align:center;font-weight:700}
+#fates .ft.saved .ic{color:#c9a227}#fates .ft.lost .ic{color:#5a5a5a}#fates .ft.open .ic{color:#e8e2d4}
+#fates .ft .dl{color:#c9a227;font-size:11px;white-space:nowrap}
+#fates .ft.urg{border:1px solid rgba(255,90,90,.55);border-radius:4px;padding:2px 4px;margin-left:-5px}
+#fates .ft.urg .dl{color:#ff5a5a;font-weight:700}
+#fates .ft.lost .zh{text-decoration:line-through;opacity:.7}
+#fates .hint{margin:2px 0 4px 18px;font-size:11px;line-height:1.4;color:#a9a294;cursor:default}
+#fates .hint[hidden]{display:none}
 #mmwrap{position:absolute;left:10px;bottom:10px;padding:6px}
 #minimap{display:block;width:128px;height:128px;border-radius:4px}
 #bars{position:absolute;left:10px;bottom:152px;width:142px;padding:6px 8px;font-size:11px}
@@ -168,14 +185,40 @@ export function updateHUD(s: HudSnapshot): void {
     (el.querySelector('.cost') as HTMLElement).textContent = slot?.mana != null ? String(slot.mana) : '';
     (el.querySelector('.cdov') as HTMLElement).textContent = slot && slot.cd >= 1 ? String(Math.ceil(slot.cd)) : '';
   }
-  // fate chains (Phase 2): render live data when present, else keep the placeholder
-  if (s.fates?.length) {
-    const f = root.querySelector<HTMLElement>('#fates')!;
-    f.innerHTML = '<b>命运链</b>' + s.fates.map((x) =>
-      `<div class="ft ${x.state}">${x.state === 'saved' ? '✓' : x.state === 'lost' ? '✗' : '…'} ${escapeHtml(x.zh)}</div>`).join('');
-  }
+  // fate chains: icon + name + deadline; click a row to expand the trigger hint.
+  // Re-render only when the data (or the day) actually changed: snapshots arrive at 5Hz.
+  renderFates(s);
 }
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+let fateSig = '';
+/** Render the fate-chain panel; no-op unless fates or the day changed. */
+function renderFates(s: HudSnapshot): void {
+  const day = Math.max(1, s.warweek?.day ?? 1);
+  const list = s.fates ?? [];
+  if (!list.length) return; // keep the mount placeholder until the server sends data
+  const sig = day + '|' + list.map((x) => `${x.id}:${x.state}:${x.deadlineDay}`).join(',');
+  if (sig === fateSig) return;
+  fateSig = sig;
+  const f = root?.querySelector<HTMLElement>('#fates');
+  if (!f) return;
+  f.innerHTML = '<b>命运链</b>' + list.map((x) => {
+    const left = (x.deadlineDay ?? 7) - day + 1;
+    const urg = x.state === 'open' && left <= 1 ? ' urg' : '';
+    const icon = x.state === 'saved' ? '✓' : x.state === 'lost' ? '✗' : '…';
+    const dl = x.state === 'open'
+      ? `<span class="dl">${left <= 0 ? '今日截止' : `D${x.deadlineDay}截止`}</span>`
+      : '';
+    const hint = x.hint ? `<div class="hint" hidden>${escapeHtml(x.hint)}</div>` : '';
+    return `<div class="ft ${x.state}${urg}"><span class="ic">${icon}</span> <span class="zh">${escapeHtml(x.zh)}</span> ${dl}${hint}</div>`;
+  }).join('');
+  f.querySelectorAll<HTMLElement>('.ft').forEach((el) => {
+    el.addEventListener('click', () => {
+      const h = el.querySelector<HTMLElement>('.hint');
+      if (h) h.hidden = !h.hidden;
+    });
+  });
 }

@@ -9,10 +9,11 @@
  * Phase 1: the countdown, the assault, the report. No fate chains, no save-scumming (Phase 2).
  */
 import { CREATURES } from './creatures.js';
-import type { CreatureKind } from '../shared/constants.js';
+import type { CreatureKind, House } from '../shared/constants.js';
 import type { Creature, Vec2 } from './types.js';
 import type { Feature } from './feature.js';
 import type { World } from './world.js';
+import { applyCycleStart, buildAftermath, tombstonesOf, type AftermathState } from './aftermath.js';
 
 /** Seven terms make one War Week cycle: Day N = ((term.n - 1) % 7) + 1. */
 export const WARWEEK_TERMS = 7;
@@ -44,6 +45,8 @@ interface WarWeekAssault {
   participants: Set<string>;
   /** NPCs alive when the assault began (for the casualty count). */
   npcAliveAtStart: number;
+  /** NPCs who fell during the assault (id -> where they fell): death is permanent for the cycle. */
+  fallen: Map<string, { name: string; house: House; x: number; z: number }>;
 }
 
 interface WarWeekState {
@@ -94,6 +97,7 @@ function startAssault(world: World) {
     mobs: new Set(), wave: 0, nextWaveAt: world.now,
     endsAt: world.now + WARWEEK_ASSAULT_MAX_S,
     participants: new Set(), npcAliveAtStart: npcs.length,
+    fallen: new Map(),
   };
   world.warweek.assault = a;
   world.emit('term',
@@ -116,22 +120,32 @@ function settleAssault(world: World, a: WarWeekAssault) {
   const won = live.length === 0;
   // remaining assault creatures melt away at dawn (the assault is over either way)
   for (const id of live) world.creatures.delete(id);
-  const npcAlive = [...world.wizards.values()].filter((w) => w.npc && world.isActive(w)).length;
-  const lost = Math.max(0, a.npcAliveAtStart - npcAlive);
+  // 战后世界 (kernel/aftermath.ts): 名录、墓碑、商店、下周目加成
+  const fallen = [...a.fallen.values()];
+  const after: AftermathState = buildAftermath(world, won, fallen);
   const heroes = [...a.participants]
     .map((id) => world.wizards.get(id))
     .filter((w) => w && !w.npc);
   if (won) for (const w of heroes) world.gainXp(w!, WARWEEK_HERO_XP);
   const heroNames = heroes.map((w) => w!.name).slice(0, 5).join(', ') || 'no one';
-  world.emit('term',
-    won
-      ? `☀️ The assault is broken! ${npcAlive} villagers stand, ${lost} fell. Heroes: ${heroNames} (+${WARWEEK_HERO_XP} XP).`
-      : `🌘 The assault withdraws, undefeated. ${npcAlive} villagers stand, ${lost} fell. The castle holds — barely.`,
-    {
-      zh: won
-        ? `☀️ 进攻被击退了！${npcAlive} 位村民还在，${lost} 位倒下。英雄：${heroNames}（+${WARWEEK_HERO_XP} 经验）。`
-        : `🌘 进攻退去了，但没有被打败。${npcAlive} 位村民还在，${lost} 位倒下。城堡守住了 —— 勉强。`,
-    });
+  const alive = after.roster.filter((r) => r.alive).length;
+  const dead = after.roster.filter((r) => !r.alive);
+  const deadNames = dead.map((r) => r.name).slice(0, 6).join(', ');
+  const lines = [
+    won ? `☀️ The assault is broken!` : `🌘 The assault withdraws, undefeated.`,
+    `${alive} villagers stand.`,
+    dead.length ? `${dead.length} fell: ${deadNames}${dead.length > 6 ? '…' : ''}.` : `No one fell.`,
+    `Heroes: ${heroNames} (+${WARWEEK_HERO_XP} XP).`,
+    after.shopClosedUntilTerm >= world.term.n ? `The market closes its shutters.` : `The market stands at 20% off.`,
+  ];
+  const linesZh = [
+    won ? `☀️ 进攻被击退了！` : `🌘 进攻退去了，但没有被打败。`,
+    `还有 ${alive} 位村民站着。`,
+    dead.length ? `倒下 ${dead.length} 位：${deadNames}${dead.length > 6 ? '……' : ''}。` : `无人倒下。`,
+    `英雄：${heroNames}（+${WARWEEK_HERO_XP} 经验）。`,
+    after.shopClosedUntilTerm >= world.term.n ? `集市关上了门板。` : `集市八折迎客。`,
+  ];
+  world.emit('term', lines.join(' '), { zh: linesZh.join('') });
 }
 
 const DAY_LINES: Record<number, { en: string; zh: string }> = {
@@ -155,6 +169,8 @@ function stepWarWeek(world: World) {
     if (oldDay === WARWEEK_TERMS && !st.assault) startAssault(world);
     const line = DAY_LINES[newDay];
     if (line) world.emit('term', line.en, { zh: line.zh });
+    // 新周目 Day 1: 上周目战报摘要 + 发放 pending buffs (kernel/aftermath.ts)
+    if (newDay === 1 && oldDay === WARWEEK_TERMS) applyCycleStart(world);
   }
   if (!world.flags.warweek) return;
   const a = st.assault;
@@ -165,6 +181,13 @@ function stepWarWeek(world: World) {
     for (const wid of Object.keys(c.damageBy)) {
       const w = world.wizards.get(wid);
       if (w && !w.npc) a.participants.add(wid);
+    }
+  }
+  // track the fallen: an NPC stunned during the assault does not get up (death is permanent for the cycle)
+  for (const w of world.wizards.values()) {
+    if (!w.npc || a.fallen.has(w.id)) continue;
+    if (w.st.stunnedUntil > world.now || w.hp <= 0) {
+      a.fallen.set(w.id, { name: w.name, house: w.house, x: w.pos.x, z: w.pos.z });
     }
   }
   if (a.wave < WARWEEK_WAVE_SIZE.length && world.now >= a.nextWaveAt) spawnWave(world, a);
@@ -185,5 +208,13 @@ export const WARWEEK_FEATURE: Feature = {
     world.warweek.lastTerm = typeof d.lastTerm === 'number' ? d.lastTerm : world.term.n;
     world.warweek.assault = null; // never resume mid-assault across a restart
   },
-  wire: { key: 'warweek', get: (world) => dayOf(world.term.n) },
+  wire: {
+    key: 'warweek',
+    get: (world) => ({
+      day: dayOf(world.term.n),
+      total: WARWEEK_TERMS,
+      // 墓碑：2D 客户端渲染（client2d/renderer.ts）
+      tombstones: tombstonesOf(world).map((t) => ({ n: t.name, x: t.x, z: t.z })),
+    }),
+  },
 };

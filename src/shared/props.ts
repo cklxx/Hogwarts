@@ -9,7 +9,7 @@
 import type { Element } from './constants.js';
 import { DRESSING, DRESSING_GROUPS } from './dressing.js';
 
-export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'web' | 'hay' | 'bush' | 'mushroom' | 'ice' | 'brazier' | 'rune' | 'basin' | 'crystal' | 'lantern' | 'cauldron' | 'puddle' | 'lamppost' | 'signpost' | 'bench';
+export type PropKind = 'crate' | 'barrel' | 'pumpkin' | 'pot' | 'whizbang' | 'web' | 'hay' | 'bush' | 'mushroom' | 'ice' | 'brazier' | 'rune' | 'basin' | 'crystal' | 'lantern' | 'cauldron' | 'puddle' | 'lamppost' | 'signpost' | 'bench' | 'tombstone';
 export interface PropDef {
   zh: string; en: string;
   /** Any hurting spell breaks it (back after PROP_RESPAWN_S). */
@@ -55,6 +55,8 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   lamppost: { zh: '路灯', en: 'lamppost', hintZh: '夜里会自己亮起', hintEn: 'lights itself at night' },
   signpost: { zh: '路牌', en: 'signpost', hintZh: '指着附近的地名', hintEn: 'points to nearby places' },
   bench: { zh: '长椅', en: 'bench', hintZh: '坐下歇会儿', hintEn: 'sit and rest a while' },
+  // 战后世界：阵亡 NPC 的墓碑（kernel/aftermath.ts 立碑；不可打破，纯纪念）
+  tombstone: { zh: '墓碑', en: 'tombstone', hintZh: '走近看看是谁', hintEn: 'walk close to read the name' },
 };
 
 export interface Prop { id: string; kind: PropKind; x: number; z: number; group?: string }

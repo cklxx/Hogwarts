@@ -8,6 +8,7 @@ import type { Wizard } from './types.js';
 import { HOOKS } from './features.js';
 import type { World } from './world.js';
 import { npcStock } from './market.js';
+import { isNpcDead } from './aftermath.js';
 
 /**
  * Non-player wizards. They are ordinary wizards in the kernel (same spells, same mana, same rules)
@@ -83,6 +84,8 @@ function brainsFor(world: World) {
 export function ensureNpcs(world: World, count: number) {
   const brains = brainsFor(world);
   for (const p of PERSONAS.slice(0, Math.max(0, Math.min(PERSONAS.length, count)))) {
+    // 战后世界 (kernel/aftermath.ts): 阵亡 NPC 不再刷新，墓碑立在倒下的地方
+    if (isNpcDead(world, p.name)) continue;
     let w = [...world.wizards.values()].find((x) => x.npc && x.name === p.name);
     if (!w) {
       if ([...world.wizards.values()].some((x) => x.name.toLowerCase() === p.name.toLowerCase())) continue; // a player took the name

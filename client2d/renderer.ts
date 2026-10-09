@@ -15,6 +15,8 @@ export interface Snap {
   term: { n: number; left: number };
   w: SW[]; c: SC[]; p: SP[]; fx: Fx[];
   elder: { x: number; z: number } | null;
+  /** 大战周 wire (kernel/warweek.ts): day/total + 墓碑 */
+  warweek?: { day: number; total: number; tombstones: { n: string; x: number; z: number }[] };
 }
 
 const css = (n: number) => '#' + n.toString(16).padStart(6, '0');
@@ -150,6 +152,18 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.fillRect(sx - 4, sy - 4, 8, 8);
       ctx.fillStyle = '#fff'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('E', sx, sy + 12);
+    }
+
+    // --- tombstones: 战后世界 (kernel/aftermath.ts) ---
+    for (const t of snap.warweek?.tombstones ?? []) {
+      if (!visible(t.x, t.z)) continue;
+      const [sx, sy] = w2s(t.x, t.z);
+      const size = Math.max(14, 22 * cam.zoom);
+      drawSprite(ctx, 'tombstone', sx - size / 2, sy - size / 2, size, size);
+      if (cam.zoom > 0.9) {
+        ctx.fillStyle = '#c9c9d4'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(t.n.split(' ').pop() ?? t.n, sx, sy + size / 2 + 11);
+      }
     }
 
     // --- projectiles ---
