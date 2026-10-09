@@ -1,6 +1,7 @@
 /** 终局 (src/kernel/endgame.ts): N.E.W.T., graduation (prestige), overflow-XP conversion, the Bounty Board. */
 import { describe, expect, it } from 'vitest';
 import { ENDGAME_FEATURE, homeZone, pickBounties, type Bounty } from '../src/kernel/endgame.js';
+import { ECOLOGY_HUNT_COST, ECOLOGY_RESOURCE_MIN, ecologyAfterHunt, ecologyAfterRecovery, ecologyYieldPct } from '../src/kernel/ecology.js';
 import type { Wizard } from '../src/kernel/types.js';
 import { World } from '../src/kernel/world.js';
 
@@ -34,16 +35,38 @@ describe('the Bounty Board', () => {
     const b = board.bounties[0];
     a.pos = { x: b.x, z: b.z };
     const rep0 = a.reputation, gal0 = a.galleons;
+    const before = (call(w, a.id, 'bounty_board') as { bounties: { reward: { reputation: number; galleons: number } }[] }).bounties[0].reward;
     a.stats.creatures += b.needed;
     run(w, 1.1);
     const after = call(w, a.id, 'bounty_board') as { bounties: { claimed: boolean }[] };
     expect(after.bounties[0].claimed).toBe(true);
-    expect(a.reputation - rep0).toBe(b.reward.reputation);
-    expect(a.galleons - gal0).toBe(b.reward.galleons);
+    expect(a.reputation - rep0).toBe(before.reputation);
+    expect(a.galleons - gal0).toBeGreaterThanOrEqual(before.galleons);
+    expect(a.galleons - gal0).toBeLessThanOrEqual(Math.ceil(before.galleons * 1.4));
+    const paid = a.galleons - gal0;
     // nothing twice
     a.stats.creatures += b.needed;
     run(w, 1.1);
-    expect(a.galleons - gal0).toBe(b.reward.galleons);
+    expect(a.galleons - gal0).toBe(paid);
+  });
+});
+
+describe('regional ecology', () => {
+  it('keeps yield bounded while hunting depletes and quiet time recovers', () => {
+    expect(ecologyYieldPct(-100)).toBe(60);
+    expect(ecologyYieldPct(1000)).toBe(140);
+    expect(ecologyAfterHunt(ECOLOGY_RESOURCE_MIN)).toBe(ECOLOGY_RESOURCE_MIN);
+    expect(ecologyAfterHunt(70)).toBe(70 - ECOLOGY_HUNT_COST);
+    expect(ecologyAfterRecovery(99, 60)).toBe(100);
+  });
+
+  it('persists regional resources across restart', () => {
+    const w = mk();
+    w.ecology.zones.forest.resources = 33;
+    w.ecology.zones.forest.pressure.Gryffindor = 29;
+    const w2 = World.restore(JSON.parse(JSON.stringify(w.serialize())), 8);
+    expect(w2.ecology.zones.forest.resources).toBe(33);
+    expect(w2.ecology.zones.forest.pressure.Gryffindor).toBe(29);
   });
 });
 
@@ -90,7 +113,7 @@ describe('N.E.W.T.', () => {
 });
 
 describe('graduation (prestige)', () => {
-  it('requires a passed N.E.W.T., then resets the year and grants the permanent alumni perk', () => {
+  it('requires a passed N.E.W.T., then resets the year and grants one strategy legacy choice', () => {
     const w = mk();
     const a = w.enroll('Seamus').wizard;
     a.year = 7;
@@ -99,32 +122,33 @@ describe('graduation (prestige)', () => {
     a.stats.creatures += 60;
     a.stats.spells = 1;
     call(w, a.id, 'newt', { action: 'sit' });
-    const g = call(w, a.id, 'graduate') as { graduated: number; year: number; maxHp: number; maxMana: number; title: string };
+    const g = call(w, a.id, 'graduate') as { graduated: number; year: number; maxHp: number; maxMana: number; title: string; legacyChoices: number };
     expect(g.graduated).toBe(1);
     expect(g.year).toBe(1);
     expect(a.xp).toBe(0);
     expect(a.newt).toBeNull();
-    expect(g.maxHp).toBe(110); // year-1 base 100 + alumni 10
-    expect(g.maxMana).toBe(105); // base 100 + alumni 5
+    expect(g.maxHp).toBe(100);
+    expect(g.maxMana).toBe(100);
+    expect(g.legacyChoices).toBe(1);
     expect(g.title).toBe('Hogwarts Alumnus ×1');
+    const chosen = call(w, a.id, 'choose_legacy', { path: 'ranger' }) as { rank: number; available: number };
+    expect(chosen).toMatchObject({ rank: 1, available: 0 });
+    expect(() => call(w, a.id, 'choose_legacy', { path: 'steward' })).toThrow(/No alumni/);
   });
 
-  it('stacks the perk across graduations', () => {
+  it('caps each path and migrates old graduates to unspent choices', () => {
     const w = mk();
     const a = w.enroll('Seamus').wizard;
-    const pass = () => {
-      a.year = 7;
-      a.stats.casts += 120;
-      a.stats.creatures += 60;
-      a.stats.spells = (a.stats.spells ?? 0) + 1;
-      call(w, a.id, 'newt', { action: 'sit' });
-      call(w, a.id, 'graduate');
-    };
-    pass();
-    pass();
+    a.graduates = 5;
+    a.legacies = undefined;
+    expect((w.whoami(a.id) as unknown as { endgame: { legacies: { available: number } } }).endgame.legacies.available).toBe(5);
+    call(w, a.id, 'choose_legacy', { path: 'ranger' });
+    call(w, a.id, 'choose_legacy', { path: 'ranger' });
+    call(w, a.id, 'choose_legacy', { path: 'ranger' });
+    expect(() => call(w, a.id, 'choose_legacy', { path: 'ranger' })).toThrow(/cap/);
     const wiz: Wizard = a;
-    expect(wiz.graduates).toBe(2);
-    expect(w.whoami(a.id).maxHp).toBe(120);
+    expect(wiz.legacies?.ranger).toBe(3);
+    expect(wiz.legacies?.available).toBe(2);
   });
 });
 

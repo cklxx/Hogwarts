@@ -51,6 +51,8 @@ import { AGENT_TOOL_COST, FEATURE_SPELLS, FEATURE_TOOL_COST, FEATURES, HOOKS } f
 import { CUP_CEREMONY, FINAL_MINUTE } from '../lore/memes.js';
 import { CARDS } from '../lore/cards.js';
 import { bannedCastText, bannedListing, marketDecreeErrors, payRoyalty } from './market.js';
+import { recordEcologyHunt } from './ecology.js';
+import { DECREE_BUDGET, decreeCost, expireDecree } from './governance.js';
 import type {
   Creature, CreatureDef, DecreeRecord, EventType, Fx, Item, Jinx, OwlMsg, Pending, Projectile, Spell, Term, Vec2, WireEvent, Wizard, WorldEvent,
 } from './types.js';
@@ -1589,6 +1591,7 @@ export class World {
     const pr = this.rules.progression;
     const loot = this.inLawless(c.pos) ? LAWLESS_MULT : 1; // 无规则区: double Galleons and XP
     const killer = c.lastHitBy ? this.wizards.get(c.lastHitBy) : undefined;
+    recordEcologyHunt(this, c, killer);
     const total = Object.values(c.damageBy).reduce((s, x) => s + x, 0) || 1;
     for (const [id, dmg] of Object.entries(c.damageBy)) {
       const w = this.wizards.get(id);
@@ -2236,7 +2239,9 @@ export class World {
     const errors = [...(res.ok ? marketDecreeErrors(this, res.rulebook) : res.errors), ...lawErrors];
     if (errors.length) return { ok: false as const, errors };
     if (!res.ok) return { ok: false as const, errors: res.errors };
-    if (dryRun) return { ok: true as const, dryRun: true, changes: res.changes };
+    const cost = decreeCost(res.changes);
+    if (cost > DECREE_BUDGET) return { ok: false as const, errors: [`A decree may change at most ${DECREE_BUDGET} rule leaves; this patch changes ${cost}. Split the policy or reduce its scope.`] };
+    if (dryRun) return { ok: true as const, dryRun: true, changes: res.changes, cost, budget: DECREE_BUDGET, expiresAtTermEnd: true };
     const before = this.rules;
     this.rules = res.rulebook;
     w.decreeCharges = 0;
@@ -2252,7 +2257,7 @@ export class World {
     // The Minister leaves a mark on the world itself: a statue in the courtyard.
     this.flags.statues = [...this.flags.statues, { name: w.name, house: w.house, term: this.term.n, inscription: this.rules.proclamation.slice(0, 80) }].slice(-8);
     this.emit('decree', `A statue of Minister ${w.name} rises in the Courtyard.`, { who: [w.id], zh: `部长 ${w.name} 的雕像在城堡大道旁立了起来。` });
-    return { ok: true as const, dryRun: false, changes: res.changes };
+    return { ok: true as const, dryRun: false, changes: res.changes, cost, budget: DECREE_BUDGET, expiresAtTermEnd: true };
   }
 
   /** A decree (by `minister`) or a veto (null) replaced the Rulebook: the features react (kernel/feature.ts `rules`). */
@@ -2292,6 +2297,8 @@ export class World {
   }
 
   private endTerm() {
+    // A decree governs one term only. Restore the validated pre-decree rules before electing the next Minister.
+    expireDecree(this);
     const points = this.housePoints();
     const best = HOUSES.reduce((a, b) => (points[b] > points[a] ? b : a));
     const winner = points[best] > 0 ? best : null;
@@ -2314,8 +2321,8 @@ export class World {
       this.flags.ministerId = top.id;
       top.titles.push(`Minister for Magic (term ${this.term.n})`);
       if (this.ceremony) this.ceremony.minister = top.name;
-      this.emit('term', `End of term ${this.term.n}. ${cup} ${top.name} (${Math.round(top.reputation)} reputation) is appointed Minister for Magic and may issue ONE decree to rewrite the rules of this world.`, { who: [top.id], zh: `第 ${this.term.n} 学期结束。${cupZh} ${top.name}（声望 ${Math.round(top.reputation)}）被任命为魔法部长，可以颁布一次法令来改写这个世界的规则。` });
-      this.emit('term', 'You are Minister for Magic. Use the `decree` MCP tool (try dry_run first) to change the Rulebook — once.', { to: top.id, zh: '你是魔法部长了。用 MCP 的 decree 工具（先 dry_run 预演）改写规则书 —— 只有一次机会。' });
+      this.emit('term', `End of term ${this.term.n}. ${cup} ${top.name} (${Math.round(top.reputation)} reputation) is appointed Minister for Magic and may issue ONE decree. It may change at most ${DECREE_BUDGET} rule leaves and expires at the next term end.`, { who: [top.id], zh: `第 ${this.term.n} 学期结束。${cupZh} ${top.name}（声望 ${Math.round(top.reputation)}）被任命为魔法部长，可以颁布一次法令。法令最多修改 ${DECREE_BUDGET} 个规则字段，并在下次学期结束时到期。` });
+      this.emit('term', `You are Minister for Magic. Use the \`decree\` MCP tool (try dry_run first). Your one decree has a ${DECREE_BUDGET}-leaf budget and lasts one term.`, { to: top.id, zh: `你是魔法部长了。用 MCP 的 decree 工具（先 dry_run 预演）。法令只有一次机会，预算是 ${DECREE_BUDGET} 个规则字段，有效期一个学期。` });
     } else {
       this.flags.ministerId = null;
       this.emit('term', `End of term ${this.term.n}. ${cup} Nobody has the ${this.ministerBar()} reputation needed to be Minister.`, { zh: `第 ${this.term.n} 学期结束。${cupZh} 没有人达到当部长所需的 ${this.ministerBar()} 声望。` });

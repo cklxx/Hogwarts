@@ -5,8 +5,8 @@
  *    spell, a Restricted-Section seal, public service at events). Three papers pass at grade A, four E, five O;
  *    a better grade can be earned later and pays the difference.
  *  - Graduation (prestige): a year-7 N.E.W.T. holder may graduate any time. The wizard keeps name, house, wand,
- *    spells, cards, items and Galleons; year and XP reset; every graduation permanently adds +10 maxHp and +5
- *    maxMana (progression.derived, cache key included).
+ *    spells, cards, items and Galleons; year and XP reset; each graduation earns one capped choice among three
+ *    strategy legacies that affect regional bounties, not permanent combat stats.
  *  - Overflow XP: after the year-7 floor, every 500 overflow XP becomes 1 Galleon and every 1000 becomes 1
  *    reputation, computed from XP (no extra persistence).
  *  - The daily Bounty Board: three hunt-location bounties a day (grounds, greenhouses, dungeons, forest). Kills are
@@ -14,10 +14,11 @@
  *    the visible guide that spreads wizards across the map (issue #27).
  */
 import { z } from 'zod';
-import { inZoneId, ZONES, type ZoneId } from '../shared/map.js';
+import { inZoneId, ZONES } from '../shared/map.js';
 import type { Feature } from './feature.js';
 import { derived } from './progression.js';
 import { QUEST_ALL_REP, QUEST_REP } from './quests.js';
+import { ecologyControl, ecologyYieldPct, type EcologyZone } from './ecology.js';
 import type { Wizard } from './types.js';
 import type { World } from './world.js';
 
@@ -25,10 +26,21 @@ declare module './types.js' {
   interface Wizard {
     /** N.E.W.T. result this life; reset at graduation. Persisted. */
     newt?: { grade: Grade; papers: number; at: number } | null;
+    /** Chosen alumni strategies. Each path is capped; old saves receive unspent choices. */
+    legacies?: AlumniLegacies;
   }
 }
 
 export type Grade = 'A' | 'E' | 'O';
+export type LegacyPath = 'ranger' | 'steward' | 'conservator';
+export interface AlumniLegacies { ranger: number; steward: number; conservator: number; available: number }
+export const LEGACY_CAP = 3;
+export const blankLegacies = (): AlumniLegacies => ({ ranger: 0, steward: 0, conservator: 0, available: 0 });
+export const legacyRank = (w: Wizard, path: LegacyPath) => Math.max(0, Math.min(LEGACY_CAP, w.legacies?.[path] ?? 0));
+function ensureLegacies(w: Wizard) {
+  if (!w.legacies) w.legacies = { ...blankLegacies(), available: Math.min(LEGACY_CAP * 3, w.graduates ?? 0) };
+  return w.legacies;
+}
 const MAX_YEAR = 7;
 const NEWT_FLOOR_XP = 3300; // XP_FOR_YEAR[7]
 const XP_PER_GALLEON = 500;
@@ -53,7 +65,7 @@ const PAPERS: readonly Paper[] = [
 const gradeFor = (papers: number): Grade | null => (papers >= 5 ? 'O' : papers === 4 ? 'E' : papers === 3 ? 'A' : null);
 
 // ------------------------------------------------------------------ the daily Bounty Board
-interface HuntZone { zone: ZoneId; name: string; bx?: number; bz?: number }
+interface HuntZone { zone: EcologyZone; name: string; bx?: number; bz?: number }
 const HUNT_ZONES: readonly HuntZone[] = [
   // the grounds zone center (0,-30) sits inside the Courtyard box, so the bounty marker uses an open point
   { zone: 'grounds', name: 'Hogwarts Grounds', bx: 75, bz: -55 },
@@ -62,7 +74,7 @@ const HUNT_ZONES: readonly HuntZone[] = [
   { zone: 'forest', name: 'The Forbidden Forest' },
 ];
 /** Specific zones first: the Forbidden Forest sits inside the larger grounds zone. */
-const ZONE_PRIORITY: readonly ZoneId[] = ['forest', 'greenhouses', 'dungeons', 'grounds'];
+const ZONE_PRIORITY: readonly EcologyZone[] = ['forest', 'greenhouses', 'dungeons', 'grounds'];
 const BOUNTY_N = [6, 8, 10];
 const BOUNTY_REP = [6, 8, 10];
 const BOUNTY_GALLEONS = [10, 12, 15];
@@ -74,7 +86,7 @@ function hashStr(s: string): number {
   for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
   return h >>> 0;
 }
-export interface Bounty { zone: ZoneId; n: number; rep: number; galleons: number }
+export interface Bounty { zone: EcologyZone; n: number; rep: number; galleons: number }
 /** Three location bounties for this day: the zone order is shuffled by a day hash, no world dice. */
 export function pickBounties(day: number): Bounty[] {
   let h = 2166136261 ^ day;
@@ -88,7 +100,7 @@ export function pickBounties(day: number): Bounty[] {
   return out;
 }
 /** A stable home hunt-zone for a wizard handle: even with no board call, identical handles shard apart. */
-export function homeZone(handle: string): ZoneId {
+export function homeZone(handle: string): EcologyZone {
   return HUNT_ZONES[hashStr(handle) % HUNT_ZONES.length].zone;
 }
 
@@ -147,12 +159,21 @@ function claim(world: World, w: Wizard, st: EGState) {
   for (const b of pickBounties(st.day)) {
     if (st.claimed.includes(b.zone)) continue;
     if ((st.done[b.zone] ?? 0) >= b.n) {
-      world.addRep(w, b.rep, 'events');
-      w.galleons += b.galleons;
+      const eco = world.ecology.zones[b.zone];
+      const yieldPct = ecologyYieldPct(eco.resources);
+      const control = ecologyControl(eco);
+      const ranger = legacyRank(w, 'ranger');
+      const steward = legacyRank(w, 'steward');
+      const conservator = legacyRank(w, 'conservator');
+      const rep = Math.round(b.rep * (1 + steward * 0.08));
+      const galleons = Math.round(b.galleons * yieldPct / 100 * (1 + ranger * 0.08) * (control === w.house ? 1.1 : 1));
+      world.addRep(w, rep, 'events');
+      w.galleons += galleons;
+      if (conservator > 0) eco.resources = Math.min(100, eco.resources + conservator);
       st.claimed.push(b.zone);
       const place = ZONES.find((z) => z.id === b.zone)?.name ?? b.zone;
-      world.emit('achievement', `💰 Bounty done: defeat ${b.n} creatures at ${place}. +${b.rep} reputation, +${b.galleons} Galleons.`, {
-        to: w.id, zh: `💰 悬赏完成：在${place}打倒 ${b.n} 只生物。声望 +${b.rep}，加隆 +${b.galleons}。`,
+      world.emit('achievement', `💰 Bounty done: defeat ${b.n} creatures at ${place}. +${rep} reputation, +${galleons} Galleons (regional yield ${yieldPct}%).`, {
+        to: w.id, zh: `💰 悬赏完成：在${place}打倒 ${b.n} 只生物。声望 +${rep}，加隆 +${galleons}（区域收益 ${yieldPct}%）。`,
       });
     }
   }
@@ -200,11 +221,25 @@ function sitNewt(world: World, wid: string) {
 }
 
 // ------------------------------------------------------------------ graduation (prestige)
+function chooseLegacy(world: World, wid: string, path: LegacyPath) {
+  const w = world.need(wid), legacies = ensureLegacies(w);
+  if (legacies.available < 1) throw new Error('No alumni legacy choice is available. Graduate to earn one.');
+  if (legacies[path] >= LEGACY_CAP) throw new Error(`${path} is already at its cap of ${LEGACY_CAP}.`);
+  legacies[path]++;
+  legacies.available--;
+  world.emit('achievement', `${w.name} shapes an alumni legacy: ${path} rank ${legacies[path]}/${LEGACY_CAP}.`, {
+    who: [w.id], zh: `${w.name} 选择了毕业遗产：${path} ${legacies[path]}/${LEGACY_CAP} 级。`,
+  });
+  return { path, rank: legacies[path], cap: LEGACY_CAP, available: legacies.available, legacies };
+}
+
 function graduate(world: World, wid: string) {
   const w = world.need(wid);
   if (w.year < MAX_YEAR) throw new Error('You can graduate after year 7.');
   if (!w.newt) throw new Error('Pass N.E.W.T. first (the newt tool, action sit).');
+  const legacies = ensureLegacies(w);
   w.graduates = (w.graduates ?? 0) + 1;
+  legacies.available++;
   w.year = 1;
   w.xp = 0;
   w.newt = null;
@@ -216,10 +251,10 @@ function graduate(world: World, wid: string) {
   const title = `Hogwarts Alumnus ×${w.graduates}`;
   if (!w.titles.includes(title)) w.titles.push(title);
   states.delete(w.id);
-  world.emit('achievement', `🎓 ${w.name} graduated and begins a new school life. ${title}: +10 maxHp, +5 maxMana, permanent.`, {
-    who: [w.id], zh: `🎓 ${w.name} 毕业并开启新的学校生涯。${title}：永久 +10 生命上限、+5 魔力上限。`,
+  world.emit('achievement', `🎓 ${w.name} graduated and begins a new school life. ${title}: one strategy legacy choice earned.`, {
+    who: [w.id], zh: `🎓 ${w.name} 毕业并开启新的学校生涯。${title}：获得一次策略遗产选择。`,
   });
-  return { graduated: w.graduates, year: 1, maxHp: d.maxHp, maxMana: d.maxMana, title };
+  return { graduated: w.graduates, year: 1, maxHp: d.maxHp, maxMana: d.maxMana, title, legacyChoices: ensureLegacies(w).available };
 }
 
 // ------------------------------------------------------------------ the board view
@@ -241,6 +276,7 @@ function bountyBoard(world: World, wid: string) {
 }
 
 const ACTION = z.enum(['status', 'sit']);
+const LEGACY = z.enum(['ranger', 'steward', 'conservator']);
 export const ENDGAME_FEATURE: Feature = {
   id: 'endgame',
   sweep(world) {
@@ -258,6 +294,13 @@ export const ENDGAME_FEATURE: Feature = {
     whoami(world, w) {
       return {
         graduates: w.graduates ?? 0,
+        legacies: ensureLegacies(w),
+        legacyEffects: {
+          ranger: 'Each rank adds 8% Galleons to regional bounties.',
+          steward: 'Each rank adds 8% reputation to regional bounties.',
+          conservator: 'Each rank restores 1 regional resource when a bounty completes.',
+          cap: LEGACY_CAP,
+        },
         newt: w.newt ? { grade: w.newt.grade, papers: w.newt.papers } : null,
         reputationPaths: [
           { en: `Daily lessons: +${QUEST_REP} reputation each, +${QUEST_ALL_REP} for all three`, zh: `今日课表：每项 +${QUEST_REP} 声望，全清 +${QUEST_ALL_REP}`, tool: 'lessons' },
@@ -278,9 +321,15 @@ export const ENDGAME_FEATURE: Feature = {
     },
     {
       name: 'graduate', title: 'Graduate', cost: 3,
-      description: 'Graduate from Hogwarts (year 7 and a passed N.E.W.T.). Year and XP reset to 1; you keep spells, cards, items and Galleons; each graduation permanently adds +10 maxHp and +5 maxMana.',
+      description: 'Graduate from Hogwarts (year 7 and a passed N.E.W.T.). Year and XP reset to 1; you keep spells, cards, items and Galleons; each graduation earns one capped strategy legacy choice.',
       input: {},
       run: (world, wid) => graduate(world, wid),
+    },
+    {
+      name: 'choose_legacy', title: 'Choose Alumni Legacy', cost: 1,
+      description: `Spend one graduation choice on ranger, steward or conservator. Each path is capped at ${LEGACY_CAP}. Choices are permanent and create strategy differences instead of unlimited health stacking.`,
+      input: { path: LEGACY },
+      run: (world, wid, a) => chooseLegacy(world, wid, a.path as LegacyPath),
     },
     {
       name: 'bounty_board', title: 'Bounty Board', cost: 0, readOnly: true,
