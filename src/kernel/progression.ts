@@ -1,6 +1,6 @@
 import {
   HEX_HP_FLOOR_FRAC, HEX_MALICE_TAX, HP_FLOOR, HP_FLOOR_FRAC, ITEM_MODS, MANA_FLOOR, MANA_FLOOR_FRAC, MANAREGEN_FLOOR_FRAC, MAX_YEAR,
-  MOVE_SLOW_FLOOR, NEG_LIMITS, POWER_FLOOR, SPEED_FLOOR, STEAL_BASE_PCT, STEAL_CAP_PCT, STEAL_DARK_LORD_PCT, STEAL_TIERS, WARD_MAX, WARD_MIN,
+  MOVE_SLOW_FLOOR, NEG_LIMITS, NPC_VET_DMG, NPC_VET_HP, POWER_FLOOR, SPEED_FLOOR, STEAL_BASE_PCT, STEAL_CAP_PCT, STEAL_DARK_LORD_PCT, STEAL_TIERS, WARD_MAX, WARD_MIN,
   BULLY_YEAR_GAP, DA_JOINT_MIN, DA_JOINT_PCT, DA_QUORUM, DARK_LORD_HYSTERESIS_PCT, type ItemMod,
 } from '../shared/constants.js';
 import { CORE_BONUS } from '../lore/wands.js';
@@ -132,13 +132,16 @@ export function derivedUncached(w: Wizard, rb: Rulebook): Derived {
   const baseMana = rb.magic.baseMaxMana + rb.magic.manaPerYear * (w.year - 1);
   // alumni perk: every graduation (prestige) grants +10 maxHp and +5 maxMana, permanent (kernel/endgame.ts)
   const alumni = w.graduates ?? 0;
+  // NPC veteran bonus: +10% maxHp and +5% spell damage per year above 1 (NPCs level on their own, kernel/npc.ts).
+  // w.npc is set once at enroll and never changes, so the derived cache below stays valid.
+  const vet = w.npc ? w.year - 1 : 0;
   return {
     // a unicorn's curse: a half-life (auras are pruned every tick, so presence means active)
-    maxHp: Math.max(hpFloor(w.year), Math.round((yearBaseHp(w.year) + mod(w, 'maxHp') + alumni * 10) * ((w.auras ?? []).some((a) => a.k === 'cursed') ? 0.7 : 1))),
+    maxHp: Math.max(hpFloor(w.year), Math.round((yearBaseHp(w.year) + mod(w, 'maxHp') + alumni * 10) * ((w.auras ?? []).some((a) => a.k === 'cursed') ? 0.7 : 1) * (1 + NPC_VET_HP * vet))),
     maxMana: Math.max(manaFloor(baseMana), baseMana + mod(w, 'maxMana') + alumni * 5),
     manaRegen: Math.max(manaRegenFloor(rb.magic.manaRegen), rb.magic.manaRegen + mod(w, 'manaRegen') + (core.regen ?? 0)),
     speedMult: speedMultFor(mod(w, 'speed')),
-    power: powerFor(mod(w, 'power') + (core.power ?? 0) + (elder ? 25 : 0)),
+    power: powerFor(mod(w, 'power') + (core.power ?? 0) + (elder ? 25 : 0)) * (1 + NPC_VET_DMG * vet),
     care: 1 + (core.care ?? 0) / 100,
     ward: wardFor(mod(w, 'ward')),
   };
