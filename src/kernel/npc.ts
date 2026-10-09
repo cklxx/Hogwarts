@@ -15,30 +15,32 @@ import { npcStock } from './market.js';
  * are worth no duel reputation, and only fight wizards who attack them first — and then only a fair opponent
  * (npcMayFight). Their spells and summons pass other players by (allies.ts `spared`).
  */
-interface Persona { name: string; house: House; favourite: string; patrol: string[]; lines: Line[] }
+interface Persona { name: string; house: House; favourite: string; patrol: string[]; lines: Line[]; home: string }
+
+/** Where an NPC sleeps: at night (18:00–06:00) the brain walks home instead of patrolling. O(1) lookup, no tick cost. */
 
 /** Their idle chatter lives in lore/memes.ts (NPC_LINES), bilingual. */
 export const PERSONAS: Persona[] = [
-  { name: 'Seamus Finnigan', house: 'Gryffindor', favourite: 'Incendio', patrol: ['courtyard', 'willow', 'hagrid', 'forest'], lines: NPC_LINES['Seamus Finnigan'] },
-  { name: 'Hannah Abbott', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['greenhouses', 'courtyard', 'hagrid'], lines: NPC_LINES['Hannah Abbott'] },
-  { name: 'Padma Patil', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['great_hall', 'seventh_floor', 'courtyard', 'lake'], lines: NPC_LINES['Padma Patil'] },
-  { name: 'Gregory Goyle', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'pitch'], lines: NPC_LINES['Gregory Goyle'] },
-  { name: 'Madam Rosmerta', house: 'Hufflepuff', favourite: 'Aguamenti', patrol: ['hogsmeade', 'road'], lines: NPC_LINES['Madam Rosmerta'] ?? [] },
-  { name: 'Ambrosius Flume', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['hogsmeade', 'lake_shore'], lines: NPC_LINES['Ambrosius Flume'] ?? [] },
-  { name: 'Neville Longbottom', house: 'Gryffindor', favourite: 'Episkey', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Neville Longbottom'] ?? [] },
-  { name: 'Luna Lovegood', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['lake', 'courtyard', 'grounds'], lines: NPC_LINES['Luna Lovegood'] ?? [] },
-  { name: 'Ginny Weasley', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Ginny Weasley'] ?? [] },
-  { name: 'Draco Malfoy', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'seventh_floor'], lines: NPC_LINES['Draco Malfoy'] ?? [] },
-  { name: 'Cho Chang', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['pitch', 'lake_shore', 'courtyard'], lines: NPC_LINES['Cho Chang'] ?? [] },
-  { name: 'Cedric Diggory', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'grounds', 'courtyard'], lines: NPC_LINES['Cedric Diggory'] ?? [] },
-  { name: 'Dean Thomas', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['grounds', 'courtyard', 'pitch'], lines: NPC_LINES['Dean Thomas'] ?? [] },
-  { name: 'Parvati Patil', house: 'Gryffindor', favourite: 'Incendio', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Parvati Patil'] ?? [] },
-  { name: 'Lavender Brown', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Lavender Brown'] ?? [] },
-  { name: 'Pansy Parkinson', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Pansy Parkinson'] ?? [] },
-  { name: 'Marietta Edgecombe', house: 'Ravenclaw', favourite: 'Stupefy', patrol: ['seventh_floor', 'courtyard', 'great_hall'], lines: NPC_LINES['Marietta Edgecombe'] ?? [] },
-  { name: 'Justin Finch-Fletchley', house: 'Hufflepuff', favourite: 'Glacius', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Justin Finch-Fletchley'] ?? [] },
-  { name: 'Zacharias Smith', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Zacharias Smith'] ?? [] },
-  { name: 'Theodore Nott', house: 'Slytherin', favourite: 'Glacius', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Theodore Nott'] ?? [] },
+  { name: 'Seamus Finnigan', home: 'great_hall', house: 'Gryffindor', favourite: 'Incendio', patrol: ['courtyard', 'willow', 'hagrid', 'forest'], lines: NPC_LINES['Seamus Finnigan'] },
+  { name: 'Hannah Abbott', home: 'great_hall', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['greenhouses', 'courtyard', 'hagrid'], lines: NPC_LINES['Hannah Abbott'] },
+  { name: 'Padma Patil', home: 'great_hall', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['great_hall', 'seventh_floor', 'courtyard', 'lake'], lines: NPC_LINES['Padma Patil'] },
+  { name: 'Gregory Goyle', home: 'great_hall', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'pitch'], lines: NPC_LINES['Gregory Goyle'] },
+  { name: 'Madam Rosmerta', home: 'hogsmeade', house: 'Hufflepuff', favourite: 'Aguamenti', patrol: ['hogsmeade', 'road'], lines: NPC_LINES['Madam Rosmerta'] ?? [] },
+  { name: 'Ambrosius Flume', home: 'hogsmeade', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['hogsmeade', 'lake_shore'], lines: NPC_LINES['Ambrosius Flume'] ?? [] },
+  { name: 'Neville Longbottom', home: 'great_hall', house: 'Gryffindor', favourite: 'Episkey', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Neville Longbottom'] ?? [] },
+  { name: 'Luna Lovegood', home: 'great_hall', house: 'Ravenclaw', favourite: 'Lumos', patrol: ['lake', 'courtyard', 'grounds'], lines: NPC_LINES['Luna Lovegood'] ?? [] },
+  { name: 'Ginny Weasley', home: 'great_hall', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Ginny Weasley'] ?? [] },
+  { name: 'Draco Malfoy', home: 'great_hall', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'courtyard', 'seventh_floor'], lines: NPC_LINES['Draco Malfoy'] ?? [] },
+  { name: 'Cho Chang', home: 'great_hall', house: 'Ravenclaw', favourite: 'Glacius', patrol: ['pitch', 'lake_shore', 'courtyard'], lines: NPC_LINES['Cho Chang'] ?? [] },
+  { name: 'Cedric Diggory', home: 'great_hall', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'grounds', 'courtyard'], lines: NPC_LINES['Cedric Diggory'] ?? [] },
+  { name: 'Dean Thomas', home: 'great_hall', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['grounds', 'courtyard', 'pitch'], lines: NPC_LINES['Dean Thomas'] ?? [] },
+  { name: 'Parvati Patil', home: 'great_hall', house: 'Gryffindor', favourite: 'Incendio', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Parvati Patil'] ?? [] },
+  { name: 'Lavender Brown', home: 'great_hall', house: 'Gryffindor', favourite: 'Stupefy', patrol: ['great_hall', 'courtyard', 'grounds'], lines: NPC_LINES['Lavender Brown'] ?? [] },
+  { name: 'Pansy Parkinson', home: 'great_hall', house: 'Slytherin', favourite: 'Stupefy', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Pansy Parkinson'] ?? [] },
+  { name: 'Marietta Edgecombe', home: 'great_hall', house: 'Ravenclaw', favourite: 'Stupefy', patrol: ['seventh_floor', 'courtyard', 'great_hall'], lines: NPC_LINES['Marietta Edgecombe'] ?? [] },
+  { name: 'Justin Finch-Fletchley', home: 'great_hall', house: 'Hufflepuff', favourite: 'Glacius', patrol: ['greenhouses', 'courtyard', 'grounds'], lines: NPC_LINES['Justin Finch-Fletchley'] ?? [] },
+  { name: 'Zacharias Smith', home: 'great_hall', house: 'Hufflepuff', favourite: 'Stupefy', patrol: ['pitch', 'courtyard', 'grounds'], lines: NPC_LINES['Zacharias Smith'] ?? [] },
+  { name: 'Theodore Nott', home: 'great_hall', house: 'Slytherin', favourite: 'Glacius', patrol: ['dungeons', 'seventh_floor', 'courtyard'], lines: NPC_LINES['Theodore Nott'] ?? [] },
 ];
 
 /**
@@ -161,8 +163,12 @@ export function thinkNpcs(world: World) {
       b.lastSay = world.now;
     }
     if (!w.goal) {
-      const lm = LANDMARKS.find((l) => l.id === p.patrol[b.patrol % p.patrol.length]);
-      b.patrol++;
+      // War Week schedule: at night (18:00–06:00) walk home; by day, patrol. O(1): one hour check, one table lookup.
+      const h = world.hour();
+      const night = h < 6 || h >= 18;
+      const destId = night ? p.home : p.patrol[b.patrol % p.patrol.length];
+      if (!night) b.patrol++;
+      const lm = LANDMARKS.find((l) => l.id === destId);
       if (lm) {
         try { world.setGoal(w.id, { x: lm.x + (world.rand() - 0.5) * 16, z: lm.z + 6 + (world.rand() - 0.5) * 16 }); } catch { /* unreachable spot: try the next */ }
       }

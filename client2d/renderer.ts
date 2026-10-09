@@ -2,7 +2,8 @@
  * 2D 俯视渲染器 (Canvas 2D)。世界 (x, z) 直接映射屏幕 (x, y)，y 向下 = +z。
  * 用色块 + 字母占位绘制实体（sprite agent 后续替换为精美贴图）。
  */
-import { ELEMENT_COLORS, HOUSE_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
+import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
+import { drawSprite } from './sprites.js';
 
 // ------------------------------------------------------------------ snapshot types (mirror of World.snapshot, client/main.ts)
 export interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; mm?: string }
@@ -39,16 +40,6 @@ const ZONES: Zone[] = [
 // default ground color outside zones
 const GROUND = '#557d46';
 
-// ------------------------------------------------------------------ creature colors (placeholder letter + color per kind)
-const CREATURE_COLORS: Record<string, string> = {
-  pixie: '#7fd4ff', snare: '#9dff57', spider: '#3a3a3a', troll: '#8a6f4d', dementor: '#1a1a2e',
-  inferius: '#6b7c6b', unicorn: '#ffffff', phoenix: '#ff5a1a', bowtruckle: '#4d7c3a', hinkypunk: '#b8e6ff',
-  redcap: '#c41e1e', niffler: '#d4a017', grindylow: '#2e8b8b', erkling: '#5a4d8a', kelpie: '#1e6e6e',
-  thestral: '#222222', hippogriff: '#c9a86a', occamy: '#57c4c4', boggart: '#7a5a9e', runespoor: '#3e9e4d',
-  skrewt: '#a05a2c', thunderbird: '#ffd94d', werewolf: '#6e5a3a', lethifold: '#0d0d12', manticore: '#b8542e',
-  chimera: '#c46a1e', aragog: '#2a2a2a', basilisk: '#2e8b3a', nundu: '#8a8a6e', dragon: '#d42a1e',
-  serpent: '#3fae5a', birds: '#ffec8a',
-};
 
 // ------------------------------------------------------------------ renderer
 export interface Camera { x: number; z: number; zoom: number }
@@ -171,29 +162,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.fill();
     }
 
-    // --- creatures: triangle (hostile) / circle (neutral), color per kind + letter ---
+    // --- creatures: pixel sprite per kind, hp bar below ---
     for (const c of snap.c) {
       if (!visible(c.x, c.z)) continue;
       const [sx, sy] = w2s(c.x, c.z);
-      const col = CREATURE_COLORS[c.k] ?? '#999';
-      const r = Math.max(4, 7 * cam.zoom);
+      const size = Math.max(12, 20 * cam.zoom);
+      drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
       const hostile = c.s.includes('H') || ['dementor', 'spider', 'troll', 'basilisk', 'dragon', 'aragog', 'nundu', 'chimera', 'manticore', 'lethifold', 'werewolf'].includes(c.k);
-      ctx.fillStyle = col;
-      ctx.strokeStyle = hostile ? '#ff2a1a' : '#222';
-      ctx.lineWidth = hostile ? 2 : 1;
-      if (hostile) {
-        // triangle pointing at facing
-        ctx.beginPath();
-        const a = c.f;
-        for (let i = 0; i < 3; i++) {
-          const ang = a + (i * 2 * Math.PI) / 3;
-          const px = sx + Math.cos(ang) * r, py = sy + Math.sin(ang) * r;
-          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-        }
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-      } else {
-        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      }
+      if (hostile) { ctx.strokeStyle = '#ff2a1a'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
+      const r = size / 2;
       // hp bar
       if (c.hp < c.m) {
         ctx.fillStyle = '#222'; ctx.fillRect(sx - r, sy - r - 5, r * 2, 3);
@@ -205,16 +182,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       }
     }
 
-    // --- wizards: house-colored circle + facing tick + name ---
+    // --- wizards: house sprite + hp bar + name ---
     for (const w of snap.w) {
       if (!visible(w.x, w.z)) continue;
       const [sx, sy] = w2s(w.x, w.z);
       const isMe = w.h === myHandle;
       const r = Math.max(5, 8 * cam.zoom);
-      ctx.fillStyle = css(HOUSE_COLORS[w.ho] ?? 0x888888);
-      ctx.strokeStyle = isMe ? '#ffd700' : (w.s.includes('N') ? '#888' : '#111');
-      ctx.lineWidth = isMe ? 3 : 1.5;
-      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      const size = r * 3;
+      drawSprite(ctx, `wizard-${w.ho}`, sx - size / 2, sy - size / 2, size, size);
+      if (isMe) { ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       // facing tick
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
       ctx.beginPath();

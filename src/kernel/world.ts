@@ -192,6 +192,8 @@ export class World {
     housePoints: { term: 0, pts: {} } as { term: number; pts: Partial<Record<House, number>> },
     /** 隐藏宝箱: which chests were opened this term, and by whom (names). */
     chests: { term: 0, opened: {} } as { term: number; opened: Record<string, string> },
+    /** 大战周: the living-world countdown (kernel/warweek.ts). Off = terms run exactly as before. */
+    warweek: true,
   };
   /** 学院杯 ceremony: the last term's result card (HUD), until `until`. Not persisted. */
   ceremony: Ceremony | null = null;
