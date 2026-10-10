@@ -88,6 +88,11 @@ function body(k: PropKind): THREE.BufferGeometry {
       [at(new THREE.BoxGeometry(0.06, 0.06, 0.62), -0.85, 0.68, -0.05), 0x2b2b30],
       [at(new THREE.BoxGeometry(0.06, 0.06, 0.62), 0.85, 0.68, -0.05), 0x2b2b30],
     ]));
+    // 战后世界：墓碑（kernel/aftermath.ts）
+    case 'tombstone': return noUV(painted([
+      [at(new THREE.BoxGeometry(0.7, 1.1, 0.18), 0, 0.55, 0), 0x8a8d94],
+      [at(new THREE.BoxGeometry(0.9, 0.12, 0.3), 0, 0.06, 0), 0x6e7076],
+    ]));
   }
 }
 /** What an awake one shows, and its colour (additive, so the bloom catches it). */

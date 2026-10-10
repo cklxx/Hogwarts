@@ -3,7 +3,7 @@ import { confirmWaterAssist, waterAssistXp, clearWaterAssist } from './chem.js';
 import {
   AGENT_SEEN_ROUND_S, ASK_TTL_S, CREATURE_KINDS, CURSED_ITEM_BIND_S, HEX_MIN_YEAR, HEX_PAIR_COOLDOWN_S, HEX_RESPITE_S, HEX_WINDOW_S, HOUSES,
   ITEM_SLOTS, JINX_DEFAULTS, OWLBOX_MAX, OWL_MAX_CHARS, OWL_PER_MIN, PAIR_FAIL_PER_IP_PER_MIN, PAIR_FAIL_PER_REALM_PER_MIN, PAIR_TTL_S, PLAYER_GRACE_S, NEWCOMER_WARD, NEWCOMER_WARD_S, NEWCOMER_PEACE_S, CREATURE_HIT_CAP,
-  SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT,
+  SILENCE_COOLDOWN_S, SILENCE_MAX_S, LAWLESS_MULT, NPC_MAX_YEAR,
   UI_CHARMS, VICTIM_BOUND_CAP, VICTIM_CURSED_ITEMS_MAX, VICTIM_HEX_CAP, VICTIM_HEX_PER_10MIN,
   CUP_CEREMONY_S, CUP_FINAL_S, CUP_SOURCES, TERM_DEFAULT_S, TERM_OLD_DEFAULT_S, type CupSource,
   type CreatureKind, type SummonKind, type Element, type House, type ItemMod, type ItemSlot, type UiCharm,
@@ -194,6 +194,8 @@ export class World {
     housePoints: { term: 0, pts: {} } as { term: number; pts: Partial<Record<House, number>> },
     /** 隐藏宝箱: which chests were opened this term, and by whom (names). */
     chests: { term: 0, opened: {} } as { term: number; opened: Record<string, string> },
+    /** 大战周: the living-world countdown (kernel/warweek.ts). Off = terms run exactly as before. */
+    warweek: true,
   };
   /** 学院杯 ceremony: the last term's result card (HUD), until `until`. Not persisted. */
   ceremony: Ceremony | null = null;
@@ -1769,7 +1771,8 @@ export class World {
   gainXp(w: Wizard, n: number) {
     const title0 = this.title(w).key;
     w.xp += n;
-    const y = yearForXp(w.xp);
+    // NPCs level on their own, but never past NPC_MAX_YEAR: the world grows beside the player, never above.
+    const y = w.npc ? Math.min(yearForXp(w.xp), NPC_MAX_YEAR) : yearForXp(w.xp);
     if (y > w.year) {
       w.year = y;
       this.grantCurriculum(w);
@@ -1777,9 +1780,14 @@ export class World {
       w.hp = d.maxHp;
       w.mana = d.maxMana;
       this.fx({ k: 'levelup', x: w.pos.x, z: w.pos.z, h: w.handle });
-      const newSpells = CURRICULUM.filter((c) => c.year === y).map((c) => c.name);
-      const q = LEVEL_QUIPS[y] ? this.quip(LEVEL_QUIPS[y], w.handle) : null;
-      this.emit('level', `${w.name} advanced to year ${y}!${newSpells.length ? ` New curriculum: ${newSpells.join(', ')}.` : ''}${q ? ` ${q.en}` : ''}`, { who: [w.id], zh: `${w.name} 升入 ${y} 年级！${newSpells.length ? `新课程：${newSpells.map(zhSpell).join('、')}。` : ''}${q ? q.zh : ''}` });
+      if (w.npc) {
+        // low-key: one line, no curriculum list, no quip — the world levels quietly
+        this.emit('level', `${w.name} reached year ${y}.`, { who: [w.id], zh: `${w.name} 升到了 ${y} 年级。` });
+      } else {
+        const newSpells = CURRICULUM.filter((c) => c.year === y).map((c) => c.name);
+        const q = LEVEL_QUIPS[y] ? this.quip(LEVEL_QUIPS[y], w.handle) : null;
+        this.emit('level', `${w.name} advanced to year ${y}!${newSpells.length ? ` New curriculum: ${newSpells.join(', ')}.` : ''}${q ? ` ${q.en}` : ''}`, { who: [w.id], zh: `${w.name} 升入 ${y} 年级！${newSpells.length ? `新课程：${newSpells.map(zhSpell).join('、')}。` : ''}${q ? q.zh : ''}` });
+      }
     }
     this.titleQuip(w, title0);
   }
@@ -3552,7 +3560,24 @@ export class World {
       elder: this.flags.elderWandHolder ? null : TOMB,
       willowCalm: this.now < this.flags.willowCalmUntil,
       look: this.looks(),
+      // 命运链 (kernel/fates.ts, Phase 2): 2D HUD 渲染用；fates 未加载时 []
+      fates: this.fateView(),
     };
+  }
+
+  /** 命运链快照: 供 2D HUD 渲染。fates.ts 未加载 / 形状未知时返回 []。 */
+  fateView(): { id: string; zh: string; state: 'saved' | 'lost' | 'open'; deadlineDay: number; hint: string }[] {
+    const f = (this as any).fates ?? (this.flags as any).fates;
+    const raw = f?.threads ?? f?.list ?? [];
+    const threads = Array.isArray(raw) ? raw : Object.values(raw);
+    if (!Array.isArray(threads)) return [];
+    return threads.map((t: any) => ({
+      id: String(t.id ?? t.key ?? ''),
+      zh: String(t.zh ?? t.name ?? t.id ?? ''),
+      state: t.state === 'saved' || t.state === 'lost' ? t.state : ('open' as const),
+      deadlineDay: Number(t.deadlineDay ?? t.deadline ?? 7),
+      hint: String(t.hint ?? t.where ?? t.loc ?? t.triggerHint ?? ''),
+    }));
   }
 
   /** The snapshot's `cup`: points per house (HOUSES order), the final minute, the chests still closed, the ceremony. */
