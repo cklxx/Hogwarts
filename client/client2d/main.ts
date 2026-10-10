@@ -2,8 +2,8 @@
  * client2d 入口：最小可运行版本。连 WebSocket，收快照，2D 俯视渲染。
  * 用法：npm run dev 后访问 /2d.html（见 client2d/index.html），或直接 node serve。
  */
-import { WS_KEY_PREFIX, WS_PROTOCOL } from '../src/shared/constants';
-import { SnapDecoder } from '../src/shared/snapwire';
+import { WS_KEY_PREFIX, WS_PROTOCOL } from '../../src/shared/constants';
+import { SnapDecoder } from '../../src/shared/snapwire';
 import { createRenderer2D, type Snap } from './renderer';
 import { mountHUD, updateHUD } from './hud.js';
 

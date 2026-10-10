@@ -2,7 +2,7 @@
  * 2D 俯视渲染器 (Canvas 2D)。世界 (x, z) 直接映射屏幕 (x, y)，y 向下 = +z。
  * 用色块 + 字母占位绘制实体（sprite agent 后续替换为精美贴图）。
  */
-import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../src/shared/constants';
+import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawSprite } from './sprites.js';
 
 // ------------------------------------------------------------------ snapshot types (mirror of World.snapshot, client/main.ts)
@@ -203,7 +203,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const isMe = w.h === myHandle;
       const r = Math.max(5, 8 * cam.zoom);
       const size = r * 3;
-      drawSprite(ctx, `wizard-${w.ho}`, sx - size / 2, sy - size / 2, size, size);
+      drawSprite(ctx, `wizard-${String(w.ho).toLowerCase()}`, sx - size / 2, sy - size / 2, size, size);
       if (isMe) { ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       // facing tick
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;

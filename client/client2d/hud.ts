@@ -5,7 +5,7 @@
  * blocks canvas input (pointer-events: none; only hotbar slots re-enable it).
  * No external CSS framework: all styles are injected by mountHUD().
  */
-import { WORLD_HALF } from '../src/shared/map.js';
+import { WORLD_HALF } from '../../src/shared/map.js';
 
 // ------------------------------------------------------------------ types
 
