@@ -50,6 +50,37 @@ async function main() {
   ws.onclose = () => console.log('[2d] ws closed, retry in 3s'), setTimeout(main, 3000);
   ws.onerror = (e) => console.warn('[2d] ws error', e);
 
+  // --- player controls: WASD move, click cast, 1-9 hotbar ---
+  const keys = new Set<string>();
+  const sendInput = () => {
+    if (ws.readyState !== 1) return;
+    let dx = 0, dz = 0;
+    if (keys.has('w')) dz -= 1;
+    if (keys.has('s')) dz += 1;
+    if (keys.has('a')) dx -= 1;
+    if (keys.has('d')) dx += 1;
+    ws.send(JSON.stringify({ t: 'input', dx, dz }));
+  };
+  addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    if ('wasd'.includes(k) && !keys.has(k)) { keys.add(k); sendInput(); }
+    if (k >= '1' && k <= '9') {
+      // hotbar cast: use selected spell slot (server resolves key)
+      ws.send(JSON.stringify({ t: 'cast', key: 'slot' + k }));
+    }
+  });
+  addEventListener('keyup', (e) => {
+    const k = e.key.toLowerCase();
+    if (keys.delete(k)) sendInput();
+  });
+  // click-to-cast at world position
+  canvas.addEventListener('click', (e) => {
+    const r = canvas.getBoundingClientRect();
+    // convert screen -> world via renderer camera (exposed on ui)
+    const wx = (ui as any).screenToWorld?.(e.clientX - r.left, e.clientY - r.top);
+    if (wx && ws.readyState === 1) ws.send(JSON.stringify({ t: 'cast', key: 'slot1', x: wx.x, z: wx.z }));
+  });
+
   ws.onmessage = (m: MessageEvent) => {
     let msg: any;
     if (typeof m.data === 'string') {

@@ -54,16 +54,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   let follow = true;
   const keys = new Set<string>();
 
-  // --- input: wheel zoom, WASD/arrows pan (pan breaks follow) ---
+  // --- input: wheel zoom, arrows pan (pan breaks follow), WASD = player move (main.ts) ---
   canvas.tabIndex = 0;
   addEventListener('wheel', (e) => {
     e.preventDefault();
     cam.zoom = Math.min(3, Math.max(0.5, cam.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-    follow = false;
   }, { passive: false });
   addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
+    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
       keys.add(k); follow = false; e.preventDefault();
     }
     if (k === 'f') follow = true; // F: resume follow
@@ -86,6 +85,10 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   const w2s = (x: number, z: number): [number, number] => {
     const sx = canvas.width / devicePixelRatio, sy = canvas.height / devicePixelRatio;
     return [(x - cam.x) * cam.zoom + sx / 2, (z - cam.z) * cam.zoom + sy / 2];
+  };
+  const s2w = (sx: number, sy: number): { x: number; z: number } => {
+    const w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
+    return { x: (sx - w / 2) / cam.zoom + cam.x, z: (sy - h / 2) / cam.zoom + cam.z };
   };
   const scale = (v: number) => v * cam.zoom;
 
@@ -254,11 +257,11 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     ctx.fillText(`第 ${snap.term.n} 学期  ${mm}:${String(ss).padStart(2, '0')}`, 16, 28);
     ctx.fillText(`${snap.night ? '夜' : '昼'} · ${snap.weather} · 缩放 ${cam.zoom.toFixed(1)}x`, 16, 48);
     ctx.fillStyle = '#aaa'; ctx.font = '11px sans-serif';
-    ctx.fillText('滚轮缩放 · WASD 移动视角 · F 回到跟随', 16, 62);
+    ctx.fillText('WASD 移动 · 点击施法 · 方向键看地图 · F 跟随', 16, 62);
   }
 
   requestAnimationFrame(frame);
-  return { setSnap, setMe, cam };
+  return { setSnap, setMe, cam, screenToWorld: s2w };
 }
 
 function shade(hex: string, f: number): string {
