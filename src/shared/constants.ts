@@ -54,6 +54,11 @@ export type ItemMod = (typeof ITEM_MODS)[number];
 
 export const MAX_YEAR = 7;
 
+/** NPCs level up on their own (kernel/npc.ts), but never past this year: the world grows beside the player, never above. */
+export const NPC_MAX_YEAR = 5;
+/** NPC veteran bonus per year above 1: +10% max HP, +5% spell damage (applied in kernel/progression.ts derived). */
+export const NPC_VET_HP = 0.10, NPC_VET_DMG = 0.05;
+
 /** HUD corners unlocked by casting a charm (reveal). */
 export const UI_CHARMS = { tempus: 1, revelio: 1, 'point-me': 2, homenum: 3 } as const;
 export type UiCharm = keyof typeof UI_CHARMS;
