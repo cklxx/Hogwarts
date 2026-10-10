@@ -3561,7 +3561,8 @@ export class World {
   /** 命运链快照: 供 2D HUD 渲染。fates.ts 未加载 / 形状未知时返回 []。 */
   fateView(): { id: string; zh: string; state: 'saved' | 'lost' | 'open'; deadlineDay: number; hint: string }[] {
     const f = (this as any).fates ?? (this.flags as any).fates;
-    const threads = f?.threads ?? f?.list ?? [];
+    const raw = f?.threads ?? f?.list ?? [];
+    const threads = Array.isArray(raw) ? raw : Object.values(raw);
     if (!Array.isArray(threads)) return [];
     return threads.map((t: any) => ({
       id: String(t.id ?? t.key ?? ''),
