@@ -76,6 +76,10 @@ export default defineConfig({
   build: {
     outDir: OUT, emptyOutDir: true, chunkSizeWarningLimit: 1200,
     rollupOptions: {
+      input: {
+        main: resolve(CLIENT, 'index.html'),
+        '2d': resolve(CLIENT, '2d.html'),
+      },
       output: {
         // export names kept: a hot update finds a feature's factory by name (hot.json)
         minifyInternalExports: false,
