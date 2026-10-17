@@ -30,7 +30,11 @@ async function main() {
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
   document.body.style.background = '#1a1a1a';
+  // 重连会重跑 main(): 先移除上一次的 canvas, 避免旧 canvas 在 body 里堆积
+  // (HUD 有 mountHUD 的 root 守卫, 不会重复挂载)
+  document.querySelectorAll('canvas[data-2d]').forEach((el) => el.remove());
   const canvas = document.createElement('canvas');
+  canvas.setAttribute('data-2d', 'game');
   document.body.appendChild(canvas);
   const ui = createRenderer2D(canvas);
   mountHUD(document.body);
@@ -46,10 +50,7 @@ async function main() {
   ws.binaryType = 'arraybuffer';
   const snaps = new SnapDecoder();
 
-  ws.onopen = () => console.log('[2d] ws open');
-  // NOTE: comma operator here used to run setTimeout(main, 3000) immediately on
-  // every main() call, stacking a new canvas + WebSocket every 3s forever.
-  ws.onclose = () => { console.log('[2d] ws closed, retry in 3s'); setTimeout(main, 3000); };
+  ws.onclose = () => { setTimeout(main, 3000); };
   ws.onerror = (e) => console.warn('[2d] ws error', e);
 
   // --- player controls: WASD move, click cast, 1-9 hotbar ---
@@ -95,7 +96,6 @@ async function main() {
     if (msg.t === 'welcome') {
       ui.setMe(msg.handle);
       (main as any)._me = msg.handle;
-      console.log('[2d] welcome as', msg.handle);
     } else if (msg.t === 'me') {
       // private state: hotbar + real mana (server fills new wizards' hotbar from the curriculum)
       (main as any)._meState = msg.s;
