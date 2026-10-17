@@ -6,8 +6,13 @@
  * string grids so shapes stay reviewable in a diff. Renderers must draw with
  * imageSmoothingEnabled = false to keep pixels sharp (see drawSprite below).
  *
+ * Art direction (Stardew-style): soft mid-tone colours, 1px dark-brown outline
+ * (#2a1f1a, never pure black), a highlight tone on the upper-left of each mass
+ * and a shadow tone on the lower-right. No high-saturation pure colours.
+ *
  * Kinds:
- *   wizard-<house>      16x24 robed figure, house colours (Gryffindor/Hufflepuff/Ravenclaw/Slytherin)
+ *   wizard-<house>      16x24 hooded figure: face with eyes, house-colour robe,
+ *                       trim collar / belt / hem (Gryffindor/Hufflepuff/Ravenclaw/Slytherin)
  *   <creature>          16x16, one per CreatureKind in src/shared/constants.ts (30 wild + 2 summons)
  *   chest / chest-gold  16x12 loot chests
  *   <prop>              16x16 for the common PropKinds (crate/barrel/pumpkin/pot/mushroom/brazier/...)
@@ -46,70 +51,85 @@ function reg(kind: string, art: readonly string[], pal: Palette): void {
 }
 
 // ---------------------------------------------------------------------------
-// Wizards: 16x24 robed figures, house primary + trim colours.
-// Primary colours from HOUSE_COLORS (src/shared/constants.ts).
+// Shared art tokens.
+// ---------------------------------------------------------------------------
+
+/** Dark-brown outline used by every sprite (never pure black). */
+const K = '#2a1f1a';
+
+/** Shared skin tones for humanoid faces. */
+const SKIN = '#f0c49a';
+const SKIN_HI = '#f9dcb8';
+
+// ---------------------------------------------------------------------------
+// Wizards: 16x24 hooded figures. Hood + visible face + eyes; house robe with
+// trim collar, belt and hem so the four houses read apart at a glance.
 // ---------------------------------------------------------------------------
 
 const WIZARD_BASE: readonly string[] = [
-  '.......hh.......',
-  '......hhhh......',
-  '......hhhh......',
-  '.....hhhhhh.....',
-  '.....hhhhhh.....',
-  '....hhhhhhhh....',
-  '.....ssssss.....',
-  '.....skssks.....',
-  '.....ssssss.....',
-  '......ssss......',
-  '....tttttttt....',
-  '...hhhhhhhhhh...',
-  '...hthhhhhhth...',
-  '...hhhhhhhhhh...',
-  '...hhhhhhhhhh...',
-  '...hhhhhhhhhh...',
-  '...hhhhhhhhhh...',
-  '...hhhhhhhhhh...',
-  '...hhhhhhhhhh...',
-  '...hhhhhhhhhh...',
-  '....hhhhhhhh....',
-  '....kk....kk....',
-  '....kk....kk....',
+  '.....kkkkkk.....',
+  '...kkhhhhhhkk...',
+  '..khhhhhhhhhhk..',
+  '..khhhhhhhhhhk..',
+  '.khhhhhhhhhhhhk.',
+  '.khhhsssssshhhk.',
+  '.khhhsesseshhhk.',
+  '.khhhsssssshhhk.',
+  '...kkhhhhhhkk...',
+  '....kksssskk....',
+  '..kttttttttttk..',
+  '.khhhhhhhhhhhhk.',
+  '.khhhhhhhhhhhhk.',
+  'kkhHhhhhhhhddhkk',
+  'kkhHhhhhhhhddhkk',
+  '.kshHhhhhhddhsk.',
+  '.khhhhhhhhhhhhk.',
+  '..kttttttttttk..',
+  '.khhhhhhhhhhhhk.',
+  '.khhhhhhhhhhhhk.',
+  '..kttttttttttk..',
+  '...kkk....kkk...',
+  '...kkk....kkk...',
   '................',
 ];
 
-const WIZARD_TRIMS: Record<string, { h: string; t: string }> = {
-  gryffindor: { h: '#ae0001', t: '#d4a017' }, // red + gold
-  slytherin: { h: '#2a8a3e', t: '#c0c0c0' }, // green + silver
-  ravenclaw: { h: '#2a5bd7', t: '#b87333' }, // blue + copper
-  hufflepuff: { h: '#ecb939', t: '#222222' }, // yellow + black
+/** House robe colours: base / highlight / shadow + trim / trim highlight. */
+const WIZARD_TRIMS: Record<string, { h: string; H: string; d: string; t: string; T: string }> = {
+  gryffindor: { h: '#a83a32', H: '#cf6a5e', d: '#732420', t: '#d9a441', T: '#f2cd7d' },
+  slytherin: { h: '#2e7a3c', H: '#57a866', d: '#1e5427', t: '#c3ccd4', T: '#eef2f5' },
+  ravenclaw: { h: '#3a5cad', H: '#6f92d6', d: '#26427e', t: '#c08a4a', T: '#e0b075' },
+  hufflepuff: { h: '#d9a441', H: '#f2cd7d', d: '#9c7226', t: '#4a4038', T: '#6f6257' },
 };
 
 function buildWizards(): void {
-  const skin = { s: '#f2c89b', k: '#1a1a1a' };
   for (const [house, c] of Object.entries(WIZARD_TRIMS)) {
-    reg(`wizard-${house}`, WIZARD_BASE, { ...skin, h: c.h, t: c.t });
+    reg(`wizard-${house}`, WIZARD_BASE, {
+      k: K, h: c.h, H: c.H, d: c.d, t: c.t, T: c.T,
+      s: SKIN, S: SKIN_HI, e: K,
+    });
   }
   // generic / unknown house
-  reg('wizard', WIZARD_BASE, { ...skin, h: '#5a4a8a', t: '#c0c0c0' });
+  reg('wizard', WIZARD_BASE, {
+    k: K, h: '#6b5b9e', H: '#8f81c2', d: '#483d6e', t: '#c3ccd4', T: '#eef2f5',
+    s: SKIN, S: SKIN_HI, e: K,
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Creatures: 16x16, silhouette-first. One per CreatureKind.
 // ---------------------------------------------------------------------------
 
-const K = '#1a1a1a'; // near-black outline/body
-
 function buildCreatures(): void {
-  // pixie: electric blue, wings
+  // pixie: soft blue body, pale wings, gold sparkle
   reg('pixie', [
     '................',
-    '..w........w....',
-    '..ww..bb..ww....',
-    '...wwbbbbww.....',
-    '....wbyybw......',
-    '.....bbbb.......',
-    '......bb........',
-    '.....b..b.......',
+    '..ww........ww..',
+    '..www..bb..www..',
+    '...wwwbbbbwww...',
+    '....wwbyybww....',
+    '.....bbbbbb.....',
+    '......bbbb......',
+    '.....bb..bb.....',
     '................',
     '................',
     '................',
@@ -118,239 +138,240 @@ function buildCreatures(): void {
     '................',
     '................',
     '................',
-  ], { b: '#3a7bff', y: '#ffe14d', w: '#cfe4ff' });
+  ], { k: K, b: '#4a7bd4', B: '#7fa5e8', y: '#ffd94d', w: '#d8e6f8' });
 
-  // snare: dark green tentacle mound
+  // snare: dark green tentacle mound, lighter tips
   reg('snare', [
     '................',
     '................',
-    '.....g..g.......',
-    '....ggg.gg......',
-    '....gggggg......',
-    '..gggggggggg....',
-    '.gggggggggggg...',
-    '.gggggggggggg...',
-    '..gggggggggg....',
-    '...gggggggg.....',
-    '....gggggg......',
+    '.....kk..kk.....',
+    '....kggkggk.....',
+    '....kgggggk.....',
+    '..kkggggggggk...',
+    '.kgGgggggggGgk..',
+    '.kggggggggggk...',
+    '..kgggggggggk...',
+    '...kgggggggk....',
+    '....kkggggkk....',
     '................',
     '................',
     '................',
     '................',
     '................',
-  ], { g: '#1e6b2a' });
+  ], { k: K, g: '#2e7a3a', G: '#5fae6a' });
 
-  // spider: black, 8 legs
+  // spider: dark brown body, 8 thin legs, red eyes
   reg('spider', [
     '................',
-    '................',
-    '.k..........k...',
-    '..k..kkkk..k....',
-    '...k.kkkk.k.....',
-    '....kkkkkk......',
-    '.k..kkkkkk..k...',
-    '..kkkkkkkkkk....',
-    '..kkkkkkkkkk....',
-    '.k..kkkkkk..k...',
-    '....kkkkkk......',
-    '...k.kkkk.k.....',
-    '..k..kkkk..k....',
-    '.k..........k...',
-    '................',
-    '................',
-  ], { k: K });
+    '..k..........k..',
+    '.k.k........k.k.',
+    '.k..k..dd..k..k.',
+    '..k..kddddk..k..',
+    '...k.kdrrdk.k...',
+    '....kkddddkk....',
+    '.k..kddddddk..k.',
+    '..k.kdDDDDdk.k..',
+    '..k.kdDDDDdk.k..',
+    '.k..kddddddk..k.',
+    '....kkddddkk....',
+    '...k.kdDDdk.k...',
+    '.k..k..dd..k..k.',
+    '.k.k........k.k.',
+    '..k..........k..',
+  ], { k: K, d: '#4a3a30', D: '#63503f', r: '#d43a2a' });
 
-  // aragog: bigger, darker spider with red eyes
+  // aragog: bulkier, darker spider, red eyes, pale fangs
   reg('aragog', [
-    'k............k..',
-    '.k....kkkk..k...',
-    '..k.kkkkkkkk....',
-    '..kkkkkkkkkkk...',
-    '.kkkrkkkkrkkkk..',
-    '.kkkkkkkkkkkkk..',
-    '..kkkkkkkkkkk...',
-    '.k.kkkkkkkkk.k..',
-    'k..kkkkkkkkk..k.',
-    '...kk.kkkk.k....',
-    '..k...kkkk...k..',
-    '.k....kkkk....k.',
     '................',
+    'k..............k',
+    '.k....dddd....k.',
+    '..k..dddddd..k..',
+    '...kddddddddk...',
+    '...kdrrddrrdk...',
+    '...kddddddddk...',
+    '..kddddddddddk..',
+    '..kdwddddddwdk..',
+    '..kddddddddddk..',
+    '...kddddddddk...',
+    '...k.kddddk.k...',
+    '..k...dddd...k..',
+    '.k....dddd....k.',
+    'k..............k',
     '................',
-    '................',
-    '................',
-  ], { k: '#0d0d0d', r: '#ff2a2a' });
+  ], { k: K, d: '#2e2420', r: '#e03a2a', w: '#e8dcc8' });
 
-  // troll: grey brute
+  // troll: grey brute, heavy brow, small eyes, thick arms
   reg('troll', [
     '................',
-    '.....gggggg.....',
-    '....gggggggg....',
-    '....gkggkggg....',
-    '....gggggggg....',
-    '.....gggggg.....',
-    '..ggggggggggg...',
-    '..ggggggggggg...',
-    '..ggggggggggg...',
-    '...ggggggggg....',
-    '...ggg...ggg....',
-    '...ggg...ggg....',
+    '.....kkkkkk.....',
+    '....kgGgggGk....',
+    '...kggggggggk...',
+    '...kggggggggk...',
+    '...kgekggkegk...',
+    '...kggggggggk...',
+    '....kggggggk....',
+    '..kggggggggggk..',
+    '.kggggggggggggk.',
+    '.kddkggggggkddk.',
+    '.kddkggggggkddk.',
+    '...kkk....kkk...',
     '................',
     '................',
     '................',
-    '................',
-  ], { g: '#8a8f98', k: K });
+  ], { k: K, g: '#8a8f98', G: '#a8adb5', d: '#6a6f78', e: K });
 
-  // dementor: grey floating cloak
+  // dementor: dark slate floating cloak, black void where the face would be,
+  // tattered hem
   reg('dementor', [
     '................',
-    '.....gggggg.....',
-    '....gggggggg....',
-    '....ggkggkgg....',
-    '....gggggggg....',
-    '....gggggggg....',
-    '.....gggggg.....',
-    '.....gggggg.....',
-    '....gggggggg....',
-    '....gggggggg....',
-    '...gggggggggg...',
-    '...gg.gggg.gg...',
+    '.....kkkkkk.....',
+    '....kggggggk....',
+    '...kggggggggk...',
+    '...kggVVVgggk...',
+    '...kggVVVgggk...',
+    '...kggggggggk...',
+    '....kggggggk....',
+    '...kggggggggk...',
+    '..kggggggggggk..',
+    '..kggkggggkggk..',
+    '..kggggggggggk..',
+    '...kggkggkggk...',
+    '...k.k....k.k...',
     '................',
     '................',
-    '................',
-    '................',
-  ], { g: '#5a5f6b', k: '#0a0a0a' });
+  ], { k: K, g: '#3f4450', G: '#5a6170', V: '#0d0f14' });
 
-  // lethifold: darker cloak, no face
+  // lethifold: darker cloak, subtle ripple folds, no face at all
   reg('lethifold', [
     '................',
     '......kkkk......',
-    '....kkkkkkkk....',
-    '....kkkkkkkk....',
-    '....kkkkkkkk....',
-    '.....kkkkkk.....',
-    '.....kkkkkk.....',
-    '....kkkkkkkk....',
-    '....kkkkkkkk....',
-    '...kkkkkkkkkk...',
-    '...kkk.kkkk.....',
+    '....kkggggkk....',
+    '...kggggggggk...',
+    '...kggGgggGgk...',
+    '...kggggggggk...',
+    '....kggggggk....',
+    '....kggggggk....',
+    '...kggggggggk...',
+    '...kggGgggGgk...',
+    '...kggggggggk...',
+    '....kggggggk....',
+    '...kg.kkgk.gk...',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { k: '#050505' });
+  ], { k: K, g: '#23252e', G: '#4a5060' });
 
-  // inferius: pale corpse
+  // inferius: pale corpse, sunken eyes, tattered blue-grey shroud
   reg('inferius', [
     '................',
-    '.....pppppp.....',
-    '....pppppppp....',
-    '....pkkppkpp....',
-    '....pppppppp....',
-    '.....pppppp.....',
-    '....pppppppp....',
-    '....pbppbppp....',
-    '....pppppppp....',
-    '....pppppppp....',
-    '.....pp..pp.....',
-    '.....pp..pp.....',
+    '.....kkkkkk.....',
+    '....kppppppk....',
+    '....kPppppPk....',
+    '....kpkppkpk....',
+    '....kppppppk....',
+    '.....kppppk.....',
+    '...kkbbbbbbkk...',
+    '..kbbbbbbbbbbk..',
+    '..kbpbbbbbbpbk..',
+    '..kbbbbbbbbbbk..',
+    '...kbbbk.kbbk...',
+    '...kbb.....bk...',
     '................',
     '................',
     '................',
-    '................',
-  ], { p: '#b9c4c9', k: K, b: '#4a6b8a' });
+  ], { k: K, p: '#c9cfd4', P: '#eef2f5', b: '#5a6b7a' });
 
-  // unicorn: white horse + gold horn
+  // unicorn: warm-white horse, gold horn, pale mane and tail
   reg('unicorn', [
     '................',
-    '........y.......',
-    '.......yw.......',
-    '......wwww......',
-    '......wkw.......',
-    '......wwww......',
-    '.....wwwwww.....',
-    '..wwwwwwwwww....',
-    '.wwwwwwwwwwww...',
-    '.wwwwwwwwwwww...',
-    '..www.www.www...',
-    '..ww..ww...ww...',
+    '........yy......',
+    '.......kyk......',
+    '......kwwk......',
+    '.....kwwwwk.....',
+    '.....kwkwk......',
+    '....kwwwwwwk....',
+    '..kkwwwwwwwwk...',
+    '.kwwwwwwwwwwkWk.',
+    '.kwWwwwwwwWwkWk.',
+    '..kwk...kwk.....',
+    '..kwk...kwk.....',
+    '..kkk...kkk.....',
     '................',
     '................',
     '................',
-    '................',
-  ], { w: '#f4f4f4', k: K, y: '#ffd94d' });
+  ], { k: K, w: '#f0ece4', W: '#ffffff', y: '#e8b83d' });
 
-  // thestral: black skeletal winged horse
+  // thestral: dark skeletal winged horse, bat wings raised, pale eyes
   reg('thestral', [
     '................',
-    '....kkk...kk....',
-    '....kkkkkkkk....',
-    '.....krkk.......',
-    '.....kkkk.......',
-    '...kkkkkkkk.....',
-    '.kkkkkkkkkkkk...',
-    '.kkkkkkkkkkkk...',
-    '..kkk.kkk.kk....',
-    '..kk..kk...k....',
+    '....kkk.kkk.....',
+    '...kdddkdddk....',
+    '...kdddkdddk....',
+    '.....kdddk......',
+    '.....kdwdk......',
+    '....kdddddk.....',
+    '..kkdddddddk....',
+    '.kdddddddddk....',
+    '.kddkddkddkdk...',
+    '..kdk...kdk.....',
+    '..kk....kk......',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { k: '#111114', r: '#e8e8e8' });
+  ], { k: K, d: '#232327', w: '#e8e8e8' });
 
-  // hippogriff: brown eagle-horse
+  // hippogriff: eagle head with gold beak, feathered brown fore, horse hind
   reg('hippogriff', [
     '................',
     '.......yy.......',
-    '......bbbb......',
-    '......bkb.......',
-    '......bbbb......',
-    '.....bbbbbb.....',
-    '..bbbbbbbbbb....',
-    '.bbbbbbbbbbbb...',
-    '.bbbbbbbbbbbb...',
-    '..bbb.bbb.bb....',
-    '..bb...bb.......',
+    '......kyyk......',
+    '......kbbk......',
+    '.....kbbkbk.....',
+    '.....kbbbbk.....',
+    '....kbbbbbbk....',
+    '..kkbbbbbbbkk...',
+    '.kbbbbbbbbbbk...',
+    '.kbBbbbbbbBbk...',
+    '..kbk...kbk.....',
+    '..kbk...kbk.....',
+    '..kkk...kkk.....',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { b: '#8a5a2a', k: K, y: '#e8a93d' });
+  ], { k: K, b: '#8a5c30', B: '#bd8f52', y: '#e8a93d' });
 
-  // phoenix: red-orange bird
+  // phoenix: red body, orange flame wings, gold beak
   reg('phoenix', [
     '................',
-    '.....rr.........',
-    '....rrrr..oo....',
-    '....rkrroooo....',
-    '....rrrroooo....',
-    '.....rroooo.....',
-    '......roo.......',
-    '.....rrr........',
-    '....rr.rr.......',
+    '.....kk.........',
+    '....krrk........',
+    '....krkrk..oo...',
+    '....krrky.ooo...',
+    '.....krrkoooo...',
+    '....krrrrkoo....',
+    '...krrorrooo....',
+    '...kroorro......',
+    '....krr.........',
+    '....kr.r........',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { r: '#e83a1a', o: '#ff9a2a', k: K });
+  ], { k: K, r: '#d43a1e', o: '#f08a2a', y: '#e8b83d' });
 
-  // thunderbird: yellow-blue lightning bird
+  // thunderbird: yellow body, blue wing bands, fanned tail
   reg('thunderbird', [
     '................',
     '..y........y....',
-    '..yy..yy..yy....',
-    '...yyyyyyyy.....',
-    '....ykyyy.......',
-    '.....yyy........',
-    '....yyyyy.......',
-    '...yybybyy......',
-    '..yy.....yy.....',
+    '..kyk....kyk....',
+    '...kyyyyyyk.....',
+    '....kykyyk......',
+    '.....kyyyk......',
+    '....kybybyk.....',
+    '...kybbybbk.....',
+    '..kyy....yyk....',
     '................',
     '................',
     '................',
@@ -358,38 +379,199 @@ function buildCreatures(): void {
     '................',
     '................',
     '................',
-  ], { y: '#ffe14d', b: '#3a7bff', k: K });
+  ], { k: K, y: '#f0c93d', b: '#4a7bd4' });
 
-  // bowtruckle: brown twig
+  // bowtruckle: small twig figure with leaf fingers
   reg('bowtruckle', [
     '................',
-    '......b.........',
-    '.....bb.........',
-    '....bbkb........',
-    '.....bb.........',
-    '....bbbb........',
-    '.....bb.........',
-    '....b..b........',
+    '......gg........',
+    '.....kggk.......',
+    '......kbk.......',
+    '.....kbkbk......',
+    '......kbk.......',
+    '.....kbbbk......',
+    '......kbk.......',
+    '.....kbkbk......',
+    '.....k.k.k......',
     '................',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { b: '#6b4a2a', k: K });
+  ], { k: K, b: '#6b4a2a', g: '#4a7a3a' });
 
-  // hinkypunk: dark wisp with lantern
+  // hinkypunk: dark wisp holding a glowing lantern
   reg('hinkypunk', [
     '................',
     '................',
     '.....kkkk.......',
-    '....kkkkkk......',
-    '....kkyykk......',
-    '....kkyykk......',
-    '....kkkkkk......',
+    '....kdddddk.....',
+    '....kdyyddk.....',
+    '....kdyYyddk....',
+    '....kdddddk.....',
+    '.....kdddk......',
+    '......kdk.......',
+    '.....kYYYk......',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+  ], { k: K, d: '#3a3a4a', y: '#ffe98a', Y: '#fff8dc' });
+
+  // redcap: red cap, dark squat body
+  reg('redcap', [
+    '................',
     '.....kkkk.......',
+    '....krrrrk......',
+    '...krrrrrrk.....',
+    '...krrRRrrk.....',
+    '....krrrrk......',
+    '.....kddk.......',
+    '....kddddk......',
+    '....kdkkdk......',
+    '....kddddk......',
+    '.....kddk.......',
+    '.....kdk........',
+    '................',
+    '................',
+    '................',
+    '................',
+  ], { k: K, r: '#b83a34', R: '#e06a5e', d: '#3a3a42' });
+
+  // niffler: dark round body, long snout, gold pouch
+  reg('niffler', [
+    '................',
+    '................',
+    '................',
+    '.....kkkk.......',
+    '....kddddk......',
+    '...kddddddk.....',
+    '...kddkdddk.....',
+    '..kkddddddk.....',
+    '.kppddddddk.....',
+    '.kppddddddk.....',
+    '..kkdyyddk......',
+    '....kdyydk......',
+    '.....kkkk.......',
+    '................',
+    '................',
+    '................',
+  ], { k: K, d: '#3a3a4a', p: '#9a7a64', y: '#e8b83d' });
+
+  // grindylow: green water demon, pale horns, sharp teeth
+  reg('grindylow', [
+    '................',
+    '....y....y......',
+    '.....kddk.......',
+    '....kddddk......',
+    '....kdkkdk......',
+    '....kddddk......',
+    '.....kwwk.......',
+    '....kddddk......',
+    '.....kddk.......',
+    '....kdk.kdk.....',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+  ], { k: K, d: '#3a8a5c', y: '#e8e8e8', w: '#f4f4f4' });
+
+  // erkling: green goblin, big pointed ears, sly grin
+  reg('erkling', [
+    '................',
+    '................',
+    '..k........k....',
+    '..kdk....kdk....',
+    '...kddddddk.....',
+    '...kdkkkdk......',
+    '...kddddddk.....',
+    '....kddddk......',
+    '....kdkkdk......',
+    '.....kddk.......',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+  ], { k: K, d: '#55a047' });
+
+  // kelpie: dark water horse, seaweed mane
+  reg('kelpie', [
+    '................',
+    '................',
+    '.......kk.......',
+    '......kbbk......',
+    '......kbkb......',
+    '.....kbbbbk.....',
+    '....kgbbbbk.....',
+    '..kkgbbbbbbk....',
+    '.kgbbbbbbbbk....',
+    '.kgbBbbBbbbk....',
+    '..kbk...kbk.....',
+    '..kbk...kbk.....',
+    '..kkk...kkk.....',
+    '................',
+    '................',
+    '................',
+  ], { k: K, b: '#265063', B: '#4a7a8a', g: '#3a7a5a' });
+
+  // occamy: teal serpent-bird, feathered wing, crest
+  reg('occamy', [
+    '................',
+    '.....kk.........',
+    '....kttk........',
+    '....ktktk.......',
+    '....kTttk.......',
+    '.....ktttk......',
+    '....kTttttk.....',
+    '...ktttttttk....',
+    '....ktttttk.....',
+    '.....ktttk......',
+    '......kttk......',
+    '.......kk.......',
+    '................',
+    '................',
+    '................',
+    '................',
+  ], { k: K, t: '#359a92', T: '#6ac4bc' });
+
+  // boggart: dark purple shifting blob, pale swirling face
+  reg('boggart', [
+    '................',
+    '................',
+    '....kkkkkk......',
+    '...kddddddk.....',
+    '...kdwwwwdk.....',
+    '...kdwkwkdk.....',
+    '...kdwwwwdk.....',
+    '...kddddddk.....',
+    '....kddddk......',
+    '...kdk..kdk.....',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+  ], { k: K, d: '#4a3560', w: '#e8e8f0' });
+
+  // runespoor: three-headed orange snake, dark stripes
+  reg('runespoor', [
+    '................',
+    '...k..k..k......',
+    '...kokokok......',
+    '...kokokok......',
+    '....kokok.......',
+    '....koook.......',
+    '.....kook.......',
+    '.....kook.......',
+    '......kok.......',
     '......kk........',
     '................',
     '................',
@@ -397,338 +579,178 @@ function buildCreatures(): void {
     '................',
     '................',
     '................',
-    '................',
-  ], { k: '#2a2a3a', y: '#ffe98a' });
+  ], { k: K, o: '#d47a2a', O: '#e89a4e' });
 
-  // redcap: red cap, dark body
-  reg('redcap', [
-    '................',
-    '.....rrrr.......',
-    '....rrrrrr......',
-    '....rrrrrr......',
-    '.....kkkk.......',
-    '.....kkkk.......',
-    '....kkkkkk......',
-    '....kkkkkk......',
-    '.....k..k.......',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { r: '#c81a1a', k: '#2a2a2a' });
-
-  // niffler: dark with gold pouch
-  reg('niffler', [
-    '................',
-    '................',
-    '.....kkkk.......',
-    '....kkkkkk......',
-    '....kkkkkk......',
-    '.....kkkk.......',
-    '....kyyyk.......',
-    '....kyyyk.......',
-    '.....kkkk.......',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { k: '#3a3a4a', y: '#ffd94d' });
-
-  // grindylow: green horned water demon
-  reg('grindylow', [
-    '................',
-    '....y....y......',
-    '.....gggg.......',
-    '....gggggg......',
-    '....gkggkg......',
-    '....gggggg......',
-    '.....gggg.......',
-    '....gggggg......',
-    '.....g..g.......',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { g: '#2a8a5a', k: K, y: '#e8e8e8' });
-
-  // erkling: green goblin
-  reg('erkling', [
-    '................',
-    '................',
-    '.....gggg.......',
-    '....gggggg......',
-    '....gkggkg......',
-    '....gggggg......',
-    '.....gggg.......',
-    '....gggggg......',
-    '.....g..g.......',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { g: '#4a9a3a', k: K });
-
-  // kelpie: dark water horse
-  reg('kelpie', [
-    '................',
-    '.......bb.......',
-    '......bbbb......',
-    '......bkb.......',
-    '......bbbb......',
-    '.....bbbbbb.....',
-    '..bbbbbbbbbb....',
-    '.bbbbbbbbbbbb...',
-    '..bbb.bbb.......',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { b: '#1a3a4a', k: K });
-
-  // occamy: teal serpent-bird
-  reg('occamy', [
-    '................',
-    '.....tt.........',
-    '....tttt........',
-    '....tkt.........',
-    '....tttt........',
-    '.....ttt........',
-    '.....tttt.......',
-    '......tttt......',
-    '.......ttt......',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { t: '#2a9a9a', k: K });
-
-  // boggart: shifting dark blob with ?
-  reg('boggart', [
-    '................',
-    '................',
-    '....kkkkkk......',
-    '...kkkkkkkk.....',
-    '...kkwwwwkk.....',
-    '...kkwkwkk......',
-    '...kkwwwwkk.....',
-    '...kkkkkkkk.....',
-    '....kkkkkk......',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { k: '#3a2a4a', w: '#e8e8e8' });
-
-  // runespoor: three-headed snake
-  reg('runespoor', [
-    '................',
-    '...g..g..g......',
-    '...gg.gg.gg.....',
-    '...gggggggg.....',
-    '....gggggg......',
-    '....gggggg......',
-    '.....gggg.......',
-    '.....gggg.......',
-    '......gg........',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { g: '#3a7b3a' });
-
-  // skrewt: armoured scorpion
+  // skrewt: armoured plates, pale joints, red stinger tail
   reg('skrewt', [
     '................',
     '................',
-    '.....aaaa.......',
-    '....aaaaaa......',
-    '...aaaaaaaa.....',
-    '..aaaaaaaaaa....',
-    '..aakaaakaak....',
-    '..aaaaaaaaaa....',
-    '...aa.aa.aa.....',
-    '.........s......',
+    '.....kkkk.......',
+    '....kaaaak......',
+    '...kaaaaaak.....',
+    '..kaakaaakaak...',
+    '..kaaaaaaaaak...',
+    '...kaakaaak.....',
+    '....kaaaak......',
+    '.....kaaak..k...',
+    '..........ksk...',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-  ], { a: '#7a5a3a', k: K, s: '#c81a1a' });
+  ], { k: K, a: '#8a6238', s: '#d43a2a' });
 
-  // werewolf: grey wolf humanoid
+  // werewolf: grey wolf, pricked ears, snout, clawed paws
   reg('werewolf', [
     '................',
-    '....w....w......',
-    '....wwwwww......',
-    '....wkwkw.......',
-    '....wwwwww......',
-    '.....wwww.......',
-    '....wwwwww......',
-    '....wwwwww......',
-    '.....w..w.......',
+    '....kk..kk......',
+    '...kwwkkwwk.....',
+    '...kwwwwwwk.....',
+    '...kwkwwkwk.....',
+    '....kwwwwk......',
+    '...kkwwwwkk.....',
+    '..kwwwwwwwwk....',
+    '..kwWwwwwWwk....',
+    '..kwwwwwwwwk....',
+    '...kwk..kwk.....',
+    '...kkk..kkk.....',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-    '................',
-  ], { w: '#7a7f8a', k: K });
+  ], { k: K, w: '#82878f', W: '#a8adb5' });
 
-  // manticore: red lion-scorpion
+  // manticore: rust-red lion body, darker mane, scorpion tail
   reg('manticore', [
     '................',
-    '.....rrrr.......',
-    '....rrrrrr......',
-    '....rkrkrr......',
-    '....rrrrrr......',
-    '.....rrrr.......',
-    '....rrrrrr......',
-    '...rrrrrrrr.s...',
-    '....rr..rr..s...',
+    '................',
+    '.....kkkk.......',
+    '....krrrrk......',
+    '...krrrrrrk.....',
+    '...krkrrkrk.....',
+    '...krrrrrrk.....',
+    '....krrrrk..k...',
+    '....krrrrk...k..',
+    '.....krrk...sk..',
     '.............s..',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-  ], { r: '#a83a2a', k: K, s: '#5a2a1a' });
+  ], { k: K, r: '#b04432', s: '#d43a2a' });
 
-  // chimera: three-part beast (lion head, goat body, snake tail)
+  // chimera: lion head and fore, goat-brown mid, snake tail
   reg('chimera', [
     '................',
-    '.....oooo.......',
-    '....oooooo......',
-    '....okokoo..g...',
-    '....ooooooggg...',
-    '.....ooooggg....',
-    '....oooooogg....',
-    '.....oo..o......',
+    '................',
+    '.....kkkk.......',
+    '....kooook......',
+    '...kookokok.....',
+    '...kooooook..k..',
+    '....kooookggg...',
+    '...kooooookgg...',
+    '....koo.kok.....',
+    '....kk...kk.....',
     '................',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { o: '#c88a3a', k: K, g: '#4a7a3a' });
+  ], { k: K, o: '#cf9040', g: '#4a7a3a' });
 
-  // basilisk: green giant serpent
+  // basilisk: green serpent, big yellow eyes, pale fangs, coiled tail
   reg('basilisk', [
     '................',
-    '....gggg........',
-    '...gggggg.......',
-    '...gygygg.......',
-    '...gggggg.......',
-    '....gggg........',
-    '....ggggg.......',
-    '.....ggggg......',
-    '......gggg......',
-    '.......gg.......',
+    '....kkkk........',
+    '...kggggk.......',
+    '...kygygyk......',
+    '...kggggk.......',
+    '....kwwk........',
+    '....kgggk.......',
+    '....kggggk......',
+    '.....kggggk.....',
+    '......kgggk.....',
+    '.......kk.......',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-  ], { g: '#2a7b2a', y: '#ffe14d' });
+  ], { k: K, g: '#3a8a3c', y: '#ffe14d', w: '#f4f4f4' });
 
-  // nundu: grey leopard
+  // nundu: grey spotted leopard
   reg('nundu', [
     '................',
     '................',
-    '.....nnnn.......',
-    '....nnnnnn......',
-    '....nknknn......',
-    '....nnnnnn......',
-    '.....nnnn.......',
-    '....nnnnnn......',
-    '.....nn.nn......',
+    '................',
+    '.....kkkk.......',
+    '....knnnnk......',
+    '...knnnnnnk.....',
+    '...knknknk......',
+    '...knnnnnnk.....',
+    '....knnnnk......',
+    '...knknknknk....',
+    '...knnnnnnk.....',
+    '....knk.knk.....',
+    '....kk...kk.....',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-    '................',
-    '................',
-  ], { n: '#8a8a8a', k: K });
+  ], { k: K, n: '#9099a0' });
 
-  // dragon: red, wings spread
+  // dragon: red body, darker spread wings, gold eyes, curling tail
   reg('dragon', [
     '................',
-    '.rr........rr...',
-    '.rrr......rrr...',
-    '.rrrr.rr.rrrr...',
-    '..rrrrrrrrrr....',
-    '...rrrrrrrr.....',
-    '....rryyrr......',
-    '....rrrrrr......',
-    '.....rrrr.......',
-    '.....rrrr.......',
-    '......rr........',
-    '......rr........',
+    '.kk........kk...',
+    '.kdk......kdk...',
+    '.kddk.rr.kddk...',
+    '..kddkrrrrkddk..',
+    '...kddrrrrddk...',
+    '....kdryyrdk....',
+    '....kdrrrrdk....',
+    '.....kdrrdk.....',
+    '.....kdrrdk.....',
+    '......kddk......',
+    '......kdk.......',
     '................',
     '................',
     '................',
     '................',
-  ], { r: '#c81a1a', y: '#ffe14d' });
+  ], { k: K, r: '#c04534', d: '#a03828', y: '#ffe14d' });
 
-  // serpent (summon): simple green snake
+  // serpent (summon): simple green snake, raised head
   reg('serpent', [
     '................',
     '................',
-    '....gg..........',
-    '...gggg.........',
-    '...gkgg.........',
-    '...gggg.........',
-    '....gggg........',
-    '.....gggg.......',
-    '......ggg.......',
+    '....kk..........',
+    '...kggk.........',
+    '...kgkgk........',
+    '...kgggk........',
+    '....kgggk.......',
+    '.....kgggk......',
+    '......kggk......',
+    '.......kk.......',
     '................',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-  ], { g: '#3a9a3a', k: K });
+  ], { k: K, g: '#43a047' });
 
-  // birds (summon): small blue birds
+  // birds (summon): two small blue birds with gold beaks
   reg('birds', [
     '................',
     '................',
-    '..b......b......',
-    '.bbb....bbb.....',
-    '.bkb....bkb.....',
-    '.bbb....bbb.....',
-    '..b......b......',
+    '..kk......kk....',
+    '.kbbk....kbbk...',
+    '.kbkbk...kbkbk..',
+    '.kbbbk...kbbbk..',
+    '..kwk.....kwk...',
+    '...k.......k....',
     '................',
     '................',
     '................',
@@ -737,8 +759,7 @@ function buildCreatures(): void {
     '................',
     '................',
     '................',
-    '................',
-  ], { b: '#5a9ae8', k: K });
+  ], { k: K, b: '#5f97dd', w: '#e8a93d' });
 }
 
 // ---------------------------------------------------------------------------
@@ -746,36 +767,36 @@ function buildCreatures(): void {
 // ---------------------------------------------------------------------------
 
 function buildChests(): void {
-  // plain wooden chest
+  // plain wooden chest: highlight plank, metal bands, keyhole
   reg('chest', [
     '................',
     '................',
-    '..bbbbbbbbbbbb..',
-    '..bybbbbbbbybb..',
-    '..bbbbbbbbbbbb..',
-    '..bbbbyyybbbbb..',
-    '..bbbyyyyyybbb..',
-    '..bbbyykkybbb...',
-    '..bbbyyyyyybbb..',
-    '..bbbbbbbbbbbb..',
-    '..bbbbbbbbbbbb..',
-    '................',
-  ], { b: '#7a5230', y: '#d4a017', k: K });
-  // ornate gold chest
+    '..kkkkkkkkkkkk..',
+    '..kbBbbbbbbBbk..',
+    '..kbybbbbbybbk..',
+    '..kbbbbbbbbbbk..',
+    '..kbbbbbyybbbk..',
+    '..kbbbyyyyybbk..',
+    '..kbbbyykkybbk..',
+    '..kbbbyyyyybbk..',
+    '..kbbbbbbbbbbk..',
+    '..kkkkkkkkkkkk..',
+  ], { k: K, b: '#7a5230', B: '#a87c48', y: '#c99a2e' });
+  // ornate gold chest: bright gold, darker trim, pale lock plate
   reg('chest-gold', [
     '................',
     '................',
-    '..yyyyyyyyyyyy..',
-    '..yoyyyyyyyoyy..',
-    '..yyyyyyyyyyyy..',
-    '..yyyywwyyyyyy..',
-    '..yywwwwwwyyyy..',
-    '..yywwkkwwyyyy..',
-    '..yywwwwwwyyyy..',
-    '..yyyyyyyyyyyy..',
-    '..yyyyyyyyyyyy..',
-    '................',
-  ], { y: '#d4a017', o: '#a87810', w: '#ffe98a', k: K });
+    '..kkkkkkkkkkkk..',
+    '..kyyyyyyyyyyk..',
+    '..kyoyyyyyyoyk..',
+    '..kyyyyyyyyyyk..',
+    '..kyyyyywwyyyk..',
+    '..kyywwwwwwyyk..',
+    '..kyywwkkwwyyk..',
+    '..kyywwwwwwyyk..',
+    '..kyyyyyyyyyyk..',
+    '..kkkkkkkkkkkk..',
+  ], { k: K, y: '#d4a017', o: '#a87810', w: '#ffe98a' });
 }
 
 // ---------------------------------------------------------------------------
@@ -783,153 +804,154 @@ function buildChests(): void {
 // ---------------------------------------------------------------------------
 
 function buildProps(): void {
-  // crate: wooden box
+  // crate: wooden box with cross brace
   reg('crate', [
     '................',
     '................',
-    '...bbbbbbbbbb...',
-    '...bkkkkkkkkb...',
-    '...bkbkkkkbkb...',
-    '...bkkbbbbkkb...',
-    '...bkkbbbbkkb...',
-    '...bkbkkkkbkb...',
-    '...bkkkkkkkkb...',
-    '...bbbbbbbbbb...',
+    '...kkkkkkkkkk...',
+    '...kbbbbbbbbk...',
+    '...kbBbbbbBbk...',
+    '...kbkbbbbkbk...',
+    '...kbbkbbkbbk...',
+    '...kbbbkkbbbk...',
+    '...kbbkbbkbbk...',
+    '...kbkbbbbkbk...',
+    '...kbbbbbbbbk...',
+    '...kkkkkkkkkk...',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { b: '#8a6238', k: '#5a3e22' });
+  ], { k: K, b: '#8a6238', B: '#bd8f52' });
 
-  // barrel
+  // barrel: wood staves with dark metal bands
   reg('barrel', [
     '................',
     '................',
-    '....bbbbbbbb....',
-    '...bbbbbbbbbb...',
-    '...bbssssssbb...',
-    '...bbbbbbbbbb...',
-    '...bbbbbbbbbb...',
-    '...bbssssssbb...',
-    '...bbbbbbbbbb...',
-    '....bbbbbbbb....',
+    '....kkkkkkkk....',
+    '...kbbbbbbbbk...',
+    '...kbBbbbbBbk...',
+    '...kssssssssk...',
+    '...kbbbbbbbbk...',
+    '...kbBbbbbBbk...',
+    '...kbbbbbbbbk...',
+    '...kssssssssk...',
+    '...kbbbbbbbbk...',
+    '....kkkkkkkk....',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { b: '#7a5230', s: '#4a3018' });
+  ], { k: K, b: '#7a5230', B: '#a87c48', s: '#4a4a52' });
 
-  // pumpkin
+  // pumpkin: ridged orange pumpkin, green stem
   reg('pumpkin', [
     '................',
-    '................',
-    '.......g........',
-    '....oooooooo....',
-    '...oooooooooo...',
-    '...okokookoo....',
-    '...oooooooooo...',
-    '...oooooooooo...',
-    '....oooooooo....',
-    '................',
-    '................',
-    '................',
+    '.......kk.......',
+    '......kggk......',
+    '....kkooooook...',
+    '..kooooooooook..',
+    '..kokooookokook.',
+    '..koOooooooOook.',
+    '..kokooookokook.',
+    '..kooooooooook..',
+    '...kooooooook...',
     '................',
     '................',
     '................',
     '................',
-  ], { o: '#e8762a', k: K, g: '#3a7b2a' });
+    '................',
+    '................',
+  ], { k: K, o: '#dd7a35', O: '#f5a55e', g: '#3a7b2a' });
 
-  // pot: clay pot
+  // pot: clay pot with rim
   reg('pot', [
     '................',
     '................',
-    '....pppppppp....',
-    '....pppppppp....',
-    '.....pppppp.....',
-    '.....pppppp.....',
-    '.....pppppp.....',
-    '......pppp......',
-    '......pppp......',
+    '....kkkkkkkk....',
+    '...kppppppppk...',
+    '...kpPppppPpk...',
+    '....kppppppk....',
+    '....kppppppk....',
+    '....kpPppPpk....',
+    '.....kppppk.....',
+    '.....kkkkkk.....',
     '................',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-  ], { p: '#a85a32' });
+  ], { k: K, p: '#a86a42', P: '#d89a68' });
 
-  // mushroom
+  // mushroom: red cap with white dots, cream stem
   reg('mushroom', [
     '................',
     '................',
-    '.....rrrrrr.....',
-    '....rwwrrwrr....',
-    '....rrrrrrrr....',
-    '.....rrrrrr.....',
-    '.......ss.......',
-    '.......ss.......',
-    '.......ss.......',
+    '.....kkkkkk.....',
+    '....krrrrrrk....',
+    '...krwrrrrwrk...',
+    '...krrrrrrrrk...',
+    '....krrrrrrk....',
+    '.....krrrrk.....',
+    '......kssk......',
+    '......kssk......',
+    '.....kksskk.....',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { r: '#c83a3a', w: '#f4f4f4', s: '#e8dcc8' });
+  ], { k: K, r: '#c14a44', w: '#f4f4f4', s: '#e8dcc8' });
 
-  // brazier: fire bowl
+  // brazier: fire bowl on a stand
   reg('brazier', [
     '................',
-    '................',
-    '......yy........',
-    '.....yory.......',
-    '......yy........',
-    '....bbbbbb......',
-    '.....bbbb.......',
-    '......bb........',
-    '......bb........',
-    '.....bbbb.......',
-    '................',
-    '................',
+    '......kyk.......',
+    '.....kyoyk......',
+    '......kyk.......',
+    '....kkbbbkk.....',
+    '...kbbbbbbbk....',
+    '....kbbbbbk.....',
+    '.....kbkb.......',
+    '.....kbkb.......',
+    '....kkbbkk......',
     '................',
     '................',
     '................',
     '................',
-  ], { y: '#ffe14d', o: '#ff7a2a', r: '#e83a1a', b: '#5a5a5a' });
+    '................',
+    '................',
+  ], { k: K, y: '#ffe14d', o: '#ff7a2a', b: '#5a5650' });
 
-  // crystal
+  // crystal: blue crystal cluster, white facet glints
   reg('crystal', [
     '................',
-    '.......cc.......',
-    '......cccc......',
-    '......cwwc......',
-    '.....cccccc.....',
-    '.....cwwccc.....',
-    '......cccc......',
-    '......cccc......',
+    '.......kk.......',
+    '......kcck......',
+    '......kwcck.....',
+    '.....kcccck.....',
+    '....kccwccck....',
+    '....kcccccck....',
+    '.....kcccck.....',
+    '.....kcccck.....',
+    '......kkkk......',
     '................',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-    '................',
-  ], { c: '#7ad4ff', w: '#ffffff' });
+  ], { k: K, c: '#6ec8f0', w: '#ffffff' });
 
-  // lantern
+  // lantern: dark frame, warm glowing panes
   reg('lantern', [
     '................',
     '................',
     '......kk........',
     '.....kkkk.......',
     '.....kyyk.......',
+    '.....kyYyk......',
     '.....kyyk.......',
     '.....kyyk.......',
     '.....kkkk.......',
@@ -940,19 +962,18 @@ function buildProps(): void {
     '................',
     '................',
     '................',
-    '................',
-  ], { k: K, y: '#ffe98a' });
+  ], { k: K, y: '#ffe98a', Y: '#fff8dc' });
 
-  // cauldron
+  // cauldron: dark iron pot, bubbling green brew
   reg('cauldron', [
     '................',
     '................',
-    '.....kkkkkk.....',
-    '....kggggk......',
-    '....kkkkkk......',
-    '....kkkkkk......',
-    '.....kkkk.......',
-    '.....k..k.......',
+    '....kkkkkkkk....',
+    '...kgGGgggggk...',
+    '...kkkkkkkkkk...',
+    '...kkkkkkkkkk...',
+    '....kkkkkkkk....',
+    '....kk..kk......',
     '................',
     '................',
     '................',
@@ -961,38 +982,38 @@ function buildProps(): void {
     '................',
     '................',
     '................',
-  ], { k: '#2a2a2a', g: '#5aff7a' });
+  ], { k: K, g: '#58d86e', G: '#a8f0b8' });
 
-  // bench
+  // bench: wooden bench
   reg('bench', [
     '................',
     '................',
     '................',
     '................',
-    '...bbbbbbbbbb...',
-    '...bbbbbbbbbb...',
-    '....b......b....',
-    '....b......b....',
-    '....b......b....',
+    '...kkkkkkkkkk...',
+    '...kbbbbbbbbk...',
+    '...kbBbbbbBbk...',
+    '....kbk..kbk....',
+    '....kbk..kbk....',
+    '....kkk..kkk....',
     '................',
     '................',
     '................',
     '................',
     '................',
     '................',
-    '................',
-  ], { b: '#7a5230' });
+  ], { k: K, b: '#7a5230', B: '#a87c48' });
 
-  // rune stone
+  // rune stone: grey stone with glowing blue rune
   reg('rune', [
     '................',
     '................',
-    '......ssss......',
-    '.....ssssss.....',
-    '.....swwsss.....',
-    '.....swssss.....',
-    '.....ssssss.....',
-    '......ssss......',
+    '......kkkk......',
+    '.....kssssk.....',
+    '.....kswssk.....',
+    '.....kswssk.....',
+    '.....kssssk.....',
+    '......kkkk......',
     '................',
     '................',
     '................',
@@ -1001,9 +1022,9 @@ function buildProps(): void {
     '................',
     '................',
     '................',
-  ], { s: '#8a8f98', w: '#5a7bff' });
+  ], { k: K, s: '#8a8f98', w: '#6a86ff' });
 
-  // web (spider web prop)
+  // web: spider web
   reg('web', [
     '................',
     '................',
@@ -1021,27 +1042,27 @@ function buildProps(): void {
     '................',
     '................',
     '................',
-  ], { w: '#d8d8e8' });
+  ], { w: '#a8a8c4' });
 
-  // tombstone: grey stone (战后世界 kernel/aftermath.ts)
+  // tombstone: grey stone with carved marks, highlight edge
   reg('tombstone', [
     '................',
     '................',
-    '.....gggggg.....',
-    '....gggggggg....',
-    '....ggkggkgg....',
-    '....gggggggg....',
-    '....ggkggkgg....',
-    '....gggggggg....',
-    '....gggggggg....',
-    '.....gggggg.....',
-    '...gggggggggg...',
+    '.....kkkkkk.....',
+    '....kssssssk....',
+    '...kSSssssssk...',
+    '...kssksskssk...',
+    '...kssssssssk...',
+    '...kssksskssk...',
+    '...kssssssssk...',
+    '...kssssssssk...',
+    '..kkkkkkkkkkkk..',
     '................',
     '................',
     '................',
     '................',
     '................',
-  ], { g: '#8a8d94', k: K });
+  ], { k: K, s: '#8a8d94', S: '#b8bcc2' });
 }
 
 // ---------------------------------------------------------------------------
@@ -1049,85 +1070,85 @@ function buildProps(): void {
 // ---------------------------------------------------------------------------
 
 function buildLoot(): void {
-  // coin: gold galleon
+  // coin: gold galleon with pale glint
   reg('coin', [
     '............',
     '............',
-    '....yyyy....',
-    '...yyyyyy...',
-    '...ywyyyy...',
-    '...yyyyyy...',
-    '...yyyyyy...',
-    '....yyyy....',
+    '....kkkk....',
+    '...kyyyyk...',
+    '..kyywwyyk..',
+    '..kyyyyyyk..',
+    '..kyyyyyyk..',
+    '..kyywwyyk..',
+    '...kyyyyk...',
+    '....kkkk....',
     '............',
     '............',
-    '............',
-    '............',
-  ], { y: '#ffd94d', w: '#fff4c8' });
+  ], { k: K, y: '#f0c93d', w: '#fff4c8' });
 
-  // mana: blue orb
+  // mana: blue orb with pale glint
   reg('mana', [
     '............',
     '............',
-    '....bbbb....',
-    '...bwwbbb...',
-    '...wbbbbb...',
-    '...bbbbbb...',
-    '...bbbbbb...',
-    '....bbbb....',
+    '....kkkk....',
+    '...kbbbbk...',
+    '..kbwbbbbk..',
+    '..kwbbbbbk..',
+    '..kbbbbbbk..',
+    '..kbbbbbbk..',
+    '...kbbbbk...',
+    '....kkkk....',
     '............',
     '............',
-    '............',
-    '............',
-  ], { b: '#3a7bff', w: '#cfe4ff' });
+  ], { k: K, b: '#4a7bd4', w: '#cfe4ff' });
 
-  // heart: red heart
+  // heart: red heart with pale glint
   reg('heart', [
     '............',
     '............',
-    '...rr..rr...',
-    '...rrrrrr...',
-    '...rrrrrr...',
-    '....rrrr....',
-    '.....rr.....',
+    '...kk..kk...',
+    '..krrkkrrk..',
+    '..krwrrrrk..',
+    '..krrrrrrk..',
+    '...krrrrk...',
+    '....krrk....',
+    '.....kk.....',
     '............',
     '............',
     '............',
-    '............',
-    '............',
-  ], { r: '#e83a4a' });
+  ], { k: K, r: '#d94a55', w: '#ffd8dc' });
 
-  // potion: bottle
+  // potion: corked bottle, magenta brew, pale glint
   reg('potion', [
     '............',
     '............',
     '.....kk.....',
     '.....kk.....',
-    '....pppp....',
-    '....pwwp....',
-    '....pppp....',
-    '....pppp....',
-    '.....pp.....',
+    '....kppk....',
+    '...kpwppk...',
+    '...kppppk...',
+    '...kppppk...',
+    '....kppk....',
+    '....kkkk....',
     '............',
     '............',
-    '............',
-  ], { k: '#8a6238', p: '#c83a8a', w: '#f4c8e8' });
+  ], { k: K, p: '#c04a92', w: '#f4c8e8' });
 
-  // herb: green sprig
+  // herb: green sprig with light leaf tips
   reg('herb', [
     '............',
     '............',
-    '.....g......',
-    '....ggg.....',
-    '...ggggg....',
-    '....ggg.....',
-    '.....g......',
+    '.....kk.....',
+    '....kggk....',
+    '...kgGGgk...',
+    '....kggk....',
+    '.....kk.....',
+    '.....kk.....',
     '............',
     '............',
     '............',
     '............',
-    '............',
-  ], { g: '#3a9a3a' });
+  ], { k: K, g: '#4a9a4a', G: '#7cc47c' });
 }
 
 // ---------------------------------------------------------------------------
