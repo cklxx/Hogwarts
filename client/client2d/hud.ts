@@ -142,9 +142,15 @@ export function mountHUD(container: HTMLElement): void {
 // ------------------------------------------------------------------ update
 
 function setBar(sel: string, frac: number): void {
+  const f = Math.max(0, Math.min(1, frac));
+  // skip redundant DOM writes: snapshots arrive at 5Hz, bars rarely change
+  const prev = barCache.get(sel);
+  if (prev !== undefined && Math.abs(prev - f) < 0.002) return;
+  barCache.set(sel, f);
   const el = root?.querySelector<HTMLElement>(`${sel} i`);
-  if (el) el.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+  if (el) el.style.width = `${f * 100}%`;
 }
+const barCache = new Map<string, number>();
 
 function drawMinimap(s: HudSnapshot): void {
   const g = mm?.getContext('2d');
@@ -172,27 +178,38 @@ function drawMinimap(s: HudSnapshot): void {
 }
 
 /** The single entry point: refresh every HUD element from one snapshot. */
+let lastDay = -1, lastTotal = -1;
+const slotSigs: string[] = new Array(9).fill('');
 export function updateHUD(s: HudSnapshot): void {
   if (!root) return;
-  // top-center: war week countdown
+  // top-center: war week countdown (day changes at most once per term)
   const day = Math.max(1, s.warweek?.day ?? 1), total = s.warweek?.total ?? 7;
-  const ww = root.querySelector<HTMLElement>('#ww')!;
-  ww.querySelector('.day')!.textContent = `Day ${day} / ${total}`;
-  ww.querySelector<HTMLElement>('.bar i')!.style.width = `${(day / total) * 100}%`;
-  ww.classList.toggle('final', day >= total);
-  // hp / mana bars
+  if (day !== lastDay || total !== lastTotal) {
+    lastDay = day; lastTotal = total;
+    const ww = root.querySelector<HTMLElement>('#ww')!;
+    ww.querySelector('.day')!.textContent = `Day ${day} / ${total}`;
+    ww.querySelector<HTMLElement>('.bar i')!.style.width = `${(day / total) * 100}%`;
+    ww.classList.toggle('final', day >= total);
+  }
+  // hp / mana bars (setBar skips unchanged fractions)
   setBar('#bars .hp', s.me.hp / Math.max(1, s.me.maxHp));
   setBar('#bars .mp', s.me.mana / Math.max(1, s.me.maxMana));
   // minimap
   drawMinimap(s);
-  // hotbar: 9 slots
+  // hotbar: 9 slots, skip slots whose signature didn't change
   const hb = root.querySelector<HTMLElement>('#hotbar')!;
   for (let i = 0; i < 9; i++) {
     const slot = s.hotbar[i] ?? null;
+    const poor = !!slot && slot.mana != null && s.me.mana + 0.5 < slot.mana;
+    const sig = slot
+      ? `${i === s.selected ? 1 : 0}|${slot.id}|${slot.name}|${slot.mana ?? ''}|${Math.ceil(slot.cd)}|${poor ? 1 : 0}`
+      : `${i === s.selected ? 1 : 0}|empty`;
+    if (sig === slotSigs[i]) continue;
+    slotSigs[i] = sig;
     const el = hb.children[i] as HTMLElement;
     el.classList.toggle('sel', i === s.selected);
     el.classList.toggle('empty', !slot);
-    el.classList.toggle('poor', !!slot && slot.mana != null && s.me.mana + 0.5 < slot.mana);
+    el.classList.toggle('poor', poor);
     (el.querySelector('.ic') as HTMLElement).textContent = slot ? glyph(slot) : '·';
     (el.querySelector('.nm') as HTMLElement).textContent = slot ? short(slot.name) : '—';
     (el.querySelector('.cost') as HTMLElement).textContent = slot?.mana != null ? String(slot.mana) : '';

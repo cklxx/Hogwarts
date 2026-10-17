@@ -43,6 +43,18 @@ const ZONES: Zone[] = [
 // default ground color outside zones
 const GROUND = '#557d46';
 
+// ------------------------------------------------------------------ per-frame hot-path caches
+// These avoid per-entity allocations and string work inside draw():
+// - HOSTILE_KINDS: Set lookup instead of a per-creature array literal
+// - elemCss: precomputed '#rrggbb' per Element (css() does toString(16) per call)
+const HOSTILE_KINDS = new Set(['dementor', 'spider', 'troll', 'basilisk', 'dragon', 'aragog', 'nundu', 'chimera', 'manticore', 'lethifold', 'werewolf']);
+const elemCssCache = new Map<Element, string>();
+const elemCss = (e: Element): string => {
+  let s = elemCssCache.get(e);
+  if (!s) { s = css(ELEMENT_COLORS[e] ?? 0xffffff); elemCssCache.set(e, s); }
+  return s;
+};
+
 // ------------------------------------------------------------------ terrain texture: pre-rendered once, blitted per frame
 const TPX = 3; // texture px per world unit
 const TB = { x0: -280, z0: -280, x1: 280, z1: 360 }; // texture world bounds
@@ -249,10 +261,16 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   function setSnap(s: Snap) { snap = s; }
   function setMe(h: string) { myHandle = h; }
 
+  // view size in CSS px, refreshed each draw() (avoids recomputing per entity)
+  let vw = 0, vh = 0;
+  // canvas state caches: setting font/textAlign re-parses the string each time
+  let curFont = '', curAlign = '';
+  const setFont = (f: string) => { if (f !== curFont) { ctx.font = f; curFont = f; } };
+  const setAlign = (a: CanvasTextAlign) => { if (a !== curAlign) { ctx.textAlign = a; curAlign = a; } };
+
   // world -> screen
   const w2s = (x: number, z: number): [number, number] => {
-    const sx = canvas.width / devicePixelRatio, sy = canvas.height / devicePixelRatio;
-    return [(x - cam.x) * cam.zoom + sx / 2, (z - cam.z) * cam.zoom + sy / 2];
+    return [(x - cam.x) * cam.zoom + vw / 2, (z - cam.z) * cam.zoom + vh / 2];
   };
   const s2w = (sx: number, sy: number): { x: number; z: number } => {
     const w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
@@ -263,8 +281,18 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   // cull: is world point inside view?
   const visible = (x: number, z: number, pad = 40): boolean => {
     const [sx, sy] = w2s(x, z);
-    const w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
-    return sx > -pad && sx < w + pad && sy > -pad && sy < h + pad;
+    return sx > -pad && sx < vw + pad && sy > -pad && sy < vh + pad;
+  };
+
+  // me lookup, cached per snapshot object (was: O(n) find with closure per frame)
+  let lastSnapObj: Snap | null = null;
+  let meCache: SW | null = null;
+  const meOf = (): SW | null => {
+    if (snap !== lastSnapObj) {
+      lastSnapObj = snap;
+      meCache = snap?.w.find((w) => w.h === myHandle) ?? null;
+    }
+    return meCache;
   };
 
   let lastT = 0;
@@ -275,7 +303,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
 
     // camera: follow me, or WASD pan
     if (snap) {
-      const me = snap.w.find((w) => w.h === myHandle);
+      const me = meOf();
       if (follow && me) { cam.x = me.x; cam.z = me.z; }
     }
     const pan = 320 * dt / cam.zoom;
@@ -290,6 +318,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   function draw() {
     const t0 = PERF ? performance.now() : 0;
     const W = canvas.width / devicePixelRatio, H = canvas.height / devicePixelRatio;
+    vw = W; vh = H;
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
     // --- ground: single pre-rendered texture blit (culling = source-rect clamp) ---
@@ -318,16 +347,16 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       if (zn.label && cam.zoom > 0.7) {
         const [sx, sy] = w2s(zn.x0, zn.z0);
         ctx.fillStyle = night ? '#cfd4dc' : '#2c2c2c';
-        ctx.font = `${Math.max(10, 12 * cam.zoom)}px sans-serif`;
-        ctx.textAlign = 'center';
+        setFont(`${Math.max(10, 12 * cam.zoom)}px sans-serif`);
+        setAlign('center');
         ctx.fillText(zn.label, sx + scale(zn.x1 - zn.x0) / 2, sy + 16);
       }
     }
 
     if (!snap) {
       ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.textAlign = 'center';
+      setFont('16px sans-serif');
+      setAlign('center');
       ctx.fillText('等待快照…', W / 2, H / 2);
       perfEnd(t0);
       return;
@@ -338,7 +367,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const [sx, sy] = w2s(snap.elder.x, snap.elder.z);
       ctx.fillStyle = '#d4af37';
       ctx.fillRect(sx - 4, sy - 4, 8, 8);
-      ctx.fillStyle = '#fff'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff'; setFont('10px sans-serif'); setAlign('center');
       ctx.fillText('E', sx, sy + 12);
     }
 
@@ -349,7 +378,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const size = Math.max(14, 22 * cam.zoom);
       drawSprite(ctx, 'tombstone', sx - size / 2, sy - size / 2, size, size);
       if (cam.zoom > 0.9) {
-        ctx.fillStyle = '#c9c9d4'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#c9c9d4'; setFont('10px sans-serif'); setAlign('center');
         ctx.fillText(t.n.split(' ').pop() ?? t.n, sx, sy + size / 2 + 11);
       }
     }
@@ -358,7 +387,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     for (const p of snap.p) {
       if (!visible(p.x, p.z)) continue;
       const [sx, sy] = w2s(p.x, p.z);
-      ctx.fillStyle = css(ELEMENT_COLORS[p.e] ?? 0xffffff);
+      ctx.fillStyle = elemCss(p.e);
       ctx.beginPath();
       ctx.arc(sx, sy, Math.max(2, 3 * cam.zoom), 0, Math.PI * 2);
       ctx.fill();
@@ -370,7 +399,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const [sx, sy] = w2s(c.x, c.z);
       const size = Math.max(12, 20 * cam.zoom);
       drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
-      const hostile = c.s.includes('H') || ['dementor', 'spider', 'troll', 'basilisk', 'dragon', 'aragog', 'nundu', 'chimera', 'manticore', 'lethifold', 'werewolf'].includes(c.k);
+      const hostile = c.s.includes('H') || HOSTILE_KINDS.has(c.k);
       if (hostile) { ctx.strokeStyle = '#ff2a1a'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       const r = size / 2;
       // hp bar
@@ -379,7 +408,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillStyle = '#4dff4d'; ctx.fillRect(sx - r, sy - r - 5, (r * 2 * c.hp) / c.m, 3);
       }
       if (cam.zoom > 1.2) {
-        ctx.fillStyle = '#fff'; ctx.font = `${Math.max(9, 10 * cam.zoom)}px sans-serif`; ctx.textAlign = 'center';
+        ctx.fillStyle = '#fff'; setFont(`${Math.max(9, 10 * cam.zoom)}px sans-serif`); setAlign('center');
         ctx.fillText(c.k[0].toUpperCase(), sx, sy + r + 11);
       }
     }
@@ -407,18 +436,18 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       }
       // name
       ctx.fillStyle = isMe ? '#ffd700' : '#fff';
-      ctx.font = `${isMe ? 'bold ' : ''}${Math.max(10, 11 * cam.zoom)}px sans-serif`;
-      ctx.textAlign = 'center';
+      setFont(`${isMe ? 'bold ' : ''}${Math.max(10, 11 * cam.zoom)}px sans-serif`);
+      setAlign('center');
       ctx.fillText(w.n, sx, sy + r + 13);
       // status letters (S shield / X stunned / J jailed)
       const flags = w.s.replace('N', '');
       if (flags && cam.zoom > 0.8) {
-        ctx.fillStyle = '#ffec8a'; ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#ffec8a'; setFont('10px sans-serif');
         ctx.fillText(flags, sx, sy - r - 8);
       }
       // speech
       if (w.say && cam.zoom > 0.9) {
-        ctx.fillStyle = '#fff'; ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#fff'; setFont('10px sans-serif');
         ctx.fillText(w.say.slice(0, 24), sx, sy - r - 20);
       }
     }
@@ -427,7 +456,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     for (const f of snap.fx) {
       if (!visible(f.x, f.z)) continue;
       const [sx, sy] = w2s(f.x, f.z);
-      const col = f.e ? css(ELEMENT_COLORS[f.e]) : '#ffffff';
+      const col = f.e ? elemCss(f.e) : '#ffffff';
       ctx.strokeStyle = col; ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(sx, sy, scale(f.r ?? 6), 0, Math.PI * 2);
@@ -437,11 +466,11 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     // --- HUD: term / time / zoom ---
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(8, 8, 250, 56);
-    ctx.fillStyle = '#fff'; ctx.font = '13px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff'; setFont('13px sans-serif'); setAlign('left');
     const mm = Math.floor(snap.term.left / 60), ss = snap.term.left % 60;
     ctx.fillText(`第 ${snap.term.n} 学期  ${mm}:${String(ss).padStart(2, '0')}`, 16, 28);
     ctx.fillText(`${snap.night ? '夜' : '昼'} · ${snap.weather} · 缩放 ${cam.zoom.toFixed(1)}x`, 16, 48);
-    ctx.fillStyle = '#aaa'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#aaa'; setFont('11px sans-serif');
     ctx.fillText('WASD 移动 · 点击施法 · 方向键看地图 · F 跟随', 16, 62);
     perfEnd(t0);
   }
