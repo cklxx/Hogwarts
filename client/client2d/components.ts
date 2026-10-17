@@ -87,6 +87,10 @@ export function drawCottage(g: CanvasRenderingContext2D, x: number, y: number, s
   g.strokeRect(chx - chW / 2, y0 + 6 * s, chW, chH);
   g.fillStyle = '#8a7368';
   g.fillRect(chx - chW / 2, y0 + 6 * s, chW, 3 * s);
+  // 烟：三团渐淡
+  blob(g, chx + 1 * s, y0 - 2 * s, 3 * s, 'rgba(200,200,200,0.35)');
+  blob(g, chx + 3 * s, y0 - 8 * s, 4 * s, 'rgba(200,200,200,0.22)');
+  blob(g, chx + 6 * s, y0 - 15 * s, 5 * s, 'rgba(200,200,200,0.12)');
 
   // 门（南墙中央）：16w × 28h
   const dw = 16 * s, dh = 28 * s;
@@ -146,12 +150,14 @@ export function drawStoneHouse(g: CanvasRenderingContext2D, x: number, y: number
   g.beginPath();
   g.moveTo(x, y0); g.lineTo(x0 + W + 5 * s, y0 + H - wallH); g.lineTo(x, y0 + H - wallH); g.closePath(); g.fill();
 
-  // 烟囱 ×2
+  // 烟囱 ×2（带烟）
   for (const chx of [x - W * 0.25, x + W * 0.25]) {
     g.fillStyle = '#6e5a50';
     g.fillRect(chx - 4 * s, y0 + 8 * s, 8 * s, 14 * s);
     g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
     g.strokeRect(chx - 4 * s, y0 + 8 * s, 8 * s, 14 * s);
+    blob(g, chx + 1 * s, y0 + 2 * s, 3 * s, 'rgba(200,200,200,0.35)');
+    blob(g, chx + 3 * s, y0 - 4 * s, 4 * s, 'rgba(200,200,200,0.22)');
   }
 
   // 双开门：24w × 32h
@@ -251,6 +257,10 @@ export function drawOak(g: CanvasRenderingContext2D, x: number, y: number, s: nu
   // 描边（只画外圈）
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.5);
   g.beginPath(); g.arc(x, y - 36 * s, R, 0, Math.PI * 2); g.stroke();
+  // 树叶高光点（左上簇）
+  blob(g, x - 14 * s, y - 52 * s, 4 * s, 'rgba(255,255,255,0.15)');
+  blob(g, x - 8 * s, y - 58 * s, 3 * s, 'rgba(255,255,255,0.12)');
+  blob(g, x - 18 * s, y - 44 * s, 2.5 * s, 'rgba(255,255,255,0.1)');
   // 树冠投影
   blob(g, x + 10 * s, y - 28 * s, R * 0.9, 'rgba(0,0,0,0.15)');
 }
