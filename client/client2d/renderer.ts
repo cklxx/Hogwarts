@@ -4,6 +4,7 @@
  */
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawSprite } from './sprites.js';
+import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp } from './components.js';
 
 // ------------------------------------------------------------------ snapshot types (mirror of World.snapshot, client/main.ts)
 export interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; mm?: string }
@@ -188,42 +189,36 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
     const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 14 + rnd() * 26;
     blob(g, x, y, r, hexA(PAL.grass.dark, 0.5));
   }
-  // canopy layer 1: dark under-blobs (largest)
+  // 地面阴影基底（树冠投影用）
   const n1 = (w * h) / 1400;
   for (let i = 0; i < n1; i++) {
-    blob(g, x0 + rnd() * w, y0 + rnd() * h, 10 + rnd() * 16, hexA(P.dark, 0.55));
-  }
-  // canopy layer 2: mid-tone blobs
-  const n2 = (w * h) / 1800;
-  for (let i = 0; i < n2; i++) {
-    blob(g, x0 + rnd() * w, y0 + rnd() * h, 7 + rnd() * 12, hexA(P.base, 0.6));
-  }
-  // canopy layer 3: light top highlights (smallest, sparse)
-  const n3 = (w * h) / 3200;
-  for (let i = 0; i < n3; i++) {
-    blob(g, x0 + rnd() * w, y0 + rnd() * h, 4 + rnd() * 7, hexA(P.light, 0.5));
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 10 + rnd() * 16, hexA(P.dark, 0.35));
   }
   // dappled sunlight spots
   const nd = (w * h) / 9000;
   for (let i = 0; i < nd; i++) {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 3 + rnd() * 6, hexA(P.detail, 0.3));
   }
-  // trunks: dark brown dots with slight shadow offset
-  const nt = (w * h) / 6500;
+  // 真正的树：按框架比例放置（橡树 72 冠径 / 松树 / 枯树）
+  // 世界单位转纹理 px：TPX=3。树锚点 = 底部中心。
+  const w2x = (wx: number): number => w2tx(wx);
+  const w2y = (wz: number): number => w2ty(wz);
+  // 从世界坐标反推本 zone 的世界范围
+  const zx0 = (x0 / TPX) + TB.x0, zy0 = (y0 / TPX) + TB.z0;
+  const zw = w / TPX, zh = h / TPX;
+  const trnd = mulberry(9182);
+  const nt = Math.floor((zw * zh) / 1800); // 每 1800 平方单位一棵
   for (let i = 0; i < nt; i++) {
-    const x = x0 + rnd() * w, y = y0 + rnd() * h;
-    blob(g, x + 1.5, y + 1.5, 2.6, 'rgba(0,0,0,0.3)');
-    blob(g, x, y, 2.4, '#4a352a');
-    blob(g, x - 0.7, y - 0.7, 1, '#6b4f3a');
+    const wx = zx0 + trnd() * zw, wz = zy0 + trnd() * zh;
+    const tx = w2x(wx), ty = w2y(wz);
+    const kind = trnd();
+    // 留出空地：30% 概率跳过
+    if (trnd() < 0.3) continue;
+    if (kind < 0.55) drawOak(g, tx, ty, TPX);
+    else if (kind < 0.85) drawPine(g, tx, ty, TPX);
+    else drawDeadTree(g, tx, ty, TPX);
   }
-  // mushrooms: red cap + white dots (rare)
-  const nm = (w * h) / 30000;
-  for (let i = 0; i < nm; i++) {
-    const x = x0 + rnd() * w, y = y0 + rnd() * h;
-    g.fillStyle = '#8a4038'; g.fillRect(x - 1, y, 2, 3); // stem
-    blob(g, x, y - 1, 3.2, '#b0503c'); // cap
-    blob(g, x - 1, y - 2, 0.9, '#f0e8d8'); blob(g, x + 1.2, y - 0.5, 0.9, '#f0e8d8');
-  }
+  void P; void nd;
 };
 
 // --- lake: depth gradient + shore + waves ---
@@ -311,54 +306,27 @@ const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
       blob(g, x, y, step * 0.32, rnd() < 0.5 ? hexA(P.dark, 0.3) : hexA(P.light, 0.25));
     }
   }
-  // houses: placed on a loose grid, deterministic per zone
+  // houses: 按框架比例（茅屋 72×56 / 石屋 96×72）， deterministic per zone
   const hrnd = mulberry(777);
-  const hw = 26 * TPX, hh = 20 * TPX; // house footprint in texture px
   for (let gy = 0; gy < 3; gy++) {
     for (let gx = 0; gx < 4; gx++) {
       if (hrnd() < 0.25) continue; // some plots empty
       const hx = x0 + (gx + 0.5) * (w / 4) + (hrnd() - 0.5) * 30;
       const hy = y0 + (gy + 0.5) * (h / 3) + (hrnd() - 0.5) * 24;
-      drawHouse(g, hx, hy, hw * (0.85 + hrnd() * 0.3), hh * (0.85 + hrnd() * 0.3), hrnd);
+      // 锚点 = 底部中心。组件用设计 px，s=TPX。
+      if (hrnd() < 0.6) drawCottage(g, hx, hy, TPX);
+      else drawStoneHouse(g, hx, hy, TPX);
     }
   }
-  // street lamps: warm glow dots along a central street
+  // street lamps: 按框架（8w×44h）
   for (let i = 0; i < 5; i++) {
     const lx = x0 + w / 2 + (i % 2 ? 26 : -26);
     const ly = y0 + (i + 0.7) * (h / 5.6);
-    blob(g, lx, ly, 7, hexA('#ffca7a', 0.25)); // glow
-    blob(g, lx, ly, 2.2, '#3a3230'); // post
-    blob(g, lx, ly - 1, 1.6, '#ffd98a'); // lamp
+    drawLamp(g, lx, ly, TPX);
   }
 };
 
 // house: top-down — walls, pitched roof (two slopes), chimney, door shadow
-function drawHouse(g: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number, rnd: Rnd): void {
-  const R = PAL.roof, V = PAL.village;
-  // drop shadow
-  g.fillStyle = 'rgba(0,0,0,0.22)';
-  roundRect(g, cx - w / 2 + 3, cy - h / 2 + 4, w, h, 3); g.fill();
-  // walls
-  g.fillStyle = V.light;
-  roundRect(g, cx - w / 2, cy - h / 2, w, h, 3); g.fill();
-  g.strokeStyle = hexA(V.dark, 0.6); g.lineWidth = 1.6;
-  roundRect(g, cx - w / 2, cy - h / 2, w, h, 3); g.stroke();
-  // roof: two slopes with ridge highlight
-  g.fillStyle = R.base;
-  roundRect(g, cx - w / 2 - 2, cy - h / 2 - 2, w + 4, h * 0.52, 3); g.fill();
-  g.fillStyle = R.dark;
-  roundRect(g, cx - w / 2 - 2, cy + h * 0.02, w + 4, h * 0.5, 3); g.fill();
-  g.fillStyle = hexA(R.light, 0.7);
-  g.fillRect(cx - w / 2 - 2, cy - h / 2 - 2, w + 4, 3); // ridge highlight
-  // chimney
-  const chx = cx + w * 0.28, chy = cy - h * 0.18;
-  g.fillStyle = '#6e5a50'; g.fillRect(chx - 3, chy - 6, 7, 12);
-  g.fillStyle = '#8a7368'; g.fillRect(chx - 3, chy - 6, 7, 3);
-  // door shadow (south side)
-  g.fillStyle = 'rgba(0,0,0,0.3)';
-  roundRect(g, cx - 5, cy + h / 2 - 2, 10, 6, 2); g.fill();
-}
-
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   g.beginPath();
   g.moveTo(x + r, y);
@@ -433,25 +401,19 @@ function paintDecorations(g: CanvasRenderingContext2D, rnd: Rnd): void {
     g.strokeStyle = hexA(PAL.path.light, 0.5);
   }
   // path edge darkening (drawn once, wider, underneath already done above)
-  // bushes: rounded clusters with highlight (grass areas only)
+  // bushes: 按框架（20w×14h），grass areas only
   const brnd = mulberry(4451);
   for (let i = 0; i < 90; i++) {
     const x = -260 + brnd() * 520, z = -260 + brnd() * 560;
     if (!inGrass(x, z)) continue;
-    const bx = w2tx(x), by = w2ty(z), r = (4 + brnd() * 7) * TPX * 0.5;
-    blob(g, bx + 1, by + 1.5, r, 'rgba(0,0,0,0.18)');
-    blob(g, bx, by, r, hexA(PAL.grass.dark, 0.85));
-    blob(g, bx - r * 0.25, by - r * 0.25, r * 0.55, hexA(PAL.grass.light, 0.7));
+    drawBush(g, w2tx(x), w2ty(z), TPX * (0.8 + brnd() * 0.4));
   }
-  // stones: grey rounded rocks with shadow
+  // stones: 按框架（12w×8h）
   const srnd = mulberry(9923);
   for (let i = 0; i < 60; i++) {
     const x = -260 + srnd() * 520, z = -260 + srnd() * 560;
     if (!inGrass(x, z)) continue;
-    const sx = w2tx(x), sy = w2ty(z), r = (2.5 + srnd() * 4) * TPX * 0.5;
-    blob(g, sx + 1.2, sy + 1.6, r, 'rgba(0,0,0,0.2)');
-    blob(g, sx, sy, r, '#8f8a80');
-    blob(g, sx - r * 0.3, sy - r * 0.3, r * 0.4, '#b5afa4');
+    drawStone(g, w2tx(x), w2ty(z), TPX * (0.8 + srnd() * 0.5));
   }
 }
 
