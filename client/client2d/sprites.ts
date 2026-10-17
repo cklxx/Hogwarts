@@ -241,13 +241,14 @@ function buildCreatures(): void {
     '................',
   ], { k: K, g: '#3f4450', G: '#5a6170', V: '#0d0f14' });
 
-  // lethifold: darker cloak, subtle ripple folds, no face at all
+  // lethifold: darker cloak, subtle ripple folds, no face at all.
+  // L = cool rim light on the upper-left so it lifts off dark forest ground.
   reg('lethifold', [
     '................',
     '......kkkk......',
-    '....kkggggkk....',
-    '...kggggggggk...',
-    '...kggGgggGgk...',
+    '....kLggggkk....',
+    '...Lggggggggk...',
+    '...LggGgggGgk...',
     '...kggggggggk...',
     '....kggggggk....',
     '....kggggggk....',
@@ -259,7 +260,7 @@ function buildCreatures(): void {
     '................',
     '................',
     '................',
-  ], { k: K, g: '#23252e', G: '#4a5060' });
+  ], { k: K, g: '#2a2d38', G: '#4a5060', L: '#6a7386' });
 
   // inferius: pale corpse, sunken eyes, tattered blue-grey shroud
   reg('inferius', [
@@ -521,25 +522,25 @@ function buildCreatures(): void {
     '................',
   ], { k: K, b: '#265063', B: '#4a7a8a', g: '#3a7a5a' });
 
-  // occamy: teal serpent-bird, feathered wing, crest
+  // occamy: teal serpent-bird — S-curved body, feathered wing, head with eye
   reg('occamy', [
     '................',
-    '.....kk.........',
-    '....kttk........',
-    '....ktktk.......',
-    '....kTttk.......',
-    '.....ktttk......',
-    '....kTttttk.....',
-    '...ktttttttk....',
-    '....ktttttk.....',
-    '.....ktttk......',
-    '......kttk......',
-    '.......kk.......',
+    '...kkkk.........',
+    '..kttttkk.......',
+    '..ktetttkwwk....',
+    '..kTttttkwwwwk..',
+    '...kttttkwwkwk..',
+    '...ktttkwkwk....',
+    '....ktttk.......',
+    '....ktttk.......',
+    '...ktttk........',
+    '...kttk.........',
+    '....kk..........',
     '................',
     '................',
     '................',
     '................',
-  ], { k: K, t: '#359a92', T: '#6ac4bc' });
+  ], { k: K, t: '#359a92', T: '#6ac4bc', w: '#d9efe9', e: K });
 
   // boggart: dark purple shifting blob, pale swirling face
   reg('boggart', [
@@ -621,25 +622,25 @@ function buildCreatures(): void {
     '................',
   ], { k: K, w: '#82878f', W: '#a8adb5' });
 
-  // manticore: rust-red lion body, darker mane, scorpion tail
+  // manticore: rust-red lion body, dark mane, folded bat wings, scorpion tail
   reg('manticore', [
     '................',
     '................',
-    '.....kkkk.......',
+    '................',
+    '.kwkmmmmmmkwk...',
+    '.kwwkmmmmkwwk...',
+    '..kwkmrrkmwk....',
+    '...kmmRrmmk.....',
+    '...kmrermk..k...',
+    '...kmrrrrk...k..',
+    '....krrrrk...sk.',
     '....krrrrk......',
-    '...krrrrrrk.....',
-    '...krkrrkrk.....',
-    '...krrrrrrk.....',
-    '....krrrrk..k...',
-    '....krrrrk...k..',
-    '.....krrk...sk..',
-    '.............s..',
+    '....kk..kk......',
     '................',
     '................',
     '................',
     '................',
-    '................',
-  ], { k: K, r: '#b04432', s: '#d43a2a' });
+  ], { k: K, r: '#b04432', R: '#d4694f', m: '#7e2f22', w: '#6e4a52', e: K, s: '#e04a30' });
 
   // chimera: lion head and fore, goat-brown mid, snake tail
   reg('chimera', [
