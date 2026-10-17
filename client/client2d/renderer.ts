@@ -990,7 +990,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     ctx.fillStyle = '#fff'; setFont('13px sans-serif'); setAlign('left');
     const mm = Math.floor(snap.term.left / 60), ss = snap.term.left % 60;
     ctx.fillText(`第 ${snap.term.n} 学期  ${mm}:${String(ss).padStart(2, '0')}`, 16, 28);
-    ctx.fillText(`${snap.night ? '夜' : '昼'} · ${snap.weather} · 缩放 ${cam.zoom.toFixed(1)}x`, 16, 48);
+    const wzh = ({ clear: '晴', rain: '雨', snow: '雪', fog: '雾' } as Record<string, string>)[snap.weather] ?? snap.weather;
+    ctx.fillText(`${snap.night ? '夜' : '昼'} · ${wzh} · 缩放 ${cam.zoom.toFixed(1)}x`, 16, 48);
     perfEnd(t0);
   }
 

@@ -47,7 +47,9 @@ async function main() {
   const snaps = new SnapDecoder();
 
   ws.onopen = () => console.log('[2d] ws open');
-  ws.onclose = () => console.log('[2d] ws closed, retry in 3s'), setTimeout(main, 3000);
+  // NOTE: comma operator here used to run setTimeout(main, 3000) immediately on
+  // every main() call, stacking a new canvas + WebSocket every 3s forever.
+  ws.onclose = () => { console.log('[2d] ws closed, retry in 3s'); setTimeout(main, 3000); };
   ws.onerror = (e) => console.warn('[2d] ws error', e);
 
   // --- player controls: WASD move, click cast, 1-9 hotbar ---
