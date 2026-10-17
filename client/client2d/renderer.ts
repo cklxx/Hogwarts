@@ -659,15 +659,19 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.fillRect(0, 0, W, H);
     }
     const night = dayFactor < 0.5;
-    // zone labels (culled per zone)
+    // zone labels (culled per zone); collected as fixed anchors for the unified
+    // label layout pass below — wizard names must not collide with them
+    const zoneFont = `${Math.max(10, 12 * cam.zoom)}px sans-serif`;
+    const zoneLabels: { x: number; y: number; text: string; hw: number }[] = [];
     for (const zn of ZONES) {
       if (!visible((zn.x0 + zn.x1) / 2, (zn.z0 + zn.z1) / 2, Math.max(zn.x1 - zn.x0, zn.z1 - zn.z0))) continue;
       if (zn.label && cam.zoom > 0.7) {
         const [sx, sy] = w2s(zn.x0, zn.z0);
+        const lx = sx + scale(zn.x1 - zn.x0) / 2, ly = sy + 16;
+        setFont(zoneFont); setAlign('center');
+        zoneLabels.push({ x: lx, y: ly, text: zn.label, hw: ctx.measureText(zn.label).width / 2 + 2 });
         ctx.fillStyle = night ? '#cfd4dc' : '#2c2c2c';
-        setFont(`${Math.max(10, 12 * cam.zoom)}px sans-serif`);
-        setAlign('center');
-        ctx.fillText(zn.label, sx + scale(zn.x1 - zn.x0) / 2, sy + 16);
+        ctx.fillText(zn.label, lx, ly);
       }
     }
 
@@ -765,7 +769,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     }
 
     // --- wizards: house sprite + hp bar + name (names drawn in 2nd pass with de-collision) ---
-    const nameQueue: { x: number; y: number; n: string; isMe: boolean; dy: number }[] = [];
+    interface NameLbl { x: number; y: number; n: string; isMe: boolean; dy: number; hw: number; dw2: number; dot: boolean }
+    const nameQueue: NameLbl[] = [];
+    const meW = meOf(); // player world pos, for nearest-N density cap
     for (const w of snap.w) {
       if (!visible(w.x, w.z)) continue;
       const [sx, sy] = w2s(w.x, w.z);
@@ -786,7 +792,10 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillStyle = w.hp / w.m > 0.4 ? '#4dff4d' : '#ff4d4d';
         ctx.fillRect(sx - r, sy - r - 6, (r * 2 * w.hp) / w.m, 3);
       }
-      nameQueue.push({ x: sx, y: sy + r + 13, n: w.n, isMe, dy: 0 });
+      // distance² to player (world units; viewport-center fallback if player unknown)
+      const dw2 = meW ? (w.x - meW.x) * (w.x - meW.x) + (w.z - meW.z) * (w.z - meW.z)
+        : (sx - vw / 2) * (sx - vw / 2) + (sy - vh / 2) * (sy - vh / 2);
+      nameQueue.push({ x: sx, y: sy + r + 13, n: w.n, isMe, dy: 0, hw: 0, dw2, dot: false });
       // status letters (S shield / X stunned / J jailed)
       const flags = w.s.replace('N', '');
       if (flags && cam.zoom > 0.8) {
@@ -799,29 +808,50 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillText(w.say.slice(0, 24), sx, sy - r - 20);
       }
     }
-    // --- wizard names: de-collide overlapping labels by vertical stacking ---
-    // sort by y so stacking is stable; each label claims a slot, overlapping ones shift down
-    nameQueue.sort((a, b) => a.y - b.y || a.x - b.x);
-    const placed: { x: number; y: number }[] = [];
-    const lineH = 14;
+    // --- unified label layout: wizard names avoid zone labels and each other ---
+    // 1) measure real text half-widths (the old fixed 50px threshold missed
+    //    overlaps between long names whose centers are 50-90px apart)
+    const nameFont = (isMe: boolean) => `${isMe ? 'bold ' : ''}${Math.max(10, 11 * cam.zoom)}px sans-serif`;
+    setAlign('center');
     for (const nm of nameQueue) {
-      let y = nm.y;
+      setFont(nameFont(nm.isMe));
+      nm.hw = ctx.measureText(nm.n).width / 2 + 2;
+    }
+    // 2) density cap: keep text for the nearest MAXN names to the player
+    //    (player always kept); the rest become dots instead of unreadable blobs
+    const MAXN = 6;
+    nameQueue.sort((a, b) => (a.isMe ? -1 : b.isMe ? 1 : a.dw2 - b.dw2));
+    for (let i = 0; i < nameQueue.length; i++) nameQueue[i].dot = i >= MAXN;
+    // 3) vertical stacking with width-aware collision; zone labels are fixed anchors
+    nameQueue.sort((a, b) => a.y - b.y || a.x - b.x);
+    const lineH = Math.max(14, 13 * cam.zoom);
+    const placed: { x: number; y: number; hw: number }[] = [];
+    for (const z of zoneLabels) placed.push({ x: z.x, y: z.y, hw: z.hw });
+    for (const nm of nameQueue) {
+      if (nm.dot) continue;
+      let y = nm.y, ok = false;
       // find a y that doesn't collide with already-placed labels
-      for (let attempt = 0; attempt < 8; attempt++) {
+      for (let attempt = 0; attempt < 24; attempt++) {
         let hit = false;
         for (const p of placed) {
-          if (Math.abs(p.x - nm.x) < 50 && Math.abs(p.y - y) < lineH) { hit = true; break; }
+          if (Math.abs(p.x - nm.x) < (p.hw + nm.hw) * 0.9 && Math.abs(p.y - y) < lineH) { hit = true; break; }
         }
-        if (!hit) break;
+        if (!hit) { ok = true; break; }
         y += lineH;
       }
+      if (!ok || y > vh + 24) { nm.dot = true; continue; } // too crowded: dot instead
       nm.dy = y - nm.y;
-      placed.push({ x: nm.x, y });
+      placed.push({ x: nm.x, y, hw: nm.hw });
     }
+    // 4) draw
     for (const nm of nameQueue) {
+      if (nm.dot) {
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.beginPath(); ctx.arc(nm.x, nm.y - 5, 2, 0, Math.PI * 2); ctx.fill();
+        continue;
+      }
       ctx.fillStyle = nm.isMe ? '#ffd700' : '#fff';
-      setFont(`${nm.isMe ? 'bold ' : ''}${Math.max(10, 11 * cam.zoom)}px sans-serif`);
-      setAlign('center');
+      setFont(nameFont(nm.isMe));
       // subtle dark outline for readability
       ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
       ctx.strokeText(nm.n, nm.x, nm.y + nm.dy);
