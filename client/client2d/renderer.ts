@@ -57,6 +57,8 @@ const GROUND = PAL.grass.base;
 // - elemCss: precomputed '#rrggbb' per Element (css() does toString(16) per call)
 const HOSTILE_KINDS = new Set(['dementor', 'spider', 'troll', 'basilisk', 'dragon', 'aragog', 'nundu', 'chimera', 'manticore', 'lethifold', 'werewolf']);
 const elemCssCache = new Map<Element, string>();
+// projectile motion trails: id -> recent screen positions + last-seen timestamp
+const projTrails = new Map<string, { pts: [number, number][]; last: number }>();
 const elemCss = (e: Element): string => {
   let s = elemCssCache.get(e);
   if (!s) { s = css(ELEMENT_COLORS[e] ?? 0xffffff); elemCssCache.set(e, s); }
@@ -699,13 +701,46 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       }
     }
 
-    // --- projectiles ---
+    // --- projectiles: glowing core + motion trail ---
+    // trails tracked locally: id -> recent screen positions (no velocity in snapshot)
+    const now = performance.now();
+    for (const id of projTrails.keys()) {
+      const tr = projTrails.get(id)!;
+      if (now - tr.last > 500) projTrails.delete(id); // stale
+    }
     for (const p of snap.p) {
       if (!visible(p.x, p.z)) continue;
       const [sx, sy] = w2s(p.x, p.z);
-      ctx.fillStyle = elemCss(p.e);
+      let tr = projTrails.get(p.i);
+      if (!tr) { tr = { pts: [], last: 0 }; projTrails.set(p.i, tr); }
+      tr.last = now;
+      tr.pts.push([sx, sy]);
+      if (tr.pts.length > 6) tr.pts.shift();
+      const col = elemCss(p.e);
+      // trail: fading circles along recent path
+      for (let i = 0; i < tr.pts.length - 1; i++) {
+        const a = (i + 1) / tr.pts.length * 0.35;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(tr.pts[i][0], tr.pts[i][1], Math.max(1.5, 2.5 * cam.zoom * (i + 1) / tr.pts.length), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      // glow halo
+      const coreR = Math.max(4, 5 * cam.zoom);
+      const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, coreR * 2.5);
+      grad.addColorStop(0, col);
+      grad.addColorStop(0.4, col + 'cc');
+      grad.addColorStop(1, col + '00');
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(sx, sy, Math.max(2, 3 * cam.zoom), 0, Math.PI * 2);
+      ctx.arc(sx, sy, coreR * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      // bright core
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, coreR * 0.55, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -729,7 +764,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       }
     }
 
-    // --- wizards: house sprite + hp bar + name ---
+    // --- wizards: house sprite + hp bar + name (names drawn in 2nd pass with de-collision) ---
+    const nameQueue: { x: number; y: number; n: string; isMe: boolean; dy: number }[] = [];
     for (const w of snap.w) {
       if (!visible(w.x, w.z)) continue;
       const [sx, sy] = w2s(w.x, w.z);
@@ -750,11 +786,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillStyle = w.hp / w.m > 0.4 ? '#4dff4d' : '#ff4d4d';
         ctx.fillRect(sx - r, sy - r - 6, (r * 2 * w.hp) / w.m, 3);
       }
-      // name
-      ctx.fillStyle = isMe ? '#ffd700' : '#fff';
-      setFont(`${isMe ? 'bold ' : ''}${Math.max(10, 11 * cam.zoom)}px sans-serif`);
-      setAlign('center');
-      ctx.fillText(w.n, sx, sy + r + 13);
+      nameQueue.push({ x: sx, y: sy + r + 13, n: w.n, isMe, dy: 0 });
       // status letters (S shield / X stunned / J jailed)
       const flags = w.s.replace('N', '');
       if (flags && cam.zoom > 0.8) {
@@ -766,6 +798,34 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillStyle = '#fff'; setFont('10px sans-serif');
         ctx.fillText(w.say.slice(0, 24), sx, sy - r - 20);
       }
+    }
+    // --- wizard names: de-collide overlapping labels by vertical stacking ---
+    // sort by y so stacking is stable; each label claims a slot, overlapping ones shift down
+    nameQueue.sort((a, b) => a.y - b.y || a.x - b.x);
+    const placed: { x: number; y: number }[] = [];
+    const lineH = 14;
+    for (const nm of nameQueue) {
+      let y = nm.y;
+      // find a y that doesn't collide with already-placed labels
+      for (let attempt = 0; attempt < 8; attempt++) {
+        let hit = false;
+        for (const p of placed) {
+          if (Math.abs(p.x - nm.x) < 50 && Math.abs(p.y - y) < lineH) { hit = true; break; }
+        }
+        if (!hit) break;
+        y += lineH;
+      }
+      nm.dy = y - nm.y;
+      placed.push({ x: nm.x, y });
+    }
+    for (const nm of nameQueue) {
+      ctx.fillStyle = nm.isMe ? '#ffd700' : '#fff';
+      setFont(`${nm.isMe ? 'bold ' : ''}${Math.max(10, 11 * cam.zoom)}px sans-serif`);
+      setAlign('center');
+      // subtle dark outline for readability
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
+      ctx.strokeText(nm.n, nm.x, nm.y + nm.dy);
+      ctx.fillText(nm.n, nm.x, nm.y + nm.dy);
     }
 
     // --- fx: expanding rings / flashes ---
