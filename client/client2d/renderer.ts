@@ -240,48 +240,7 @@ const texCastle: Painter = (g, x0, y0, w, h, rnd) => {
   for (let i = 0; i < nm; i++) {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 2 + rnd() * 5, hexA('#6b8f5a', 0.4));
   }
-  // --- castle structures (top-down): outer walls, corner towers, central keep ---
-  const S = PAL.stone;
-  const wallW = 4 * TPX; // wall thickness in texture px
-  // outer wall: dark outline + lighter top
-  g.strokeStyle = hexA(S.dark, 0.9);
-  g.lineWidth = wallW;
-  g.strokeRect(x0 + wallW, y0 + wallW, w - wallW * 2, h - wallW * 2);
-  g.strokeStyle = hexA(S.light, 0.6);
-  g.lineWidth = wallW * 0.45;
-  g.strokeRect(x0 + wallW, y0 + wallW, w - wallW * 2, h - wallW * 2);
-  // corner towers: circles with conical roof hint
-  const towers: Array<[number, number, number]> = [
-    [x0 + wallW, y0 + wallW, 9], [x0 + w - wallW, y0 + wallW, 9],
-    [x0 + wallW, y0 + h - wallW, 8], [x0 + w - wallW, y0 + h - wallW, 8],
-  ];
-  for (const [tx, ty, tr] of towers) {
-    const r = tr * TPX * 0.5;
-    blob(g, tx + 2, ty + 2, r, 'rgba(0,0,0,0.25)'); // shadow
-    blob(g, tx, ty, r, hexA(S.dark, 0.95)); // tower base
-    blob(g, tx, ty, r * 0.62, hexA(PAL.roof.dark, 0.95)); // roof
-    blob(g, tx - r * 0.2, ty - r * 0.2, r * 0.25, hexA(PAL.roof.light, 0.8)); // roof highlight
-  }
-  // central keep: raised rectangle with roof
-  const kx0 = x0 + w * 0.32, ky0 = y0 + h * 0.28, kw = w * 0.36, kh = h * 0.4;
-  g.fillStyle = 'rgba(0,0,0,0.22)';
-  roundRect(g, kx0 + 3, ky0 + 4, kw, kh, 4); g.fill();
-  g.fillStyle = hexA(S.base, 0.95);
-  roundRect(g, kx0, ky0, kw, kh, 4); g.fill();
-  g.strokeStyle = hexA(S.dark, 0.7); g.lineWidth = 2;
-  roundRect(g, kx0, ky0, kw, kh, 4); g.stroke();
-  // keep roof: pitched, with ridge
-  g.fillStyle = hexA(PAL.roof.base, 0.95);
-  roundRect(g, kx0 - 3, ky0 - 3, kw + 6, kh * 0.55, 4); g.fill();
-  g.fillStyle = hexA(PAL.roof.light, 0.5);
-  g.fillRect(kx0 - 3, ky0 - 3, kw + 6, 4);
-  // courtyard: lighter paved area south of keep
-  const cy0 = ky0 + kh + 8;
-  g.fillStyle = hexA(S.light, 0.5);
-  roundRect(g, x0 + w * 0.2, cy0, w * 0.6, y0 + h - wallW - cy0 - 6, 6); g.fill();
-  // gate: opening in south wall
-  g.fillStyle = hexA(S.base, 1);
-  g.fillRect(x0 + w / 2 - wallW * 0.8, y0 + h - wallW * 1.6, wallW * 1.6, wallW * 1.6);
+  // structures are drawn by paintCastle() as a crisp post-blur pass (see below)
 };
 
 // --- village: cobble streets + houses with roofs ---
@@ -446,9 +405,160 @@ function paintDecorations(g: CanvasRenderingContext2D, rnd: Rnd): void {
   }
 }
 
+// --- castle structures: crisp top-down pass, drawn AFTER the 9px blur ---
+// Hogwarts-inspired irregular ward: polygonal outer wall, great hall, clock tower,
+// central keep + wing, viaduct, astronomy tower, bell towers, courtyard + well, south gate.
+// World coords; all sizes in world units (TPX tex px per unit).
+function paintCastle(g: CanvasRenderingContext2D): void {
+  const S = PAL.stone, R = PAL.roof;
+  const X = (x: number): number => w2tx(x);
+  const Y = (z: number): number => w2ty(z);
+  const WD = '#6f6a61', WB = S.base, WL = S.light;
+  const RD = R.dark, RB = R.base, RL = R.light;
+  const WOD = '#4a352a', WOB = '#6b4f3a';
+
+  // irregular outer wall polygon (not a rectangle)
+  const WALL: Array<[number, number]> = [
+    [-56, -102], [-32, -107], [-6, -105], [18, -99], [36, -90],
+    [48, -76], [53, -59], [47, -47], [28, -43.5], [8, -45.5],
+    [-14, -43.5], [-34, -47], [-52, -59], [-58, -79],
+  ];
+  const trace = (pts: Array<[number, number]>): void => {
+    g.beginPath();
+    pts.forEach(([x, z], i) => { if (i === 0) g.moveTo(X(x), Y(z)); else g.lineTo(X(x), Y(z)); });
+    g.closePath();
+  };
+
+  // round tower: shadow + stone ring + crenellations + conical roof hint
+  const tower = (x: number, z: number, r: number, big = false): void => {
+    const cx = X(x), cy = Y(z), rr = r * TPX;
+    blob(g, cx + 1.4 * TPX, cy + 1.8 * TPX, rr, 'rgba(0,0,0,0.3)');
+    blob(g, cx, cy, rr, WD);
+    blob(g, cx, cy, rr * 0.82, WB);
+    const n = big ? 12 : 8;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.3;
+      blob(g, cx + Math.cos(a) * rr * 0.88, cy + Math.sin(a) * rr * 0.88, Math.max(1.6, rr * 0.13), WL);
+    }
+    blob(g, cx, cy, rr * 0.55, RD);
+    blob(g, cx - rr * 0.16, cy - rr * 0.16, rr * 0.2, hexA(RL, 0.85));
+  };
+
+  // pitched-roof building: shadow + walls + two roof slopes + ridge + chimney
+  const roofed = (x0: number, z0: number, x1: number, z1: number, ridge: 'v' | 'h'): void => {
+    const w = (x1 - x0) * TPX, h = (z1 - z0) * TPX;
+    const px = X(x0), py = Y(z0);
+    g.fillStyle = 'rgba(0,0,0,0.28)';
+    roundRect(g, px + 1.5 * TPX, py + 2 * TPX, w, h, 3); g.fill();
+    g.fillStyle = WB;
+    roundRect(g, px, py, w, h, 3); g.fill();
+    g.strokeStyle = hexA(WD, 0.8); g.lineWidth = 1.6;
+    roundRect(g, px, py, w, h, 3); g.stroke();
+    const ox = 0.9 * TPX, rx = px - ox, ry = py - ox, rw = w + ox * 2, rh = h + ox * 2;
+    if (ridge === 'v') {
+      g.fillStyle = RL; g.fillRect(rx, ry, rw / 2, rh);
+      g.fillStyle = RD; g.fillRect(rx + rw / 2, ry, rw / 2, rh);
+      g.fillStyle = hexA(RL, 0.9); g.fillRect(rx + rw / 2 - 1, ry, 2, rh);
+    } else {
+      g.fillStyle = RL; g.fillRect(rx, ry, rw, rh / 2);
+      g.fillStyle = RD; g.fillRect(rx, ry + rh / 2, rw, rh / 2);
+      g.fillStyle = hexA(RL, 0.9); g.fillRect(rx, ry + rh / 2 - 1, rw, 2);
+    }
+    const chx = px + w * 0.72, chy = py + h * 0.2;
+    g.fillStyle = WD; g.fillRect(chx - 2, chy - 4, 5, 9);
+    g.fillStyle = WL; g.fillRect(chx - 2, chy - 4, 5, 2.5);
+  };
+
+  // square tower with hip (pyramid) roof
+  const clockTower = (x0: number, z0: number, x1: number, z1: number): void => {
+    const w = (x1 - x0) * TPX, h = (z1 - z0) * TPX, px = X(x0), py = Y(z0);
+    g.fillStyle = 'rgba(0,0,0,0.28)';
+    g.fillRect(px + 1.5 * TPX, py + 2 * TPX, w, h);
+    g.fillStyle = WB; g.fillRect(px, py, w, h);
+    g.strokeStyle = hexA(WD, 0.8); g.lineWidth = 1.6; g.strokeRect(px, py, w, h);
+    g.fillStyle = RD; g.fillRect(px - TPX, py - TPX, w + 2 * TPX, h + 2 * TPX);
+    g.fillStyle = RB; g.fillRect(px + w * 0.18, py + h * 0.18, w * 0.64, h * 0.64);
+    g.fillStyle = RL; g.fillRect(px + w * 0.36, py + h * 0.36, w * 0.28, h * 0.28);
+  };
+
+  // window row: start (x,z), step (dx,dz), n windows
+  const windows = (x: number, z: number, dx: number, dz: number, n: number): void => {
+    g.fillStyle = 'rgba(30,26,24,0.85)';
+    for (let i = 0; i < n; i++) {
+      g.fillRect(X(x + dx * i) - 2, Y(z + dz * i) - 2, 4, 4);
+    }
+  };
+
+  // courtyard tree: canopy blobs
+  const tree = (x: number, z: number): void => {
+    blob(g, X(x) + 1.5, Y(z) + 2, 2.6 * TPX, 'rgba(0,0,0,0.2)');
+    blob(g, X(x), Y(z), 2.6 * TPX, PAL.forest.dark);
+    blob(g, X(x) - 2, Y(z) - 2, 1.4 * TPX, hexA(PAL.forest.light, 0.8));
+  };
+
+  // --- 1. inner ward: paved ground ---
+  trace(WALL); g.fillStyle = '#a39c8f'; g.fill();
+  const prnd = mulberry(60221);
+  for (let i = 0; i < 26; i++) {
+    blob(g, X(-52 + prnd() * 100), Y(-102 + prnd() * 56), 8 + prnd() * 18, hexA(WD, 0.15));
+  }
+
+  // --- 2. gate spur path (ward -> main south path at [0,-40]) ---
+  g.strokeStyle = hexA(PAL.path.base, 0.95);
+  g.lineCap = 'round'; g.lineWidth = 4 * TPX;
+  g.beginPath(); g.moveTo(X(-3), Y(-50)); g.lineTo(X(0), Y(-38)); g.stroke();
+
+  // --- 3. courtyard: garden court + well + trees ---
+  g.fillStyle = 'rgba(0,0,0,0.18)';
+  roundRect(g, X(-20) + 1.5 * TPX, Y(-56) + 2 * TPX, 38 * TPX, 7 * TPX, 6); g.fill();
+  g.fillStyle = '#8aa864';
+  roundRect(g, X(-20), Y(-56), 38 * TPX, 7 * TPX, 6); g.fill();
+  tree(-14, -52.5); tree(12, -52.5);
+  const wx = X(0), wy = Y(-52.5); // well
+  blob(g, wx + 1.5, wy + 2, 2.2 * TPX, 'rgba(0,0,0,0.25)');
+  blob(g, wx, wy, 2.2 * TPX, WD);
+  blob(g, wx, wy, 1.4 * TPX, '#2a4f6a');
+  blob(g, wx - 1.5, wy - 1.5, 1.2, hexA('#cfe4ef', 0.8));
+
+  // --- 4. buildings ---
+  roofed(-50, -98, -28, -68, 'v'); // great hall (west)
+  clockTower(-17, -101, -10, -94); // clock tower (north)
+  roofed(-14, -88, 14, -60, 'v');  // keep (center)
+  roofed(14, -80, 26, -64, 'h');   // keep east wing
+  roofed(-28, -78, -14, -72, 'h'); // viaduct (hall -> keep)
+  windows(-49.2, -94, 0, 4, 5);    // great hall west windows
+  windows(25.2, -77, 0, 4, 4);     // east wing windows
+
+  // --- 5. outer wall: dark band + lighter wall-walk + crenellations ---
+  trace(WALL); g.strokeStyle = WD; g.lineWidth = 3.6 * TPX; g.lineJoin = 'round'; g.stroke();
+  trace(WALL); g.strokeStyle = hexA(WL, 0.9); g.lineWidth = 2.1 * TPX; g.stroke();
+  trace(WALL);
+  g.strokeStyle = hexA('#ddd6c6', 0.95); g.lineWidth = 1.1 * TPX;
+  g.setLineDash([2.4 * TPX, 2.0 * TPX]); g.stroke(); g.setLineDash([]);
+
+  // --- 6. towers: wall bastions + bell towers + astronomy tower ---
+  tower(-56, -102, 4.5); tower(18, -99, 4.5); tower(53, -59, 5);
+  tower(8, -45.5, 4.5); tower(-52, -59, 4.5);
+  tower(-44, -63, 3.2); tower(-36, -62.5, 2.8);
+  tower(33, -70, 7, true);
+
+  // --- 7. south gate: cut wall, wooden doors, flanking towers ---
+  const gz = -44.6;
+  g.fillStyle = '#a39c8f';
+  g.fillRect(X(-7), Y(-47.5), 8 * TPX, 6 * TPX); // wall cut
+  g.fillStyle = WOB;
+  g.fillRect(X(-6), Y(-46.2), 6 * TPX, 3.2 * TPX); // doors
+  g.fillStyle = WOD;
+  g.fillRect(X(-3.25), Y(-46.2), 0.5 * TPX, 3.2 * TPX); // center seam
+  for (let i = 0; i < 3; i++) {
+    blob(g, X(-5 + i * 2), Y(-45.4), 1.6, WOD);
+    blob(g, X(-5 + i * 2), Y(-43.8), 1.6, WOD);
+  }
+  tower(-8.4, gz, 2.6); tower(2.4, gz - 0.2, 2.6);
+}
+
 // grass-area check for scatter placement (excludes lake/castle/village/pitch interiors)
-function inGrass(x: number, z: number): boolean {
-  for (const zn of ZONES) {
+function inGrass(x: number, z: number): boolean {  for (const zn of ZONES) {
     if (x >= zn.x0 && x <= zn.x1 && z >= zn.z0 && z <= zn.z1) {
       return zn.tex === 'grass';
     }
@@ -507,6 +617,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   g.filter = 'none';
   // decorations on top (paths, bushes, stones) — not blurred, crisp details
   paintDecorations(g, mulberry(20261018));
+  // castle structures — crisp, drawn after the blur so walls/towers read at 1x
+  paintCastle(g);
   return c;
 }
 
@@ -870,14 +982,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     }
 
     // --- HUD: term / time / zoom ---
+    // NOTE: the controls hint used to be a third line here, but #tipbar in
+    // hud.ts owns that corner now; the canvas copy peeked out from behind the
+    // panel and read as overlapping ghost text. Keep only the unique info.
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(8, 8, 250, 56);
+    ctx.fillRect(8, 8, 180, 48);
     ctx.fillStyle = '#fff'; setFont('13px sans-serif'); setAlign('left');
     const mm = Math.floor(snap.term.left / 60), ss = snap.term.left % 60;
     ctx.fillText(`第 ${snap.term.n} 学期  ${mm}:${String(ss).padStart(2, '0')}`, 16, 28);
     ctx.fillText(`${snap.night ? '夜' : '昼'} · ${snap.weather} · 缩放 ${cam.zoom.toFixed(1)}x`, 16, 48);
-    ctx.fillStyle = '#aaa'; setFont('11px sans-serif');
-    ctx.fillText('WASD 移动 · 点击施法 · 方向键看地图 · F 跟随', 16, 62);
     perfEnd(t0);
   }
 
