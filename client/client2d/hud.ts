@@ -71,6 +71,11 @@ const CSS = `
 #bars .t i{display:block;height:100%;border-radius:4px}
 #bars .hp i{background:#c0392b}#bars .mp i{background:#2980d9}
 #hotbar{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px}
+#tipbar{position:absolute;top:10px;left:10px;max-width:280px;padding:8px 12px;font-size:12px;line-height:1.6;pointer-events:auto}
+#tipbar b{color:#c9a227}
+#tipbar .x{position:absolute;top:4px;right:8px;cursor:pointer;color:#a9a294;font-size:14px}
+#tipbar .x:hover{color:#fff}
+#tipbar[hidden]{display:none}
 .slot{pointer-events:auto;cursor:pointer;width:64px;height:64px;padding:4px;text-align:center;position:relative;background:rgba(10,8,16,.72);border:1px solid rgba(232,226,212,.22);border-radius:6px;overflow:hidden}
 .slot.sel{border-color:#c9a227;box-shadow:0 0 8px rgba(201,162,39,.6)}
 .slot.empty{opacity:.35;cursor:default}
@@ -108,9 +113,17 @@ export function mountHUD(container: HTMLElement): void {
       <div class="row"><span>MP</span><div class="t mp"><i style="width:100%"></i></div></div>
     </div>
     <div id="mmwrap" class="panel"><canvas id="minimap" width="128" height="128"></canvas></div>
-    <div id="hotbar"></div>`;
+    <div id="hotbar"></div>
+    <div id="tipbar" class="panel"><span class="x">✕</span><b>新手上路</b><br>WASD 移动 · 点击施法<br>方向键看地图 · F 跟随<br>右上命运链点开看提示</div>`;
   container.appendChild(root);
   mm = root.querySelector('#minimap');
+  const tip = root.querySelector<HTMLElement>('#tipbar')!;
+  const dismissTip = () => { tip.hidden = true; };
+  tip.querySelector('.x')!.addEventListener('click', dismissTip);
+  // auto-dismiss on first movement key
+  window.addEventListener('keydown', (e) => {
+    if ('wasd'.includes(e.key.toLowerCase())) dismissTip();
+  }, { once: true });
   const hb = root.querySelector<HTMLElement>('#hotbar')!;
   for (let i = 0; i < 9; i++) {
     const d = document.createElement('div');

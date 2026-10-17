@@ -42,6 +42,8 @@ export interface FateThread {
   mobs: Set<string>;
   /** where the event happens */
   at: Vec2;
+  /** 2D HUD 展开显示的介入提示（≤20字） */
+  hint: string;
 }
 
 interface FatesState {
@@ -81,14 +83,14 @@ const landmark = (id: string): Vec2 => {
 };
 
 function newThreads(): Record<FateId, FateThread> {
-  const mk = (id: FateId, zh: string, en: string, triggerDay: number, deadlineDay: number, at: Vec2): FateThread =>
-    ({ id, zh, en, triggerDay, deadlineDay, state: 'idle', mobs: new Set(), at });
+  const mk = (id: FateId, zh: string, en: string, triggerDay: number, deadlineDay: number, at: Vec2, hint: string): FateThread =>
+    ({ id, zh, en, triggerDay, deadlineDay, state: 'idle', mobs: new Set(), at, hint });
   return {
-    filch: mk('filch', '费尔奇的猫', "Filch's cat", 1, 2, landmark('courtyard')),
-    merchant: mk('merchant', '霍格莫德商人', 'Hogsmeade merchant', 2, 3, landmark('hogsmeade')),
-    hagrid: mk('hagrid', '海格被围攻', 'Hagrid besieged', 3, 4, landmark('hagrid')),
-    snape: mk('snape', '斯内普的材料', "Snape's ingredients", 4, 5, landmark('dungeons')),
-    luna: mk('luna', '卢娜被困', 'Luna trapped', 5, 6, landmark('lake')),
+    filch: mk('filch', '费尔奇的猫', "Filch's cat", 1, 2, landmark('courtyard'), '走近洛丽丝夫人（5米内）'),
+    merchant: mk('merchant', '霍格莫德商人', 'Hogsmeade merchant', 2, 3, landmark('hogsmeade'), '杀光霍格莫德的强盗'),
+    hagrid: mk('hagrid', '海格被围攻', 'Hagrid besieged', 3, 4, landmark('hagrid'), '杀光围攻海格的摄魂怪'),
+    snape: mk('snape', '斯内普的材料', "Snape's ingredients", 4, 5, landmark('dungeons'), '杀光偷材料的嗅嗅'),
+    luna: mk('luna', '卢娜被困', 'Luna trapped', 5, 6, landmark('lake'), '杀光困住卢娜的格林迪洛'),
   };
 }
 

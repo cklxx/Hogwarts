@@ -65,8 +65,8 @@ async function main() {
     const k = e.key.toLowerCase();
     if ('wasd'.includes(k) && !keys.has(k)) { keys.add(k); sendInput(); }
     if (k >= '1' && k <= '9') {
-      // hotbar cast: use selected spell slot (server resolves key)
-      ws.send(JSON.stringify({ t: 'cast', key: 'slot' + k }));
+      // hotbar cast: server findSpell resolves '1'-'6' to the hotbar slot
+      ws.send(JSON.stringify({ t: 'cast', key: k }));
     }
   });
   addEventListener('keyup', (e) => {
@@ -78,7 +78,7 @@ async function main() {
     const r = canvas.getBoundingClientRect();
     // convert screen -> world via renderer camera (exposed on ui)
     const wx = (ui as any).screenToWorld?.(e.clientX - r.left, e.clientY - r.top);
-    if (wx && ws.readyState === 1) ws.send(JSON.stringify({ t: 'cast', key: 'slot1', x: wx.x, z: wx.z }));
+    if (wx && ws.readyState === 1) ws.send(JSON.stringify({ t: 'cast', key: '1', x: wx.x, z: wx.z }));
   });
 
   ws.onmessage = (m: MessageEvent) => {
@@ -94,18 +94,22 @@ async function main() {
       ui.setMe(msg.handle);
       (main as any)._me = msg.handle;
       console.log('[2d] welcome as', msg.handle);
+    } else if (msg.t === 'me') {
+      // private state: hotbar + real mana (server fills new wizards' hotbar from the curriculum)
+      (main as any)._meState = msg.s;
     } else if (msg.t === 'snap') {
       const s = msg.s as Snap;
       ui.setSnap(s);
       // feed HUD: map Snap -> HudSnapshot
       const myH = (main as any)._me as string | undefined;
       const me = (myH && s.w.find((w) => w.h === myH)) ?? s.w[0];
+      const meState = (main as any)._meState as { hotbar?: ({ id: string; name: string; mana?: number | null; cd: number; kind?: 'harm' | 'help' | 'self' } | null)[]; mana?: number; maxMana?: number } | undefined;
       try {
         updateHUD({
-          me: me ? { handle: me.h, x: me.x, z: me.z, hp: me.hp, maxHp: me.m, mana: 100, maxMana: 100 } : { handle: '?', x: 0, z: 0, hp: 1, maxHp: 1, mana: 1, maxMana: 1 },
+          me: me ? { handle: me.h, x: me.x, z: me.z, hp: me.hp, maxHp: me.m, mana: meState?.mana ?? 100, maxMana: meState?.maxMana ?? 100 } : { handle: '?', x: 0, z: 0, hp: 1, maxHp: 1, mana: 1, maxMana: 1 },
           wizards: s.w.map((w) => ({ h: w.h, x: w.x, z: w.z })),
           creatures: s.c.map((c) => ({ x: c.x, z: c.z, hostile: c.s.includes('H') })),
-          hotbar: [],
+          hotbar: meState?.hotbar ?? [],
           selected: 0,
           warweek: (s as any).warweek ?? { day: ((s.term.n - 1) % 7) + 1, total: 7 },
           fates: (s as any).fates ?? [],

@@ -22,25 +22,176 @@ export interface Snap {
 const css = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 // ------------------------------------------------------------------ ground zones (fixed layout, matches src/shared/map.ts)
-interface Zone { x0: number; z0: number; x1: number; z1: number; color: string; label: string }
+type ZoneTex = 'stone' | 'grass' | 'forest' | 'lake' | 'village';
+interface Zone { x0: number; z0: number; x1: number; z1: number; color: string; label: string; tex: ZoneTex }
 const ZONES: Zone[] = [
   // castle keep + wings (stone)
-  { x0: -62, z0: -112, x1: 62, z1: -40, color: '#8a8d94', label: '城堡' },
+  { x0: -62, z0: -112, x1: 62, z1: -40, color: '#8a8d94', label: '城堡', tex: 'stone' },
   // courtyard / lawn south of castle (grass)
-  { x0: -80, z0: -40, x1: 80, z1: 40, color: '#5d8f4e', label: '' },
+  { x0: -80, z0: -40, x1: 80, z1: 40, color: '#5d8f4e', label: '', tex: 'grass' },
   // forbidden forest (dark green, west+north)
-  { x0: -240, z0: -240, x1: -80, z1: 120, color: '#2f5b33', label: '禁林' },
+  { x0: -240, z0: -240, x1: -80, z1: 120, color: '#2f5b33', label: '禁林', tex: 'forest' },
   // deep forest pocket (east)
-  { x0: 120, z0: -200, x1: 240, z1: -40, color: '#2f5b33', label: '' },
+  { x0: 120, z0: -200, x1: 240, z1: -40, color: '#2f5b33', label: '', tex: 'forest' },
   // black lake (blue, south-east)
-  { x0: 40, z0: 60, x1: 200, z1: 200, color: '#2c5f8a', label: '黑湖' },
+  { x0: 40, z0: 60, x1: 200, z1: 200, color: '#2c5f8a', label: '黑湖', tex: 'lake' },
   // quidditch pitch (light green oval -> box)
-  { x0: -160, z0: 60, x1: -60, z1: 160, color: '#6aa356', label: '魁地奇球场' },
+  { x0: -160, z0: 60, x1: -60, z1: 160, color: '#6aa356', label: '魁地奇球场', tex: 'grass' },
   // hogsmeade (tan, far south)
-  { x0: -60, z0: 220, x1: 60, z1: 320, color: '#a08b62', label: '霍格莫德' },
+  { x0: -60, z0: 220, x1: 60, z1: 320, color: '#a08b62', label: '霍格莫德', tex: 'village' },
 ];
 // default ground color outside zones
 const GROUND = '#557d46';
+
+// ------------------------------------------------------------------ terrain texture: pre-rendered once, blitted per frame
+const TPX = 3; // texture px per world unit
+const TB = { x0: -280, z0: -280, x1: 280, z1: 360 }; // texture world bounds
+const TW = (TB.x1 - TB.x0) * TPX, TH = (TB.z1 - TB.z0) * TPX;
+const w2tx = (x: number) => (x - TB.x0) * TPX;
+const w2ty = (z: number) => (z - TB.z0) * TPX;
+
+type Rnd = () => number;
+function mulberry(seed: number): Rnd {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+type Painter = (g: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, rnd: Rnd) => void;
+
+const texGrass: Painter = (g, x0, y0, w, h, rnd) => {
+  // grass blades: light/dark flecks
+  const n = (w * h) / 110;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h;
+    g.fillStyle = rnd() < 0.55 ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.07)';
+    g.fillRect(x, y, 1 + rnd() * 2, 2 + rnd() * 3);
+  }
+  // clumps
+  const m = (w * h) / 3200;
+  for (let i = 0; i < m; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 3 + rnd() * 7;
+    g.fillStyle = rnd() < 0.5 ? 'rgba(30,70,25,0.22)' : 'rgba(160,210,110,0.15)';
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+};
+
+const texStone: Painter = (g, x0, y0, w, h, rnd) => {
+  // flagstone grid
+  const step = 9 * TPX;
+  g.strokeStyle = 'rgba(0,0,0,0.25)';
+  g.lineWidth = Math.max(1, TPX * 0.45);
+  g.beginPath();
+  for (let x = x0 + step; x < x0 + w; x += step) { g.moveTo(x, y0); g.lineTo(x, y0 + h); }
+  for (let y = y0 + step; y < y0 + h; y += step) { g.moveTo(x0, y); g.lineTo(x0 + w, y); }
+  g.stroke();
+  // per-stone tint jitter
+  for (let y = y0; y < y0 + h; y += step) {
+    for (let x = x0; x < x0 + w; x += step) {
+      if (rnd() < 0.5) {
+        g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)';
+        g.fillRect(x + 1, y + 1, step - 2, step - 2);
+      }
+    }
+  }
+  // speckle
+  const n = (w * h) / 300;
+  for (let i = 0; i < n; i++) {
+    g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)';
+    g.fillRect(x0 + rnd() * w, y0 + rnd() * h, 2, 2);
+  }
+};
+
+const texForest: Painter = (g, x0, y0, w, h, rnd) => {
+  // canopy blobs: dark + light
+  const cols = ['rgba(12,36,15,0.38)', 'rgba(60,110,60,0.22)', 'rgba(20,55,25,0.30)'];
+  const n = (w * h) / 800;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 4 + rnd() * 11;
+    g.fillStyle = cols[i % 3]!;
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+  // trunk dots
+  const m = (w * h) / 5200;
+  for (let i = 0; i < m; i++) {
+    g.fillStyle = 'rgba(40,26,14,0.55)';
+    g.fillRect(x0 + rnd() * w, y0 + rnd() * h, 3, 3);
+  }
+};
+
+const texLake: Painter = (g, x0, y0, w, h, rnd) => {
+  // depth patches
+  const n = (w * h) / 2600;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 8 + rnd() * 20;
+    g.fillStyle = rnd() < 0.6 ? 'rgba(10,40,70,0.25)' : 'rgba(120,180,220,0.12)';
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+  // wave arcs
+  const m = (w * h) / 1600;
+  g.strokeStyle = 'rgba(190,225,255,0.28)';
+  g.lineWidth = 1.5;
+  g.beginPath();
+  for (let i = 0; i < m; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 4 + rnd() * 8;
+    g.arc(x, y, r, Math.PI * 1.1, Math.PI * 1.9);
+  }
+  g.stroke();
+};
+
+const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
+  // cobblestones: staggered rows
+  const step = 4.5 * TPX;
+  let row = 0;
+  for (let y = y0 + step / 2; y < y0 + h; y += step, row++) {
+    const off = (row % 2) * step / 2;
+    for (let x = x0 + step / 2 + off; x < x0 + w; x += step) {
+      g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.08)';
+      g.beginPath(); g.arc(x, y, step * 0.34, 0, 7); g.fill();
+    }
+  }
+};
+
+const TEX_PAINT: Record<ZoneTex, Painter> = {
+  grass: texGrass, stone: texStone, forest: texForest, lake: texLake, village: texVillage,
+};
+
+/** Build the full-world ground texture once. Zone edges are blurred for soft transitions. */
+function buildGroundTexture(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = TW; c.height = TH;
+  const g = c.getContext('2d')!;
+  const rnd = mulberry(20261017);
+  // base ground
+  g.fillStyle = GROUND;
+  g.fillRect(0, 0, TW, TH);
+  const nb = (TW * TH) / 420;
+  for (let i = 0; i < nb; i++) {
+    g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.05)';
+    g.fillRect(rnd() * TW, rnd() * TH, 2, 2);
+  }
+  // zone layer: color + detail, then blurred onto base for soft edges
+  const layer = document.createElement('canvas');
+  layer.width = TW; layer.height = TH;
+  const lg = layer.getContext('2d')!;
+  for (const zn of ZONES) {
+    const x0 = w2tx(zn.x0), y0 = w2ty(zn.z0), w = (zn.x1 - zn.x0) * TPX, h = (zn.z1 - zn.z0) * TPX;
+    lg.fillStyle = zn.color;
+    lg.fillRect(x0, y0, w, h);
+    lg.save();
+    lg.beginPath(); lg.rect(x0, y0, w, h); lg.clip();
+    TEX_PAINT[zn.tex](lg, x0, y0, w, h, rnd);
+    lg.restore();
+  }
+  g.filter = 'blur(9px)';
+  g.drawImage(layer, 0, 0);
+  g.filter = 'none';
+  return c;
+}
 
 
 // ------------------------------------------------------------------ renderer
@@ -53,6 +204,21 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   let myHandle = '';
   let follow = true;
   const keys = new Set<string>();
+  let groundTex: HTMLCanvasElement | null = null; // built lazily on first frame
+
+  // --- perf sampler (opt-in via ?perf=1): collects draw() ms, exposed as window.__2dperf() ---
+  const PERF = /[?&]perf=1/.test(location.search);
+  const perfBuf: number[] = [];
+  if (PERF) {
+    (window as any).__2dperf = () => {
+      const a = [...perfBuf].sort((x, y) => x - y);
+      if (!a.length) return null;
+      const sum = a.reduce((x, y) => x + y, 0);
+      const q = (p: number) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
+      return { n: a.length, avg: sum / a.length, p50: q(0.5), p95: q(0.95), max: a[a.length - 1] };
+    };
+  }
+  const perfEnd = (t0: number) => { if (PERF) { perfBuf.push(performance.now() - t0); if (perfBuf.length > 600) perfBuf.shift(); } };
 
   // --- input: wheel zoom, arrows pan (pan breaks follow), WASD = player move (main.ts) ---
   canvas.tabIndex = 0;
@@ -120,19 +286,35 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   }
 
   function draw() {
+    const t0 = PERF ? performance.now() : 0;
     const W = canvas.width / devicePixelRatio, H = canvas.height / devicePixelRatio;
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
-    // --- ground ---
+    // --- ground: single pre-rendered texture blit (culling = source-rect clamp) ---
+    // drawSprite leaves imageSmoothingEnabled=false; ground wants smooth scaling.
+    ctx.imageSmoothingEnabled = true;
+    const tex = groundTex ?? (groundTex = buildGroundTexture());
     ctx.fillStyle = GROUND;
     ctx.fillRect(0, 0, W, H);
+    const wA = s2w(0, 0), wB = s2w(W, H);
+    const sx0 = Math.max(0, w2tx(wA.x)), sy0 = Math.max(0, w2ty(wA.z));
+    const sx1 = Math.min(TW, w2tx(wB.x)), sy1 = Math.min(TH, w2ty(wB.z));
+    if (sx1 > sx0 && sy1 > sy0) {
+      const dx = (TB.x0 + sx0 / TPX - cam.x) * cam.zoom + W / 2;
+      const dy = (TB.z0 + sy0 / TPX - cam.z) * cam.zoom + H / 2;
+      ctx.drawImage(tex, sx0, sy0, sx1 - sx0, sy1 - sy0,
+        dx, dy, ((sx1 - sx0) / TPX) * cam.zoom, ((sy1 - sy0) / TPX) * cam.zoom);
+    }
     const night = snap?.night;
+    if (night) {
+      ctx.fillStyle = 'rgba(10,12,40,0.48)';
+      ctx.fillRect(0, 0, W, H);
+    }
+    // zone labels (culled per zone)
     for (const zn of ZONES) {
       if (!visible((zn.x0 + zn.x1) / 2, (zn.z0 + zn.z1) / 2, Math.max(zn.x1 - zn.x0, zn.z1 - zn.z0))) continue;
-      const [sx, sy] = w2s(zn.x0, zn.z0);
-      ctx.fillStyle = night ? shade(zn.color, 0.45) : zn.color;
-      ctx.fillRect(sx, sy, scale(zn.x1 - zn.x0), scale(zn.z1 - zn.z0));
       if (zn.label && cam.zoom > 0.7) {
+        const [sx, sy] = w2s(zn.x0, zn.z0);
         ctx.fillStyle = night ? '#cfd4dc' : '#2c2c2c';
         ctx.font = `${Math.max(10, 12 * cam.zoom)}px sans-serif`;
         ctx.textAlign = 'center';
@@ -145,6 +327,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.font = '16px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('等待快照…', W / 2, H / 2);
+      perfEnd(t0);
       return;
     }
 
@@ -258,16 +441,11 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     ctx.fillText(`${snap.night ? '夜' : '昼'} · ${snap.weather} · 缩放 ${cam.zoom.toFixed(1)}x`, 16, 48);
     ctx.fillStyle = '#aaa'; ctx.font = '11px sans-serif';
     ctx.fillText('WASD 移动 · 点击施法 · 方向键看地图 · F 跟随', 16, 62);
+    perfEnd(t0);
   }
 
   requestAnimationFrame(frame);
   return { setSnap, setMe, cam, screenToWorld: s2w };
-}
-
-function shade(hex: string, f: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
-  return `rgb(${r},${g},${b})`;
 }
 
 export type Renderer2D = ReturnType<typeof createRenderer2D>;
