@@ -22,26 +22,34 @@ export interface Snap {
 const css = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 // ------------------------------------------------------------------ ground zones (fixed layout, matches src/shared/map.ts)
-type ZoneTex = 'stone' | 'grass' | 'forest' | 'lake' | 'village';
-interface Zone { x0: number; z0: number; x1: number; z1: number; color: string; label: string; tex: ZoneTex }
+// --- art direction: Stardew Valley top-down. Muted harmonious palette, 3+ layers per zone.
+interface Palette3 { base: string; dark: string; light: string; detail: string }
+const PAL = {
+  grass:   { base: '#7fa65c', dark: '#6a8f4c', light: '#93bb6e', detail: '#a8cc82' },
+  meadow:  { base: '#86ad60', dark: '#719552', light: '#9cc173', detail: '#b5d68e' },
+  forest:  { base: '#3d5c3e', dark: '#2c4530', light: '#527a4e', detail: '#6a9463' },
+  lake:    { base: '#3a6a8c', dark: '#2a4f6a', light: '#5a8cab', detail: '#7fb0cc' },
+  shore:   { base: '#c9b98e', dark: '#b3a37a', light: '#ddd0a5', detail: '#efe6c4' },
+  stone:   { base: '#9b958b', dark: '#7f7a71', light: '#b3ada2', detail: '#c8c2b6' },
+  roof:    { base: '#8a5f4a', dark: '#6e4a38', light: '#a5765c', detail: '#bd8f6e' },
+  village: { base: '#ac9c7e', dark: '#96876c', light: '#c2b28e', detail: '#d4c69e' },
+  path:    { base: '#b89e6e', dark: '#a08858', light: '#cbb080', detail: '#dcc493' },
+  pitchA:  { base: '#7fa65c', dark: '#6a8f4c', light: '#93bb6e', detail: '#a8cc82' },
+  pitchB:  { base: '#8fb56a', dark: '#7aa257', light: '#a3c87e', detail: '#b8d695' },
+} as const;
+
+type ZoneTex = 'castle' | 'grass' | 'forest' | 'lake' | 'village' | 'pitch';
+interface Zone { x0: number; z0: number; x1: number; z1: number; pal: Palette3; label: string; tex: ZoneTex }
 const ZONES: Zone[] = [
-  // castle keep + wings (stone)
-  { x0: -62, z0: -112, x1: 62, z1: -40, color: '#8a8d94', label: '城堡', tex: 'stone' },
-  // courtyard / lawn south of castle (grass)
-  { x0: -80, z0: -40, x1: 80, z1: 40, color: '#5d8f4e', label: '', tex: 'grass' },
-  // forbidden forest (dark green, west+north)
-  { x0: -240, z0: -240, x1: -80, z1: 120, color: '#2f5b33', label: '禁林', tex: 'forest' },
-  // deep forest pocket (east)
-  { x0: 120, z0: -200, x1: 240, z1: -40, color: '#2f5b33', label: '', tex: 'forest' },
-  // black lake (blue, south-east)
-  { x0: 40, z0: 60, x1: 200, z1: 200, color: '#2c5f8a', label: '黑湖', tex: 'lake' },
-  // quidditch pitch (light green oval -> box)
-  { x0: -160, z0: 60, x1: -60, z1: 160, color: '#6aa356', label: '魁地奇球场', tex: 'grass' },
-  // hogsmeade (tan, far south)
-  { x0: -60, z0: 220, x1: 60, z1: 320, color: '#a08b62', label: '霍格莫德', tex: 'village' },
+  { x0: -62, z0: -112, x1: 62, z1: -40, pal: PAL.stone, label: '城堡', tex: 'castle' },
+  { x0: -80, z0: -40, x1: 80, z1: 40, pal: PAL.meadow, label: '', tex: 'grass' },
+  { x0: -240, z0: -240, x1: -80, z1: 120, pal: PAL.forest, label: '禁林', tex: 'forest' },
+  { x0: 120, z0: -200, x1: 240, z1: -40, pal: PAL.forest, label: '', tex: 'forest' },
+  { x0: 40, z0: 60, x1: 200, z1: 200, pal: PAL.lake, label: '黑湖', tex: 'lake' },
+  { x0: -160, z0: 60, x1: -60, z1: 160, pal: PAL.pitchA, label: '魁地奇球场', tex: 'pitch' },
+  { x0: -60, z0: 220, x1: 60, z1: 320, pal: PAL.village, label: '霍格莫德', tex: 'village' },
 ];
-// default ground color outside zones
-const GROUND = '#557d46';
+const GROUND = PAL.grass.base;
 
 // ------------------------------------------------------------------ per-frame hot-path caches
 // These avoid per-entity allocations and string work inside draw():
@@ -75,102 +83,377 @@ function mulberry(seed: number): Rnd {
 
 type Painter = (g: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, rnd: Rnd) => void;
 
+// --- helper: soft blob ---
+const blob = (g: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) => {
+  g.fillStyle = color;
+  g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+};
+
+// --- grass: layered meadow. base patches -> tufts -> wildflowers -> clover ---
 const texGrass: Painter = (g, x0, y0, w, h, rnd) => {
-  // grass blades: light/dark flecks
-  const n = (w * h) / 110;
-  for (let i = 0; i < n; i++) {
+  const P = PAL.meadow;
+  // large soft tonal patches (darker + lighter)
+  const np = (w * h) / 9000;
+  for (let i = 0; i < np; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 18 + rnd() * 42;
+    blob(g, x, y, r, rnd() < 0.5 ? hexA(P.dark, 0.25) : hexA(P.light, 0.22));
+  }
+  // grass tufts: 3-blade clusters, darker green
+  const nt = (w * h) / 700;
+  g.strokeStyle = hexA(P.dark, 0.55);
+  g.lineWidth = 1.6;
+  g.beginPath();
+  for (let i = 0; i < nt; i++) {
     const x = x0 + rnd() * w, y = y0 + rnd() * h;
-    g.fillStyle = rnd() < 0.55 ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.07)';
-    g.fillRect(x, y, 1 + rnd() * 2, 2 + rnd() * 3);
+    g.moveTo(x - 3, y); g.lineTo(x - 4, y - 5 - rnd() * 3);
+    g.moveTo(x, y); g.lineTo(x, y - 6 - rnd() * 3);
+    g.moveTo(x + 3, y); g.lineTo(x + 4, y - 5 - rnd() * 3);
   }
-  // clumps
-  const m = (w * h) / 3200;
-  for (let i = 0; i < m; i++) {
-    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 3 + rnd() * 7;
-    g.fillStyle = rnd() < 0.5 ? 'rgba(30,70,25,0.22)' : 'rgba(160,210,110,0.15)';
-    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
-  }
-};
-
-const texStone: Painter = (g, x0, y0, w, h, rnd) => {
-  // flagstone grid
-  const step = 9 * TPX;
-  g.strokeStyle = 'rgba(0,0,0,0.25)';
-  g.lineWidth = Math.max(1, TPX * 0.45);
-  g.beginPath();
-  for (let x = x0 + step; x < x0 + w; x += step) { g.moveTo(x, y0); g.lineTo(x, y0 + h); }
-  for (let y = y0 + step; y < y0 + h; y += step) { g.moveTo(x0, y); g.lineTo(x0 + w, y); }
   g.stroke();
-  // per-stone tint jitter
-  for (let y = y0; y < y0 + h; y += step) {
-    for (let x = x0; x < x0 + w; x += step) {
-      if (rnd() < 0.5) {
-        g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)';
-        g.fillRect(x + 1, y + 1, step - 2, step - 2);
-      }
-    }
+  // wildflowers: white / yellow / soft pink dots with tiny stem
+  const flowers = ['#f5f0e0', '#f2d06b', '#e8a0b4', '#ffffff'];
+  const nf = (w * h) / 4200;
+  for (let i = 0; i < nf; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h;
+    g.strokeStyle = hexA(P.dark, 0.5);
+    g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 4); g.stroke();
+    blob(g, x, y - 5, 1.8 + rnd(), flowers[Math.floor(rnd() * flowers.length)]!);
   }
-  // speckle
-  const n = (w * h) / 300;
-  for (let i = 0; i < n; i++) {
-    g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)';
-    g.fillRect(x0 + rnd() * w, y0 + rnd() * h, 2, 2);
+  // light sparkle flecks
+  const ns = (w * h) / 2600;
+  for (let i = 0; i < ns; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 1 + rnd() * 1.5, hexA(P.detail, 0.35));
   }
 };
 
+// --- forest: layered canopy. dark under -> mid -> light top, trunks, clearings ---
 const texForest: Painter = (g, x0, y0, w, h, rnd) => {
-  // canopy blobs: dark + light
-  const cols = ['rgba(12,36,15,0.38)', 'rgba(60,110,60,0.22)', 'rgba(20,55,25,0.30)'];
-  const n = (w * h) / 800;
-  for (let i = 0; i < n; i++) {
-    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 4 + rnd() * 11;
-    g.fillStyle = cols[i % 3]!;
-    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  const P = PAL.forest;
+  // clearings first (lighter grass showing through)
+  const nc = (w * h) / 26000;
+  for (let i = 0; i < nc; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 14 + rnd() * 26;
+    blob(g, x, y, r, hexA(PAL.grass.dark, 0.5));
   }
-  // trunk dots
-  const m = (w * h) / 5200;
-  for (let i = 0; i < m; i++) {
-    g.fillStyle = 'rgba(40,26,14,0.55)';
-    g.fillRect(x0 + rnd() * w, y0 + rnd() * h, 3, 3);
+  // canopy layer 1: dark under-blobs (largest)
+  const n1 = (w * h) / 1400;
+  for (let i = 0; i < n1; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 10 + rnd() * 16, hexA(P.dark, 0.55));
+  }
+  // canopy layer 2: mid-tone blobs
+  const n2 = (w * h) / 1800;
+  for (let i = 0; i < n2; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 7 + rnd() * 12, hexA(P.base, 0.6));
+  }
+  // canopy layer 3: light top highlights (smallest, sparse)
+  const n3 = (w * h) / 3200;
+  for (let i = 0; i < n3; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 4 + rnd() * 7, hexA(P.light, 0.5));
+  }
+  // dappled sunlight spots
+  const nd = (w * h) / 9000;
+  for (let i = 0; i < nd; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 3 + rnd() * 6, hexA(P.detail, 0.3));
+  }
+  // trunks: dark brown dots with slight shadow offset
+  const nt = (w * h) / 6500;
+  for (let i = 0; i < nt; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h;
+    blob(g, x + 1.5, y + 1.5, 2.6, 'rgba(0,0,0,0.3)');
+    blob(g, x, y, 2.4, '#4a352a');
+    blob(g, x - 0.7, y - 0.7, 1, '#6b4f3a');
+  }
+  // mushrooms: red cap + white dots (rare)
+  const nm = (w * h) / 30000;
+  for (let i = 0; i < nm; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h;
+    g.fillStyle = '#8a4038'; g.fillRect(x - 1, y, 2, 3); // stem
+    blob(g, x, y - 1, 3.2, '#b0503c'); // cap
+    blob(g, x - 1, y - 2, 0.9, '#f0e8d8'); blob(g, x + 1.2, y - 0.5, 0.9, '#f0e8d8');
   }
 };
 
+// --- lake: depth gradient + shore + waves ---
 const texLake: Painter = (g, x0, y0, w, h, rnd) => {
-  // depth patches
-  const n = (w * h) / 2600;
-  for (let i = 0; i < n; i++) {
-    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 8 + rnd() * 20;
-    g.fillStyle = rnd() < 0.6 ? 'rgba(10,40,70,0.25)' : 'rgba(120,180,220,0.12)';
-    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  const P = PAL.lake;
+  // depth: darker toward center via radial-ish patches
+  const cx = x0 + w / 2, cy = y0 + h / 2;
+  const maxR = Math.max(w, h) / 2;
+  const nd = 26;
+  for (let i = nd; i > 0; i--) {
+    const r = (maxR * i) / nd;
+    const t = 1 - i / nd; // 0 edge -> 1 center
+    blob(g, cx + (rnd() - 0.5) * 20, cy + (rnd() - 0.5) * 20, r,
+      t > 0.6 ? hexA(P.dark, 0.5) : hexA(P.base, 0.35));
   }
-  // wave arcs
-  const m = (w * h) / 1600;
-  g.strokeStyle = 'rgba(190,225,255,0.28)';
-  g.lineWidth = 1.5;
+  // shore ring: sandy shallows around edges
+  g.strokeStyle = hexA(PAL.shore.base, 0.85);
+  g.lineWidth = 10 * TPX * 0.55;
+  g.strokeRect(x0 + 8, y0 + 8, w - 16, h - 16);
+  g.strokeStyle = hexA(PAL.shore.light, 0.5);
+  g.lineWidth = 5 * TPX * 0.55;
+  g.strokeRect(x0 + 16, y0 + 16, w - 32, h - 32);
+  // wave highlights: short arcs
+  const nw = (w * h) / 2400;
+  g.strokeStyle = hexA(P.detail, 0.4);
+  g.lineWidth = 1.8;
   g.beginPath();
-  for (let i = 0; i < m; i++) {
-    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 4 + rnd() * 8;
-    g.arc(x, y, r, Math.PI * 1.1, Math.PI * 1.9);
+  for (let i = 0; i < nw; i++) {
+    const x = x0 + 14 + rnd() * (w - 28), y = y0 + 14 + rnd() * (h - 28);
+    const r = 5 + rnd() * 9, a = rnd() * Math.PI;
+    g.arc(x, y, r, a, a + 1.1);
   }
   g.stroke();
+  // sparkles
+  const ns = (w * h) / 5200;
+  for (let i = 0; i < ns; i++) {
+    blob(g, x0 + 14 + rnd() * (w - 28), y0 + 14 + rnd() * (h - 28), 1.4, hexA('#e8f4ff', 0.55));
+  }
 };
 
+// --- castle: warm stone + actual structures (walls, towers, courtyard) ---
+const texCastle: Painter = (g, x0, y0, w, h, rnd) => {
+  const P = PAL.stone;
+  // subtle stone variation patches
+  const np = (w * h) / 12000;
+  for (let i = 0; i < np; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 12 + rnd() * 26,
+      rnd() < 0.5 ? hexA(P.dark, 0.2) : hexA(P.light, 0.2));
+  }
+  // flagstone seams (soft, irregular)
+  const step = 11 * TPX;
+  g.strokeStyle = hexA(P.dark, 0.35);
+  g.lineWidth = 1.4;
+  g.beginPath();
+  for (let x = x0 + step + rnd() * 4; x < x0 + w; x += step) {
+    g.moveTo(x, y0); g.lineTo(x + (rnd() - 0.5) * 6, y0 + h);
+  }
+  for (let y = y0 + step + rnd() * 4; y < y0 + h; y += step) {
+    g.moveTo(x0, y); g.lineTo(x0 + w, y + (rnd() - 0.5) * 6);
+  }
+  g.stroke();
+  // moss accents in corners / edges
+  const nm = (w * h) / 20000;
+  for (let i = 0; i < nm; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 2 + rnd() * 5, hexA('#6b8f5a', 0.4));
+  }
+  // --- castle structures (top-down): outer walls, corner towers, central keep ---
+  const S = PAL.stone;
+  const wallW = 4 * TPX; // wall thickness in texture px
+  // outer wall: dark outline + lighter top
+  g.strokeStyle = hexA(S.dark, 0.9);
+  g.lineWidth = wallW;
+  g.strokeRect(x0 + wallW, y0 + wallW, w - wallW * 2, h - wallW * 2);
+  g.strokeStyle = hexA(S.light, 0.6);
+  g.lineWidth = wallW * 0.45;
+  g.strokeRect(x0 + wallW, y0 + wallW, w - wallW * 2, h - wallW * 2);
+  // corner towers: circles with conical roof hint
+  const towers: Array<[number, number, number]> = [
+    [x0 + wallW, y0 + wallW, 9], [x0 + w - wallW, y0 + wallW, 9],
+    [x0 + wallW, y0 + h - wallW, 8], [x0 + w - wallW, y0 + h - wallW, 8],
+  ];
+  for (const [tx, ty, tr] of towers) {
+    const r = tr * TPX * 0.5;
+    blob(g, tx + 2, ty + 2, r, 'rgba(0,0,0,0.25)'); // shadow
+    blob(g, tx, ty, r, hexA(S.dark, 0.95)); // tower base
+    blob(g, tx, ty, r * 0.62, hexA(PAL.roof.dark, 0.95)); // roof
+    blob(g, tx - r * 0.2, ty - r * 0.2, r * 0.25, hexA(PAL.roof.light, 0.8)); // roof highlight
+  }
+  // central keep: raised rectangle with roof
+  const kx0 = x0 + w * 0.32, ky0 = y0 + h * 0.28, kw = w * 0.36, kh = h * 0.4;
+  g.fillStyle = 'rgba(0,0,0,0.22)';
+  roundRect(g, kx0 + 3, ky0 + 4, kw, kh, 4); g.fill();
+  g.fillStyle = hexA(S.base, 0.95);
+  roundRect(g, kx0, ky0, kw, kh, 4); g.fill();
+  g.strokeStyle = hexA(S.dark, 0.7); g.lineWidth = 2;
+  roundRect(g, kx0, ky0, kw, kh, 4); g.stroke();
+  // keep roof: pitched, with ridge
+  g.fillStyle = hexA(PAL.roof.base, 0.95);
+  roundRect(g, kx0 - 3, ky0 - 3, kw + 6, kh * 0.55, 4); g.fill();
+  g.fillStyle = hexA(PAL.roof.light, 0.5);
+  g.fillRect(kx0 - 3, ky0 - 3, kw + 6, 4);
+  // courtyard: lighter paved area south of keep
+  const cy0 = ky0 + kh + 8;
+  g.fillStyle = hexA(S.light, 0.5);
+  roundRect(g, x0 + w * 0.2, cy0, w * 0.6, y0 + h - wallW - cy0 - 6, 6); g.fill();
+  // gate: opening in south wall
+  g.fillStyle = hexA(S.base, 1);
+  g.fillRect(x0 + w / 2 - wallW * 0.8, y0 + h - wallW * 1.6, wallW * 1.6, wallW * 1.6);
+};
+
+// --- village: cobble streets + houses with roofs ---
 const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
-  // cobblestones: staggered rows
-  const step = 4.5 * TPX;
+  const P = PAL.village;
+  // tonal patches
+  const np = (w * h) / 14000;
+  for (let i = 0; i < np; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 14 + rnd() * 30,
+      rnd() < 0.5 ? hexA(P.dark, 0.22) : hexA(P.light, 0.22));
+  }
+  // cobblestone: staggered, soft
+  const step = 5 * TPX;
   let row = 0;
   for (let y = y0 + step / 2; y < y0 + h; y += step, row++) {
     const off = (row % 2) * step / 2;
     for (let x = x0 + step / 2 + off; x < x0 + w; x += step) {
-      g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.08)';
-      g.beginPath(); g.arc(x, y, step * 0.34, 0, 7); g.fill();
+      blob(g, x, y, step * 0.32, rnd() < 0.5 ? hexA(P.dark, 0.3) : hexA(P.light, 0.25));
+    }
+  }
+  // houses: placed on a loose grid, deterministic per zone
+  const hrnd = mulberry(777);
+  const hw = 26 * TPX, hh = 20 * TPX; // house footprint in texture px
+  for (let gy = 0; gy < 3; gy++) {
+    for (let gx = 0; gx < 4; gx++) {
+      if (hrnd() < 0.25) continue; // some plots empty
+      const hx = x0 + (gx + 0.5) * (w / 4) + (hrnd() - 0.5) * 30;
+      const hy = y0 + (gy + 0.5) * (h / 3) + (hrnd() - 0.5) * 24;
+      drawHouse(g, hx, hy, hw * (0.85 + hrnd() * 0.3), hh * (0.85 + hrnd() * 0.3), hrnd);
+    }
+  }
+  // street lamps: warm glow dots along a central street
+  for (let i = 0; i < 5; i++) {
+    const lx = x0 + w / 2 + (i % 2 ? 26 : -26);
+    const ly = y0 + (i + 0.7) * (h / 5.6);
+    blob(g, lx, ly, 7, hexA('#ffca7a', 0.25)); // glow
+    blob(g, lx, ly, 2.2, '#3a3230'); // post
+    blob(g, lx, ly - 1, 1.6, '#ffd98a'); // lamp
+  }
+};
+
+// house: top-down — walls, pitched roof (two slopes), chimney, door shadow
+function drawHouse(g: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number, rnd: Rnd): void {
+  const R = PAL.roof, V = PAL.village;
+  // drop shadow
+  g.fillStyle = 'rgba(0,0,0,0.22)';
+  roundRect(g, cx - w / 2 + 3, cy - h / 2 + 4, w, h, 3); g.fill();
+  // walls
+  g.fillStyle = V.light;
+  roundRect(g, cx - w / 2, cy - h / 2, w, h, 3); g.fill();
+  g.strokeStyle = hexA(V.dark, 0.6); g.lineWidth = 1.6;
+  roundRect(g, cx - w / 2, cy - h / 2, w, h, 3); g.stroke();
+  // roof: two slopes with ridge highlight
+  g.fillStyle = R.base;
+  roundRect(g, cx - w / 2 - 2, cy - h / 2 - 2, w + 4, h * 0.52, 3); g.fill();
+  g.fillStyle = R.dark;
+  roundRect(g, cx - w / 2 - 2, cy + h * 0.02, w + 4, h * 0.5, 3); g.fill();
+  g.fillStyle = hexA(R.light, 0.7);
+  g.fillRect(cx - w / 2 - 2, cy - h / 2 - 2, w + 4, 3); // ridge highlight
+  // chimney
+  const chx = cx + w * 0.28, chy = cy - h * 0.18;
+  g.fillStyle = '#6e5a50'; g.fillRect(chx - 3, chy - 6, 7, 12);
+  g.fillStyle = '#8a7368'; g.fillRect(chx - 3, chy - 6, 7, 3);
+  // door shadow (south side)
+  g.fillStyle = 'rgba(0,0,0,0.3)';
+  roundRect(g, cx - 5, cy + h / 2 - 2, 10, 6, 2); g.fill();
+}
+
+function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+// --- quidditch pitch: mowed stripes + white lines + goal hoops ---
+const texPitch: Painter = (g, x0, y0, w, h, rnd) => {
+  // mowed stripes (horizontal bands, alternating tones)
+  const stripeH = h / 9;
+  for (let i = 0; i < 9; i++) {
+    g.fillStyle = i % 2 ? PAL.pitchA.base : PAL.pitchB.base;
+    g.fillRect(x0, y0 + i * stripeH, w, stripeH + 1);
+  }
+  // subtle noise on top
+  const nn = (w * h) / 3000;
+  for (let i = 0; i < nn; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.5, hexA(PAL.pitchA.detail, 0.25));
+  }
+  const L = 'rgba(245,245,240,0.85)';
+  g.strokeStyle = L; g.lineWidth = 2.4;
+  // boundary
+  g.strokeRect(x0 + 14, y0 + 14, w - 28, h - 28);
+  // center line + circle
+  g.beginPath();
+  g.moveTo(x0 + w / 2, y0 + 14); g.lineTo(x0 + w / 2, y0 + h - 14);
+  g.arc(x0 + w / 2, y0 + h / 2, 26, 0, 7);
+  g.stroke();
+  // goal hoops: 3 per end (north + south), gold rings on posts
+  for (const endY of [y0 + 26, y0 + h - 26]) {
+    for (let k = -1; k <= 1; k++) {
+      const hx = x0 + w / 2 + k * 30;
+      g.strokeStyle = '#3a3230'; g.lineWidth = 3; // post
+      g.beginPath(); g.moveTo(hx, endY); g.lineTo(hx, endY + (endY < y0 + h / 2 ? -14 : 14)); g.stroke();
+      g.strokeStyle = '#d4a017'; g.lineWidth = 2.6; // gold hoop
+      g.beginPath(); g.arc(hx, endY + (endY < y0 + h / 2 ? -20 : 20), 7, 0, 7); g.stroke();
     }
   }
 };
 
 const TEX_PAINT: Record<ZoneTex, Painter> = {
-  grass: texGrass, stone: texStone, forest: texForest, lake: texLake, village: texVillage,
+  castle: texCastle, grass: texGrass, forest: texForest,
+  lake: texLake, village: texVillage, pitch: texPitch,
 };
+
+// --- hex + alpha helper (for palette colors) ---
+function hexA(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1, 3), 16), gg = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${gg},${b},${a})`;
+}
+
+// --- decorative scatter: paths, bushes, stones (fixed seeds, drawn over zones) ---
+function paintDecorations(g: CanvasRenderingContext2D, rnd: Rnd): void {
+  // winding dirt path: castle -> lake -> hogsmeade
+  const pathPts: Array<[number, number]> = [
+    [0, -40], [10, 10], [30, 45], [55, 70], [70, 110], [60, 160], [40, 200], [20, 235], [0, 255],
+  ];
+  g.strokeStyle = hexA(PAL.path.base, 0.9);
+  g.lineCap = 'round';
+  for (const pw of [13, 9, 5]) {
+    g.lineWidth = pw * TPX * 0.5;
+    g.beginPath();
+    pathPts.forEach(([x, z], i) => {
+      const tx = w2tx(x), ty = w2ty(z);
+      if (i === 0) g.moveTo(tx, ty); else g.lineTo(tx, ty);
+    });
+    g.stroke();
+    g.strokeStyle = hexA(PAL.path.light, 0.5);
+  }
+  // path edge darkening (drawn once, wider, underneath already done above)
+  // bushes: rounded clusters with highlight (grass areas only)
+  const brnd = mulberry(4451);
+  for (let i = 0; i < 90; i++) {
+    const x = -260 + brnd() * 520, z = -260 + brnd() * 560;
+    if (!inGrass(x, z)) continue;
+    const bx = w2tx(x), by = w2ty(z), r = (4 + brnd() * 7) * TPX * 0.5;
+    blob(g, bx + 1, by + 1.5, r, 'rgba(0,0,0,0.18)');
+    blob(g, bx, by, r, hexA(PAL.grass.dark, 0.85));
+    blob(g, bx - r * 0.25, by - r * 0.25, r * 0.55, hexA(PAL.grass.light, 0.7));
+  }
+  // stones: grey rounded rocks with shadow
+  const srnd = mulberry(9923);
+  for (let i = 0; i < 60; i++) {
+    const x = -260 + srnd() * 520, z = -260 + srnd() * 560;
+    if (!inGrass(x, z)) continue;
+    const sx = w2tx(x), sy = w2ty(z), r = (2.5 + srnd() * 4) * TPX * 0.5;
+    blob(g, sx + 1.2, sy + 1.6, r, 'rgba(0,0,0,0.2)');
+    blob(g, sx, sy, r, '#8f8a80');
+    blob(g, sx - r * 0.3, sy - r * 0.3, r * 0.4, '#b5afa4');
+  }
+}
+
+// grass-area check for scatter placement (excludes lake/castle/village/pitch interiors)
+function inGrass(x: number, z: number): boolean {
+  for (const zn of ZONES) {
+    if (x >= zn.x0 && x <= zn.x1 && z >= zn.z0 && z <= zn.z1) {
+      return zn.tex === 'grass';
+    }
+  }
+  return true; // outside zones = wild grass
+}
+
 
 /** Build the full-world ground texture once. Zone edges are blurred for soft transitions. */
 function buildGroundTexture(): HTMLCanvasElement {
@@ -178,12 +461,30 @@ function buildGroundTexture(): HTMLCanvasElement {
   c.width = TW; c.height = TH;
   const g = c.getContext('2d')!;
   const rnd = mulberry(20261017);
-  // base ground
+  // base ground: wild grass with tonal patches + tufts
   g.fillStyle = GROUND;
   g.fillRect(0, 0, TW, TH);
-  const nb = (TW * TH) / 420;
+  const brnd = mulberry(31337);
+  // large tonal patches
+  for (let i = 0; i < 120; i++) {
+    blob(g, brnd() * TW, brnd() * TH, 20 + brnd() * 50,
+      brnd() < 0.5 ? hexA(PAL.grass.dark, 0.18) : hexA(PAL.grass.light, 0.15));
+  }
+  // grass tufts
+  g.strokeStyle = hexA(PAL.grass.dark, 0.4);
+  g.lineWidth = 1.6;
+  g.beginPath();
+  for (let i = 0; i < 900; i++) {
+    const x = brnd() * TW, y = brnd() * TH;
+    g.moveTo(x - 3, y); g.lineTo(x - 4, y - 5 - brnd() * 3);
+    g.moveTo(x, y); g.lineTo(x, y - 6 - brnd() * 3);
+    g.moveTo(x + 3, y); g.lineTo(x + 4, y - 5 - brnd() * 3);
+  }
+  g.stroke();
+  // fine noise
+  const nb = (TW * TH) / 800;
   for (let i = 0; i < nb; i++) {
-    g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.05)';
+    g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)';
     g.fillRect(rnd() * TW, rnd() * TH, 2, 2);
   }
   // zone layer: color + detail, then blurred onto base for soft edges
@@ -192,7 +493,7 @@ function buildGroundTexture(): HTMLCanvasElement {
   const lg = layer.getContext('2d')!;
   for (const zn of ZONES) {
     const x0 = w2tx(zn.x0), y0 = w2ty(zn.z0), w = (zn.x1 - zn.x0) * TPX, h = (zn.z1 - zn.z0) * TPX;
-    lg.fillStyle = zn.color;
+    lg.fillStyle = zn.pal.base;
     lg.fillRect(x0, y0, w, h);
     lg.save();
     lg.beginPath(); lg.rect(x0, y0, w, h); lg.clip();
@@ -202,6 +503,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   g.filter = 'blur(9px)';
   g.drawImage(layer, 0, 0);
   g.filter = 'none';
+  // decorations on top (paths, bushes, stones) — not blurred, crisp details
+  paintDecorations(g, mulberry(20261018));
   return c;
 }
 
@@ -336,11 +639,24 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.drawImage(tex, sx0, sy0, sx1 - sx0, sy1 - sy0,
         dx, dy, ((sx1 - sx0) / TPX) * cam.zoom, ((sy1 - sy0) / TPX) * cam.zoom);
     }
-    const night = snap?.night;
-    if (night) {
-      ctx.fillStyle = 'rgba(10,12,40,0.48)';
+    // lighting: soft day warmth / moonlight night (no harsh black)
+    const hour = snap?.hour ?? 12;
+    // dayFactor: 1 = full day, 0 = deep night. smooth around dawn/dusk.
+    const dayFactor = hour >= 6 && hour <= 18
+      ? Math.min(1, Math.min(hour - 6, 18 - hour) / 2.5 + 0.25)
+      : 0;
+    if (dayFactor < 1) {
+      const k = 1 - dayFactor;
+      // moonlight blue, softer than before
+      ctx.fillStyle = `rgba(24,32,68,${(0.42 * k).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+      // (moon pools removed — looked like bubbles; the blue overlay is enough)
+    } else if (hour >= 10 && hour <= 15) {
+      // midday warmth, very subtle
+      ctx.fillStyle = 'rgba(255,240,200,0.06)';
       ctx.fillRect(0, 0, W, H);
     }
+    const night = dayFactor < 0.5;
     // zone labels (culled per zone)
     for (const zn of ZONES) {
       if (!visible((zn.x0 + zn.x1) / 2, (zn.z0 + zn.z1) / 2, Math.max(zn.x1 - zn.x0, zn.z1 - zn.z0))) continue;
