@@ -51,6 +51,56 @@ const ZONES: Zone[] = [
 ];
 const GROUND = PAL.grass.base;
 
+// ------------------------------------------------------------------ night sky: pre-rendered starfield + moon
+// Both are lazy one-time builds; per frame they cost one drawImage + a few
+// arcs — well inside the 60 fps budget.
+let starTex: HTMLCanvasElement | null = null;
+function getStarTex(): HTMLCanvasElement {
+  if (!starTex) {
+    const c = document.createElement('canvas');
+    c.width = 640; c.height = 360;
+    const g = c.getContext('2d')!;
+    // deterministic seed so the sky doesn't reshuffle on rebuild
+    let s = 1234567;
+    const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+    for (let i = 0; i < 150; i++) {
+      const r = 0.5 + rnd() * 1.2;
+      g.fillStyle = `rgba(235,240,255,${(0.35 + rnd() * 0.6).toFixed(2)})`;
+      g.beginPath();
+      g.arc(rnd() * c.width, rnd() * c.height, r, 0, Math.PI * 2);
+      g.fill();
+    }
+    starTex = c;
+  }
+  return starTex;
+}
+let moonGlow: CanvasGradient | null = null;
+/** Moon disc + halo at fixed screen position (mx, my). k = night strength 0..1. */
+function drawMoon(ctx: CanvasRenderingContext2D, mx: number, my: number, k: number) {
+  const R = 26;
+  if (!moonGlow) {
+    moonGlow = ctx.createRadialGradient(0, 0, R * 0.4, 0, 0, R * 3.2);
+    moonGlow.addColorStop(0, 'rgba(220,228,255,0.55)');
+    moonGlow.addColorStop(1, 'rgba(220,228,255,0)');
+  }
+  ctx.save();
+  ctx.translate(mx, my);
+  ctx.fillStyle = moonGlow;
+  ctx.fillRect(-R * 3.2, -R * 3.2, R * 6.4, R * 6.4);
+  // disc
+  ctx.fillStyle = '#e8ecf7';
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+  // craters: subtle darker patches
+  ctx.fillStyle = 'rgba(180,190,215,0.55)';
+  for (const [cx, cy, cr] of [[-8, -4, 6], [7, 6, 4.5], [2, -11, 3.5]] as const) {
+    ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI * 2); ctx.fill();
+  }
+  // terminator shading: night side darkens as k grows
+  ctx.fillStyle = `rgba(22,30,66,${(0.25 * (1 - k) + 0.05).toFixed(2)})`;
+  ctx.beginPath(); ctx.arc(-R * 0.25, -R * 0.25, R * 0.96, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
 // ------------------------------------------------------------------ per-frame hot-path caches
 // These avoid per-entity allocations and string work inside draw():
 // - HOSTILE_KINDS: Set lookup instead of a per-creature array literal
@@ -753,23 +803,14 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.drawImage(tex, sx0, sy0, sx1 - sx0, sy1 - sy0,
         dx, dy, ((sx1 - sx0) / TPX) * cam.zoom, ((sy1 - sy0) / TPX) * cam.zoom);
     }
-    // lighting: soft day warmth / moonlight night (no harsh black)
+    // lighting inputs: smoothstep day curve — sunrise 5→8, sunset 16.5→19.5.
+    // C1 continuous everywhere, so dusk/dawn never jump. 1 = full day, 0 = deep night.
     const hour = snap?.hour ?? 12;
-    // dayFactor: 1 = full day, 0 = deep night. smooth around dawn/dusk.
-    const dayFactor = hour >= 6 && hour <= 18
-      ? Math.min(1, Math.min(hour - 6, 18 - hour) / 2.5 + 0.25)
-      : 0;
-    if (dayFactor < 1) {
-      const k = 1 - dayFactor;
-      // moonlight blue, softer than before
-      ctx.fillStyle = `rgba(24,32,68,${(0.42 * k).toFixed(3)})`;
-      ctx.fillRect(0, 0, W, H);
-      // (moon pools removed — looked like bubbles; the blue overlay is enough)
-    } else if (hour >= 10 && hour <= 15) {
-      // midday warmth, very subtle
-      ctx.fillStyle = 'rgba(255,240,200,0.06)';
-      ctx.fillRect(0, 0, W, H);
-    }
+    const sstep = (a: number, b: number, x: number) => {
+      const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+      return t * t * (3 - 2 * t);
+    };
+    const dayFactor = sstep(5, 8, hour) * (1 - sstep(16.5, 19.5, hour));
     const night = dayFactor < 0.5;
     // zone labels (culled per zone); collected as fixed anchors for the unified
     // label layout pass below — wizard names must not collide with them
@@ -918,6 +959,30 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       if (w.say && cam.zoom > 0.9) {
         ctx.fillStyle = '#fff'; setFont('10px sans-serif');
         ctx.fillText(w.say.slice(0, 24), sx, sy - r - 20);
+      }
+    }
+    // --- lighting: applied over the whole world (ground + sprites) so night
+    // dims everything consistently. Dusk/dawn get a warm wash, night gets
+    // moonlight blue + stars + a moon disc. Names, fx and HUD render above.
+    {
+      const k = 1 - dayFactor; // 0 = full day, 1 = deep night
+      const warm = 4 * dayFactor * (1 - dayFactor); // 0..1, peaks mid-transition
+      if (warm > 0.02) {
+        ctx.fillStyle = `rgba(255,125,55,${(0.24 * warm).toFixed(3)})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+      if (k > 0.02) {
+        // moonlight blue (no harsh black)
+        ctx.fillStyle = `rgba(16,24,54,${(0.58 * k).toFixed(3)})`;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = Math.min(1, k * 1.25);
+        ctx.drawImage(getStarTex(), 0, 0, W, H);
+        drawMoon(ctx, W - 250, 100, k);
+        ctx.globalAlpha = 1;
+      } else if (hour >= 10 && hour <= 15) {
+        // midday warmth, very subtle
+        ctx.fillStyle = 'rgba(255,240,200,0.06)';
+        ctx.fillRect(0, 0, W, H);
       }
     }
     // --- unified label layout: wizard names avoid zone labels and each other ---

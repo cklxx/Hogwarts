@@ -27,6 +27,24 @@ async function gate(): Promise<string | null> {
 }
 
 async function main() {
+  // debug: #hour=21 / ?hour=21 — freeze the time of day for acceptance
+  // screenshots (the server runs a 900 s day; waiting for night is slow).
+  // NOTE: main() re-runs on ws reconnect and gate() strips the URL hash, so
+  // the override is kept in sessionStorage for the life of the tab.
+  const HOUR_LS = 'hogwarts.hourOverride';
+  const hourOverride = (() => {
+    const m = location.href.match(/[#?&]hour=(\d+(?:\.\d+)?)/);
+    const h = m ? parseFloat(m[1]) : NaN;
+    if (Number.isFinite(h)) {
+      const hh = ((h % 24) + 24) % 24;
+      try { sessionStorage.setItem(HOUR_LS, String(hh)); } catch { /* ignore */ }
+      return hh;
+    }
+    try {
+      const v = parseFloat(sessionStorage.getItem(HOUR_LS) ?? '');
+      return Number.isFinite(v) ? v : null;
+    } catch { return null; }
+  })();
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
   document.body.style.background = '#1a1a1a';
@@ -101,6 +119,7 @@ async function main() {
       (main as any)._meState = msg.s;
     } else if (msg.t === 'snap') {
       const s = msg.s as Snap;
+      if (hourOverride !== null) { s.hour = hourOverride; s.night = hourOverride < 6 || hourOverride >= 20; }
       ui.setSnap(s);
       // feed HUD: map Snap -> HudSnapshot
       const myH = (main as any)._me as string | undefined;
