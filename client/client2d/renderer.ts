@@ -217,6 +217,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const q = (p: number) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
       return { n: a.length, avg: sum / a.length, p50: q(0.5), p95: q(0.95), max: a[a.length - 1] };
     };
+    (window as any).__2dzoom = () => cam.zoom;
+    (window as any).__2dents = () => snap ? { w: snap.w.length, c: snap.c.length, p: snap.p.length, fx: snap.fx.length } : null;
   }
   const perfEnd = (t0: number) => { if (PERF) { perfBuf.push(performance.now() - t0); if (perfBuf.length > 600) perfBuf.shift(); } };
 
