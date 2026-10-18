@@ -5,6 +5,9 @@
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawSprite } from './sprites.js';
 import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp } from './components.js';
+import { getLayout, itemsInRect, type PlacedItem } from './layout.js';
+// 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
+import { OBSTACLES } from '../../src/shared/map.js';
 
 // ------------------------------------------------------------------ snapshot types (mirror of World.snapshot, client/main.ts)
 export interface SW { h: string; n: string; ho: House; x: number; z: number; f: number; hp: number; m: number; y: number; t: string; s: string; say?: string; mm?: string }
@@ -41,14 +44,15 @@ const PAL = {
 
 type ZoneTex = 'castle' | 'grass' | 'forest' | 'lake' | 'village' | 'pitch';
 interface Zone { x0: number; z0: number; x1: number; z1: number; pal: Palette3; label: string; tex: ZoneTex }
+// 区域划分对齐 src/shared/map.ts 的服务器真实布局（此前 2D 自创位置与服务器碰撞错位）
+// 服务器：城堡 x -62..62, z -118..-40；黑湖 (-118,40) r30；禁林 (165,15) r85；霍格莫德 x -30..70, z 150..208；魁地奇 x 30..50, z -185..-115
 const ZONES: Zone[] = [
-  { x0: -62, z0: -112, x1: 62, z1: -40, pal: PAL.stone, label: '城堡', tex: 'castle' },
-  { x0: -80, z0: -40, x1: 80, z1: 40, pal: PAL.meadow, label: '', tex: 'grass' },
-  { x0: -240, z0: -240, x1: -80, z1: 120, pal: PAL.forest, label: '禁林', tex: 'forest' },
-  { x0: 120, z0: -200, x1: 240, z1: -40, pal: PAL.forest, label: '', tex: 'forest' },
-  { x0: 40, z0: 60, x1: 200, z1: 200, pal: PAL.lake, label: '黑湖', tex: 'lake' },
-  { x0: -160, z0: 60, x1: -60, z1: 160, pal: PAL.pitchA, label: '魁地奇球场', tex: 'pitch' },
-  { x0: -60, z0: 220, x1: 60, z1: 320, pal: PAL.village, label: '霍格莫德', tex: 'village' },
+  { x0: -62, z0: -118, x1: 62, z1: -40, pal: PAL.stone, label: '城堡', tex: 'castle' },
+  { x0: -80, z0: -40, x1: 80, z1: 60, pal: PAL.meadow, label: '', tex: 'grass' },
+  { x0: 80, z0: -70, x1: 250, z1: 100, pal: PAL.forest, label: '禁林', tex: 'forest' },
+  { x0: -148, z0: 10, x1: -88, z1: 70, pal: PAL.lake, label: '黑湖', tex: 'lake' },
+  { x0: -30, z0: 150, x1: 70, z1: 208, pal: PAL.village, label: '霍格莫德', tex: 'village' },
+  { x0: 30, z0: -185, x1: 50, z1: -115, pal: PAL.pitchA, label: '魁地奇球场', tex: 'pitch' },
 ];
 const GROUND = PAL.grass.base;
 
@@ -181,6 +185,10 @@ const texGrass: Painter = (g, x0, y0, w, h, rnd) => {
 };
 
 // --- forest: layered canopy. dark under -> mid -> light top, trunks, clearings ---
+// 服务器真实树木位置（src/shared/map.ts OBSTACLES）：视觉与碰撞一致，不再随机撒树
+const SERVER_TREES: Array<{ x: number; z: number }> = OBSTACLES.filter(
+  (o) => o.style === 'tree' && o.kind === 'disc'
+).map((o) => ({ x: (o as { x: number }).x, z: (o as { z: number }).z }));
 const texForest: Painter = (g, x0, y0, w, h, rnd) => {
   const P = PAL.forest;
   // clearings first (lighter grass showing through)
@@ -199,23 +207,20 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
   for (let i = 0; i < nd; i++) {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 3 + rnd() * 6, hexA(P.detail, 0.3));
   }
-  // 真正的树：按框架比例放置（橡树 72 冠径 / 松树 / 枯树）
+  // 真正的树：服务器真实位置（与碰撞一致）
   // 世界单位转纹理 px：TPX=3。树锚点 = 底部中心。
   const w2x = (wx: number): number => w2tx(wx);
   const w2y = (wz: number): number => w2ty(wz);
   // 从世界坐标反推本 zone 的世界范围
   const zx0 = (x0 / TPX) + TB.x0, zy0 = (y0 / TPX) + TB.z0;
-  const zw = w / TPX, zh = h / TPX;
-  const trnd = mulberry(9182);
-  const nt = Math.floor((zw * zh) / 1800); // 每 1800 平方单位一棵
-  for (let i = 0; i < nt; i++) {
-    const wx = zx0 + trnd() * zw, wz = zy0 + trnd() * zh;
-    const tx = w2x(wx), ty = w2y(wz);
-    const kind = trnd();
-    // 留出空地：30% 概率跳过
-    if (trnd() < 0.3) continue;
-    if (kind < 0.55) drawOak(g, tx, ty, TPX);
-    else if (kind < 0.85) drawPine(g, tx, ty, TPX);
+  const zx1 = zx0 + w / TPX, zy1 = zy0 + h / TPX;
+  for (const t of SERVER_TREES) {
+    if (t.x < zx0 || t.x > zx1 || t.z < zy0 || t.z > zy1) continue;
+    const tx = w2x(t.x), ty = w2y(t.z);
+    // 确定性种类选择（基于位置哈希，保证每次一致）
+    const hk = Math.abs(Math.sin(t.x * 12.9898 + t.z * 78.233) * 43758.5453) % 1;
+    if (hk < 0.55) drawOak(g, tx, ty, TPX);
+    else if (hk < 0.85) drawPine(g, tx, ty, TPX);
     else drawDeadTree(g, tx, ty, TPX);
   }
   void P; void nd;
@@ -306,25 +311,34 @@ const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
       blob(g, x, y, step * 0.32, rnd() < 0.5 ? hexA(P.dark, 0.3) : hexA(P.light, 0.25));
     }
   }
-  // houses: 按框架比例（茅屋 72×56 / 石屋 96×72）， deterministic per zone
-  const hrnd = mulberry(777);
-  for (let gy = 0; gy < 3; gy++) {
-    for (let gx = 0; gx < 4; gx++) {
-      if (hrnd() < 0.25) continue; // some plots empty
-      const hx = x0 + (gx + 0.5) * (w / 4) + (hrnd() - 0.5) * 30;
-      const hy = y0 + (gy + 0.5) * (h / 3) + (hrnd() - 0.5) * 24;
-      // 锚点 = 底部中心。组件用设计 px，s=TPX。
-      if (hrnd() < 0.6) drawCottage(g, hx, hy, TPX);
-      else drawStoneHouse(g, hx, hy, TPX);
-    }
-  }
-  // street lamps: 按框架（8w×44h）
-  for (let i = 0; i < 5; i++) {
-    const lx = x0 + w / 2 + (i % 2 ? 26 : -26);
-    const ly = y0 + (i + 0.7) * (h / 5.6);
-    drawLamp(g, lx, ly, TPX);
+  // buildings from layout.ts (collision-checked, avoids server's named shops)
+  // + server's 5 named buildings drawn from OBSTACLES below
+  const zx0v = (x0 / TPX) + TB.x0, zy0v = (y0 / TPX) + TB.z0;
+  const zx1v = zx0v + w / TPX, zy1v = zy0v + h / TPX;
+  for (const it of itemsInRect(getLayout(), zx0v, zy0v, zx1v, zy1v)) {
+    const hx = w2tx(it.x), hy = w2ty(it.z);
+    if (it.kind === 'cottage') drawCottage(g, hx, hy, TPX * it.s);
+    else if (it.kind === 'stonehouse') drawStoneHouse(g, hx, hy, TPX * it.s);
+    else if (it.kind === 'lamp') drawLamp(g, hx, hy, TPX * it.s);
   }
 };
+
+// --- server named buildings (Hogsmeade shops): drawn from OBSTACLES, labeled ---
+function paintServerBuildings(g: CanvasRenderingContext2D): void {
+  for (const o of OBSTACLES) {
+    if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
+    const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
+    const hx = w2tx(cx), hy = w2ty(cz);
+    // named shops get stone houses, scaled to footprint
+    const fw = (o.x1 - o.x0), fh = (o.z1 - o.z0);
+    const s = TPX * Math.max(fw / 96, fh / 72, 0.7);
+    drawStoneHouse(g, hx, hy, s);
+    // label
+    g.fillStyle = '#fff'; g.font = `${Math.max(10, 11 * 1)}px sans-serif`;
+    g.textAlign = 'center';
+    g.fillText(o.label, hx, hy + 30 * TPX * 0.5);
+  }
+}
 
 // house: top-down — walls, pitched roof (two slopes), chimney, door shadow
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -383,37 +397,49 @@ function hexA(hex: string, a: number): string {
 }
 
 // --- decorative scatter: paths, bushes, stones (fixed seeds, drawn over zones) ---
-function paintDecorations(g: CanvasRenderingContext2D, rnd: Rnd): void {
-  // winding dirt path: castle -> lake -> hogsmeade
-  const pathPts: Array<[number, number]> = [
-    [0, -40], [10, 10], [30, 45], [55, 70], [70, 110], [60, 160], [40, 200], [20, 235], [0, 255],
-  ];
-  g.strokeStyle = hexA(PAL.path.base, 0.9);
-  g.lineCap = 'round';
-  for (const pw of [13, 9, 5]) {
-    g.lineWidth = pw * TPX * 0.5;
-    g.beginPath();
-    pathPts.forEach(([x, z], i) => {
-      const tx = w2tx(x), ty = w2ty(z);
-      if (i === 0) g.moveTo(tx, ty); else g.lineTo(tx, ty);
-    });
-    g.stroke();
-    g.strokeStyle = hexA(PAL.path.light, 0.5);
+// 障碍物包围盒缓存（世界坐标）：装饰物散布时避开，防止视觉重叠
+// 从服务器 OBSTACLES 派生，与碰撞一致
+interface BBox { x0: number; z0: number; x1: number; z1: number }
+const OBSTACLE_BOXES: BBox[] = OBSTACLES.map((o) => {
+  if (o.kind === 'box') return { x0: o.x0, z0: o.z0, x1: o.x1, z1: o.z1 };
+  // disc: 树木用树冠半径做视觉包围（比碰撞的树干大，避免树冠压住灌木）
+  const vr = o.style === 'tree' ? o.r * 2.5 : o.r;
+  return { x0: o.x - vr, z0: o.z - vr, x1: o.x + vr, z1: o.z + vr };
+});
+/** 点 (x,z) 是否落在任一障碍物包围盒内（pad 为额外间距） */
+function hitsObstacle(x: number, z: number, pad = 0): boolean {
+  for (const b of OBSTACLE_BOXES) {
+    if (x >= b.x0 - pad && x <= b.x1 + pad && z >= b.z0 - pad && z <= b.z1 + pad) return true;
   }
-  // path edge darkening (drawn once, wider, underneath already done above)
-  // bushes: 按框架（20w×14h），grass areas only
-  const brnd = mulberry(4451);
-  for (let i = 0; i < 90; i++) {
-    const x = -260 + brnd() * 520, z = -260 + brnd() * 560;
-    if (!inGrass(x, z)) continue;
-    drawBush(g, w2tx(x), w2ty(z), TPX * (0.8 + brnd() * 0.4));
+  return false;
+}
+function paintDecorations(g: CanvasRenderingContext2D): void {
+  const L = getLayout();
+  // roads from layout: dark edge -> base -> light center
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const road of L.roads) {
+    const passes: Array<[number, string]> = [
+      [road.width + 2.5, hexA(PAL.path.dark, 0.9)],
+      [road.width, hexA(PAL.path.base, 0.95)],
+      [road.width * 0.45, hexA(PAL.path.light, 0.5)],
+    ];
+    for (const [w, style] of passes) {
+      g.strokeStyle = style;
+      g.lineWidth = w * TPX * 0.5;
+      g.beginPath();
+      road.pts.forEach((p, i) => {
+        const tx = w2tx(p.x), ty = w2ty(p.z);
+        if (i === 0) g.moveTo(tx, ty); else g.lineTo(tx, ty);
+      });
+      g.stroke();
+    }
   }
-  // stones: 按框架（12w×8h）
-  const srnd = mulberry(9923);
-  for (let i = 0; i < 60; i++) {
-    const x = -260 + srnd() * 520, z = -260 + srnd() * 560;
-    if (!inGrass(x, z)) continue;
-    drawStone(g, w2tx(x), w2ty(z), TPX * (0.8 + srnd() * 0.5));
+  // bushes & stones from layout (collision-checked at build)
+  for (const it of L.items) {
+    if (it.kind !== 'bush' && it.kind !== 'stone') continue;
+    const x = w2tx(it.x), y = w2ty(it.z);
+    if (it.kind === 'bush') drawBush(g, x, y, TPX * it.s);
+    else drawStone(g, x, y, TPX * it.s);
   }
 }
 
@@ -628,7 +654,7 @@ function buildGroundTexture(): HTMLCanvasElement {
   g.drawImage(layer, 0, 0);
   g.filter = 'none';
   // decorations on top (paths, bushes, stones) — not blurred, crisp details
-  paintDecorations(g, mulberry(20261018));
+  paintDecorations(g);
   // castle structures — crisp, drawn after the blur so walls/towers read at 1x
   paintCastle(g);
   return c;
@@ -863,10 +889,24 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.fill();
     }
 
-    // --- creatures: pixel sprite per kind, hp bar below ---
-    for (const c of snap.c) {
-      if (!visible(c.x, c.z)) continue;
-      const [sx, sy] = w2s(c.x, c.z);
+    // --- entities (creatures + wizards): y-sorted by world z so nearer (larger z)
+    // draws over farther — fixes characters clipping through trees/others ---
+    type Ent = { z: number; kind: 'c' | 'w'; c?: (typeof snap.c)[number]; w?: (typeof snap.w)[number] };
+    const ents: Ent[] = [];
+    for (const c of snap.c) { if (visible(c.x, c.z)) ents.push({ z: c.z, kind: 'c', c }); }
+    for (const w of snap.w) { if (visible(w.x, w.z)) ents.push({ z: w.z, kind: 'w', w }); }
+    ents.sort((a, b) => a.z - b.z);
+
+    // name labels collected during y-sorted draw, rendered after (de-collided)
+    interface NameLbl { x: number; y: number; n: string; isMe: boolean; dy: number; hw: number; dw2: number; dot: boolean }
+    const nameQueue: NameLbl[] = [];
+    const meW = meOf();
+
+    for (const e of ents) {
+      if (e.kind === 'c') {
+        const c = e.c!;
+        // --- creature: pixel sprite per kind, hp bar below ---
+        const [sx, sy] = w2s(c.x, c.z);
       const size = Math.max(12, 20 * cam.zoom);
       drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
       const hostile = c.s.includes('H') || HOSTILE_KINDS.has(c.k);
@@ -881,14 +921,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillStyle = '#fff'; setFont(`${Math.max(9, 10 * cam.zoom)}px sans-serif`); setAlign('center');
         ctx.fillText(c.k[0].toUpperCase(), sx, sy + r + 11);
       }
-    }
-
-    // --- wizards: house sprite + hp bar + name (names drawn in 2nd pass with de-collision) ---
-    interface NameLbl { x: number; y: number; n: string; isMe: boolean; dy: number; hw: number; dw2: number; dot: boolean }
-    const nameQueue: NameLbl[] = [];
-    const meW = meOf(); // player world pos, for nearest-N density cap
-    for (const w of snap.w) {
-      if (!visible(w.x, w.z)) continue;
+      } else {
+        const w = e.w!;
+        // --- wizard: house sprite + hp bar + name (names drawn in 2nd pass with de-collision) ---
       const [sx, sy] = w2s(w.x, w.z);
       const isMe = w.h === myHandle;
       const r = Math.max(5, 8 * cam.zoom);
@@ -922,7 +957,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillStyle = '#fff'; setFont('10px sans-serif');
         ctx.fillText(w.say.slice(0, 24), sx, sy - r - 20);
       }
-    }
+      } // end else (wizard)
+    } // end y-sorted entity loop
     // --- lighting: applied over the whole world (ground + sprites) so night
     // dims everything consistently. Dusk/dawn get a warm wash, night gets
     // moonlight blue + stars + a moon disc. Names, fx and HUD render above.
