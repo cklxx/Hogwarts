@@ -144,6 +144,9 @@ function buildLayout(): LayoutResult {
   const roadById = (id: string): Road => roads.find((r) => r.id === id)!;
 
   const tryPlace = (kind: ItemKind, x: number, z: number, s: number, roadClear: number): boolean => {
+    // T1 宝可梦式：所有放置对齐到 16px 网格
+    x = Math.round(x / 16) * 16;
+    z = Math.round(z / 16) * 16;
     const [w, h] = FOOT[kind];
     const { d, road } = distToRoads(roads, x, z);
     if (d < road.width / 2 + roadClear) return false;

@@ -127,6 +127,28 @@ const TW = (TB.x1 - TB.x0) * TPX, TH = (TB.z1 - TB.z0) * TPX;
 const w2tx = (x: number) => (x - TB.x0) * TPX;
 const w2ty = (z: number) => (z - TB.z0) * TPX;
 
+// --- T4 宝可梦式：水面 2 帧波光动画。预渲染两帧波光 overlay，按时间切换 ---
+const LAKE_ZONE = { x0: -148, z0: 10, x1: -88, z1: 70 };
+function buildWaveFrame(phase: number): HTMLCanvasElement {
+  const w = (LAKE_ZONE.x1 - LAKE_ZONE.x0) * TPX, h = (LAKE_ZONE.z1 - LAKE_ZONE.z0) * TPX;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d')!;
+  const rnd = mulberry(phase === 0 ? 777 : 778);
+  g.strokeStyle = hexA(PAL.lake.detail, 0.55);
+  g.lineWidth = 2;
+  g.beginPath();
+  const n = 14;
+  for (let i = 0; i < n; i++) {
+    const x = 14 + rnd() * (w - 28), y = 14 + rnd() * (h - 28);
+    const r = 5 + rnd() * 8, a = rnd() * Math.PI + phase * 1.2;
+    g.arc(x, y, r, a, a + 1.1);
+  }
+  g.stroke();
+  return c;
+}
+let waveFrames: HTMLCanvasElement[] | null = null;
+
 type Rnd = () => number;
 function mulberry(seed: number): Rnd {
   let a = seed >>> 0;
@@ -424,6 +446,45 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
     const x = w2tx(it.x), y = w2ty(it.z);
     if (it.kind === 'bush') drawBush(g, x, y, TPX * it.s);
     else drawStone(g, x, y, TPX * it.s);
+  }
+  // T3 宝可梦式：高草=遭遇区语言。禁林边缘一圈高草，3 层深浅+缺口
+  paintTallGrassRing(g);
+}
+
+// --- T3: tall grass ring at forest edge — "danger here" visual language ---
+function paintTallGrassRing(g: CanvasRenderingContext2D): void {
+  const rnd = mulberry(4242);
+  const fx = 165, fz = 15, fr = 85; // forest disc (server truth)
+  const P = PAL.grass;
+  // 3-layer tufts: dark base / mid / light tip
+  for (let i = 0; i < 260; i++) {
+    const a = rnd() * Math.PI * 2;
+    const r = fr + 4 + rnd() * 18; // ring just outside forest
+    if (rnd() < 0.25) continue; // 宝可梦式随机缺口
+    const x = w2tx(fx + Math.cos(a) * r), y = w2ty(fz + Math.sin(a) * r);
+    const s = 0.9 + rnd() * 0.5;
+    // dark base blades
+    g.strokeStyle = hexA(P.dark, 0.85); g.lineWidth = 2.2 * s;
+    g.beginPath();
+    for (let b = -1; b <= 1; b++) {
+      g.moveTo(x + b * 4 * s, y);
+      g.lineTo(x + b * 5 * s, y - (10 + rnd() * 6) * s);
+    }
+    g.stroke();
+    // mid blades
+    g.strokeStyle = hexA(P.base, 0.9); g.lineWidth = 1.8 * s;
+    g.beginPath();
+    for (let b = -1; b <= 1; b++) {
+      g.moveTo(x + b * 3 * s, y - 2 * s);
+      g.lineTo(x + b * 3.5 * s, y - (13 + rnd() * 5) * s);
+    }
+    g.stroke();
+    // light tips
+    g.strokeStyle = hexA(P.light, 0.75); g.lineWidth = 1.2 * s;
+    g.beginPath();
+    g.moveTo(x - 2 * s, y - 8 * s); g.lineTo(x - 2.5 * s, y - 16 * s);
+    g.moveTo(x + 2 * s, y - 8 * s); g.lineTo(x + 2.5 * s, y - 16 * s);
+    g.stroke();
   }
 }
 
@@ -769,6 +830,19 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const dy = (TB.z0 + sy0 / TPX - cam.z) * cam.zoom + H / 2;
       ctx.drawImage(tex, sx0, sy0, sx1 - sx0, sy1 - sy0,
         dx, dy, ((sx1 - sx0) / TPX) * cam.zoom, ((sy1 - sy0) / TPX) * cam.zoom);
+      // T4: lake wave shimmer — 2 frames, 0.6s switch
+      const wf = waveFrames ?? (waveFrames = [buildWaveFrame(0), buildWaveFrame(1)]);
+      const lx0 = w2tx(LAKE_ZONE.x0), ly0 = w2ty(LAKE_ZONE.z0);
+      const lx1 = w2tx(LAKE_ZONE.x1), ly1 = w2ty(LAKE_ZONE.z1);
+      if (lx1 > sx0 && lx0 < sx1 && ly1 > sy0 && ly0 < sy1) {
+        const frame = wf[Math.floor(performance.now() / 600) % 2];
+        const cx0 = Math.max(lx0, sx0), cy0 = Math.max(ly0, sy0);
+        const cx1 = Math.min(lx1, sx1), cy1 = Math.min(ly1, sy1);
+        const ddx = (TB.x0 + cx0 / TPX - cam.x) * cam.zoom + W / 2;
+        const ddy = (TB.z0 + cy0 / TPX - cam.z) * cam.zoom + H / 2;
+        ctx.drawImage(frame, cx0 - lx0, cy0 - ly0, cx1 - cx0, cy1 - cy0,
+          ddx, ddy, ((cx1 - cx0) / TPX) * cam.zoom, ((cy1 - cy0) / TPX) * cam.zoom);
+      }
     }
     // lighting inputs: smoothstep day curve — sunrise 5→8, sunset 16.5→19.5.
     // C1 continuous everywhere, so dusk/dawn never jump. 1 = full day, 0 = deep night.

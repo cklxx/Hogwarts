@@ -14,6 +14,10 @@
 
 export const OUTLINE = '#2a1f1a';
 export const SHADOW_A = 'rgba(0,0,0,0.25)';
+// T5 宝可梦式：同区域建筑屋顶统一色。霍格莫德 = 深红，城堡区 = 灰蓝
+export const ROOF_VILLAGE = '#7a3b2e';
+export const ROOF_VILLAGE_DARK = '#5e2c22';
+export const ROOF_CASTLE = '#4a5a6e';
 
 // ------------------------------------------------------------------ helpers
 function rr(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -60,8 +64,8 @@ export function drawCottage(g: CanvasRenderingContext2D, x: number, y: number, s
   g.fillStyle = '#96876c';
   g.fillRect(x0 + W - 8 * s, y0 + H - wallH + 2 * s, 6 * s, wallH - 4 * s);
 
-  // 屋顶：梯形，两坡
-  g.fillStyle = '#8a5f4a';
+  // 屋顶：梯形，两坡（T5：霍格莫德统一深红）
+  g.fillStyle = ROOF_VILLAGE;
   g.beginPath();
   g.moveTo(x0 - 4 * s, y0 + H - wallH);
   g.lineTo(x, y0);
@@ -76,7 +80,7 @@ export function drawCottage(g: CanvasRenderingContext2D, x: number, y: number, s
   g.beginPath();
   g.moveTo(x, y0); g.lineTo(x0 + W + 4 * s, y0 + H - wallH); g.lineTo(x, y0 + H - wallH); g.closePath(); g.fill();
   // 屋脊线
-  g.strokeStyle = '#6e4a38'; g.lineWidth = Math.max(1, s * 0.4);
+  g.strokeStyle = ROOF_VILLAGE_DARK; g.lineWidth = Math.max(1, s * 0.4);
   g.beginPath(); g.moveTo(x - 3 * s, y0 + 2 * s); g.lineTo(x + 3 * s, y0 + 2 * s); g.stroke();
 
   // 烟囱
@@ -135,8 +139,8 @@ export function drawStoneHouse(g: CanvasRenderingContext2D, x: number, y: number
   g.fillStyle = '#7f7a71'; // 右下阴影
   g.fillRect(x0 + W - 10 * s, y0 + H - wallH + 2 * s, 8 * s, wallH - 4 * s);
 
-  // 屋顶
-  g.fillStyle = '#8a5f4a';
+  // 屋顶（T5：霍格莫德统一深红）
+  g.fillStyle = ROOF_VILLAGE;
   g.beginPath();
   g.moveTo(x0 - 5 * s, y0 + H - wallH);
   g.lineTo(x, y0);
