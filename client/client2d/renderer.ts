@@ -4,7 +4,12 @@
  */
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawSprite } from './sprites.js';
-import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp } from './components.js';
+import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp,
+  drawWell, drawMarketStall, drawVillageGate, drawDock, drawMooringPost, drawBoat, drawLighthouse,
+  drawWeb, drawGlowFlower, drawTent, drawCampfire, drawGreenhouse, drawGardenPlot,
+  drawOwlery, drawScoreboard, drawTrainingHoop,
+  drawShop, drawPub, drawStation, drawLibrary, drawDormTower,
+  drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
@@ -40,9 +45,12 @@ const PAL = {
   path:    { base: '#b89e6e', dark: '#a08858', light: '#cbb080', detail: '#dcc493' },
   pitchA:  { base: '#7fa65c', dark: '#6a8f4c', light: '#93bb6e', detail: '#a8cc82' },
   pitchB:  { base: '#8fb56a', dark: '#7aa257', light: '#a3c87e', detail: '#b8d695' },
+  alley:   { base: '#a08a6a', dark: '#857052', light: '#b89e7e', detail: '#cbb894' },
+  willow:  { base: '#6f9450', dark: '#5a7a40', light: '#86ad60', detail: '#9cc173' },
+  hagrid:  { base: '#7fa65c', dark: '#6a8f4c', light: '#93bb6e', detail: '#e8a03c' },
 } as const;
 
-type ZoneTex = 'castle' | 'grass' | 'forest' | 'lake' | 'village' | 'pitch';
+type ZoneTex = 'castle' | 'grass' | 'forest' | 'lake' | 'village' | 'pitch' | 'alley' | 'hagrid' | 'willow';
 interface Zone { x0: number; z0: number; x1: number; z1: number; pal: Palette3; label: string; tex: ZoneTex }
 // 区域划分对齐 src/shared/map.ts 的服务器真实布局（此前 2D 自创位置与服务器碰撞错位）
 // 服务器：城堡 x -62..62, z -118..-40；黑湖 (-118,40) r30；禁林 (165,15) r85；霍格莫德 x -30..70, z 150..208；魁地奇 x 30..50, z -185..-115
@@ -52,7 +60,10 @@ const ZONES: Zone[] = [
   { x0: 80, z0: -70, x1: 250, z1: 100, pal: PAL.forest, label: '禁林', tex: 'forest' },
   { x0: -148, z0: 10, x1: -88, z1: 70, pal: PAL.lake, label: '黑湖', tex: 'lake' },
   { x0: -30, z0: 150, x1: 70, z1: 208, pal: PAL.village, label: '霍格莫德', tex: 'village' },
-  { x0: 30, z0: -185, x1: 50, z1: -115, pal: PAL.pitchA, label: '魁地奇球场', tex: 'pitch' },
+  { x0: 0, z0: -215, x1: 80, z1: -95, pal: PAL.pitchA, label: '魁地奇球场', tex: 'pitch' },
+  { x0: -270, z0: 80, x1: -130, z1: 210, pal: PAL.alley, label: '对角巷', tex: 'alley' },
+  { x0: 80, z0: 102, x1: 150, z1: 165, pal: PAL.hagrid, label: '海格小屋', tex: 'hagrid' },
+  { x0: 15, z0: -30, x1: 75, z1: 30, pal: PAL.willow, label: '打人柳', tex: 'willow' },
 ];
 const GROUND = PAL.grass.base;
 
@@ -373,43 +384,224 @@ function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number,
   g.closePath();
 }
 
-// --- quidditch pitch: mowed stripes + white lines + goal hoops ---
+// --- quidditch pitch: stands ring + mowed field + goal hoops (server positions) ---
+// zone: x 0..80, z -215..-95. field centered at world (40,-150), x 22..58, z -185..-115.
 const texPitch: Painter = (g, x0, y0, w, h, rnd) => {
-  // mowed stripes (horizontal bands, alternating tones)
-  const stripeH = h / 9;
+  // outer ground: trampled grass
+  g.fillStyle = PAL.pitchB.base;
+  g.fillRect(x0, y0, w, h);
+  const nn = (w * h) / 4000;
+  for (let i = 0; i < nn; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.5, hexA(PAL.pitchB.detail, 0.2));
+  }
+  // field rect (world -> texture px)
+  const fx0 = w2tx(22), fz0 = w2ty(-185), fx1 = w2tx(58), fz1 = w2ty(-115);
+  const fw = fx1 - fx0, fh = fz1 - fz0;
+  // stands: 3 tiers around field, alternating house colors
+  const tiers: Array<[number, string, string]> = [
+    [10, '#7a1f1f', '#1f3a5e'],  // gryffindor / ravenclaw
+    [20, '#1f5e2e', '#8a7a1f'],  // slytherin / hufflepuff
+    [30, '#5e5e5e', '#7a7a7a'],  // neutral top
+  ];
+  for (const [off, c1, c2] of tiers) {
+    const o = off * TPX;
+    g.fillStyle = c1;
+    g.fillRect(fx0 - o, fz0 - o, fw + o * 2, o);                    // north
+    g.fillRect(fx0 - o, fz1, fw + o * 2, o);                       // south
+    g.fillStyle = c2;
+    g.fillRect(fx0 - o, fz0, o, fh + o * 2);                       // west
+    g.fillRect(fx1, fz0, o, fh + o * 2);                          // east
+    // crowd dots
+    g.fillStyle = 'rgba(240,230,200,0.5)';
+    const n = Math.floor((fw + fh) / 12);
+    for (let i = 0; i < n; i++) {
+      const t = rnd();
+      const px = fx0 - o + rnd() * (fw + o * 2), py = fz0 - o + rnd() * o;
+      blob(g, px, py, 1.6, 'rgba(240,230,200,0.5)');
+      blob(g, fx0 - o + rnd() * (fw + o * 2), fz1 + rnd() * o, 1.6, 'rgba(240,230,200,0.5)');
+      void t;
+    }
+  }
+  // mowed stripes on field
+  const stripeH = fh / 9;
   for (let i = 0; i < 9; i++) {
     g.fillStyle = i % 2 ? PAL.pitchA.base : PAL.pitchB.base;
-    g.fillRect(x0, y0 + i * stripeH, w, stripeH + 1);
-  }
-  // subtle noise on top
-  const nn = (w * h) / 3000;
-  for (let i = 0; i < nn; i++) {
-    blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.5, hexA(PAL.pitchA.detail, 0.25));
+    g.fillRect(fx0, fz0 + i * stripeH, fw, stripeH + 1);
   }
   const L = 'rgba(245,245,240,0.85)';
   g.strokeStyle = L; g.lineWidth = 2.4;
-  // boundary
-  g.strokeRect(x0 + 14, y0 + 14, w - 28, h - 28);
-  // center line + circle
+  g.strokeRect(fx0 + 6, fz0 + 6, fw - 12, fh - 12);
   g.beginPath();
-  g.moveTo(x0 + w / 2, y0 + 14); g.lineTo(x0 + w / 2, y0 + h - 14);
-  g.arc(x0 + w / 2, y0 + h / 2, 26, 0, 7);
+  g.moveTo(fx0 + fw / 2, fz0 + 6); g.lineTo(fx0 + fw / 2, fz1 - 6);
+  g.arc(fx0 + fw / 2, fz0 + fh / 2, 26, 0, 7);
   g.stroke();
-  // goal hoops: 3 per end (north + south), gold rings on posts
-  for (const endY of [y0 + 26, y0 + h - 26]) {
-    for (let k = -1; k <= 1; k++) {
-      const hx = x0 + w / 2 + k * 30;
-      g.strokeStyle = '#3a3230'; g.lineWidth = 3; // post
-      g.beginPath(); g.moveTo(hx, endY); g.lineTo(hx, endY + (endY < y0 + h / 2 ? -14 : 14)); g.stroke();
-      g.strokeStyle = '#d4a017'; g.lineWidth = 2.6; // gold hoop
-      g.beginPath(); g.arc(hx, endY + (endY < y0 + h / 2 ? -20 : 20), 7, 0, 7); g.stroke();
+  // goal hoops at server positions: x 34/40/46, z -178 / -122
+  for (const wz of [-178, -122]) {
+    for (const wx of [34, 40, 46]) {
+      const hx = w2tx(wx), hy = w2ty(wz);
+      g.strokeStyle = '#3a3230'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx, hy - 14); g.stroke();
+      g.strokeStyle = '#d4a017'; g.lineWidth = 2.6;
+      g.beginPath(); g.arc(hx, hy - 20, 7, 0, 7); g.stroke();
     }
   }
+};
+
+
+// --- diagon alley: cobblestone commercial street, shop-lined ---
+// zone: x -270..-130, z 80..210. street along x=-200.
+const texAlley: Painter = (g, x0, y0, w, h, rnd) => {
+  const P = PAL.alley;
+  // tonal patches
+  const np = (w * h) / 14000;
+  for (let i = 0; i < np; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 14 + rnd() * 30,
+      rnd() < 0.5 ? hexA(P.dark, 0.22) : hexA(P.light, 0.22));
+  }
+  // cobblestone: staggered
+  const step = 5 * TPX;
+  let row = 0;
+  for (let y = y0 + step / 2; y < y0 + h; y += step, row++) {
+    const off = (row % 2) * step / 2;
+    for (let x = x0 + step / 2 + off; x < x0 + w; x += step) {
+      blob(g, x, y, step * 0.32, rnd() < 0.5 ? hexA(P.dark, 0.3) : hexA(P.light, 0.25));
+    }
+  }
+  // central street: lighter band along x=-200 (world)
+  const sx = w2tx(-200);
+  g.fillStyle = hexA(P.light, 0.35);
+  g.fillRect(sx - 9 * TPX, y0, 18 * TPX, h);
+  // street edge lines
+  g.strokeStyle = hexA(P.dark, 0.6); g.lineWidth = 2;
+  g.beginPath(); g.moveTo(sx - 9 * TPX, y0); g.lineTo(sx - 9 * TPX, y0 + h); g.stroke();
+  g.beginPath(); g.moveTo(sx + 9 * TPX, y0); g.lineTo(sx + 9 * TPX, y0 + h); g.stroke();
+  // hanging lanterns across street
+  for (let i = 0; i < 6; i++) {
+    const ly = y0 + (h / 7) * (i + 1);
+    g.strokeStyle = '#3a3230'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(sx - 9 * TPX, ly); g.lineTo(sx + 9 * TPX, ly); g.stroke();
+    blob(g, sx, ly + 3, 3, '#ffd98a');
+    blob(g, sx, ly + 3, 6, 'rgba(255,217,138,0.25)');
+  }
+};
+
+// --- hagrid's hut area: meadow + pumpkin patch + dirt ---
+// zone: x 80..150, z 102..165.
+const texHagrid: Painter = (g, x0, y0, w, h, rnd) => {
+  const P = PAL.hagrid;
+  // tonal patches
+  const np = (w * h) / 14000;
+  for (let i = 0; i < np; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 12 + rnd() * 26,
+      rnd() < 0.5 ? hexA(P.dark, 0.2) : hexA(P.light, 0.2));
+  }
+  // dirt patch for pumpkins (world 95..135, 140..160)
+  const dx0 = w2tx(95), dz0 = w2ty(140), dx1 = w2tx(135), dz1 = w2ty(160);
+  g.fillStyle = '#7a5c44';
+  g.fillRect(dx0, dz0, dx1 - dx0, dz1 - dz0);
+  g.fillStyle = 'rgba(0,0,0,0.12)';
+  for (let i = 0; i < 40; i++) {
+    blob(g, dx0 + rnd() * (dx1 - dx0), dz0 + rnd() * (dz1 - dz0), 2 + rnd() * 3, 'rgba(0,0,0,0.12)');
+  }
+  // pumpkin rows: 3 rows x 5
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 5; c++) {
+      const px = dx0 + 12 + c * ((dx1 - dx0 - 24) / 4) + (rnd() - 0.5) * 6;
+      const py = dz0 + 14 + r * ((dz1 - dz0 - 28) / 2) + (rnd() - 0.5) * 6;
+      const pr = 7 + rnd() * 3;
+      blob(g, px + 2, py + 1, pr, 'rgba(0,0,0,0.2)');       // shadow
+      blob(g, px, py, pr, '#d08030');                        // pumpkin
+      blob(g, px - pr * 0.3, py - pr * 0.3, pr * 0.45, '#e8a03c'); // highlight
+      g.strokeStyle = '#8a5a20'; g.lineWidth = 1.5;          // ribs
+      g.beginPath(); g.moveTo(px, py - pr); g.lineTo(px, py + pr); g.stroke();
+      g.strokeStyle = '#3d5c3e'; g.lineWidth = 2;            // stem
+      g.beginPath(); g.moveTo(px, py - pr); g.lineTo(px + 2, py - pr - 5); g.stroke();
+    }
+  }
+  // grass tufts around
+  g.strokeStyle = hexA(P.dark, 0.4); g.lineWidth = 1.6;
+  g.beginPath();
+  for (let i = 0; i < 120; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h;
+    if (x > dx0 - 10 && x < dx1 + 10 && y > dz0 - 10 && y < dz1 + 10) continue;
+    g.moveTo(x - 3, y); g.lineTo(x - 4, y - 5 - rnd() * 3);
+    g.moveTo(x, y); g.lineTo(x, y - 6 - rnd() * 3);
+    g.moveTo(x + 3, y); g.lineTo(x + 4, y - 5 - rnd() * 3);
+  }
+  g.stroke();
+};
+
+// --- whomping willow: meadow + landmark tree + warning sign ---
+// zone: x 15..75, z -30..30. server tree at (45,0) r=3.
+const texWillow: Painter = (g, x0, y0, w, h, rnd) => {
+  const P = PAL.willow;
+  // tonal patches
+  const np = (w * h) / 14000;
+  for (let i = 0; i < np; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 12 + rnd() * 26,
+      rnd() < 0.5 ? hexA(P.dark, 0.2) : hexA(P.light, 0.2));
+  }
+  const tx = w2tx(45), ty = w2ty(0);
+  const S = TPX;
+  // ground shadow
+  blob(g, tx + 8 * S, ty, 40 * S, 'rgba(0,0,0,0.25)');
+  // trunk: thick, gnarled
+  g.strokeStyle = '#4a352a'; g.lineWidth = 14 * S; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx + 3 * S, ty - 40 * S); g.stroke();
+  g.strokeStyle = '#2a1f1a'; g.lineWidth = Math.max(1, 1.2 * S);
+  g.beginPath(); g.moveTo(tx - 7 * S, ty); g.lineTo(tx - 4 * S, ty - 40 * S); g.stroke();
+  g.strokeStyle = '#6b4f3a'; g.lineWidth = 4 * S;
+  g.beginPath(); g.moveTo(tx - 2 * S, ty - 4 * S); g.lineTo(tx + 1 * S, ty - 36 * S); g.stroke();
+  // branches
+  g.strokeStyle = '#4a352a'; g.lineWidth = 6 * S;
+  for (const [dx, len] of [[-1, 34], [1, 30], [0, 38]] as const) {
+    g.beginPath();
+    g.moveTo(tx + 3 * S, ty - 40 * S);
+    g.lineTo(tx + (3 + dx * len * 0.5) * S, ty - (40 + len * 0.8) * S);
+    g.stroke();
+  }
+  // drooping canopy: layered hanging blobs
+  const layers: Array<[number, number, string]> = [
+    [52, 34, '#2c4530'], [62, 30, '#3d5c3e'], [72, 25, '#527a4e'],
+  ];
+  for (const [dy, r, col] of layers) {
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + dy;
+      const bx = tx + Math.cos(a) * r * S * 0.9;
+      const by = ty - dy * S + Math.sin(a) * r * S * 0.35 + 8 * S;
+      blob(g, bx, by, (10 + rnd() * 8) * S * 0.5, col);
+    }
+  }
+  // hanging strands
+  g.strokeStyle = hexA('#3d5c3e', 0.7); g.lineWidth = 2 * S;
+  g.beginPath();
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    const sx = tx + Math.cos(a) * 30 * S, sy = ty - 58 * S + Math.sin(a) * 8 * S;
+    g.moveTo(sx, sy); g.lineTo(sx + (rnd() - 0.5) * 6 * S, sy + (14 + rnd() * 10) * S);
+  }
+  g.stroke();
+  // canopy outline
+  g.strokeStyle = '#2a1f1a'; g.lineWidth = Math.max(1, 1.5 * S);
+  g.beginPath(); g.ellipse(tx, ty - 62 * S, 34 * S, 22 * S, 0, 0, Math.PI * 2); g.stroke();
+  // warning sign at (62,14)
+  const wx = w2tx(62), wy = w2ty(14);
+  g.fillStyle = '#4a3a2c';
+  g.fillRect(wx - 1.5 * S, wy - 16 * S, 3 * S, 16 * S);
+  g.fillStyle = '#e8c03c';
+  g.beginPath();
+  g.moveTo(wx, wy - 28 * S); g.lineTo(wx + 10 * S, wy - 10 * S); g.lineTo(wx - 10 * S, wy - 10 * S);
+  g.closePath(); g.fill();
+  g.strokeStyle = '#2a1f1a'; g.lineWidth = Math.max(1, S * 0.5); g.stroke();
+  g.fillStyle = '#2a1f1a';
+  g.font = `bold ${Math.max(10, 12 * S * 0.5)}px sans-serif`; g.textAlign = 'center';
+  g.fillText('!', wx, wy - 13 * S);
 };
 
 const TEX_PAINT: Record<ZoneTex, Painter> = {
   castle: texCastle, grass: texGrass, forest: texForest,
   lake: texLake, village: texVillage, pitch: texPitch,
+  alley: texAlley, hagrid: texHagrid, willow: texWillow,
 };
 
 // --- hex + alpha helper (for palette colors) ---
@@ -441,11 +633,40 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
     }
   }
   // bushes & stones from layout (collision-checked at build)
+  // + v2 new regions: well/market/gate/dock/boat/lighthouse/web/glowflower/tent/campfire/greenhouse/garden/owlery/scoreboard/hoop
   for (const it of L.items) {
-    if (it.kind !== 'bush' && it.kind !== 'stone') continue;
     const x = w2tx(it.x), y = w2ty(it.z);
-    if (it.kind === 'bush') drawBush(g, x, y, TPX * it.s);
-    else drawStone(g, x, y, TPX * it.s);
+    const s = TPX * it.s;
+    switch (it.kind) {
+      case 'bush': drawBush(g, x, y, s); break;
+      case 'stone': drawStone(g, x, y, s); break;
+      case 'well': drawWell(g, x, y, s); break;
+      case 'marketstall': drawMarketStall(g, x, y, s); break;
+      case 'villagegate': drawVillageGate(g, x, y, s); break;
+      case 'dock': drawDock(g, x, y, s); break;
+      case 'mooringpost': drawMooringPost(g, x, y, s); break;
+      case 'boat': drawBoat(g, x, y, s); break;
+      case 'lighthouse': drawLighthouse(g, x, y, s); break;
+      case 'web': drawWeb(g, x, y, s); break;
+      case 'glowflower': drawGlowFlower(g, x, y, s); break;
+      case 'tent': drawTent(g, x, y, s); break;
+      case 'campfire': drawCampfire(g, x, y, s); break;
+      case 'greenhouse': drawGreenhouse(g, x, y, s); break;
+      case 'gardenplot': drawGardenPlot(g, x, y, s); break;
+      case 'owlery': drawOwlery(g, x, y, s); break;
+      case 'scoreboard': drawScoreboard(g, x, y, s); break;
+      case 'traininghoop': drawTrainingHoop(g, x, y, s); break;
+      case 'shop': drawShop(g, x, y, s, it.label ?? '商店'); break;
+      case 'pub': drawPub(g, x, y, s); break;
+      case 'station': drawStation(g, x, y, s); break;
+      case 'library': drawLibrary(g, x, y, s); break;
+      case 'dormtower': drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
+      case 'flowerbed': drawFlowerbed(g, x, y, s); break;
+      case 'bench': drawBench(g, x, y, s); break;
+      case 'scarecrow': drawScarecrow(g, x, y, s); break;
+      case 'beehive': drawBeehive(g, x, y, s); break;
+      case 'swing': drawSwing(g, x, y, s); break;
+    }
   }
   // T3 宝可梦式：高草=遭遇区语言。禁林边缘一圈高草，3 层深浅+缺口
   paintTallGrassRing(g);

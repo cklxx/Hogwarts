@@ -55,6 +55,12 @@ async function main() {
   canvas.setAttribute('data-2d', 'game');
   document.body.appendChild(canvas);
   const ui = createRenderer2D(canvas);
+  (canvas as any).__renderer = ui;
+  // test hook: goto2d event for automated screenshots
+  addEventListener('goto2d', (e: any) => {
+    const { x, z } = e.detail ?? {};
+    if (typeof x === 'number' && typeof z === 'number') { ui.cam.x = x; ui.cam.z = z; }
+  });
   mountHUD(document.body);
 
   const token = await gate();
