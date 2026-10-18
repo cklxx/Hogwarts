@@ -5,7 +5,7 @@
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawSprite } from './sprites.js';
 import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp } from './components.js';
-import { getLayout, itemsInRect, type PlacedItem } from './layout.js';
+import { getLayout, itemsInRect } from './layout.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
 
@@ -397,22 +397,6 @@ function hexA(hex: string, a: number): string {
 }
 
 // --- decorative scatter: paths, bushes, stones (fixed seeds, drawn over zones) ---
-// 障碍物包围盒缓存（世界坐标）：装饰物散布时避开，防止视觉重叠
-// 从服务器 OBSTACLES 派生，与碰撞一致
-interface BBox { x0: number; z0: number; x1: number; z1: number }
-const OBSTACLE_BOXES: BBox[] = OBSTACLES.map((o) => {
-  if (o.kind === 'box') return { x0: o.x0, z0: o.z0, x1: o.x1, z1: o.z1 };
-  // disc: 树木用树冠半径做视觉包围（比碰撞的树干大，避免树冠压住灌木）
-  const vr = o.style === 'tree' ? o.r * 2.5 : o.r;
-  return { x0: o.x - vr, z0: o.z - vr, x1: o.x + vr, z1: o.z + vr };
-});
-/** 点 (x,z) 是否落在任一障碍物包围盒内（pad 为额外间距） */
-function hitsObstacle(x: number, z: number, pad = 0): boolean {
-  for (const b of OBSTACLE_BOXES) {
-    if (x >= b.x0 - pad && x <= b.x1 + pad && z >= b.z0 - pad && z <= b.z1 + pad) return true;
-  }
-  return false;
-}
 function paintDecorations(g: CanvasRenderingContext2D): void {
   const L = getLayout();
   // roads from layout: dark edge -> base -> light center
@@ -595,14 +579,7 @@ function paintCastle(g: CanvasRenderingContext2D): void {
   tower(-8.4, gz, 2.6); tower(2.4, gz - 0.2, 2.6);
 }
 
-// grass-area check for scatter placement (excludes lake/castle/village/pitch interiors)
-function inGrass(x: number, z: number): boolean {  for (const zn of ZONES) {
-    if (x >= zn.x0 && x <= zn.x1 && z >= zn.z0 && z <= zn.z1) {
-      return zn.tex === 'grass';
-    }
-  }
-  return true; // outside zones = wild grass
-}
+// (inGrass retired: scatter placement moved to layout.ts with collision registry)
 
 
 /** Build the full-world ground texture once. Zone edges are blurred for soft transitions. */
@@ -657,6 +634,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   paintDecorations(g);
   // castle structures — crisp, drawn after the blur so walls/towers read at 1x
   paintCastle(g);
+  // server named buildings (Hogsmeade shops) — crisp, after blur
+  paintServerBuildings(g);
   return c;
 }
 
