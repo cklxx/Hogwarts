@@ -174,7 +174,7 @@ function buildLayout(): LayoutResult {
       const tx = b.x - a.x, tz = b.z - a.z;
       const len = Math.hypot(tx, tz) || 1;
       const nx = -tz / len, nz = tx / len;
-      const lat = 14 + rnd() * 4;
+      const lat = 26 + rnd() * 8;
       const hx = b.x + nx * lat * side, hz = b.z + nz * lat * side;
       const kind: ItemKind = rnd() < 0.6 ? 'cottage' : 'stonehouse';
       if (tryPlaceNear(kind, hx, hz, 0.9 + rnd() * 0.2, 2)) { lastPlaced = acc; side = -side; }
