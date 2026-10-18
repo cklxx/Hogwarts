@@ -235,53 +235,51 @@ function buildLayout(): LayoutResult {
     tryPlaceNear('shop', -158, 130, 0.8, 0, '蜂蜜公爵');
     tryPlaceNear('shop', -242, 155, 0.8, 0, '奥利凡德');
     tryPlaceNear('pub', -200, 236, 0.85, 0, '三把扫帚');
-    tryPlaceNear('flowerbed', -185, 105, 1, 0);
-    tryPlaceNear('flowerbed', -215, 168, 1, 0);
+    tryPlaceNear('flowerbed', -140, 132, 1, 0);
+    tryPlaceNear('flowerbed', -140, 162, 1, 0);
   }
 
   // 5b) 海格小屋区：石屋 + 稻草人 + 蜂箱（南瓜地由 texHagrid 绘制）
   {
     tryPlace('stonehouse', 105, 118, 0.85, 0);
     tryPlaceNear('scarecrow', 170, 140, 1, 0);
-    tryPlaceNear('beehive', 170, 110, 1, 0);
-    tryPlaceNear('beehive', 178, 122, 1, 0);
+    tryPlaceNear('beehive', 120, 170, 1, 0);
+    tryPlaceNear('beehive', 140, 170, 1, 0);
   }
 
   // 5c) 打人柳区：观景长椅（树由 texWillow 绘制，server (45,0) r3）
   {
     tryPlaceNear('bench', 64, 18, 1, 0);
-    tryPlaceNear('bench', 26, -16, 1, 0);
+    tryPlaceNear('bench', 20, -24, 1, 0);
   }
 
-  // 5d) 新建筑：车站（村南）/ 图书馆（西北）/ 宿舍塔楼（北）
+  // 5d) 新建筑：车站（村西南）/ 图书馆（西北）/ 宿舍塔楼（北，避开 server tower (-20,-118)）
   {
-    tryPlace('station', 30, 258, 1, 0);
+    tryPlace('station', -40, 280, 1, 0);
     tryPlace('library', -150, -145, 1, 0);
-    tryPlace('dormtower', -20, -200, 1, 0, '#7a1f1f');
+    tryPlaceNear('dormtower', -20, -208, 1, 0, '#7a1f1f');
   }
 
   // 5e) 新装饰：花坛 / 长椅 / 秋千 / 蜂箱 / 稻草人
   {
-    // 霍格莫德村南空地（server 商店在 z<190，此处 z 195-210）
-    tryPlaceNear('flowerbed', -15, 198, 1, 3);
-    tryPlaceNear('flowerbed', 15, 198, 1, 3);
-    tryPlaceNear('bench', 0, 206, 1, 3);
-    tryPlaceNear('swing', -24, 200, 1, 3);
-    tryPlaceNear('swing', 24, 200, 1, 3);
+    // 霍格莫德村南空地（server 商店 z<190，秋千 z0>190）
+    tryPlaceNear('bench', 0, 196, 1, 3);
+    tryPlaceNear('swing', -32, 216, 1, 3);
+    tryPlaceNear('swing', 32, 216, 1, 3);
     // 城堡南草坪（避开 R1、喷泉、庭院柱）
-    tryPlaceNear('flowerbed', -34, -28, 1, 4);
-    tryPlaceNear('flowerbed', 34, -28, 1, 4);
     tryPlaceNear('flowerbed', -52, -28, 1, 4);
     tryPlaceNear('flowerbed', 52, -28, 1, 4);
-    tryPlaceNear('bench', -44, -24, 1, 4);
-    tryPlaceNear('bench', 44, -24, 1, 4);
+    tryPlaceNear('flowerbed', -68, -28, 1, 4);
+    tryPlaceNear('flowerbed', 68, -28, 1, 4);
+    tryPlaceNear('bench', -60, -20, 1, 4);
+    tryPlaceNear('bench', 60, -20, 1, 4);
     // 草甸蜂箱（定点空地）
-    tryPlaceNear('beehive', -60, -20, 1, 4);
-    tryPlaceNear('beehive', 60, -52, 1, 4);
-    tryPlaceNear('beehive', -70, 24, 1, 4);
-    tryPlaceNear('beehive', 70, 44, 1, 4);
+    tryPlaceNear('beehive', -100, -40, 1, 4);
+    tryPlaceNear('beehive', 100, -80, 1, 4);
+    tryPlaceNear('beehive', -90, 70, 1, 4);
+    tryPlaceNear('beehive', 80, 70, 1, 4);
     // 村庄稻草人（农田感）
-    tryPlaceNear('scarecrow', -40, 215, 1, 3);
+    tryPlaceNear('scarecrow', -48, 215, 1, 3);
     tryPlaceNear('scarecrow', 40, 215, 1, 3);
   }
 
@@ -300,9 +298,9 @@ function buildLayout(): LayoutResult {
       if (x > 15 && x < 75 && z > -30 && z < 30) return false; // 打人柳区
       return tryPlace(kind, x, z, 0.8 + rnd() * 0.4, 3);
     };
-    while (placedBush < 220 && guard++ < 3000) if (tryScatter('bush')) placedBush++;
+    while (placedBush < 220 && guard++ < 12000) if (tryScatter('bush')) placedBush++;
     guard = 0;
-    while (placedStone < 160 && guard++ < 3000) if (tryScatter('stone')) placedStone++;
+    while (placedStone < 160 && guard++ < 12000) if (tryScatter('stone')) placedStone++;
   }
 
   // 4) 新地区 v2：6 个独立地区（坐标已避开服务器障碍物和另一 agent 的对角巷/海格小屋/打人柳/看台）
