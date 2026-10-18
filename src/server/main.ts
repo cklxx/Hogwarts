@@ -293,6 +293,7 @@ const http = createServer(async (req, res) => {
     if (url.pathname === '/api/leaderboard') return json(res, 200, world.leaderboard());
     if (url.pathname === '/api/history') return json(res, 200, HISTORY);
     if (url.pathname === '/api/rules') return json(res, 200, { rules: world.rules, decrees: world.decrees });
+    if (url.pathname === '/2d') { res.writeHead(302, { location: '/2d.html' }); res.end(); return; }
     return serveStatic(DIST, req, res, url.pathname);
   } catch (e) {
     if (e instanceof InvalidJsonBody) return json(res, 400, { error: e.message });
