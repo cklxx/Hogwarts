@@ -538,7 +538,7 @@ export function drawStation(g: CanvasRenderingContext2D, x: number, y: number, s
 
   // 拱门 ×3
   for (const ax of [x - W * 0.3, x, x + W * 0.3]) {
-    g.fillStyle = '#4a3a2c';
+    g.fillStyle = '#5e4632';
     g.beginPath();
     g.arc(ax, y - 10 * s - 12 * s, 9 * s, Math.PI, 0);
     g.fillRect(ax - 9 * s, y - 10 * s - 12 * s, 18 * s, 12 * s);
@@ -693,13 +693,13 @@ export function drawFlowerbed(g: CanvasRenderingContext2D, x: number, y: number,
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
   rr(g, x0, y0 + 8 * s, W, 12 * s, 3 * s); g.stroke();
   // 花 ×5
-  const cols = ['#e86a7a', '#f5d76e', '#ffffff', '#e86a7a', '#b48ae0'];
+  const cols = ['#e86a7a', '#f5d76e', '#f0e8d8', '#e86a7a', '#b48ae0'];
   for (let i = 0; i < 5; i++) {
     const fx = x0 + (6 + i * 5.5) * s, fy = y0 + (4 + (i % 2) * 3) * s;
     g.strokeStyle = '#3d5c3e'; g.lineWidth = Math.max(1, s * 0.5);
     g.beginPath(); g.moveTo(fx, fy + 6 * s); g.lineTo(fx, fy); g.stroke();
     blob(g, fx, fy, 2.6 * s, cols[i]!);
-    blob(g, fx - 1 * s, fy - 1 * s, 1.2 * s, 'rgba(255,255,255,0.5)');
+    blob(g, fx - 1 * s, fy - 1 * s, 1.2 * s, 'rgba(255,255,255,0.28)');
   }
 }
 
@@ -710,7 +710,7 @@ export function drawBench(g: CanvasRenderingContext2D, x: number, y: number, s: 
   g.fillStyle = 'rgba(0,0,0,0.18)';
   g.beginPath(); g.ellipse(x, y - 1 * s, W / 2, 3 * s, 0, 0, Math.PI * 2); g.fill();
   // 腿
-  g.fillStyle = '#4a3a2c';
+  g.fillStyle = '#5e4632';
   for (const lx of [x0 + 4 * s, x0 + W - 4 * s]) {
     g.fillRect(lx - 2 * s, y - 10 * s, 4 * s, 10 * s);
     g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.3);
@@ -727,7 +727,7 @@ export function drawBench(g: CanvasRenderingContext2D, x: number, y: number, s: 
   rr(g, x0, y - 24 * s, W, 5 * s, 2 * s); g.fill();
   g.strokeStyle = OUTLINE; g.stroke();
   // 靠背立柱
-  g.fillStyle = '#4a3a2c';
+  g.fillStyle = '#5e4632';
   for (const lx of [x0 + 4 * s, x0 + W - 4 * s]) {
     g.fillRect(lx - 1.5 * s, y - 24 * s, 3 * s, 12 * s);
   }
@@ -736,11 +736,13 @@ export function drawBench(g: CanvasRenderingContext2D, x: number, y: number, s: 
 // 稻草人：16w × 44h。杆 + 横杆 + 头 + 草。
 export function drawScarecrow(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   blob(g, x + 3 * s, y, 7 * s, SHADOW_A);
-  // 杆
-  g.strokeStyle = '#4a352a'; g.lineWidth = 5 * s; g.lineCap = 'round';
+  // 杆（木质 base，左上 highlight）
+  g.strokeStyle = '#7a5c44'; g.lineWidth = 5 * s; g.lineCap = 'round';
   g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 40 * s); g.stroke();
+  g.strokeStyle = '#8f6f52'; g.lineWidth = 2 * s;
+  g.beginPath(); g.moveTo(x - 1.5 * s, y - 2 * s); g.lineTo(x - 1.5 * s, y - 38 * s); g.stroke();
   // 横杆（手臂）
-  g.lineWidth = 4 * s;
+  g.strokeStyle = '#7a5c44'; g.lineWidth = 4 * s;
   g.beginPath(); g.moveTo(x - 12 * s, y - 28 * s); g.lineTo(x + 12 * s, y - 28 * s); g.stroke();
   // 草（手臂上）
   g.strokeStyle = '#c9a86a'; g.lineWidth = 2 * s;
@@ -774,17 +776,21 @@ export function drawScarecrow(g: CanvasRenderingContext2D, x: number, y: number,
 // 蜂箱：16w × 24h。三层叠箱。
 export function drawBeehive(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   blob(g, x + 2 * s, y, 8 * s, SHADOW_A);
-  const cols = ['#c9a86a', '#bd9a5e', '#b38e52'];
+  // 三层叠箱（木质家族：base #7a5c44 / shadow #5e4632 / highlight #8f6f52）
   for (let i = 0; i < 3; i++) {
     const bw = (16 - i * 1.5) * s, bh = 7 * s;
     const bx = x - bw / 2, by = y - (i + 1) * bh;
-    g.fillStyle = cols[i]!;
+    g.fillStyle = '#7a5c44';
     rr(g, bx, by, bw, bh + 1, 2 * s); g.fill();
+    g.fillStyle = '#8f6f52'; // 顶部 highlight
+    g.fillRect(bx + 1 * s, by + 1 * s, bw - 2 * s, 1.5 * s);
+    g.fillStyle = '#5e4632'; // 底部 shadow
+    g.fillRect(bx + 1 * s, by + bh - 1.5 * s, bw - 2 * s, 1.5 * s);
     g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.35);
     rr(g, bx, by, bw, bh + 1, 2 * s); g.stroke();
   }
   // 顶盖
-  g.fillStyle = '#8a6f4a';
+  g.fillStyle = '#8f6f52';
   g.beginPath(); g.ellipse(x, y - 22 * s, 9 * s, 3 * s, 0, 0, Math.PI * 2); g.fill();
   g.strokeStyle = OUTLINE; g.stroke();
   // 蜜蜂（两点 + 翅）
@@ -800,8 +806,8 @@ export function drawBeehive(g: CanvasRenderingContext2D, x: number, y: number, s
 // 秋千：36w × 44h。A 架 + 绳 + 座。
 export function drawSwing(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   blob(g, x, y, 16 * s, SHADOW_A);
-  // A 架（两侧）
-  g.strokeStyle = '#4a3a2c'; g.lineWidth = 4 * s; g.lineCap = 'round';
+  // A 架（两侧，木质 base）
+  g.strokeStyle = '#7a5c44'; g.lineWidth = 4 * s; g.lineCap = 'round';
   for (const dir of [-1, 1] as const) {
     g.beginPath();
     g.moveTo(x + dir * 14 * s, y);
@@ -812,10 +818,10 @@ export function drawSwing(g: CanvasRenderingContext2D, x: number, y: number, s: 
     g.moveTo(x + dir * 14 * s - 2 * s, y);
     g.lineTo(x + dir * 8 * s - 2 * s, y - 40 * s);
     g.stroke();
-    g.strokeStyle = '#4a3a2c'; g.lineWidth = 4 * s;
+    g.strokeStyle = '#7a5c44'; g.lineWidth = 4 * s;
   }
-  // 横梁
-  g.strokeStyle = '#4a3a2c'; g.lineWidth = 4 * s;
+  // 横梁（木质 base）
+  g.strokeStyle = '#7a5c44'; g.lineWidth = 4 * s;
   g.beginPath(); g.moveTo(x - 10 * s, y - 40 * s); g.lineTo(x + 10 * s, y - 40 * s); g.stroke();
   // 绳 ×2
   g.strokeStyle = '#8a7a5e'; g.lineWidth = Math.max(1, 1.6 * s);
@@ -833,50 +839,138 @@ export function drawSwing(g: CanvasRenderingContext2D, x: number, y: number, s: 
 
 // ------------------------------------------------------------------ 道具
 export function drawBush(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
-  // 灌木：低矮宽扁的叶丛，不是小树。两层错落叶簇 + 顶光点。
+  // 灌木：不规则叶丛轮廓（8 顶点 seed 扰动，≥3 处凹凸），三层绿 #6a9463 家族。
   const seed = x * 0.413 + y * 0.719;
   const R = 11 * s;
   const cy = y - 8 * s;
   // 地面阴影
   g.fillStyle = 'rgba(0,0,0,0.18)';
   g.beginPath(); g.ellipse(x + 2 * s, y - 1 * s, 13 * s, 4 * s, 0, 0, Math.PI * 2); g.fill();
-  // 下层深色叶簇（扁，squash 0.55）
-  leafRing(g, x, cy, 8, R * 0.75, R * 0.45, OUTLINE, seed + 1, 0.55);
-  leafRing(g, x, cy, 8, R * 0.75, R * 0.45 - 1.2 * s, '#2c4530', seed + 1, 0.55);
-  // 上层亮色叶簇（偏左上）
-  leafRing(g, x - 3 * s, cy - 4 * s, 6, R * 0.45, R * 0.38, '#3d5c3e', seed + 2, 0.55);
-  leafRing(g, x - 5 * s, cy - 6 * s, 4, R * 0.22, R * 0.30, '#527a4e', seed + 3, 0.55);
-  // 叶面高光
-  blob(g, x - 6 * s, cy - 6 * s, 1.8 * s, 'rgba(255,255,255,0.14)');
-  blob(g, x - 2 * s, cy - 8 * s, 1.4 * s, 'rgba(255,255,255,0.10)');
+  // base：不规则多边形轮廓
+  g.beginPath();
+  for (let i = 0; i <= 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const k = 0.78 + sjit(seed, i) * 0.45; // 半径扰动形成凹凸
+    const px = x + Math.cos(a) * R * k;
+    const py = cy + Math.sin(a) * R * k * 0.62;
+    if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+  }
+  g.closePath();
+  g.fillStyle = '#6a9463'; g.fill();
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.35); g.stroke();
+  // shadow：右下（混黑 25% #506f4a）
+  g.save();
+  g.clip();
+  g.fillStyle = '#506f4a';
+  g.beginPath(); g.ellipse(x + 5 * s, cy + 4 * s, 9 * s, 5 * s, 0.4, 0, Math.PI * 2); g.fill();
+  // highlight：左上（混白 20% #749e6d）
+  g.fillStyle = '#749e6d';
+  g.beginPath(); g.ellipse(x - 5 * s, cy - 4 * s, 7 * s, 4 * s, -0.4, 0, Math.PI * 2); g.fill();
+  g.restore();
+  // 叶面光斑（左上）
+  blob(g, x - 6 * s, cy - 5 * s, 1.8 * s, 'rgba(255,255,255,0.14)');
+  blob(g, x - 2 * s, cy - 7 * s, 1.4 * s, 'rgba(255,255,255,0.10)');
 }
 
 export function drawStone(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  // 石头：不规则 6 顶点多边形，三层石灰 #9b958b 家族。
+  const seed = x * 0.617 + y * 0.233;
   blob(g, x + 2 * s, y, 6 * s, SHADOW_A);
-  g.fillStyle = '#9b958b';
   g.beginPath();
-  g.ellipse(x, y - 4 * s, 6 * s, 4 * s, 0.3, 0, Math.PI * 2);
-  g.fill();
+  for (let i = 0; i <= 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const k = 0.72 + sjit(seed, i) * 0.55; // 半径扰动形成凹凸
+    const px = x + Math.cos(a) * 7 * s * k;
+    const py = y - 4 * s + Math.sin(a) * 4.5 * s * k;
+    if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+  }
+  g.closePath();
+  g.fillStyle = '#9b958b'; g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4); g.stroke();
-  g.fillStyle = '#b3ada2'; // highlight
-  g.beginPath();
-  g.ellipse(x - 2 * s, y - 6 * s, 2.5 * s, 1.5 * s, 0.3, 0, Math.PI * 2);
-  g.fill();
+  // 三层：左上 highlight（混白 20% #afa99f）/ 右下 shadow（混黑 25% #747068）
+  g.save();
+  g.clip();
+  g.fillStyle = '#747068';
+  g.beginPath(); g.ellipse(x + 3.5 * s, y - 2 * s, 5 * s, 3.5 * s, 0.4, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#afa99f';
+  g.beginPath(); g.ellipse(x - 3 * s, y - 6 * s, 4 * s, 2.5 * s, -0.4, 0, Math.PI * 2); g.fill();
+  g.restore();
 }
 
 export function drawLamp(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   blob(g, x + 2 * s, y, 4 * s, SHADOW_A);
-  // 杆
+  // 铁质杆：base #3a3230 / shadow #26211f / highlight #52484a
   g.fillStyle = '#3a3230';
   g.fillRect(x - 3 * s, y - 36 * s, 6 * s, 36 * s);
+  g.fillStyle = '#52484a'; // 左上光源 highlight
+  g.fillRect(x - 3 * s, y - 36 * s, 2 * s, 36 * s);
+  g.fillStyle = '#26211f'; // 右侧 shadow
+  g.fillRect(x + 1.5 * s, y - 36 * s, 1.5 * s, 36 * s);
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.3);
   g.strokeRect(x - 3 * s, y - 36 * s, 6 * s, 36 * s);
-  // 灯头
+  // 底座
   g.fillStyle = '#3a3230';
-  rr(g, x - 6 * s, y - 48 * s, 12 * s, 12 * s, 2 * s); g.fill();
+  g.fillRect(x - 5 * s, y - 4 * s, 10 * s, 4 * s);
+  g.fillStyle = '#52484a';
+  g.fillRect(x - 5 * s, y - 4 * s, 10 * s, 1.5 * s);
+  g.strokeStyle = OUTLINE;
+  g.strokeRect(x - 5 * s, y - 4 * s, 10 * s, 4 * s);
+  // 灯头（铁罩 + 暖光玻璃）
+  g.fillStyle = '#3a3230';
+  rr(g, x - 6 * s, y - 50 * s, 12 * s, 14 * s, 2 * s); g.fill();
   g.strokeStyle = OUTLINE; g.stroke();
-  g.fillStyle = '#ffd98a'; // 灯光
-  blob(g, x, y - 42 * s, 3.5 * s, '#ffd98a');
+  g.fillStyle = '#ffd98a'; // 暖光灯罩
+  rr(g, x - 3.5 * s, y - 46 * s, 7 * s, 8 * s, 1.5 * s); g.fill();
+  g.fillStyle = 'rgba(255,240,200,0.85)'; // 左上高光
+  g.fillRect(x - 3.5 * s, y - 46 * s, 7 * s, 2 * s);
+  // 顶盖
+  g.fillStyle = '#26211f';
+  g.beginPath();
+  g.moveTo(x - 7 * s, y - 50 * s); g.lineTo(x, y - 56 * s); g.lineTo(x + 7 * s, y - 50 * s);
+  g.closePath(); g.fill();
+  g.strokeStyle = OUTLINE; g.stroke();
+  // 微光晕
+  g.fillStyle = 'rgba(255,217,138,0.12)';
+  g.beginPath(); g.arc(x, y - 42 * s, 12 * s, 0, Math.PI * 2); g.fill();
+}
+
+// 火盆：24w × 32h。铁质三脚架 + 火盆 + 火焰三层。lit=true 为传说级点燃状态（金色光晕）。
+export function drawBrazier(g: CanvasRenderingContext2D, x: number, y: number, s: number, lit = false): void {
+  blob(g, x + 2 * s, y, 8 * s, SHADOW_A);
+  // 三脚架（铁质）
+  g.strokeStyle = '#3a3230'; g.lineWidth = 3 * s; g.lineCap = 'round';
+  for (const dx of [-7, 0, 7]) {
+    g.beginPath();
+    g.moveTo(x + dx * s, y);
+    g.lineTo(x + (dx / 2) * s, y - 20 * s);
+    g.stroke();
+  }
+  g.strokeStyle = '#52484a'; g.lineWidth = Math.max(1, 1.2 * s);
+  g.beginPath();
+  g.moveTo(x - 7 * s, y - 2 * s); g.lineTo(x - 3.5 * s, y - 20 * s);
+  g.stroke();
+  // 盆（铁碗）
+  g.fillStyle = '#3a3230';
+  g.beginPath();
+  g.moveTo(x - 11 * s, y - 20 * s);
+  g.lineTo(x + 11 * s, y - 20 * s);
+  g.lineTo(x + 7 * s, y - 13 * s);
+  g.lineTo(x - 7 * s, y - 13 * s);
+  g.closePath(); g.fill();
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4); g.stroke();
+  g.fillStyle = '#52484a'; // 盆沿 highlight
+  g.fillRect(x - 11 * s, y - 20 * s, 22 * s, 2 * s);
+  // 火焰三层
+  blob(g, x, y - 27 * s, 6 * s, '#e85d2a');
+  blob(g, x, y - 28 * s, 4 * s, '#f0a03a');
+  blob(g, x, y - 29 * s, 2.5 * s, '#ffd98a');
+  if (lit) {
+    // 传说级点燃：金色呼吸光晕
+    g.fillStyle = 'rgba(212,160,23,0.22)';
+    g.beginPath(); g.arc(x, y - 27 * s, 18 * s, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#d4a017'; g.lineWidth = Math.max(1, s * 0.4);
+    g.beginPath(); g.arc(x, y - 27 * s, 18 * s, 0, Math.PI * 2); g.stroke();
+  }
 }
 
 export function drawFence(g: CanvasRenderingContext2D, x: number, y: number, s: number, len = 1): void {
@@ -885,8 +979,12 @@ export function drawFence(g: CanvasRenderingContext2D, x: number, y: number, s: 
   const x0 = x - W / 2;
   for (let i = 0; i <= len * 2; i++) {
     const px = x0 + (i * W) / (len * 2);
-    g.fillStyle = '#6b4f3a';
+    g.fillStyle = '#7a5c44'; // 木质 base
     g.fillRect(px - 2 * s, y - H, 4 * s, H);
+    g.fillStyle = '#8f6f52'; // 左上 highlight
+    g.fillRect(px - 2 * s, y - H, 1.5 * s, H);
+    g.fillStyle = '#5e4632'; // 右侧 shadow
+    g.fillRect(px + 0.5 * s, y - H, 1.5 * s, H);
     g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.3);
     g.strokeRect(px - 2 * s, y - H, 4 * s, H);
   }
@@ -897,29 +995,44 @@ export function drawFence(g: CanvasRenderingContext2D, x: number, y: number, s: 
     g.strokeStyle = OUTLINE;
     g.strokeRect(x0, hy, W, 3 * s);
   }
+  g.fillStyle = '#8f6f52'; // 横杆上沿 highlight
+  g.fillRect(x0, y - H + 3 * s, W, 1.5 * s);
+  g.fillRect(x0, y - 5 * s, W, 1.5 * s);
 }
 
-export function drawChest(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+export function drawChest(g: CanvasRenderingContext2D, x: number, y: number, s: number, grade: 'common' | 'rare' | 'legend' = 'common'): void {
+  // 宝箱 20w × 14h。分级描边：普通铜色 / 稀有银色 #c0c8d0 / 传说金色 #d4a017 + 光晕。
+  const trim = grade === 'legend' ? '#d4a017' : grade === 'rare' ? '#c0c8d0' : '#a06a3f';
   const W = 20 * s, H = 14 * s;
   const x0 = x - W / 2, y0 = y - H;
+  if (grade === 'legend') {
+    g.fillStyle = 'rgba(212,160,23,0.20)';
+    g.beginPath(); g.arc(x, y - 7 * s, 18 * s, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(212,160,23,0.55)'; g.lineWidth = Math.max(1, s * 0.35);
+    g.beginPath(); g.arc(x, y - 7 * s, 18 * s, 0, Math.PI * 2); g.stroke();
+  } else if (grade === 'rare') {
+    g.fillStyle = 'rgba(192,200,208,0.12)';
+    g.beginPath(); g.arc(x, y - 7 * s, 14 * s, 0, Math.PI * 2); g.fill();
+  }
   blob(g, x + 2 * s, y, W / 2, SHADOW_A);
   // 箱体
+  const outline = grade === 'common' ? OUTLINE : trim;
   g.fillStyle = '#6b4f3a';
   rr(g, x0, y0, W, H, 2 * s); g.fill();
-  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
+  g.strokeStyle = outline; g.lineWidth = Math.max(1, s * 0.6);
   rr(g, x0, y0, W, H, 2 * s); g.stroke();
   // 箱盖
   g.fillStyle = '#7a5c44';
   rr(g, x0, y0, W, 6 * s, 2 * s); g.fill();
-  g.strokeStyle = OUTLINE; g.stroke();
-  // 金属包边
-  g.fillStyle = '#8a8a8a';
+  g.strokeStyle = outline; g.stroke();
+  // 金属包边（分级色）
+  g.fillStyle = trim;
   g.fillRect(x0, y0 + 5 * s, W, 2 * s);
   g.fillRect(x - s, y0, 2 * s, H);
   // 锁
-  g.fillStyle = '#d4a017';
-  blob(g, x, y0 + 6 * s, 2.5 * s, '#d4a017');
-  g.strokeStyle = OUTLINE; g.stroke();
+  g.fillStyle = trim;
+  blob(g, x, y0 + 6 * s, 2.5 * s, trim);
+  g.strokeStyle = outline; g.stroke();
 }
 
 // ------------------------------------------------------------------ 新地区组件 v2
@@ -934,14 +1047,14 @@ export function drawWell(g: CanvasRenderingContext2D, x: number, y: number, s: n
   // 井口（黑）
   g.fillStyle = '#1a1a1a';
   g.beginPath(); g.ellipse(x, y - 8 * s, W / 3, H / 3, 0, 0, Math.PI * 2); g.fill();
-  // 井架
-  g.fillStyle = '#6b4f3a';
+  // 井架（木质家族：shadow #5e4632）
+  g.fillStyle = '#5e4632';
   g.fillRect(x - 14 * s, y - 28 * s, 4 * s, 22 * s);
   g.fillRect(x + 10 * s, y - 28 * s, 4 * s, 22 * s);
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
   g.strokeRect(x - 14 * s, y - 28 * s, 4 * s, 22 * s);
   g.strokeRect(x + 10 * s, y - 28 * s, 4 * s, 22 * s);
-  // 横梁+小屋顶
+  // 横梁（base #7a5c44）+小屋顶
   g.fillStyle = '#7a5c44';
   g.fillRect(x - 16 * s, y - 30 * s, 32 * s, 4 * s);
   g.fillStyle = ROOF_VILLAGE;
@@ -950,9 +1063,9 @@ export function drawWell(g: CanvasRenderingContext2D, x: number, y: number, s: n
   g.closePath(); g.fill();
   g.strokeStyle = OUTLINE; g.stroke();
   // 绳+水桶
-  g.strokeStyle = '#4a352a'; g.lineWidth = Math.max(1, s * 0.3);
+  g.strokeStyle = '#5e4632'; g.lineWidth = Math.max(1, s * 0.3);
   g.beginPath(); g.moveTo(x, y - 30 * s); g.lineTo(x, y - 18 * s); g.stroke();
-  g.fillStyle = '#8a7368';
+  g.fillStyle = '#8f6f52'; // 水桶 highlight 木
   g.fillRect(x - 3 * s, y - 18 * s, 6 * s, 6 * s);
   g.strokeStyle = OUTLINE; g.strokeRect(x - 3 * s, y - 18 * s, 6 * s, 6 * s);
 }
@@ -971,10 +1084,12 @@ export function drawMarketStall(g: CanvasRenderingContext2D, x: number, y: numbe
   for (let i = 0; i < 4; i++) {
     blob(g, x - 12 * s + i * 8 * s, y - 16 * s, 3 * s, goods[i]);
   }
-  // 支柱
-  g.fillStyle = '#6b4f3a';
+  // 支柱（木质 shadow）
+  g.fillStyle = '#5e4632';
   for (const px of [x - W / 2 + 3 * s, x + W / 2 - 3 * s]) {
     g.fillRect(px - 2 * s, y - 36 * s, 4 * s, 24 * s);
+    g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.3);
+    g.strokeRect(px - 2 * s, y - 36 * s, 4 * s, 24 * s);
   }
   // 条纹遮阳棚
   for (let i = 0; i < 5; i++) {
@@ -1007,10 +1122,23 @@ export function drawVillageGate(g: CanvasRenderingContext2D, x: number, y: numbe
     g.strokeStyle = OUTLINE;
     g.beginPath(); g.arc(px, y - 38 * s, 5 * s, 0, Math.PI * 2); g.stroke();
   }
-  // 横梁+挂牌
-  g.fillStyle = '#6b4f3a';
+  // 横梁+挂牌（木质 base）
+  g.fillStyle = '#7a5c44';
   g.fillRect(x - 26 * s, y - 44 * s, 52 * s, 8 * s);
+  g.fillStyle = '#8f6f52'; // 上沿 highlight
+  g.fillRect(x - 26 * s, y - 44 * s, 52 * s, 2 * s);
+  g.fillStyle = '#5e4632'; // 下沿 shadow
+  g.fillRect(x - 26 * s, y - 38 * s, 52 * s, 2 * s);
   g.strokeStyle = OUTLINE; g.strokeRect(x - 26 * s, y - 44 * s, 52 * s, 8 * s);
+  // 铁质箍（梁柱连接处）
+  for (const px of [x - 20 * s, x + 20 * s]) {
+    g.fillStyle = '#3a3230';
+    g.fillRect(px - 4 * s, y - 44 * s, 8 * s, 8 * s);
+    g.fillStyle = '#52484a';
+    g.fillRect(px - 4 * s, y - 44 * s, 8 * s, 2 * s);
+    g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.3);
+    g.strokeRect(px - 4 * s, y - 44 * s, 8 * s, 8 * s);
+  }
   // 小屋顶
   g.fillStyle = ROOF_VILLAGE;
   g.beginPath();
@@ -1022,8 +1150,8 @@ export function drawVillageGate(g: CanvasRenderingContext2D, x: number, y: numbe
 // 木码头：16w × 64h（一段）。木板+桩。
 export function drawDock(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   const W = 16 * s, H = 64 * s;
-  // 木桩（4 根）
-  g.fillStyle = '#4a352a';
+  // 木桩（4 根，木质 shadow #5e4632）
+  g.fillStyle = '#5e4632';
   for (const [px, py] of [[-6, -28], [6, -28], [-6, 28], [6, 28]] as Array<[number, number]>) {
     g.fillRect(x + px * s - 2 * s, y + py * s - 8 * s, 4 * s, 16 * s);
   }
@@ -1047,13 +1175,19 @@ export function drawDock(g: CanvasRenderingContext2D, x: number, y: number, s: n
 
 // 系船柱：8w × 20h
 export function drawMooringPost(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  // 系船柱：8w × 20h。木质家族。
   blob(g, x + 2 * s, y, 5 * s, SHADOW_A);
-  g.fillStyle = '#4a352a';
+  g.fillStyle = '#7a5c44';
   rr(g, x - 4 * s, y - 20 * s, 8 * s, 20 * s, 2 * s); g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
   rr(g, x - 4 * s, y - 20 * s, 8 * s, 20 * s, 2 * s); g.stroke();
-  g.fillStyle = '#6b4f3a';
-  blob(g, x, y - 20 * s, 4 * s, '#6b4f3a');
+  // 左侧 highlight / 右侧 shadow
+  g.fillStyle = 'rgba(255,255,255,0.12)';
+  g.fillRect(x - 4 * s, y - 18 * s, 2 * s, 16 * s);
+  g.fillStyle = 'rgba(0,0,0,0.20)';
+  g.fillRect(x + 2 * s, y - 18 * s, 2 * s, 16 * s);
+  g.fillStyle = '#8f6f52';
+  blob(g, x, y - 20 * s, 4 * s, '#8f6f52');
   g.strokeStyle = OUTLINE;
   g.beginPath(); g.arc(x, y - 20 * s, 4 * s, 0, Math.PI * 2); g.stroke();
   // 绳圈
@@ -1067,16 +1201,16 @@ export function drawBoat(g: CanvasRenderingContext2D, x: number, y: number, s: n
   // 船影（水面）
   g.fillStyle = 'rgba(0,0,0,0.2)';
   g.beginPath(); g.ellipse(x + 2 * s, y, W / 2, H / 2, 0, 0, Math.PI * 2); g.fill();
-  // 船体
-  g.fillStyle = '#6b4f3a';
+  // 船体（base #7a5c44）
+  g.fillStyle = '#7a5c44';
   g.beginPath(); g.ellipse(x, y - 2 * s, W / 2, H / 2, 0, 0, Math.PI * 2); g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.5); g.stroke();
-  // 船舱
-  g.fillStyle = '#4a352a';
+  // 船舱（shadow #5e4632）
+  g.fillStyle = '#5e4632';
   g.beginPath(); g.ellipse(x, y - 2 * s, W / 4, H / 4, 0, 0, Math.PI * 2); g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.3); g.stroke();
-  // 船沿 highlight
-  g.strokeStyle = 'rgba(255,255,255,0.2)'; g.lineWidth = Math.max(1, s * 0.3);
+  // 船沿 highlight（#8f6f52）
+  g.strokeStyle = '#8f6f52'; g.lineWidth = Math.max(1, s * 0.3);
   g.beginPath(); g.ellipse(x, y - 2 * s, W / 2 - 2 * s, H / 2 - 2 * s, 0, Math.PI * 1.2, Math.PI * 1.8); g.stroke();
 }
 
@@ -1112,8 +1246,9 @@ export function drawLighthouse(g: CanvasRenderingContext2D, x: number, y: number
 
 // 蜘蛛网：48w × 48h。挂在树间。
 export function drawWeb(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  // 蜘蛛网：48w × 48h。挂在树间。统一 #c8ccd4 半透明。
   const R = 24 * s;
-  g.strokeStyle = 'rgba(220,220,220,0.7)'; g.lineWidth = Math.max(1, s * 0.3);
+  g.strokeStyle = 'rgba(200,204,212,0.6)'; g.lineWidth = Math.max(1, s * 0.3);
   // 放射线
   for (let i = 0; i < 8; i++) {
     const a = (i * Math.PI) / 4;
@@ -1138,6 +1273,7 @@ export function drawWeb(g: CanvasRenderingContext2D, x: number, y: number, s: nu
 
 // 发光花：12w × 16h。独角兽空地。
 export function drawGlowFlower(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  // 发光花：12w × 16h。独角兽空地。稀有标识：银色描边 + 微光点。
   // 光晕
   g.fillStyle = 'rgba(180,220,255,0.25)';
   g.beginPath(); g.arc(x, y - 8 * s, 10 * s, 0, Math.PI * 2); g.fill();
@@ -1151,8 +1287,13 @@ export function drawGlowFlower(g: CanvasRenderingContext2D, x: number, y: number
     blob(g, x + Math.cos(a) * 4 * s, y - 12 * s + Math.sin(a) * 4 * s, 2.5 * s, '#b8d4f0');
   }
   blob(g, x, y - 12 * s, 2 * s, '#f0f0ff');
-  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.2);
+  // 银色描边（稀有）
+  g.strokeStyle = '#c0c8d0'; g.lineWidth = Math.max(1, s * 0.4);
   g.beginPath(); g.arc(x, y - 12 * s, 6 * s, 0, Math.PI * 2); g.stroke();
+  // 微光点（3 粒）
+  blob(g, x - 6 * s, y - 14 * s, 1.2 * s, 'rgba(220,240,255,0.9)');
+  blob(g, x + 7 * s, y - 10 * s, 1 * s, 'rgba(220,240,255,0.7)');
+  blob(g, x + 2 * s, y - 18 * s, 0.9 * s, 'rgba(220,240,255,0.8)');
 }
 
 // 马人帐篷：48w × 40h。圆锥帐篷。
@@ -1188,22 +1329,25 @@ export function drawTent(g: CanvasRenderingContext2D, x: number, y: number, s: n
 
 // 篝火：20w × 20h。马人营地中心。
 export function drawCampfire(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
-  // 石头圈
+  // 石头圈（石灰 #9b958b，8 块）
   for (let i = 0; i < 8; i++) {
     const a = (i * Math.PI) / 4;
-    blob(g, x + Math.cos(a) * 8 * s, y - 2 * s + Math.sin(a) * 3 * s, 2.5 * s, '#9b958b');
+    const sx = x + Math.cos(a) * 8 * s, sy = y - 2 * s + Math.sin(a) * 3 * s;
+    blob(g, sx, sy, 2.5 * s, '#9b958b');
+    g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.25);
+    g.beginPath(); g.arc(sx, sy, 2.5 * s, 0, Math.PI * 2); g.stroke();
   }
   // 木柴
-  g.strokeStyle = '#4a352a'; g.lineWidth = 4 * s; g.lineCap = 'round';
+  g.strokeStyle = '#5e4632'; g.lineWidth = 4 * s; g.lineCap = 'round';
   for (const [x1, y1, x2, y2] of [[-6, 0, 6, -4], [6, 0, -6, -4], [0, 2, 0, -6]] as Array<[number, number, number, number]>) {
     g.beginPath();
     g.moveTo(x + x1 * s, y + y1 * s); g.lineTo(x + x2 * s, y + y2 * s);
     g.stroke();
   }
-  // 火焰三层
-  blob(g, x, y - 8 * s, 6 * s, '#e85d2a');
-  blob(g, x, y - 9 * s, 4 * s, '#f0a03a');
-  blob(g, x, y - 10 * s, 2.5 * s, '#ffd98a');
+  // 火焰三层：外 #c94f28 / 中 #e86a3a / 芯 #f5b86e
+  blob(g, x, y - 7 * s, 6 * s, '#c94f28');
+  blob(g, x, y - 9 * s, 4 * s, '#e86a3a');
+  blob(g, x, y - 10 * s, 2.5 * s, '#f5b86e');
   // 火光
   g.fillStyle = 'rgba(255,180,80,0.12)';
   g.beginPath(); g.arc(x, y - 8 * s, 16 * s, 0, Math.PI * 2); g.fill();
@@ -1223,8 +1367,8 @@ export function drawGreenhouse(g: CanvasRenderingContext2D, x: number, y: number
   g.fillStyle = 'rgba(180,220,230,0.45)';
   rr(g, x0 + 2 * s, y0 + 20 * s, W - 4 * s, H - 36 * s, 2 * s); g.fill();
   g.strokeStyle = OUTLINE; g.stroke();
-  // 框架线
-  g.strokeStyle = '#5a6a72'; g.lineWidth = Math.max(1, s * 0.4);
+  // 框架线（木质）
+  g.strokeStyle = '#7a5c44'; g.lineWidth = Math.max(1, s * 0.4);
   for (let i = 1; i < 5; i++) {
     g.beginPath();
     g.moveTo(x0 + (W / 5) * i, y0 + 20 * s);
@@ -1359,3 +1503,73 @@ export function drawTrainingHoop(g: CanvasRenderingContext2D, x: number, y: numb
   g.fillStyle = 'rgba(212,160,23,0.15)';
   g.beginPath(); g.arc(x, y - 46 * s, 8 * s, 0, Math.PI * 2); g.fill();
 }
+
+// ------------------------------------------------------------------ A 组新增
+// 告示牌：24w × 48h。木牌 24 × 16 + 木杆，岔路口指示方向。
+export function drawSignpost(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  blob(g, x + 2 * s, y, 6 * s, SHADOW_A);
+  // 木杆（shadow #5e4632）
+  g.fillStyle = '#5e4632';
+  rr(g, x - 2 * s, y - 40 * s, 4 * s, 40 * s, s); g.fill();
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.35);
+  rr(g, x - 2 * s, y - 40 * s, 4 * s, 40 * s, s); g.stroke();
+  // 木牌（base #7a5c44），右端箭头指向
+  g.fillStyle = '#7a5c44';
+  g.beginPath();
+  g.moveTo(x - 12 * s, y - 48 * s);
+  g.lineTo(x + 8 * s, y - 48 * s);
+  g.lineTo(x + 12 * s, y - 40 * s);
+  g.lineTo(x + 8 * s, y - 32 * s);
+  g.lineTo(x - 12 * s, y - 32 * s);
+  g.closePath(); g.fill();
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4); g.stroke();
+  // 牌面 highlight（左上）/ shadow（右下）
+  g.fillStyle = '#8f6f52';
+  g.fillRect(x - 10 * s, y - 46 * s, 8 * s, 2 * s);
+  g.fillStyle = 'rgba(0,0,0,0.20)';
+  g.fillRect(x - 10 * s, y - 34 * s, 18 * s, 2 * s);
+  // 刻字线（2px 最小细节）
+  g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = Math.max(1, s * 0.25);
+  g.beginPath(); g.moveTo(x - 8 * s, y - 41 * s); g.lineTo(x + 4 * s, y - 41 * s); g.stroke();
+  g.beginPath(); g.moveTo(x - 8 * s, y - 37 * s); g.lineTo(x, y - 37 * s); g.stroke();
+}
+
+// 芦苇丛：12w × 24h。黑湖岸水生植物，3–5 根随风摆动的芦苇。
+export function drawReed(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  const seed = x * 0.529 + y * 0.881;
+  const n = 3 + Math.floor(sjit(seed, 7) * 3); // 3–5 根
+  const greens = ['#527a4e', '#6a9463', '#749e6d'];
+  blob(g, x, y, 6 * s, SHADOW_A);
+  for (let i = 0; i < n; i++) {
+    const bx = x + (i - (n - 1) / 2) * 5 * s;
+    const lean = (sjit(seed, i) - 0.5) * 8 * s; // 倾斜
+    const h = (18 + sjit(seed, i + 50) * 8) * s;
+    g.strokeStyle = greens[i % 3];
+    g.lineWidth = Math.max(2, 2.5 * s); g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(bx, y);
+    g.quadraticCurveTo(bx + lean * 0.3, y - h * 0.6, bx + lean, y - h);
+    g.stroke();
+    // 穗头（2 根带穗）
+    if (i % 2 === 0) {
+      blob(g, bx + lean, y - h, 1.8 * s, '#a08c6a');
+    }
+  }
+}
+
+// ------------------------------------------------------------------ 物品图鉴
+// 图鉴 UI（点击/E 弹窗）的数据源。只收录 A 组重画的物品。
+export const ITEM_INFO: Record<string, {name: string; desc: string; grade: '普通' | '稀有' | '传说'}> = {
+  bush: {name: '灌木', desc: '低矮的叶丛，通常三五成簇长在草地上。', grade: '普通'},
+  stone: {name: '石头', desc: '棱角不齐的灰色碎石，散布在野外。', grade: '普通'},
+  chest: {name: '宝箱', desc: '封印的木箱，铜色普通、银色稀有、金色传说。', grade: '稀有'},
+  well: {name: '水井', desc: '村广场中央的老井，石台木架上垂着水桶。', grade: '普通'},
+  dock: {name: '木码头', desc: '伸向黑湖的木板栈道，桩柱钉得牢固。', grade: '普通'},
+  mooringpost: {name: '系船柱', desc: '拴小船的矮木桩，缠着一圈绳索。', grade: '普通'},
+  boat: {name: '小船', desc: '黑湖上的小木船，一年级新生渡湖用的。', grade: '普通'},
+  campfire: {name: '篝火', desc: '石圈围着的柴火堆，夜里生火驱寒照明。', grade: '普通'},
+  web: {name: '蛛网', desc: '禁林树间挂着的蛛网，蛛丝沾着露水。', grade: '普通'},
+  glowflower: {name: '发光花', desc: '禁林深处的稀有植物，花瓣夜里发出微光。', grade: '稀有'},
+  signpost: {name: '告示牌', desc: '岔路口的木指示牌，箭头指向各个方向。', grade: '普通'},
+  reed: {name: '芦苇丛', desc: '黑湖岸边的水生植物，成簇随风摇摆。', grade: '普通'},
+};
