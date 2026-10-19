@@ -251,7 +251,6 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.6 + rnd() * 2.2,
       rnd() < 0.5 ? hexA('#6b5a3a', 0.4) : hexA(P.dark, 0.5));
   }
-  // 真正的树：服务器真实位置（与碰撞一致）
   // 世界单位转纹理 px：TPX=3。树锚点 = 底部中心。
   const w2x = (wx: number): number => w2tx(wx);
   const w2y = (wz: number): number => w2ty(wz);

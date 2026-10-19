@@ -292,15 +292,15 @@ export function drawOak(g: CanvasRenderingContext2D, x: number, y: number, s: nu
   blob(g, x - 20 * s, cy - 8 * s, 2 * s, 'rgba(255,255,255,0.10)');
 }
 
-/** 锯齿三角冠：松针层叠感。teeth = 每边齿数 */
+/** 锯齿三角冠：松针层叠感。teeth = 每边齿数，齿深小，保证层间无镂空 */
 function jaggedPineLayer(g: CanvasRenderingContext2D, cx: number, apexY: number,
   baseY: number, halfW: number, color: string, seed: number, teeth: number): void {
   const pts: Array<[number, number]> = [[cx, apexY]];
-  // 左边：apex -> base-left，锯齿向外
+  // 左边：apex -> base-left，轻微锯齿
   for (let i = 1; i <= teeth; i++) {
     const t = i / teeth;
     const px = cx - halfW * t, py = apexY + (baseY - apexY) * t;
-    const out = (i % 2 === 1 ? 1 : -0.35) * halfW * 0.10 * (0.7 + sjit(seed, i) * 0.6);
+    const out = (i % 2 === 1 ? 1 : -0.5) * halfW * 0.045 * (0.7 + sjit(seed, i) * 0.6);
     pts.push([px - out, py]);
   }
   pts.push([cx + halfW, baseY]);
@@ -308,7 +308,7 @@ function jaggedPineLayer(g: CanvasRenderingContext2D, cx: number, apexY: number,
   for (let i = teeth; i >= 1; i--) {
     const t = i / teeth;
     const px = cx + halfW * t, py = apexY + (baseY - apexY) * t;
-    const out = (i % 2 === 1 ? 1 : -0.35) * halfW * 0.10 * (0.7 + sjit(seed, i + 50) * 0.6);
+    const out = (i % 2 === 1 ? 1 : -0.5) * halfW * 0.045 * (0.7 + sjit(seed, i + 50) * 0.6);
     pts.push([px + out, py]);
   }
   g.fillStyle = color;
@@ -325,23 +325,23 @@ export function drawPine(g: CanvasRenderingContext2D, x: number, y: number, s: n
   // 根部阴影
   g.fillStyle = 'rgba(0,0,0,0.22)';
   g.beginPath(); g.ellipse(x + 2 * s, y - 2 * s, 20 * s, 6 * s, 0, 0, Math.PI * 2); g.fill();
-  // 树干（下层冠底露出）
+  // 树干（插入底层冠）
   const tw = 8 * s;
   g.fillStyle = '#4a352a';
-  g.fillRect(x - tw / 2, y - 26 * s, tw, 26 * s);
+  g.fillRect(x - tw / 2, y - 38 * s, tw, 38 * s);
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.5);
-  g.strokeRect(x - tw / 2, y - 26 * s, tw, 26 * s);
+  g.strokeRect(x - tw / 2, y - 38 * s, tw, 38 * s);
   g.fillStyle = '#6b4f3a';
-  g.fillRect(x - tw / 2 + 1.5 * s, y - 24 * s, 2 * s, 22 * s);
-  // 三层锯齿冠：下大上小，深->浅
-  jaggedPineLayer(g, x, y - 96 * s, y - 62 * s, 27 * s, '#24402a', seed, 7);
-  jaggedPineLayer(g, x, y - 78 * s, y - 46 * s, 22 * s, '#2c4530', seed + 5, 6);
-  jaggedPineLayer(g, x, y - 60 * s, y - 32 * s, 16 * s, '#3d5c3e', seed + 9, 5);
+  g.fillRect(x - tw / 2 + 1.5 * s, y - 36 * s, 2 * s, 34 * s);
+  // 三层锯齿冠：下大上小，深->浅，层间重叠 40%+
+  jaggedPineLayer(g, x, y - 70 * s, y - 30 * s, 28 * s, '#24402a', seed, 7);
+  jaggedPineLayer(g, x, y - 88 * s, y - 52 * s, 23 * s, '#2c4530', seed + 5, 6);
+  jaggedPineLayer(g, x, y - 104 * s, y - 74 * s, 17 * s, '#3d5c3e', seed + 9, 5);
   // 左上针叶高光
   g.strokeStyle = 'rgba(255,255,255,0.14)'; g.lineWidth = Math.max(1, 1.6 * s); g.lineCap = 'round';
   g.beginPath();
-  g.moveTo(x - 14 * s, y - 70 * s); g.lineTo(x - 6 * s, y - 84 * s);
-  g.moveTo(x - 9 * s, y - 52 * s); g.lineTo(x - 3 * s, y - 62 * s);
+  g.moveTo(x - 15 * s, y - 62 * s); g.lineTo(x - 8 * s, y - 76 * s);
+  g.moveTo(x - 10 * s, y - 82 * s); g.lineTo(x - 4 * s, y - 94 * s);
   g.stroke();
 }
 
@@ -833,12 +833,22 @@ export function drawSwing(g: CanvasRenderingContext2D, x: number, y: number, s: 
 
 // ------------------------------------------------------------------ 道具
 export function drawBush(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
-  blob(g, x + 3 * s, y, 10 * s, SHADOW_A);
-  blob(g, x, y - 6 * s, 10 * s, '#3d5c3e');
-  blob(g, x - 3 * s, y - 9 * s, 6 * s, '#527a4e');
-  blob(g, x - 5 * s, y - 11 * s, 3 * s, '#6a9463');
-  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
-  g.beginPath(); g.arc(x, y - 6 * s, 10 * s, 0, Math.PI * 2); g.stroke();
+  // 灌木：低矮宽扁的叶丛，不是小树。两层错落叶簇 + 顶光点。
+  const seed = x * 0.413 + y * 0.719;
+  const R = 11 * s;
+  const cy = y - 8 * s;
+  // 地面阴影
+  g.fillStyle = 'rgba(0,0,0,0.18)';
+  g.beginPath(); g.ellipse(x + 2 * s, y - 1 * s, 13 * s, 4 * s, 0, 0, Math.PI * 2); g.fill();
+  // 下层深色叶簇（扁，squash 0.55）
+  leafRing(g, x, cy, 8, R * 0.75, R * 0.45, OUTLINE, seed + 1, 0.55);
+  leafRing(g, x, cy, 8, R * 0.75, R * 0.45 - 1.2 * s, '#2c4530', seed + 1, 0.55);
+  // 上层亮色叶簇（偏左上）
+  leafRing(g, x - 3 * s, cy - 4 * s, 6, R * 0.45, R * 0.38, '#3d5c3e', seed + 2, 0.55);
+  leafRing(g, x - 5 * s, cy - 6 * s, 4, R * 0.22, R * 0.30, '#527a4e', seed + 3, 0.55);
+  // 叶面高光
+  blob(g, x - 6 * s, cy - 6 * s, 1.8 * s, 'rgba(255,255,255,0.14)');
+  blob(g, x - 2 * s, cy - 8 * s, 1.4 * s, 'rgba(255,255,255,0.10)');
 }
 
 export function drawStone(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
