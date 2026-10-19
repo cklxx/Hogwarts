@@ -268,6 +268,16 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
     else if (hk < 0.85) drawPine(g, tx, ty, TPX);
     else drawDeadTree(g, tx, ty, TPX);
   }
+  // 区域视觉语言：禁林雾气。12 团半透明灰白，低空漂浮感。
+  for (let i = 0; i < 12; i++) {
+    const mx = x0 + rnd() * w, my = y0 + rnd() * h;
+    const mr = 30 + rnd() * 50;
+    const grad = g.createRadialGradient(mx, my, 0, mx, my, mr);
+    grad.addColorStop(0, 'rgba(200,210,220,0.14)');
+    grad.addColorStop(1, 'rgba(200,210,220,0)');
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(mx, my, mr, 0, Math.PI * 2); g.fill();
+  }
   void P; void nd;
 };
 
@@ -646,12 +656,37 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
   }
   // bushes & stones from layout (collision-checked at build)
   // + v2 new regions: well/market/gate/dock/boat/lighthouse/web/glowflower/tent/campfire/greenhouse/garden/owlery/scoreboard/hoop
+  // L4 视觉层次：灌木/石头是背景板，压暗 30% + 降饱和度，不抢建筑的戏。
+  // 实现：先画到独立 deco 图层，source-atop 罩深灰绿（同时压暗+去饱和），再合成。
+  // 这是纹理烘焙时的一次性成本，不影响帧率。
+  const decoC = document.createElement('canvas');
+  decoC.width = TW; decoC.height = TH;
+  const dg = decoC.getContext('2d')!;
   for (const it of L.items) {
     const x = w2tx(it.x), y = w2ty(it.z);
     const s = TPX * it.s;
     switch (it.kind) {
-      case 'bush': drawBush(g, x, y, s); break;
-      case 'stone': drawStone(g, x, y, s); break;
+      case 'bush': drawBush(dg, x, y, s); break;
+      case 'stone': drawStone(dg, x, y, s); break;
+      default: break; // 非 L4 装饰画到主图层
+    }
+  }
+  // 压暗 30% + 降饱和度：深灰绿罩
+  dg.globalCompositeOperation = 'source-atop';
+  dg.fillStyle = 'rgba(38,44,38,0.30)';
+  dg.fillRect(0, 0, TW, TH);
+  dg.globalCompositeOperation = 'source-over';
+  g.drawImage(decoC, 0, 0);
+  for (const it of L.items) {
+    const x = w2tx(it.x), y = w2ty(it.z);
+    const s = TPX * it.s;
+    switch (it.kind) {
+      case 'bush': case 'stone': break; // 已在 deco 图层画过
+      case 'brazier': {
+        const bs = Math.max(16, 20 * TPX * it.s / 3);
+        drawSprite(g, 'brazier', x - bs / 2, y - bs / 2 - 8 * TPX * it.s / 3, bs, bs);
+        break;
+      }
       case 'well': drawWell(g, x, y, s); break;
       case 'marketstall': drawMarketStall(g, x, y, s); break;
       case 'villagegate': drawVillageGate(g, x, y, s); break;

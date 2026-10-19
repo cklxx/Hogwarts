@@ -14,7 +14,7 @@ export interface Pt { x: number; z: number }
 export interface Road { id: string; width: number; pts: Pt[] }
 export type ItemKind =
   | 'bush' | 'stone'
-  | 'cottage' | 'stonehouse' | 'lamp'
+  | 'cottage' | 'stonehouse' | 'lamp' | 'brazier'
   | 'well' | 'marketstall' | 'villagegate'
   | 'dock' | 'boat' | 'lighthouse' | 'mooringpost'
   | 'web' | 'glowflower' | 'tent' | 'campfire'
@@ -60,7 +60,7 @@ export function getBoxes(): Box[] { return boxes; }
 const FOOT: Record<ItemKind, [number, number]> = {
   bush: [24, 18], stone: [16, 12],
   cottage: [76, 60], stonehouse: [100, 76],
-  lamp: [12, 48],
+  lamp: [12, 48], brazier: [16, 24],
   well: [36, 44], marketstall: [44, 52], villagegate: [52, 58],
   dock: [20, 68], boat: [40, 22], lighthouse: [28, 76], mooringpost: [12, 24],
   web: [52, 52], glowflower: [16, 20], tent: [52, 44], campfire: [24, 24],
@@ -284,24 +284,7 @@ function buildLayout(): LayoutResult {
   }
 
 
-  // 3) scatter: 220 bushes + 160 stones in meadow/fringe, collision-checked
-  //    服务器障碍物（含树木）已注册，不会压盖
-  {
-    let placedBush = 0, placedStone = 0, guard = 0;
-    const tryScatter = (kind: 'bush' | 'stone'): boolean => {
-      const x = -260 + rnd() * 520, z = -260 + rnd() * 560;
-      if (inExclude(x, z)) return false;
-      if (inForestDeep(x, z)) return false;
-      if (x > -50 && x < 80 && z > 140 && z < 220) return false; // 村庄内部
-      if (x > -270 && x < -130 && z > 80 && z < 210) return false; // 对角巷
-      if (x > 80 && x < 150 && z > 102 && z < 165) return false; // 海格小屋区
-      if (x > 15 && x < 75 && z > -30 && z < 30) return false; // 打人柳区
-      return tryPlace(kind, x, z, 0.8 + rnd() * 0.4, 3);
-    };
-    while (placedBush < 220 && guard++ < 12000) if (tryScatter('bush')) placedBush++;
-    guard = 0;
-    while (placedStone < 160 && guard++ < 12000) if (tryScatter('stone')) placedStone++;
-  }
+  // 3) scatter 已移到所有建筑之后（见文末），保证呼吸空间检查覆盖全部建筑
 
   // 4) 新地区 v2：6 个独立地区（坐标已避开服务器障碍物和另一 agent 的对角巷/海格小屋/打人柳/看台）
   // 4a) 霍格莫德村完整版：广场水井 + 集市摊位 + 村门
@@ -408,6 +391,57 @@ function buildLayout(): LayoutResult {
   // 4f) 猫头鹰棚屋：(80,-90)，东北高塔
   {
     tryPlace('owlery', 80, -90, 1, 0);
+  }
+
+  // 4g) 区域视觉语言：城堡火盆（8 个，沿城墙/入口）
+  //     城堡 x -62..62, z -118..-40。入口在南侧 z=-40。
+  {
+    const braziers: Array<[number, number]> = [
+      [-50, -35], [-20, -35], [20, -35], [50, -35],  // 南墙外
+      [-58, -80], [58, -80],                          // 东西墙
+      [-30, -112], [30, -112],                        // 北墙
+    ];
+    for (const [bx, bz] of braziers) tryPlace('brazier', bx, bz, 1, 6);
+  }
+
+  // 4h) 区域视觉语言：村庄花坛（6 个，沿主路 R5）
+  {
+    const beds: Array<[number, number]> = [
+      [-12, 155], [14, 158], [-14, 175], [16, 178], [-10, 195], [12, 198],
+    ];
+    for (const [fx, fz] of beds) tryPlace('flowerbed', fx, fz, 1, 4);
+  }
+
+  // 3) scatter（移到所有建筑之后）：110 灌木 + 80 石头，密度砍半
+  //    呼吸空间：建筑周围 48 单位内不放；道路留白：路宽/2 + 12
+  //    服务器障碍物（含树木）已注册，不会压盖
+  {
+    // 建筑类：散布时保持距离
+    const BUILDINGS = new Set(['cottage', 'stonehouse', 'shop', 'pub', 'station',
+      'library', 'dormtower', 'greenhouse', 'well', 'marketstall', 'villagegate',
+      'owlery', 'lighthouse', 'tent', 'dock', 'boat']);
+    const nearBuilding = (x: number, z: number, r: number): boolean => {
+      for (const it of items) {
+        if (!BUILDINGS.has(it.kind)) continue;
+        if (Math.hypot(it.x - x, it.z - z) < r) return true;
+      }
+      return false;
+    };
+    let placedBush = 0, placedStone = 0, guard = 0;
+    const tryScatter = (kind: 'bush' | 'stone'): boolean => {
+      const x = -260 + rnd() * 520, z = -260 + rnd() * 560;
+      if (inExclude(x, z)) return false;
+      if (inForestDeep(x, z)) return false;
+      if (x > -50 && x < 80 && z > 140 && z < 220) return false; // 村庄内部
+      if (x > -270 && x < -130 && z > 80 && z < 210) return false; // 对角巷
+      if (x > 80 && x < 150 && z > 102 && z < 165) return false; // 海格小屋区
+      if (x > 15 && x < 75 && z > -30 && z < 30) return false; // 打人柳区
+      if (nearBuilding(x, z, 48)) return false; // 呼吸空间：建筑周围 3 格
+      return tryPlace(kind, x, z, 0.8 + rnd() * 0.4, 12); // 道路留白：+12
+    };
+    while (placedBush < 110 && guard++ < 12000) if (tryScatter('bush')) placedBush++;
+    guard = 0;
+    while (placedStone < 80 && guard++ < 12000) if (tryScatter('stone')) placedStone++;
   }
 
   return { roads, items };
