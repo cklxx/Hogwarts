@@ -1304,7 +1304,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     // --- unified label layout: wizard names avoid zone labels and each other ---
     // 1) measure real text half-widths (the old fixed 50px threshold missed
     //    overlaps between long names whose centers are 50-90px apart)
-    const nameFont = (isMe: boolean) => `${isMe ? 'bold ' : ''}${Math.max(10, 11 * cam.zoom)}px sans-serif`;
+    // Font size capped: at 2.75x, 11*zoom=30px is unreadably huge. Cap at 14px
+    // like Pokemon-style games where labels stay small regardless of zoom.
+    const nameFont = (isMe: boolean) => `${isMe ? 'bold ' : ''}${Math.min(14, Math.max(10, 11 * cam.zoom))}px sans-serif`;
     setAlign('center');
     for (const nm of nameQueue) {
       setFont(nameFont(nm.isMe));
@@ -1350,22 +1352,21 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     for (const z of zoneLabels) placed.push({ x: z.x, y: z.y, hw: z.hw });
     for (const nm of nameQueue) {
       if (nm.dot) continue;
-      let y = nm.y, ok = false;
+      // 顶边钳制必须在碰撞循环之前作为起始 y：字体随 zoom 放大（11*zoom px），
+      // baseline < 字高+边距时 2.75x 下名字上半截被切。放循环后会破坏无碰撞保证。
+      const minY = 12 * cam.zoom + 4;
+      let y = Math.max(nm.y, minY), ok = false;
       // find a y that doesn't collide with already-placed labels
       for (let attempt = 0; attempt < 24; attempt++) {
         let hit = false;
         for (const p of placed) {
-          if (Math.abs(p.x - nm.x) < (p.hw + nm.hw) * 0.9 && Math.abs(p.y - y) < lineH) { hit = true; break; }
+          if (Math.abs(p.x - nm.x) < p.hw + nm.hw && Math.abs(p.y - y) < lineH) { hit = true; break; }
         }
         if (!hit) { ok = true; break; }
         y += lineH;
         if (y - nm.y > MAX_PUSH) break; // stop-loss: too far, give up to dot
       }
       if (!ok || y - nm.y > MAX_PUSH || y > vh + 24) { nm.dot = true; continue; }
-      // 顶边钳制：字体随 zoom 放大（11*zoom px），baseline 必须 >= 字高+边距，
-      // 否则 2.75x 下名字上半截被切掉。宁可压一点精灵也不被切。
-      const minY = 12 * cam.zoom + 4;
-      if (y < minY) y = minY;
       nm.dy = y - nm.y;
       placed.push({ x: nm.x, y, hw: nm.hw });
     }
