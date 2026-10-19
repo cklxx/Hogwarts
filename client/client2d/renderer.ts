@@ -1285,13 +1285,41 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       nm.hw = ctx.measureText(nm.n).width / 2 + 2;
     }
     // 2) density cap: keep text for the nearest MAXN names to the player
-    //    (player always kept); the rest become dots instead of unreadable blobs
-    const MAXN = 6;
+    //    (player always kept); the rest become dots instead of unreadable blobs.
+    //    hostile units never get names (creatures show only hp bar + marker).
+    const MAXN = 8;
     nameQueue.sort((a, b) => (a.isMe ? -1 : b.isMe ? 1 : a.dw2 - b.dw2));
     for (let i = 0; i < nameQueue.length; i++) nameQueue[i].dot = i >= MAXN;
-    // 3) vertical stacking with width-aware collision; zone labels are fixed anchors
+    // 2b) cluster guard: if 3+ text candidates sit within CLUSTER_R of each other
+    //     (wizards stacked on one spot), keep only the 2 nearest as text.
+    //     Without this, vertical stacking builds an ugly 60px+ text pillar.
+    const CLUSTER_R = 60;
+    {
+      const cand = nameQueue.filter(n => !n.dot);
+      const dropped = new Set<NameLbl>();
+      for (let i = 0; i < cand.length; i++) {
+        if (dropped.has(cand[i]) || cand[i].isMe) continue;
+        const near: NameLbl[] = [cand[i]];
+        for (let j = 0; j < cand.length; j++) {
+          if (i === j || dropped.has(cand[j])) continue;
+          const dx = cand[j].x - cand[i].x, dy = cand[j].y - cand[i].y;
+          if (dx * dx + dy * dy < CLUSTER_R * CLUSTER_R) near.push(cand[j]);
+        }
+        if (near.length >= 3) {
+          // keep player + 2 nearest to player, dot the rest
+          near.sort((a, b) => (a.isMe ? -1 : b.isMe ? 1 : a.dw2 - b.dw2));
+          for (let k = 0; k < near.length; k++) {
+            if (!near[k].isMe && k >= 2) { near[k].dot = true; dropped.add(near[k]); }
+          }
+        }
+      }
+    }
+    // 3) vertical stacking with width-aware collision; zone labels are fixed anchors.
+    //    Stop-loss: if a label is pushed more than 4 lines from its origin,
+    //    turn it into a dot instead of building a text pillar.
     nameQueue.sort((a, b) => a.y - b.y || a.x - b.x);
     const lineH = Math.max(14, 13 * cam.zoom);
+    const MAX_PUSH = 4 * lineH;
     const placed: { x: number; y: number; hw: number }[] = [];
     for (const z of zoneLabels) placed.push({ x: z.x, y: z.y, hw: z.hw });
     for (const nm of nameQueue) {
@@ -1305,8 +1333,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         }
         if (!hit) { ok = true; break; }
         y += lineH;
+        if (y - nm.y > MAX_PUSH) break; // stop-loss: too far, give up to dot
       }
-      if (!ok || y > vh + 24) { nm.dot = true; continue; } // too crowded: dot instead
+      if (!ok || y - nm.y > MAX_PUSH || y > vh + 24) { nm.dot = true; continue; }
       nm.dy = y - nm.y;
       placed.push({ x: nm.x, y, hw: nm.hw });
     }
