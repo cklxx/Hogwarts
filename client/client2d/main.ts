@@ -5,7 +5,9 @@
 import { WS_KEY_PREFIX, WS_PROTOCOL } from '../../src/shared/constants';
 import { SnapDecoder } from '../../src/shared/snapwire';
 import { createRenderer2D, type Snap } from './renderer';
-import { mountHUD, updateHUD } from './hud.js';
+import { mountHUD, updateHUD, showItemInfo } from './hud.js';
+import { getLayout } from './layout.js';
+import { ITEM_INFO } from './components.js';
 
 const LS = 'hogwarts.token';
 const loadToken = () => { try { return localStorage.getItem(LS); } catch { return null; } };
@@ -94,6 +96,19 @@ async function main() {
     if (k >= '1' && k <= '9') {
       // hotbar cast: server findSpell resolves '1'-'6' to the hotbar slot
       ws.send(JSON.stringify({ t: 'cast', key: k }));
+    }
+    if (k === 'e') {
+      // 物品图鉴：40 单位内最近的布局物品
+      const px = (ui.cam as any).x, pz = (ui.cam as any).z;
+      let best: { x: number; z: number; kind: string } | null = null, bd = 40;
+      for (const it of getLayout().items) {
+        const d = Math.hypot(it.x - px, it.z - pz);
+        if (d < bd) { bd = d; best = it; }
+      }
+      if (best) {
+        const info = (ITEM_INFO as Record<string, { name: string; desc: string; grade: string }>)[best.kind];
+        if (info) showItemInfo(info.name, info.desc, info.grade);
+      }
     }
   });
   addEventListener('keyup', (e) => {

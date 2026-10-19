@@ -21,7 +21,8 @@ export type ItemKind =
   | 'greenhouse' | 'gardenplot'
   | 'owlery' | 'scoreboard' | 'traininghoop'
   | 'shop' | 'pub' | 'station' | 'library' | 'dormtower'
-  | 'flowerbed' | 'bench' | 'scarecrow' | 'beehive' | 'swing';
+  | 'flowerbed' | 'bench' | 'scarecrow' | 'beehive' | 'swing'
+  | 'signpost' | 'reed';
 export interface PlacedItem { kind: ItemKind; x: number; z: number; s: number; label?: string }
 export interface LayoutResult { roads: Road[]; items: PlacedItem[] }
 
@@ -68,6 +69,7 @@ const FOOT: Record<ItemKind, [number, number]> = {
   owlery: [52, 144], scoreboard: [44, 36], traininghoop: [20, 52],
   shop: [76, 68], pub: [114, 88], station: [148, 68], library: [108, 98], dormtower: [64, 144],
   flowerbed: [28, 20], bench: [28, 24], scarecrow: [20, 48], beehive: [18, 26], swing: [36, 48],
+  signpost: [28, 48], reed: [16, 28],
 };
 
 // --- exclusion rects (world): lake / castle / pitch footprints ---
@@ -411,6 +413,21 @@ function buildLayout(): LayoutResult {
       [-12, 155], [14, 158], [-14, 175], [16, 178], [-10, 195], [12, 198],
     ];
     for (const [fx, fz] of beds) tryPlace('flowerbed', fx, fz, 1, 4);
+  }
+
+  // 4i) 物品 v1：告示牌（岔路口）+ 芦苇（黑湖岸）
+  {
+    // 岔路口：R1/R4 (8,-10)、R1/R2 (-10,55)、R1/R5 (0,140)
+    const junctions: Array<[number, number]> = [[14, -4], [-16, 61], [6, 146]];
+    for (const [jx, jz] of junctions) tryPlaceNear('signpost', jx, jz, 1, 4);
+    // 黑湖岸芦苇：湖心 (-118,40) r30，沿东岸/南岸弧线
+    const lakeCx = -118, lakeCz = 40, lakeR = 30;
+    for (let i = 0; i < 10; i++) {
+      const a = Math.PI * (-0.35 + i * 0.09); // 东南弧
+      const rx = lakeCx + Math.cos(a) * (lakeR + 6 + rnd() * 6);
+      const rz = lakeCz + Math.sin(a) * (lakeR + 6 + rnd() * 6);
+      tryPlace('reed', rx, rz, 0.8 + rnd() * 0.5, 0);
+    }
   }
 
   // 3) scatter（移到所有建筑之后）：110 灌木 + 80 石头，密度砍半

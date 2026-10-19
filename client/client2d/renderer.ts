@@ -10,7 +10,8 @@ import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush,
   drawWeb, drawGlowFlower, drawTent, drawCampfire, drawGreenhouse, drawGardenPlot,
   drawOwlery, drawScoreboard, drawTrainingHoop,
   drawShop, drawPub, drawStation, drawLibrary, drawDormTower,
-  drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing } from './components.js';
+  drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing,
+  drawSignpost, drawReed } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
@@ -714,6 +715,8 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
       case 'scarecrow': drawScarecrow(g, x, y, s); break;
       case 'beehive': drawBeehive(g, x, y, s); break;
       case 'swing': drawSwing(g, x, y, s); break;
+      case 'signpost': drawSignpost(g, x, y, s); break;
+      case 'reed': drawReed(g, x, y, s); break;
     }
   }
   // T3 宝可梦式：高草=遭遇区语言。禁林边缘一圈高草，3 层深浅+缺口

@@ -1572,10 +1572,6 @@ export const ITEM_INFO: Record<string, {name: string; desc: string; grade: '普�
   glowflower: {name: '发光花', desc: '禁林深处的稀有植物，花瓣夜里发出微光。', grade: '稀有'},
   signpost: {name: '告示牌', desc: '岔路口的木指示牌，箭头指向各个方向。', grade: '普通'},
   reed: {name: '芦苇丛', desc: '黑湖岸边的水生植物，成簇随风摇摆。', grade: '普通'},
-};
-
-// B 组物品图鉴条目（B 组：建筑附属类 + 装饰类）。由 parent 与 A 组的 ITEM_INFO 合并。
-export const ITEM_INFO_B: Record<string, {name: string; desc: string; grade: '普通' | '稀有' | '传说'}> = {
   lamp: {name: '路灯', desc: '铁质灯杆，罩着暖黄的玻璃灯，夜里照亮道路。', grade: '普通'},
   brazier: {name: '火盆', desc: '铁质三脚火盆，点燃后是传说级警戒火光。', grade: '传说'},
   fence: {name: '栅栏', desc: '木栅栏，三节以上成排，围出农田和庭院。', grade: '普通'},

@@ -76,6 +76,13 @@ const CSS = `
 #tipbar .x{position:absolute;top:4px;right:8px;cursor:pointer;color:#a9a294;font-size:14px}
 #tipbar .x:hover{color:#fff}
 #tipbar[hidden]{display:none}
+#iteminfo{position:absolute;right:10px;bottom:10px;max-width:260px;padding:8px 12px;font-size:12px;line-height:1.6;pointer-events:auto}
+#iteminfo[hidden]{display:none}
+#iteminfo .nm{font-size:14px;font-weight:700}
+#iteminfo .gr{font-size:11px;margin-left:6px}
+#iteminfo .gr.common{color:#a9a294}#iteminfo .gr.rare{color:#c0c8d0}#iteminfo .gr.legend{color:#d4a017}
+#iteminfo .ds{color:#c9c2b2;margin-top:2px}
+#iteminfo .hintline{color:#7a7468;font-size:11px;margin-top:4px}
 .slot{pointer-events:auto;cursor:pointer;width:64px;height:64px;padding:4px;text-align:center;position:relative;background:rgba(10,8,16,.72);border:1px solid rgba(232,226,212,.22);border-radius:6px;overflow:hidden}
 .slot.sel{border-color:#c9a227;box-shadow:0 0 8px rgba(201,162,39,.6)}
 .slot.empty{opacity:.35;cursor:default}
@@ -114,7 +121,8 @@ export function mountHUD(container: HTMLElement): void {
     </div>
     <div id="mmwrap" class="panel"><canvas id="minimap" width="128" height="128"></canvas></div>
     <div id="hotbar"></div>
-    <div id="tipbar" class="panel"><span class="x">✕</span><b>新手上路</b><br>WASD 移动 · 点击施法<br>方向键看地图 · F 跟随<br>右上命运链点开看提示</div>`;
+    <div id="tipbar" class="panel"><span class="x">✕</span><b>新手上路</b><br>WASD 移动 · 点击施法<br>方向键看地图 · F 跟随<br>右上命运链点开看提示</div>
+    <div id="iteminfo" class="panel" hidden><span class="nm"></span><span class="gr"></span><div class="ds"></div><div class="hintline">按 E 查看附近物品</div></div>`;
   container.appendChild(root);
   mm = root.querySelector('#minimap');
   const tip = root.querySelector<HTMLElement>('#tipbar')!;
@@ -180,6 +188,22 @@ function drawMinimap(s: HudSnapshot): void {
 /** The single entry point: refresh every HUD element from one snapshot. */
 let lastDay = -1, lastTotal = -1;
 const slotSigs: string[] = new Array(9).fill('');
+
+const GRADE_CLASS: Record<string, string> = { '普通': 'common', '稀有': 'rare', '传说': 'legend' };
+let itemInfoTimer: ReturnType<typeof setTimeout> | null = null;
+/** 物品图鉴弹窗：显示中文名 + 描述 + 等级，3s 自动消失。 */
+export function showItemInfo(name: string, desc: string, grade: string): void {
+  if (!root) return;
+  const el = root.querySelector<HTMLElement>('#iteminfo')!;
+  el.querySelector('.nm')!.textContent = name;
+  const gr = el.querySelector<HTMLElement>('.gr')!;
+  gr.textContent = grade;
+  gr.className = 'gr ' + (GRADE_CLASS[grade] ?? 'common');
+  el.querySelector('.ds')!.textContent = desc;
+  el.hidden = false;
+  if (itemInfoTimer) clearTimeout(itemInfoTimer);
+  itemInfoTimer = setTimeout(() => { el.hidden = true; }, 3000);
+}
 export function updateHUD(s: HudSnapshot): void {
   if (!root) return;
   // top-center: war week countdown (day changes at most once per term)
