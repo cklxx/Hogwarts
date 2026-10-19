@@ -997,6 +997,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     (window as any).__2dzoom = () => cam.zoom;
     (window as any).__2dents = () => snap ? { w: snap.w.length, c: snap.c.length, p: snap.p.length, fx: snap.fx.length } : null;
   }
+  (window as any).__2dgoto = (x: number, z: number) => { cam.x = x; cam.z = z; follow = false; };
   const perfEnd = (t0: number) => { if (PERF) { perfBuf.push(performance.now() - t0); if (perfBuf.length > 600) perfBuf.shift(); } };
 
   // --- input: wheel zoom, arrows pan (pan breaks follow), WASD = player move (main.ts) ---

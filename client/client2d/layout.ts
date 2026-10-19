@@ -182,11 +182,11 @@ function buildLayout(): LayoutResult {
     items.push({ kind, x, z, s, label, v });
     return true;
   };
-  const tryPlaceNear = (kind: ItemKind, x: number, z: number, s: number, roadClear: number, label?: string): boolean => {
-    if (tryPlace(kind, x, z, s, roadClear, label)) return true;
+  const tryPlaceNear = (kind: ItemKind, x: number, z: number, s: number, roadClear: number, label?: string, v?: 'moss' | 'rune' | 'curb'): boolean => {
+    if (tryPlace(kind, x, z, s, roadClear, label, v)) return true;
     for (let i = 0; i < 8; i++) {
       const a = rnd() * Math.PI * 2, r = 4 + rnd() * 8;
-      if (tryPlace(kind, x + Math.cos(a) * r, z + Math.sin(a) * r, s, roadClear, label)) return true;
+      if (tryPlace(kind, x + Math.cos(a) * r, z + Math.sin(a) * r, s, roadClear, label, v)) return true;
     }
     return false;
   };
@@ -435,21 +435,23 @@ function buildLayout(): LayoutResult {
   //    variant: moss=边界石（苔藓）/ rune=石阵（符文）/ curb=路缘石（小而扁）
   {
     const stone = (x: number, z: number, s: number, v?: 'moss' | 'rune' | 'curb', roadClear = 2): boolean =>
-      tryPlace('stone', x, z, s, roadClear, undefined, v);
+      tryPlaceNear('stone', x, z, s, roadClear, undefined, v);
 
-    // 3a) 边界石：区域交界 2-3 块成排，moss 变体，稍大（s 1.1-1.3）
-    //   - 禁林入口：R4 尽头 (75,15)，垂直道路方向排 3 块
-    stone(66, 4, 1.2, 'moss'); stone(72, 12, 1.1, 'moss'); stone(78, 22, 1.25, 'moss');
-    //   - 黑湖：R2 尽头 (-80,40) 湖岸，排 3 块
-    stone(-88, 30, 1.15, 'moss'); stone(-84, 40, 1.25, 'moss'); stone(-88, 50, 1.1, 'moss');
-    //   - 城堡南门：R1 起点 (0,-40)，排 2 块
-    stone(-12, -34, 1.2, 'moss'); stone(12, -34, 1.15, 'moss');
+    // 3a) 边界石：每处入口 1 块醒目巨石，moss 变体，s 1.6（地标感）
+    //   roadClear=0：界石就立在路边。tryPlaceNear 8 次兜底找空位
+    //   - 禁林入口：R4 中段，"前面是禁林"
+    stone(48, 2, 1.6, 'moss', 0);
+    //   - 黑湖：R2 中段，"前面是黑湖"
+    stone(-60, 48, 1.6, 'moss', 0);
+    //   - 城堡南门：R1 起点
+    stone(0, -32, 1.6, 'moss', 0);
 
-    // 3b) 石阵：禁林深处仪式石圈，6 块 rune 变体围成圆（中心 165,15 半径 22）
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + 0.3;
-      stone(165 + Math.cos(a) * 22, 15 + Math.sin(a) * 22, 1.3, 'rune', 0);
-    }
+    // 3b) 石阵：禁林深处残破石圈，rune 变体。4 块（残缺感更神秘），中心 (180,22) 半径 16
+    //   实测 (194,30)/(166,14) 有空位，其余靠 tryPlaceNear 兜底
+    stone(194, 30, 1.3, 'rune', 0);
+    stone(166, 14, 1.3, 'rune', 0);
+    stone(180, 38, 1.25, 'rune', 0);
+    stone(196, 12, 1.35, 'rune', 0);
 
     // 3c) 路缘石：道路两侧小扁石，curb 变体，沿 R1/R5/R7 每 ~14 单位交替
     for (const rid of ['R1', 'R5', 'R7']) {
