@@ -401,7 +401,7 @@ export function drawShop(g: CanvasRenderingContext2D, x: number, y: number, s: n
 
   // 招牌板（门上方横木牌）
   const sw = 56 * s, sh = 12 * s;
-  g.fillStyle = '#6b4f3a';
+  g.fillStyle = '#7a5c44'; // 招牌板（木质 base）
   rr(g, x - sw / 2, y - 40 * s, sw, sh, 2 * s); g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4); g.stroke();
   g.fillStyle = '#f5e9c8';
@@ -428,7 +428,7 @@ export function drawShop(g: CanvasRenderingContext2D, x: number, y: number, s: n
 
   // 门
   const dw = 16 * s, dh = 28 * s;
-  g.fillStyle = '#6b4f3a';
+  g.fillStyle = '#7a5c44'; // 门（木质 base）
   rr(g, x + W * 0.18 - dw / 2, y - dh, dw, dh, 3 * s); g.fill();
   g.strokeStyle = OUTLINE; g.stroke();
 }
@@ -472,7 +472,7 @@ export function drawPub(g: CanvasRenderingContext2D, x: number, y: number, s: nu
     g.fillStyle = '#ffca6a';
     rr(g, wx - 7 * s, y - 32 * s, 14 * s, 14 * s, 2 * s); g.fill();
     g.strokeStyle = OUTLINE; g.stroke();
-    g.strokeStyle = '#6b4f3a'; g.lineWidth = Math.max(1, s * 0.3); // 窗棂
+    g.strokeStyle = '#7a5c44'; g.lineWidth = Math.max(1, s * 0.3); // 窗棂
     g.beginPath();
     g.moveTo(wx, y - 32 * s); g.lineTo(wx, y - 18 * s);
     g.moveTo(wx - 7 * s, y - 25 * s); g.lineTo(wx + 7 * s, y - 25 * s);
@@ -483,7 +483,7 @@ export function drawPub(g: CanvasRenderingContext2D, x: number, y: number, s: nu
   const sx = x - W / 2 - 10 * s, sy = y - 30 * s;
   g.strokeStyle = '#3a3230'; g.lineWidth = 3 * s;
   g.beginPath(); g.moveTo(x - W / 2, y - 38 * s); g.lineTo(sx, sy - 8 * s); g.stroke();
-  g.fillStyle = '#6b4f3a';
+  g.fillStyle = '#7a5c44'; // 悬挂招牌（木质 base）
   rr(g, sx - 11 * s, sy - 8 * s, 22 * s, 16 * s, 2 * s); g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4); g.stroke();
   // 扫帚简笔画
@@ -1397,13 +1397,13 @@ export function drawGreenhouse(g: CanvasRenderingContext2D, x: number, y: number
 // 药草园圃：32w × 24h。种植床。
 export function drawGardenPlot(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   const W = 32 * s, H = 24 * s;
-  // 土壤
-  g.fillStyle = '#5a4030';
+  // 土壤（木质 shadow）
+  g.fillStyle = '#5e4632';
   rr(g, x - W / 2, y - H, W, H, 2 * s); g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
   rr(g, x - W / 2, y - H, W, H, 2 * s); g.stroke();
-  // 木框
-  g.strokeStyle = '#6b4f3a'; g.lineWidth = 3 * s;
+  // 木框（木质 base）
+  g.strokeStyle = '#7a5c44'; g.lineWidth = 3 * s;
   g.strokeRect(x - W / 2, y - H, W, H);
   // 幼苗 2 排
   for (let r = 0; r < 2; r++) {
@@ -1435,8 +1435,8 @@ export function drawOwlery(g: CanvasRenderingContext2D, x: number, y: number, s:
     g.lineTo(x0 + W - 4 * s, y0 + 30 * s + ((H - 30 * s) / 5) * i);
     g.stroke();
   }
-  // 开放式顶层（栖木层）
-  g.fillStyle = '#6e5a50';
+  // 开放式顶层（栖木层，木质 base）
+  g.fillStyle = '#7a5c44';
   for (let i = 0; i < 3; i++) {
     const py = y0 + 8 * s + i * 10 * s;
     g.fillRect(x0 - 4 * s, py, W + 8 * s, 3 * s);
@@ -1475,8 +1475,8 @@ export function drawOwlery(g: CanvasRenderingContext2D, x: number, y: number, s:
 export function drawScoreboard(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   const W = 40 * s, H = 32 * s;
   dropShadow(g, x, y, W, H, s);
-  // 支柱
-  g.fillStyle = '#4a352a';
+  // 支柱（木质 shadow）
+  g.fillStyle = '#5e4632';
   g.fillRect(x - 12 * s, y - 16 * s, 4 * s, 16 * s);
   g.fillRect(x + 8 * s, y - 16 * s, 4 * s, 16 * s);
   // 牌面
@@ -1572,4 +1572,30 @@ export const ITEM_INFO: Record<string, {name: string; desc: string; grade: '普�
   glowflower: {name: '发光花', desc: '禁林深处的稀有植物，花瓣夜里发出微光。', grade: '稀有'},
   signpost: {name: '告示牌', desc: '岔路口的木指示牌，箭头指向各个方向。', grade: '普通'},
   reed: {name: '芦苇丛', desc: '黑湖岸边的水生植物，成簇随风摇摆。', grade: '普通'},
+};
+
+// B 组物品图鉴条目（B 组：建筑附属类 + 装饰类）。由 parent 与 A 组的 ITEM_INFO 合并。
+export const ITEM_INFO_B: Record<string, {name: string; desc: string; grade: '普通' | '稀有' | '传说'}> = {
+  lamp: {name: '路灯', desc: '铁质灯杆，罩着暖黄的玻璃灯，夜里照亮道路。', grade: '普通'},
+  brazier: {name: '火盆', desc: '铁质三脚火盆，点燃后是传说级警戒火光。', grade: '传说'},
+  fence: {name: '栅栏', desc: '木栅栏，三节以上成排，围出农田和庭院。', grade: '普通'},
+  villagegate: {name: '村门', desc: '霍格莫德村口的木石牌坊，梁上钉着铁箍。', grade: '普通'},
+  marketstall: {name: '集市摊位', desc: '木货台加条纹遮阳棚，摊上摆满各色货物。', grade: '普通'},
+  greenhouse: {name: '温室', desc: '草药课的玻璃温室，木框里种着奇异植物。', grade: '稀有'},
+  flowerbed: {name: '花坛', desc: '小方花圃，五朵小花开在深色土上。', grade: '普通'},
+  bench: {name: '长椅', desc: '木质长椅，成对摆在建筑的呼吸空间里。', grade: '普通'},
+  scarecrow: {name: '稻草人', desc: '木杆撑起的草帽南瓜头，守护农田。', grade: '普通'},
+  beehive: {name: '蜂箱', desc: '三层叠木蜂箱，蜜满时是稀有采集点。', grade: '稀有'},
+  gardenplot: {name: '苗圃', desc: '木框围出的种植床，两排幼苗刚发芽。', grade: '普通'},
+  swing: {name: '秋千', desc: '木 A 架吊着的秋千，绳结系得很牢。', grade: '普通'},
+  tent: {name: '帐篷', desc: '马人营地的圆锥帆布帐篷，顶上系着红带。', grade: '普通'},
+  scoreboard: {name: '记分牌', desc: '魁地奇训练场的木记分牌，挂着当前比分。', grade: '普通'},
+  traininghoop: {name: '训练球门', desc: '单门的训练用金环，杆比正式球门矮。', grade: '普通'},
+  owlery: {name: '猫头鹰棚屋', desc: '高塔上的开放栖木层，住着送信的猫头鹰。', grade: '普通'},
+  lighthouse: {name: '灯塔', desc: '黑湖码头的红白条纹小灯塔，指引归航。', grade: '普通'},
+  station: {name: '车站', desc: '长条站楼带站台和大钟，霍格沃茨特快的起点。', grade: '普通'},
+  library: {name: '图书馆', desc: '石柱三角楣的阅览馆，台阶拾级而上。', grade: '普通'},
+  dormtower: {name: '宿舍塔楼', desc: '学院色的尖顶塔楼，竖排暖窗是宿舍灯光。', grade: '普通'},
+  shop: {name: '商店', desc: '临街店铺，挂着招牌板和条纹雨棚。', grade: '普通'},
+  pub: {name: '酒吧', desc: '三把扫帚酒吧，暖窗和悬挂扫帚招牌。', grade: '普通'},
 };
