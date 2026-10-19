@@ -1086,15 +1086,25 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     // label layout pass below — wizard names must not collide with them
     const zoneFont = `${Math.max(10, 12 * cam.zoom)}px sans-serif`;
     const zoneLabels: { x: number; y: number; text: string; hw: number }[] = [];
-    for (const zn of ZONES) {
-      if (!visible((zn.x0 + zn.x1) / 2, (zn.z0 + zn.z1) / 2, Math.max(zn.x1 - zn.x0, zn.z1 - zn.z0))) continue;
-      if (zn.label && cam.zoom > 0.7) {
+    if (cam.zoom > 0.7) {
+      // 只显示离屏幕中心最近的 1 个区标签：高倍率下多个区标签
+      // （城堡/禁林/黑湖…）必然重叠，玩家只关心自己在哪。
+      const zoneCand: { x: number; y: number; text: string; d2: number }[] = [];
+      for (const zn of ZONES) {
+        if (!zn.label) continue;
+        if (!visible((zn.x0 + zn.x1) / 2, (zn.z0 + zn.z1) / 2, Math.max(zn.x1 - zn.x0, zn.z1 - zn.z0))) continue;
         const [sx, sy] = w2s(zn.x0, zn.z0);
         const lx = sx + scale(zn.x1 - zn.x0) / 2, ly = sy + 16;
+        const dx = lx - vw / 2, dy = ly - vh / 2;
+        zoneCand.push({ x: lx, y: ly, text: zn.label, d2: dx * dx + dy * dy });
+      }
+      zoneCand.sort((a, b) => a.d2 - b.d2);
+      const best = zoneCand[0];
+      if (best) {
         setFont(zoneFont); setAlign('center');
-        zoneLabels.push({ x: lx, y: ly, text: zn.label, hw: ctx.measureText(zn.label).width / 2 + 2 });
+        zoneLabels.push({ x: best.x, y: best.y, text: best.text, hw: ctx.measureText(best.text).width / 2 + 2 });
         ctx.fillStyle = night ? '#cfd4dc' : '#2c2c2c';
-        ctx.fillText(zn.label, lx, ly);
+        ctx.fillText(best.text, best.x, best.y);
       }
     }
 
@@ -1208,10 +1218,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.fillStyle = hostile ? '#ff5a4d' : '#4dff4d';
         ctx.fillRect(sx - r, sy - r - 4, (r * 2 * c.hp) / c.m, 2.5);
       }
-      if (cam.zoom > 1.2) {
-        ctx.fillStyle = '#fff'; setFont(`${Math.max(9, 10 * cam.zoom)}px sans-serif`); setAlign('center');
-        ctx.fillText(c.k[0].toUpperCase(), sx, sy + r + 11);
-      }
+      // 生物不显示任何文字：敌对有红色菱形+血条，受击有血条，足够辨认。
+      // 之前的首字母标签（B/R/S/P）在怪堆里必然糊成一团，已删除。
       } else {
         const w = e.w!;
         // --- wizard: house sprite + hp bar + name (names drawn in 2nd pass with de-collision) ---
