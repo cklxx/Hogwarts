@@ -240,65 +240,109 @@ export function drawTower(g: CanvasRenderingContext2D, x: number, y: number, s: 
 }
 
 // ------------------------------------------------------------------ 树木
-// 俯视：树冠圆形 + 树干阴影。光源左上。
+// 宝可梦 Gen3 风格：树冠是多团错落的叶簇（不规则边缘），树干从树冠下露出。
+// 锚点 = 底部中心（树干根部）。s = 缩放。seed 保证同位置树形一致。
+
+/** 0..1 确定性抖动 */
+function sjit(seed: number, n: number): number {
+  const v = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453;
+  return v - Math.floor(v);
+}
+
+/** 一圈叶簇：n 团圆，中心在半径 ringR 的圆周上，每团半径 br，带抖动 */
+function leafRing(g: CanvasRenderingContext2D, cx: number, cy: number,
+  n: number, ringR: number, br: number, color: string, seed: number, squash = 0.85): void {
+  g.fillStyle = color;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + (sjit(seed, i) - 0.5) * 0.5;
+    const rr = ringR * (0.9 + sjit(seed, i + 100) * 0.2);
+    const bx = cx + Math.cos(a) * rr;
+    const by = cy + Math.sin(a) * rr * squash;
+    const brr = br * (0.85 + sjit(seed, i + 200) * 0.3);
+    g.beginPath(); g.arc(bx, by, brr, 0, Math.PI * 2); g.fill();
+  }
+}
 
 export function drawOak(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
-  // 树干阴影（右下）
-  blob(g, x + 4 * s, y - 2 * s, 7 * s, SHADOW_A);
-  // 树干
+  const seed = x * 0.371 + y * 0.737;
+  const R = 36 * s;              // 冠径 72（框架）
+  const cy = y - 58 * s;         // 树冠中心
+  // 根部阴影
+  g.fillStyle = 'rgba(0,0,0,0.22)';
+  g.beginPath(); g.ellipse(x + 3 * s, y - 2 * s, 30 * s, 8 * s, 0, 0, Math.PI * 2); g.fill();
+  // 树干（树冠下露出 22s）
+  const tw = 9 * s;
   g.fillStyle = '#4a352a';
-  blob(g, x, y - 4 * s, 6 * s, '#4a352a');
-  blob(g, x - 2 * s, y - 6 * s, 2 * s, '#6b4f3a'); // highlight
-  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
-  g.beginPath(); g.arc(x, y - 4 * s, 6 * s, 0, Math.PI * 2); g.stroke();
-
-  // 树冠三层：dark 底层 / base 中层 / light 顶层（左上）
-  const R = 36 * s;
-  blob(g, x, y - 36 * s, R, '#2c4530');
-  blob(g, x - 2 * s, y - 38 * s, R * 0.82, '#3d5c3e');
-  blob(g, x - 6 * s, y - 44 * s, R * 0.55, '#527a4e');
-  blob(g, x - 10 * s, y - 50 * s, R * 0.28, '#6a9463');
-  // 描边（只画外圈）
+  g.fillRect(x - tw / 2, y - 34 * s, tw, 34 * s);
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.5);
-  g.beginPath(); g.arc(x, y - 36 * s, R, 0, Math.PI * 2); g.stroke();
-  // 树叶高光点（左上簇）
-  blob(g, x - 14 * s, y - 52 * s, 4 * s, 'rgba(255,255,255,0.15)');
-  blob(g, x - 8 * s, y - 58 * s, 3 * s, 'rgba(255,255,255,0.12)');
-  blob(g, x - 18 * s, y - 44 * s, 2.5 * s, 'rgba(255,255,255,0.1)');
-  // 树冠投影
-  blob(g, x + 10 * s, y - 28 * s, R * 0.9, 'rgba(0,0,0,0.15)');
+  g.strokeRect(x - tw / 2, y - 34 * s, tw, 34 * s);
+  g.fillStyle = '#6b4f3a'; // 左上高光
+  g.fillRect(x - tw / 2 + 1.5 * s, y - 32 * s, 2.5 * s, 30 * s);
+  // 树冠：外圈深色叶簇（带深色描边底）
+  leafRing(g, x, cy, 11, R * 0.80, R * 0.42, OUTLINE, seed + 1);
+  leafRing(g, x, cy, 11, R * 0.80, R * 0.42 - 1.4 * s, '#2c4530', seed + 1);
+  // 中圈：上移，偏左上（光源方向）
+  leafRing(g, x - 4 * s, cy - 7 * s, 8, R * 0.50, R * 0.38, OUTLINE, seed + 2);
+  leafRing(g, x - 4 * s, cy - 7 * s, 8, R * 0.50, R * 0.38 - 1.4 * s, '#3d5c3e', seed + 2);
+  // 顶簇：左上亮色
+  leafRing(g, x - 9 * s, cy - 14 * s, 5, R * 0.24, R * 0.30, '#527a4e', seed + 3);
+  // 叶面高光点
+  blob(g, x - 16 * s, cy - 16 * s, 3.5 * s, 'rgba(255,255,255,0.16)');
+  blob(g, x - 8 * s, cy - 22 * s, 2.5 * s, 'rgba(255,255,255,0.12)');
+  blob(g, x - 20 * s, cy - 8 * s, 2 * s, 'rgba(255,255,255,0.10)');
+}
+
+/** 锯齿三角冠：松针层叠感。teeth = 每边齿数 */
+function jaggedPineLayer(g: CanvasRenderingContext2D, cx: number, apexY: number,
+  baseY: number, halfW: number, color: string, seed: number, teeth: number): void {
+  const pts: Array<[number, number]> = [[cx, apexY]];
+  // 左边：apex -> base-left，锯齿向外
+  for (let i = 1; i <= teeth; i++) {
+    const t = i / teeth;
+    const px = cx - halfW * t, py = apexY + (baseY - apexY) * t;
+    const out = (i % 2 === 1 ? 1 : -0.35) * halfW * 0.10 * (0.7 + sjit(seed, i) * 0.6);
+    pts.push([px - out, py]);
+  }
+  pts.push([cx + halfW, baseY]);
+  // 右边：base-right -> apex
+  for (let i = teeth; i >= 1; i--) {
+    const t = i / teeth;
+    const px = cx + halfW * t, py = apexY + (baseY - apexY) * t;
+    const out = (i % 2 === 1 ? 1 : -0.35) * halfW * 0.10 * (0.7 + sjit(seed, i + 50) * 0.6);
+    pts.push([px + out, py]);
+  }
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+  g.closePath(); g.fill();
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, 1.2);
+  g.stroke();
 }
 
 export function drawPine(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
-  blob(g, x + 3 * s, y - 2 * s, 5 * s, SHADOW_A);
-  // 树干
+  const seed = x * 0.531 + y * 0.197;
+  // 根部阴影
+  g.fillStyle = 'rgba(0,0,0,0.22)';
+  g.beginPath(); g.ellipse(x + 2 * s, y - 2 * s, 20 * s, 6 * s, 0, 0, Math.PI * 2); g.fill();
+  // 树干（下层冠底露出）
+  const tw = 8 * s;
   g.fillStyle = '#4a352a';
-  g.fillRect(x - 5 * s, y - 24 * s, 10 * s, 20 * s);
-  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
-  g.strokeRect(x - 5 * s, y - 24 * s, 10 * s, 20 * s);
-
-  // 三角冠三层
-  const layers: Array<[number, number, number, string]> = [
-    // [topY, halfW, h, color]
-    [20, 24, 28, '#24402a'],
-    [36, 18, 24, '#2c4530'],
-    [52, 12, 20, '#3d5c3e'],
-  ];
-  for (const [topY, hw, h, col] of layers) {
-    const ty = y - (84 - topY) * s;
-    g.fillStyle = col;
-    g.beginPath();
-    g.moveTo(x, ty - h * s);
-    g.lineTo(x - hw * s, ty);
-    g.lineTo(x + hw * s, ty);
-    g.closePath(); g.fill();
-    g.strokeStyle = OUTLINE; g.stroke();
-  }
-  // 左上 highlight
-  g.fillStyle = 'rgba(255,255,255,0.12)';
+  g.fillRect(x - tw / 2, y - 26 * s, tw, 26 * s);
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.5);
+  g.strokeRect(x - tw / 2, y - 26 * s, tw, 26 * s);
+  g.fillStyle = '#6b4f3a';
+  g.fillRect(x - tw / 2 + 1.5 * s, y - 24 * s, 2 * s, 22 * s);
+  // 三层锯齿冠：下大上小，深->浅
+  jaggedPineLayer(g, x, y - 96 * s, y - 62 * s, 27 * s, '#24402a', seed, 7);
+  jaggedPineLayer(g, x, y - 78 * s, y - 46 * s, 22 * s, '#2c4530', seed + 5, 6);
+  jaggedPineLayer(g, x, y - 60 * s, y - 32 * s, 16 * s, '#3d5c3e', seed + 9, 5);
+  // 左上针叶高光
+  g.strokeStyle = 'rgba(255,255,255,0.14)'; g.lineWidth = Math.max(1, 1.6 * s); g.lineCap = 'round';
   g.beginPath();
-  g.moveTo(x, y - 84 * s); g.lineTo(x - 24 * s, y - 56 * s); g.lineTo(x - 12 * s, y - 56 * s);
-  g.closePath(); g.fill();
+  g.moveTo(x - 14 * s, y - 70 * s); g.lineTo(x - 6 * s, y - 84 * s);
+  g.moveTo(x - 9 * s, y - 52 * s); g.lineTo(x - 3 * s, y - 62 * s);
+  g.stroke();
 }
 
 export function drawDeadTree(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {

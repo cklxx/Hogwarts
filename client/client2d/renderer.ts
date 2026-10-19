@@ -188,18 +188,23 @@ const texGrass: Painter = (g, x0, y0, w, h, rnd) => {
     const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 18 + rnd() * 42;
     blob(g, x, y, r, rnd() < 0.5 ? hexA(P.dark, 0.25) : hexA(P.light, 0.22));
   }
-  // grass tufts: 3-blade clusters, darker green
-  const nt = (w * h) / 700;
-  g.strokeStyle = hexA(P.dark, 0.55);
-  g.lineWidth = 1.6;
+  // grass tufts: 3-blade clusters, darker green — 1x 下可见：更粗更高更密
+  const nt = (w * h) / 480;
+  g.strokeStyle = hexA(P.dark, 0.8);
+  g.lineWidth = 2.4;
   g.beginPath();
   for (let i = 0; i < nt; i++) {
     const x = x0 + rnd() * w, y = y0 + rnd() * h;
-    g.moveTo(x - 3, y); g.lineTo(x - 4, y - 5 - rnd() * 3);
-    g.moveTo(x, y); g.lineTo(x, y - 6 - rnd() * 3);
-    g.moveTo(x + 3, y); g.lineTo(x + 4, y - 5 - rnd() * 3);
+    g.moveTo(x - 3.5, y); g.lineTo(x - 5, y - 7 - rnd() * 4);
+    g.moveTo(x, y); g.lineTo(x, y - 9 - rnd() * 4);
+    g.moveTo(x + 3.5, y); g.lineTo(x + 5, y - 7 - rnd() * 4);
   }
   g.stroke();
+  // dirt specks: 小土斑，1x 下的地面颗粒感
+  const nd2 = (w * h) / 1300;
+  for (let i = 0; i < nd2; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.6 + rnd() * 2.4, hexA('#5a4a38', 0.35));
+  }
   // wildflowers: white / yellow / soft pink dots with tiny stem
   const flowers = ['#f5f0e0', '#f2d06b', '#e8a0b4', '#ffffff'];
   const nf = (w * h) / 4200;
@@ -235,10 +240,16 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
   for (let i = 0; i < n1; i++) {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 10 + rnd() * 16, hexA(P.dark, 0.35));
   }
-  // dappled sunlight spots
-  const nd = (w * h) / 9000;
+  // dappled sunlight spots — 1x 下可见：更亮更多
+  const nd = (w * h) / 6000;
   for (let i = 0; i < nd; i++) {
-    blob(g, x0 + rnd() * w, y0 + rnd() * h, 3 + rnd() * 6, hexA(P.detail, 0.3));
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 4 + rnd() * 8, hexA(P.detail, 0.45));
+  }
+  // leaf litter: 落叶碎点
+  const nl = (w * h) / 1100;
+  for (let i = 0; i < nl; i++) {
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.6 + rnd() * 2.2,
+      rnd() < 0.5 ? hexA('#6b5a3a', 0.4) : hexA(P.dark, 0.5));
   }
   // 真正的树：服务器真实位置（与碰撞一致）
   // 世界单位转纹理 px：TPX=3。树锚点 = 底部中心。
@@ -793,11 +804,9 @@ function paintCastle(g: CanvasRenderingContext2D): void {
     }
   };
 
-  // courtyard tree: canopy blobs
+  // courtyard tree: small oak (same component as forest, smaller scale)
   const tree = (x: number, z: number): void => {
-    blob(g, X(x) + 1.5, Y(z) + 2, 2.6 * TPX, 'rgba(0,0,0,0.2)');
-    blob(g, X(x), Y(z), 2.6 * TPX, PAL.forest.dark);
-    blob(g, X(x) - 2, Y(z) - 2, 1.4 * TPX, hexA(PAL.forest.light, 0.8));
+    drawOak(g, X(x), Y(z), TPX * 0.55);
   };
 
   // --- 1. inner ward: paved ground ---
@@ -1184,12 +1193,21 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const size = Math.max(12, 20 * cam.zoom);
       drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
       const hostile = c.s.includes('H') || HOSTILE_KINDS.has(c.k);
-      if (hostile) { ctx.strokeStyle = '#ff2a1a'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       const r = size / 2;
-      // hp bar
-      if (c.hp < c.m) {
-        ctx.fillStyle = '#222'; ctx.fillRect(sx - r, sy - r - 5, r * 2, 3);
-        ctx.fillStyle = '#4dff4d'; ctx.fillRect(sx - r, sy - r - 5, (r * 2 * c.hp) / c.m, 3);
+      if (hostile) {
+        // 红色小菱形标记（头顶），代替大红框——多怪聚集时不糊成一团
+        const dx = sx, dy = sy - r - 9;
+        ctx.fillStyle = '#ff2a1a';
+        ctx.beginPath();
+        ctx.moveTo(dx, dy - 5); ctx.lineTo(dx + 4, dy);
+        ctx.lineTo(dx, dy + 5); ctx.lineTo(dx - 4, dy);
+        ctx.closePath(); ctx.fill();
+      }
+      // hp bar：敌对常显（细），其他受伤才显
+      if (c.hp < c.m || hostile) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(sx - r, sy - r - 4, r * 2, 2.5);
+        ctx.fillStyle = hostile ? '#ff5a4d' : '#4dff4d';
+        ctx.fillRect(sx - r, sy - r - 4, (r * 2 * c.hp) / c.m, 2.5);
       }
       if (cam.zoom > 1.2) {
         ctx.fillStyle = '#fff'; setFont(`${Math.max(9, 10 * cam.zoom)}px sans-serif`); setAlign('center');
