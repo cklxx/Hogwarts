@@ -101,18 +101,39 @@ const WIZARD_TRIMS: Record<string, { h: string; H: string; d: string; t: string;
   hufflepuff: { h: '#d9a441', H: '#f2cd7d', d: '#9c7226', t: '#4a4038', T: '#6f6257' },
 };
 
+/** Walk frames: same as base but legs in stride (w0) / passing (w1) positions. */
+function wizardWalk(base: readonly string[], frame: 0 | 1): string[] {
+  const rows = [...base];
+  if (frame === 0) {
+    // stride: legs wide apart
+    rows[21] = '..kkk......kkk..';
+    rows[22] = '..kkk......kkk..';
+  } else {
+    // passing: legs together, slight offset
+    rows[21] = '.....kkkkkk.....';
+    rows[22] = '.....kkk.kk.....';
+  }
+  return rows;
+}
+
 function buildWizards(): void {
   for (const [house, c] of Object.entries(WIZARD_TRIMS)) {
-    reg(`wizard-${house}`, WIZARD_BASE, {
+    const pal = {
       k: K, h: c.h, H: c.H, d: c.d, t: c.t, T: c.T,
       s: SKIN, S: SKIN_HI, e: K,
-    });
+    };
+    reg(`wizard-${house}`, WIZARD_BASE, pal);
+    reg(`wizard-${house}-w0`, wizardWalk(WIZARD_BASE, 0), pal);
+    reg(`wizard-${house}-w1`, wizardWalk(WIZARD_BASE, 1), pal);
   }
   // generic / unknown house
-  reg('wizard', WIZARD_BASE, {
+  const gpal = {
     k: K, h: '#6b5b9e', H: '#8f81c2', d: '#483d6e', t: '#c3ccd4', T: '#eef2f5',
     s: SKIN, S: SKIN_HI, e: K,
-  });
+  };
+  reg('wizard', WIZARD_BASE, gpal);
+  reg('wizard-w0', wizardWalk(WIZARD_BASE, 0), gpal);
+  reg('wizard-w1', wizardWalk(WIZARD_BASE, 1), gpal);
 }
 
 // ---------------------------------------------------------------------------
