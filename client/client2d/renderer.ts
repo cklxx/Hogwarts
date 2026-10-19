@@ -125,6 +125,8 @@ const HOSTILE_KINDS = new Set(['dementor', 'spider', 'troll', 'basilisk', 'drago
 const elemCssCache = new Map<Element, string>();
 // projectile motion trails: id -> recent screen positions + last-seen timestamp
 const projTrails = new Map<string, { pts: [number, number][]; last: number }>();
+// walk animation state per wizard handle: last pos + frame counter
+const walkState = new Map<string, { x: number; z: number; t: number }>();
 const elemCss = (e: Element): string => {
   let s = elemCssCache.get(e);
   if (!s) { s = css(ELEMENT_COLORS[e] ?? 0xffffff); elemCssCache.set(e, s); }
@@ -1227,7 +1229,24 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const isMe = w.h === myHandle;
       const r = Math.max(5, 8 * cam.zoom);
       const size = r * 3;
-      drawSprite(ctx, `wizard-${String(w.ho).toLowerCase()}`, sx - size / 2, sy - size / 2, size, size);
+      // walk animation: 2-frame leg cycle when moving (track position deltas)
+      const wk = walkState.get(w.h);
+      let spriteKey = `wizard-${String(w.ho).toLowerCase()}`;
+      if (wk) {
+        const dx = w.x - wk.x, dz = w.z - wk.z;
+        const moved = dx * dx + dz * dz > 0.0004; // ~0.02 world units threshold
+        if (moved) {
+          wk.t += 1;
+          const frame = Math.floor(wk.t / 8) % 2; // 8 frames per leg pose @60fps
+          spriteKey += `-w${frame}`;
+        } else {
+          wk.t = 0;
+        }
+        wk.x = w.x; wk.z = w.z;
+      } else {
+        walkState.set(w.h, { x: w.x, z: w.z, t: 0 });
+      }
+      drawSprite(ctx, spriteKey, sx - size / 2, sy - size / 2, size, size);
       if (isMe) { ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       // facing tick
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
@@ -1343,6 +1362,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         if (y - nm.y > MAX_PUSH) break; // stop-loss: too far, give up to dot
       }
       if (!ok || y - nm.y > MAX_PUSH || y > vh + 24) { nm.dot = true; continue; }
+      if (y < 18) y = 18; // 顶边钳制：贴边显示，宁可压一点精灵也不被切掉一半
       nm.dy = y - nm.y;
       placed.push({ x: nm.x, y, hw: nm.hw });
     }
