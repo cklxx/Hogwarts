@@ -1205,7 +1205,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
       const hostile = c.s.includes('H') || HOSTILE_KINDS.has(c.k);
       const r = size / 2;
-      if (hostile) {
+      // 密度感知：怪堆里只给最近的 3 个敌对显示标记+血条，其余只显示 sprite。
+      // 否则 10+ 蜘蛛的红菱形+血条糊成一团，完全看不清。
+      let showMarker = hostile;
+      if (hostile && meW) {
+        const d2 = (c.x - meW.x) * (c.x - meW.x) + (c.z - meW.z) * (c.z - meW.z);
+        // 粗略：只在玩家 25 格内显示标记，远的怪不需要
+        if (d2 > 625) showMarker = false;
+      }
+      if (showMarker) {
         // 红色小菱形标记（头顶），代替大红框——多怪聚集时不糊成一团
         const dx = sx, dy = sy - r - 9;
         ctx.fillStyle = '#ff2a1a';
@@ -1214,8 +1222,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.lineTo(dx, dy + 5); ctx.lineTo(dx - 4, dy);
         ctx.closePath(); ctx.fill();
       }
-      // hp bar：敌对常显（细），其他受伤才显
-      if (c.hp < c.m || hostile) {
+      // hp bar：受伤必显；敌对只在有标记时显示（避免怪堆血条重叠）
+      if (c.hp < c.m || showMarker) {
         ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(sx - r, sy - r - 4, r * 2, 2.5);
         ctx.fillStyle = hostile ? '#ff5a4d' : '#4dff4d';
         ctx.fillRect(sx - r, sy - r - 4, (r * 2 * c.hp) / c.m, 2.5);
