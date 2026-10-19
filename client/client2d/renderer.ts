@@ -1346,15 +1346,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     //    Stop-loss: if a label is pushed more than 4 lines from its origin,
     //    turn it into a dot instead of building a text pillar.
     nameQueue.sort((a, b) => a.y - b.y || a.x - b.x);
-    const lineH = Math.max(14, 13 * cam.zoom);
+    const lineH = Math.min(18, Math.max(14, 13 * cam.zoom));
     const MAX_PUSH = 4 * lineH;
     const placed: { x: number; y: number; hw: number }[] = [];
     for (const z of zoneLabels) placed.push({ x: z.x, y: z.y, hw: z.hw });
     for (const nm of nameQueue) {
       if (nm.dot) continue;
-      // 顶边钳制必须在碰撞循环之前作为起始 y：字体随 zoom 放大（11*zoom px），
-      // baseline < 字高+边距时 2.75x 下名字上半截被切。放循环后会破坏无碰撞保证。
-      const minY = 12 * cam.zoom + 4;
+      // 顶边钳制必须在碰撞循环之前作为起始 y：字体已封顶 14px，
+      // baseline < 字高+边距时名字上半截被切。放循环后会破坏无碰撞保证。
+      const minY = 18;
       let y = Math.max(nm.y, minY), ok = false;
       // find a y that doesn't collide with already-placed labels
       for (let attempt = 0; attempt < 24; attempt++) {
