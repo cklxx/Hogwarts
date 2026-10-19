@@ -4,6 +4,7 @@
  */
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawSprite } from './sprites.js';
+import { getCharSprite, charSpriteKey, charSpriteSize, variantForName, type CharVariant } from './chars.js';
 import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp,
   drawWell, drawMarketStall, drawVillageGate, drawDock, drawMooringPost, drawBoat, drawLighthouse,
   drawWeb, drawGlowFlower, drawTent, drawCampfire, drawGreenhouse, drawGardenPlot,
@@ -1274,14 +1275,13 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const size = r * 3;
       // walk animation: 2-frame leg cycle when moving (track position deltas)
       const wk = walkState.get(w.h);
-      let spriteKey = `wizard-${String(w.ho).toLowerCase()}`;
+      let walkFrame: 0 | 1 | 2 = 0;
       if (wk) {
         const dx = w.x - wk.x, dz = w.z - wk.z;
         const moved = dx * dx + dz * dz > 0.0004; // ~0.02 world units threshold
         if (moved) {
           wk.t += 1;
-          const frame = Math.floor(wk.t / 8) % 2; // 8 frames per leg pose @60fps
-          spriteKey += `-w${frame}`;
+          walkFrame = ((Math.floor(wk.t / 8) % 2) + 1) as 1 | 2; // w1/w2 alternate @60fps
         } else {
           wk.t = 0;
         }
@@ -1289,7 +1289,13 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       } else {
         walkState.set(w.h, { x: w.x, z: w.z, t: 0 });
       }
-      drawSprite(ctx, spriteKey, sx - size / 2, sy - size / 2, size, size);
+      // chars.ts: 4-direction 24x36 sprites, aspect-correct draw
+      const variant: CharVariant = variantForName(w.n);
+      const spriteKey = charSpriteKey(w.n, String(w.ho).toLowerCase(), w.f, walkFrame);
+      const { w: sprW, h: sprH } = charSpriteSize(variant);
+      const dh = size * 1.5, dw = (dh * sprW) / sprH;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(getCharSprite(spriteKey), sx - dw / 2, sy - dh / 2, dw, dh);
       if (isMe) { ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       // facing tick
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
