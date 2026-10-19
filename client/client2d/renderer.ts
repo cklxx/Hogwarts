@@ -935,7 +935,7 @@ export interface Camera { x: number; z: number; zoom: number }
 
 export function createRenderer2D(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext('2d')!;
-  const cam: Camera = { x: 0, z: -22, zoom: 1 };
+  const cam: Camera = { x: 0, z: -22, zoom: 2.75 };
   let snap: Snap | null = null;
   let myHandle = '';
   let follow = true;
