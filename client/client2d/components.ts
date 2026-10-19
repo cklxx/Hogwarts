@@ -873,6 +873,36 @@ export function drawBush(g: CanvasRenderingContext2D, x: number, y: number, s: n
 }
 
 export type StoneVariant = 'moss' | 'rune' | 'curb';
+
+export function drawMushroom(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  // 蘑菇：只长在禁林深处（神秘感）。红盖白点毒蝇伞 + 棕色小菇，2-3 朵一簇。
+  const seed = x * 0.731 + y * 0.197;
+  blob(g, x + 1 * s, y, 5 * s, SHADOW_A);
+  // 主菇：红盖
+  const ch = 10 * s; // 盖高
+  g.fillStyle = '#c0392b';
+  g.beginPath(); g.ellipse(x, y - ch, 7 * s, 5 * s, 0, Math.PI, 0); g.fill();
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.35); g.stroke();
+  // 白点
+  g.fillStyle = '#f0e8d8';
+  blob(g, x - 3 * s, y - ch - 2 * s, 1.2 * s, '#f0e8d8');
+  blob(g, x + 1 * s, y - ch - 3.5 * s, 1 * s, '#f0e8d8');
+  blob(g, x + 3.5 * s, y - ch - 1 * s, 0.8 * s, '#f0e8d8');
+  // 柄
+  g.fillStyle = '#e8dcc0';
+  g.fillRect(x - 1.5 * s, y - ch + 1 * s, 3 * s, ch - 1 * s);
+  g.strokeStyle = OUTLINE;
+  g.strokeRect(x - 1.5 * s, y - ch + 1 * s, 3 * s, ch - 1 * s);
+  // 侧小菇（棕盖）
+  if (sjit(seed, 7) > 0.3) {
+    const sx = x + 8 * s, sh = 6 * s;
+    g.fillStyle = '#8a6a42';
+    g.beginPath(); g.ellipse(sx, y - sh, 4 * s, 3 * s, 0, Math.PI, 0); g.fill();
+    g.strokeStyle = OUTLINE; g.stroke();
+    g.fillStyle = '#e8dcc0';
+    g.fillRect(sx - 1 * s, y - sh + 1 * s, 2 * s, sh - 1 * s);
+  }
+}
 export function drawStone(g: CanvasRenderingContext2D, x: number, y: number, s: number, variant?: StoneVariant): void {
   // 石头：不规则 6 顶点多边形，三层石灰 #9b958b 家族。
   // variant: moss=边界石（苔藓）/ rune=石阵（符文刻痕）/ curb=路缘石（小而扁）
@@ -1589,6 +1619,7 @@ export const ITEM_INFO: Record<string, {name: string; desc: string; grade: '普�
   glowflower: {name: '发光花', desc: '禁林深处的稀有植物，花瓣夜里发出微光。', grade: '稀有'},
   signpost: {name: '告示牌', desc: '岔路口的木指示牌，箭头指向各个方向。', grade: '普通'},
   reed: {name: '芦苇丛', desc: '黑湖岸边的水生植物，成簇随风摇摆。', grade: '普通'},
+  mushroom: {name: '蘑菇', desc: '只长在禁林深处的毒蝇伞，石阵周围最多。', grade: '普通'},
   lamp: {name: '路灯', desc: '铁质灯杆，罩着暖黄的玻璃灯，夜里照亮道路。', grade: '普通'},
   brazier: {name: '火盆', desc: '铁质三脚火盆，点燃后是传说级警戒火光。', grade: '传说'},
   fence: {name: '栅栏', desc: '木栅栏，三节以上成排，围出农田和庭院。', grade: '普通'},

@@ -11,7 +11,7 @@ import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush,
   drawOwlery, drawScoreboard, drawTrainingHoop,
   drawShop, drawPub, drawStation, drawLibrary, drawDormTower,
   drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing,
-  drawSignpost, drawReed } from './components.js';
+  drawSignpost, drawReed, drawMushroom } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
@@ -209,16 +209,7 @@ const texGrass: Painter = (g, x0, y0, w, h, rnd) => {
   for (let i = 0; i < nd2; i++) {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.6 + rnd() * 2.4, hexA('#5a4a38', 0.35));
   }
-  // wildflowers: white / yellow / soft pink dots with tiny stem
-  const flowers = ['#f5f0e0', '#f2d06b', '#e8a0b4', '#ffffff'];
-  const nf = (w * h) / 4200;
-  for (let i = 0; i < nf; i++) {
-    const x = x0 + rnd() * w, y = y0 + rnd() * h;
-    g.strokeStyle = hexA(P.dark, 0.5);
-    g.lineWidth = 1;
-    g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 4); g.stroke();
-    blob(g, x, y - 5, 1.8 + rnd(), flowers[Math.floor(rnd() * flowers.length)]!);
-  }
+  // 野花已移除（语义规范 v2）：花只长在花坛/人工处，野外不长花
   // light sparkle flecks
   const ns = (w * h) / 2600;
   for (let i = 0; i < ns; i++) {
@@ -670,6 +661,7 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
     switch (it.kind) {
       case 'bush': drawBush(dg, x, y, s); break;
       case 'stone': drawStone(dg, x, y, s, it.v); break;
+      case 'mushroom': drawMushroom(dg, x, y, s); break;
       default: break; // 非 L4 装饰画到主图层
     }
   }
@@ -683,7 +675,7 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
     const x = w2tx(it.x), y = w2ty(it.z);
     const s = TPX * it.s;
     switch (it.kind) {
-      case 'bush': case 'stone': break; // 已在 deco 图层画过
+      case 'bush': case 'stone': case 'mushroom': break; // 已在 deco 图层画过
       case 'brazier': {
         const bs = Math.max(16, 20 * TPX * it.s / 3);
         drawSprite(g, 'brazier', x - bs / 2, y - bs / 2 - 8 * TPX * it.s / 3, bs, bs);

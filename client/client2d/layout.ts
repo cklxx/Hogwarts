@@ -22,7 +22,7 @@ export type ItemKind =
   | 'owlery' | 'scoreboard' | 'traininghoop'
   | 'shop' | 'pub' | 'station' | 'library' | 'dormtower'
   | 'flowerbed' | 'bench' | 'scarecrow' | 'beehive' | 'swing'
-  | 'signpost' | 'reed';
+  | 'signpost' | 'reed' | 'mushroom';
 export interface PlacedItem { kind: ItemKind; x: number; z: number; s: number; label?: string; v?: 'moss' | 'rune' | 'curb' }
 export interface LayoutResult { roads: Road[]; items: PlacedItem[] }
 
@@ -69,30 +69,14 @@ const FOOT: Record<ItemKind, [number, number]> = {
   owlery: [52, 144], scoreboard: [44, 36], traininghoop: [20, 52],
   shop: [76, 68], pub: [114, 88], station: [148, 68], library: [108, 98], dormtower: [64, 144],
   flowerbed: [28, 20], bench: [28, 24], scarecrow: [20, 48], beehive: [18, 26], swing: [36, 48],
-  signpost: [28, 48], reed: [16, 28],
+  signpost: [28, 48], reed: [16, 28], mushroom: [16, 20],
 };
 
-// --- exclusion rects (world): lake / castle / pitch footprints ---
-const EXCLUDE: Array<[number, number, number, number]> = [
-  [-155, 3, -81, 77],    // 黑湖（含岸）
-  [-66, -118, 66, -40],  // 城堡
-  [0, -215, 80, -95],    // 魁地奇球场（含看台）
-  [-270, 80, -130, 210], // 对角巷
-  [80, 102, 150, 165],   // 海格小屋区
-  [15, -30, 75, 30],     // 打人柳区
-];
-function inExclude(x: number, z: number): boolean {
-  for (const [x0, z0, x1, z1] of EXCLUDE) {
-    if (x >= x0 && x <= x1 && z >= z0 && z <= z1) return true;
-  }
-  return false;
-}
-
-// --- forest disc (server truth):禁林树木范围 ---
-const FOREST = { x: 165, z: 15, r: 85 };
-function inForestDeep(x: number, z: number, shrink = 20): boolean {
-  return Math.hypot(x - FOREST.x, z - FOREST.z) < FOREST.r - shrink;
-}
+// --- zone footprints (world, for reference): lake / castle / pitch ---
+//    黑湖 [-155,3,-81,77] / 城堡 [-66,-118,66,-40] / 球场 [0,-215,80,-95]
+//    对角巷 [-270,80,-130,210] / 海格小屋 [80,102,150,165] / 打人柳 [15,-30,75,30]
+//    禁林 disc (server truth): 中心 (165,15) r85
+//    注：v2 起删除随机散布，以上仅作坐标参考，不再用于排除逻辑。
 
 // --- roads: catmull-rom through control points, sampled every ~4 units ---
 function catmull(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
@@ -484,33 +468,72 @@ function buildLayout(): LayoutResult {
     for (const [sx, sz] of shore) stone(sx, sz, 0.5 + ((sx + sz) % 3) * 0.15, undefined, 0);
   }
 
-  // 3f) 灌木散布（保留，石头已移出）：110 灌木
-  //    呼吸空间：建筑周围 48 单位内不放；道路留白：路宽/2 + 12
+  // 3g) 蘑菇：只在禁林深处（神秘感）。石阵周围 + 蜘蛛巢附近，2-3 朵一簇。
+  //    为什么在这里：潮湿阴暗的禁林深处才长毒蘑菇，石阵的神秘感需要它们。
+  //    传达什么：这里很深、很古老、别乱吃。
+  //    不放会怎样：石阵周围光秃，神秘感减半。
+  //    注：禁林树密，用 20 次宽范围兜底（r 4-20）
   {
-    // 建筑类：散布时保持距离
-    const BUILDINGS = new Set(['cottage', 'stonehouse', 'shop', 'pub', 'station',
-      'library', 'dormtower', 'greenhouse', 'well', 'marketstall', 'villagegate',
-      'owlery', 'lighthouse', 'tent', 'dock', 'boat']);
-    const nearBuilding = (x: number, z: number, r: number): boolean => {
-      for (const it of items) {
-        if (!BUILDINGS.has(it.kind)) continue;
-        if (Math.hypot(it.x - x, it.z - z) < r) return true;
+    const shroom = (x: number, z: number): boolean => {
+      for (let i = 0; i < 20; i++) {
+        const a = rnd() * Math.PI * 2, r = i === 0 ? 0 : 4 + rnd() * 16;
+        if (tryPlace('mushroom', x + Math.cos(a) * r, z + Math.sin(a) * r, 0.9 + rnd() * 0.3, 0)) return true;
       }
       return false;
     };
-    let placedBush = 0, guard = 0;
-    const tryScatterBush = (): boolean => {
-      const x = -260 + rnd() * 520, z = -260 + rnd() * 560;
-      if (inExclude(x, z)) return false;
-      if (inForestDeep(x, z)) return false;
-      if (x > -50 && x < 80 && z > 140 && z < 220) return false; // 村庄内部
-      if (x > -270 && x < -130 && z > 80 && z < 210) return false; // 对角巷
-      if (x > 80 && x < 150 && z > 102 && z < 165) return false; // 海格小屋区
-      if (x > 15 && x < 75 && z > -30 && z < 30) return false; // 打人柳区
-      if (nearBuilding(x, z, 48)) return false; // 呼吸空间：建筑周围 3 格
-      return tryPlace('bush', x, z, 0.8 + rnd() * 0.4, 12); // 道路留白：+12
-    };
-    while (placedBush < 110 && guard++ < 12000) if (tryScatterBush()) placedBush++;
+    // 石阵周围 (180,22)：4 簇
+    shroom(168, 30); shroom(192, 28); shroom(174, 12); shroom(188, 16);
+    // 蜘蛛巢 (200,60) 附近：3 簇
+    shroom(208, 68); shroom(192, 72); shroom(204, 52);
+    // 独角兽空地边缘 (130,-30)：2 簇（空地边缘的潮湿处）
+    shroom(118, -22); shroom(142, -38);
+  }
+
+  // 3f) 灌木语义化 v2：删除 110 随机散布。灌木只做"镶边"用，不再单独乱长。
+  //    三个语义：建筑底座镶边 / 道路转弯处 / 花坛配植。
+  //    为什么在这里：灌木是人工修剪的痕迹，出现在人工物旁边才有含义。
+  //    传达什么：这里有人打理 / 路要转弯了 / 花坛的配植。
+  //    不放会怎样：建筑底座光秃、转弯处无提示、花坛孤零。
+  {
+    const bush = (x: number, z: number, s: number): boolean =>
+      tryPlaceNear('bush', x, z, s, 2);
+    let placed = 0;
+
+    // (1) 建筑底座镶边：每栋建筑底座两侧各 1 丛
+    //     灌木半宽 12，留 4 单位间隙：x 偏移 = w/2 + 16
+    const BUILDING_KINDS = new Set(['cottage', 'stonehouse', 'shop', 'pub', 'station',
+      'library', 'dormtower', 'greenhouse', 'owlery']);
+    for (const it of items) {
+      if (!BUILDING_KINDS.has(it.kind)) continue;
+      const [w] = FOOT[it.kind];
+      // 底座左右角外侧
+      if (bush(it.x - w / 2 - 16, it.z + 12, 0.9)) placed++;
+      if (bush(it.x + w / 2 + 16, it.z + 12, 0.9)) placed++;
+    }
+
+    // (2) 道路转弯处：方向变化 > 35° 的拐点，外侧放 1 丛（提示转弯）
+    for (const r of roads) {
+      for (let i = 2; i < r.pts.length - 2; i += 3) {
+        const a = r.pts[i - 2], b = r.pts[i], c = r.pts[i + 2];
+        const v1x = b.x - a.x, v1z = b.z - a.z, v2x = c.x - b.x, v2z = c.z - b.z;
+        const dot = v1x * v2x + v1z * v2z;
+        const m1 = Math.hypot(v1x, v1z) || 1, m2 = Math.hypot(v2x, v2z) || 1;
+        const ang = Math.acos(Math.max(-1, Math.min(1, dot / (m1 * m2)))) * 180 / Math.PI;
+        if (ang > 35) {
+          // 拐点外侧：转弯方向的反方向偏移
+          const nx = -(v1z + v2z) / 2, nz = (v1x + v2x) / 2;
+          const nl = Math.hypot(nx, nz) || 1;
+          if (bush(b.x + (nx / nl) * 10, b.z + (nz / nl) * 10, 0.8)) placed++;
+        }
+      }
+    }
+
+    // (3) 花坛配植：每个花坛旁边 1 丛（花坛半宽 14 + 灌木半宽 12 + 间隙 4 = 30）
+    for (const it of items) {
+      if (it.kind !== 'flowerbed') continue;
+      if (bush(it.x + 30, it.z + 4, 0.7)) placed++;
+    }
+    // console.log('[layout] semantic bushes:', placed);
   }
 
   return { roads, items };
