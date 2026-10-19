@@ -23,7 +23,7 @@ export type ItemKind =
   | 'shop' | 'pub' | 'station' | 'library' | 'dormtower'
   | 'flowerbed' | 'bench' | 'scarecrow' | 'beehive' | 'swing'
   | 'signpost' | 'reed';
-export interface PlacedItem { kind: ItemKind; x: number; z: number; s: number; label?: string }
+export interface PlacedItem { kind: ItemKind; x: number; z: number; s: number; label?: string; v?: 'moss' | 'rune' | 'curb' }
 export interface LayoutResult { roads: Road[]; items: PlacedItem[] }
 
 // --- seeded rng (mulberry32) ---
@@ -170,7 +170,7 @@ function buildLayout(): LayoutResult {
   const items: PlacedItem[] = [];
   const roadById = (id: string): Road => roads.find((r) => r.id === id)!;
 
-  const tryPlace = (kind: ItemKind, x: number, z: number, s: number, roadClear: number, label?: string): boolean => {
+  const tryPlace = (kind: ItemKind, x: number, z: number, s: number, roadClear: number, label?: string, v?: 'moss' | 'rune' | 'curb'): boolean => {
     // T1 宝可梦式：所有放置对齐到 16px 网格
     x = Math.round(x / 16) * 16;
     z = Math.round(z / 16) * 16;
@@ -179,7 +179,7 @@ function buildLayout(): LayoutResult {
     if (d < road.width / 2 + roadClear) return false;
     if (overlaps(x - w / 2, z - h / 2, x + w / 2, z + h / 2)) return false;
     register(x, z, w, h);
-    items.push({ kind, x, z, s, label });
+    items.push({ kind, x, z, s, label, v });
     return true;
   };
   const tryPlaceNear = (kind: ItemKind, x: number, z: number, s: number, roadClear: number, label?: string): boolean => {
@@ -430,9 +430,60 @@ function buildLayout(): LayoutResult {
     }
   }
 
-  // 3) scatter（移到所有建筑之后）：110 灌木 + 80 石头，密度砍半
+  // 3) 石头系统性重做 v1：每块石头都有含义，删除随机散布。
+  //    5 种场景：边界石 / 石阵 / 路缘石 / 石堆石墙 / 湖畔石。总数 ≤ 60。
+  //    variant: moss=边界石（苔藓）/ rune=石阵（符文）/ curb=路缘石（小而扁）
+  {
+    const stone = (x: number, z: number, s: number, v?: 'moss' | 'rune' | 'curb', roadClear = 2): boolean =>
+      tryPlace('stone', x, z, s, roadClear, undefined, v);
+
+    // 3a) 边界石：区域交界 2-3 块成排，moss 变体，稍大（s 1.1-1.3）
+    //   - 禁林入口：R4 尽头 (75,15)，垂直道路方向排 3 块
+    stone(66, 4, 1.2, 'moss'); stone(72, 12, 1.1, 'moss'); stone(78, 22, 1.25, 'moss');
+    //   - 黑湖：R2 尽头 (-80,40) 湖岸，排 3 块
+    stone(-88, 30, 1.15, 'moss'); stone(-84, 40, 1.25, 'moss'); stone(-88, 50, 1.1, 'moss');
+    //   - 城堡南门：R1 起点 (0,-40)，排 2 块
+    stone(-12, -34, 1.2, 'moss'); stone(12, -34, 1.15, 'moss');
+
+    // 3b) 石阵：禁林深处仪式石圈，6 块 rune 变体围成圆（中心 165,15 半径 22）
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      stone(165 + Math.cos(a) * 22, 15 + Math.sin(a) * 22, 1.3, 'rune', 0);
+    }
+
+    // 3c) 路缘石：道路两侧小扁石，curb 变体，沿 R1/R5/R7 每 ~14 单位交替
+    for (const rid of ['R1', 'R5', 'R7']) {
+      const r = roadById(rid);
+      let acc = 0, last = -100, side = 1, count = 0;
+      for (let i = 1; i < r.pts.length && count < 8; i++) {
+        const a = r.pts[i - 1], b = r.pts[i];
+        acc += Math.hypot(b.x - a.x, b.z - a.z);
+        if (acc - last < 14) continue;
+        const tx = b.x - a.x, tz = b.z - a.z;
+        const len = Math.hypot(tx, tz) || 1;
+        const cx = b.x + (-tz / len) * 5.5 * side, cz = b.z + (tx / len) * 5.5 * side;
+        if (stone(cx, cz, 0.55 + (count % 3) * 0.1, 'curb', 0)) { last = acc; side = -side; count++; }
+      }
+    }
+
+    // 3d) 石堆/石墙：生活气息
+    //   - 海格小屋菜园石堆：(95,150) 簇 3 块
+    stone(92, 148, 0.9); stone(99, 152, 1.0); stone(95, 156, 0.8);
+    //   - 温室旁石墙残段：(-40,-60) 排 4 块成墙
+    stone(-52, -58, 1.0); stone(-44, -60, 1.1); stone(-36, -59, 1.0); stone(-28, -61, 0.9);
+    //   - 村庄石墙残段：(20,190) 排 3 块
+    stone(14, 188, 1.0); stone(22, 190, 1.1); stone(30, 189, 0.9);
+
+    // 3e) 湖畔石：黑湖岸鹅卵石，沿东岸 (x=-79) 和北岸 (z=5) 小石 10 块
+    const shore: Array<[number, number]> = [
+      [-76, 12], [-74, 28], [-77, 44], [-75, 60], [-78, 72],
+      [-148, 8], [-132, 6], [-116, 8], [-100, 6], [-88, 10],
+    ];
+    for (const [sx, sz] of shore) stone(sx, sz, 0.5 + ((sx + sz) % 3) * 0.15, undefined, 0);
+  }
+
+  // 3f) 灌木散布（保留，石头已移出）：110 灌木
   //    呼吸空间：建筑周围 48 单位内不放；道路留白：路宽/2 + 12
-  //    服务器障碍物（含树木）已注册，不会压盖
   {
     // 建筑类：散布时保持距离
     const BUILDINGS = new Set(['cottage', 'stonehouse', 'shop', 'pub', 'station',
@@ -445,8 +496,8 @@ function buildLayout(): LayoutResult {
       }
       return false;
     };
-    let placedBush = 0, placedStone = 0, guard = 0;
-    const tryScatter = (kind: 'bush' | 'stone'): boolean => {
+    let placedBush = 0, guard = 0;
+    const tryScatterBush = (): boolean => {
       const x = -260 + rnd() * 520, z = -260 + rnd() * 560;
       if (inExclude(x, z)) return false;
       if (inForestDeep(x, z)) return false;
@@ -455,11 +506,9 @@ function buildLayout(): LayoutResult {
       if (x > 80 && x < 150 && z > 102 && z < 165) return false; // 海格小屋区
       if (x > 15 && x < 75 && z > -30 && z < 30) return false; // 打人柳区
       if (nearBuilding(x, z, 48)) return false; // 呼吸空间：建筑周围 3 格
-      return tryPlace(kind, x, z, 0.8 + rnd() * 0.4, 12); // 道路留白：+12
+      return tryPlace('bush', x, z, 0.8 + rnd() * 0.4, 12); // 道路留白：+12
     };
-    while (placedBush < 110 && guard++ < 12000) if (tryScatter('bush')) placedBush++;
-    guard = 0;
-    while (placedStone < 80 && guard++ < 12000) if (tryScatter('stone')) placedStone++;
+    while (placedBush < 110 && guard++ < 12000) if (tryScatterBush()) placedBush++;
   }
 
   return { roads, items };

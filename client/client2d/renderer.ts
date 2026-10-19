@@ -669,7 +669,7 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
     const s = TPX * it.s;
     switch (it.kind) {
       case 'bush': drawBush(dg, x, y, s); break;
-      case 'stone': drawStone(dg, x, y, s); break;
+      case 'stone': drawStone(dg, x, y, s, it.v); break;
       default: break; // 非 L4 装饰画到主图层
     }
   }

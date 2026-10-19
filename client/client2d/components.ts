@@ -872,16 +872,19 @@ export function drawBush(g: CanvasRenderingContext2D, x: number, y: number, s: n
   blob(g, x - 2 * s, cy - 7 * s, 1.4 * s, 'rgba(255,255,255,0.10)');
 }
 
-export function drawStone(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+export type StoneVariant = 'moss' | 'rune' | 'curb';
+export function drawStone(g: CanvasRenderingContext2D, x: number, y: number, s: number, variant?: StoneVariant): void {
   // 石头：不规则 6 顶点多边形，三层石灰 #9b958b 家族。
+  // variant: moss=边界石（苔藓）/ rune=石阵（符文刻痕）/ curb=路缘石（小而扁）
   const seed = x * 0.617 + y * 0.233;
-  blob(g, x + 2 * s, y, 6 * s, SHADOW_A);
+  const flat = variant === 'curb' ? 0.55 : 1; // 路缘石压扁
+  blob(g, x + 2 * s, y, 6 * s * flat, SHADOW_A);
   g.beginPath();
   for (let i = 0; i <= 6; i++) {
     const a = (i / 6) * Math.PI * 2;
     const k = 0.72 + sjit(seed, i) * 0.55; // 半径扰动形成凹凸
     const px = x + Math.cos(a) * 7 * s * k;
-    const py = y - 4 * s + Math.sin(a) * 4.5 * s * k;
+    const py = y - 4 * s * flat + Math.sin(a) * 4.5 * s * k * flat;
     if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
   }
   g.closePath();
@@ -891,9 +894,23 @@ export function drawStone(g: CanvasRenderingContext2D, x: number, y: number, s: 
   g.save();
   g.clip();
   g.fillStyle = '#747068';
-  g.beginPath(); g.ellipse(x + 3.5 * s, y - 2 * s, 5 * s, 3.5 * s, 0.4, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(x + 3.5 * s, y - 2 * s * flat, 5 * s, 3.5 * s * flat, 0.4, 0, Math.PI * 2); g.fill();
   g.fillStyle = '#afa99f';
-  g.beginPath(); g.ellipse(x - 3 * s, y - 6 * s, 4 * s, 2.5 * s, -0.4, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(x - 3 * s, y - 6 * s * flat, 4 * s, 2.5 * s * flat, -0.4, 0, Math.PI * 2); g.fill();
+  // moss：左上苔藓斑（#5a7a4a）
+  if (variant === 'moss') {
+    g.fillStyle = '#5a7a4a';
+    g.beginPath(); g.ellipse(x - 2 * s, y - 6.5 * s * flat, 3.2 * s, 1.8 * s * flat, -0.3, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(x + 2.5 * s, y - 5 * s * flat, 2 * s, 1.2 * s * flat, 0.5, 0, Math.PI * 2); g.fill();
+  }
+  // rune：符文刻痕（暖金 #d4a017，2 划）
+  if (variant === 'rune') {
+    g.strokeStyle = '#d4a017'; g.lineWidth = Math.max(1, s * 0.35);
+    g.beginPath();
+    g.moveTo(x - 2.5 * s, y - 6 * s); g.lineTo(x + 0.5 * s, y - 3 * s); g.lineTo(x - 1.5 * s, y - 1.5 * s);
+    g.moveTo(x + 1.5 * s, y - 6.5 * s); g.lineTo(x + 3 * s, y - 3.5 * s);
+    g.stroke();
+  }
   g.restore();
 }
 
@@ -1561,7 +1578,7 @@ export function drawReed(g: CanvasRenderingContext2D, x: number, y: number, s: n
 // 图鉴 UI（点击/E 弹窗）的数据源。只收录 A 组重画的物品。
 export const ITEM_INFO: Record<string, {name: string; desc: string; grade: '普通' | '稀有' | '传说'}> = {
   bush: {name: '灌木', desc: '低矮的叶丛，通常三五成簇长在草地上。', grade: '普通'},
-  stone: {name: '石头', desc: '棱角不齐的灰色碎石，散布在野外。', grade: '普通'},
+  stone: {name: '石头', desc: '有含义的石头：边界石标示区域、石阵藏着符文、路缘石引导方向。', grade: '普通'},
   chest: {name: '宝箱', desc: '封印的木箱，铜色普通、银色稀有、金色传说。', grade: '稀有'},
   well: {name: '水井', desc: '村广场中央的老井，石台木架上垂着水桶。', grade: '普通'},
   dock: {name: '木码头', desc: '伸向黑湖的木板栈道，桩柱钉得牢固。', grade: '普通'},
