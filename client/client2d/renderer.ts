@@ -1362,7 +1362,10 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         if (y - nm.y > MAX_PUSH) break; // stop-loss: too far, give up to dot
       }
       if (!ok || y - nm.y > MAX_PUSH || y > vh + 24) { nm.dot = true; continue; }
-      if (y < 18) y = 18; // 顶边钳制：贴边显示，宁可压一点精灵也不被切掉一半
+      // 顶边钳制：字体随 zoom 放大（11*zoom px），baseline 必须 >= 字高+边距，
+      // 否则 2.75x 下名字上半截被切掉。宁可压一点精灵也不被切。
+      const minY = 12 * cam.zoom + 4;
+      if (y < minY) y = minY;
       nm.dy = y - nm.y;
       placed.push({ x: nm.x, y, hw: nm.hw });
     }
