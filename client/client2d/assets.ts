@@ -9,7 +9,9 @@
 export type AssetState = 'loading' | 'ready' | 'failed';
 let state: AssetState = 'loading';
 export const assetsState = (): AssetState => state;
-export const assetsSettled = (): boolean => state !== 'loading';
+// 世界纹理只烘焙一次，预渲染精灵（3转2）必须在烘焙前就绪或明确失败，
+// 故 settled 同时等图集与预渲染两条加载线（各自独立回退不受影响）。
+export const assetsSettled = (): boolean => state !== 'loading' && preSettled;
 
 const TOWN_URL = '/assets2d/kenney-tiny-town/tilemap_packed.png';
 const RL_URL = '/assets2d/kenney-roguelike-rpg/roguelikeSheet_transparent.png';
@@ -104,6 +106,35 @@ export interface VillageSprites {
 
 let sprites: VillageSprites | null = null;
 export const villageSprites = (): VillageSprites | null => sprites;
+
+// ------------------------------------------------------------------ 3转2 预渲染精灵
+// tools/sprite-factory 产出（client/assets2d/prerendered/）：3D 模型在固定
+// 相机+灯光下渲染的透明底 PNG + sprites.json（锚点/占地）。独立加载、独立
+// 回退：preSprite() 返回 null 时渲染器走原素材/代码绘制路径。
+export interface PreSprite {
+  img: HTMLImageElement;
+  w: number; h: number;           // PNG 像素尺寸
+  anchorX: number; anchorY: number; // 地面原点（占地中心、y=0）在图内的像素位置
+  footW: number; footD: number;     // 3D 占地（米）
+  ppm: number;                      // 渲染密度（px/米）
+}
+const preMap = new Map<string, PreSprite>();
+let preReady = false;
+let preSettled = false;
+export const preSprite = (name: string): PreSprite | null =>
+  preReady ? (preMap.get(name) ?? null) : null;
+
+fetch('/assets2d/prerendered/sprites.json')
+  .then((r) => { if (!r.ok) throw new Error('sprites.json ' + r.status); return r.json(); })
+  .then(async (meta: Record<string, Omit<PreSprite, 'img'>>) => {
+    await Promise.all(Object.entries(meta).map(async ([name, m]) => {
+      const img = await loadImg('/assets2d/prerendered/' + name + '.png');
+      preMap.set(name, { img, ...m });
+    }));
+    preReady = true;
+  })
+  .catch((e) => console.warn('[2d] prerendered sprites unavailable, fallback:', e))
+  .finally(() => { preSettled = true; });
 
 function buildSprites(town: HTMLImageElement, rl: HTMLImageElement): VillageSprites {
   const T = (idx: number) => townTile(town, idx);

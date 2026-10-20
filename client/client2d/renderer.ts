@@ -4,7 +4,7 @@
  */
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawSprite } from './sprites.js';
-import { getCharSprite, charSpriteKey, charSpriteSize, variantForName, type CharVariant } from './chars.js';
+import { getCharSprite, charSpriteKey, charSpriteSize, variantForName, dirFromAngle, type CharVariant } from './chars.js';
 import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp,
   drawWell, drawMarketStall, drawVillageGate, drawDock, drawMooringPost, drawBoat, drawLighthouse,
   drawWeb, drawGlowFlower, drawTent, drawCampfire, drawGreenhouse, drawGardenPlot,
@@ -13,7 +13,7 @@ import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush,
   drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing,
   drawSignpost, drawReed, drawMushroom } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
-import { assetsSettled, villageSprites } from './assets.js';
+import { assetsSettled, villageSprites, preSprite, type PreSprite } from './assets.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
 
@@ -361,12 +361,34 @@ const VILLAGE = ZONES.find((z) => z.tex === 'village')!;
 const inVillage = (x: number, z: number): boolean =>
   x >= VILLAGE.x0 && x <= VILLAGE.x1 && z >= VILLAGE.z0 && z <= VILLAGE.z1;
 
+/** 3转2 精灵绘制：(ox, oy) = 地面原点（占地中心）在纹理空间的落点，
+ *  k = 纹理px / 精灵px。预渲染图非像素画，绘制时开启平滑缩放。
+ *  返回 false = 精灵未就绪，调用方走原路径回退。 */
+function drawPre(g: CanvasRenderingContext2D, pm: PreSprite | null, ox: number, oy: number, k: number): boolean {
+  if (!pm) return false;
+  g.imageSmoothingEnabled = true;
+  g.drawImage(pm.img, ox - pm.anchorX * k, oy - pm.anchorY * k, pm.w * k, pm.h * k);
+  g.imageSmoothingEnabled = false;
+  return true;
+}
+
 function paintVillageAssets(g: CanvasRenderingContext2D): void {
   const vs = villageSprites();
   const items = itemsInRect(getLayout(), VILLAGE.x0, VILLAGE.z0, VILLAGE.x1, VILLAGE.z1);
   const shadow = (x: number, y: number, w: number): void => {
     g.fillStyle = 'rgba(0,0,0,0.25)';
     g.beginPath(); g.ellipse(x, y - 2, w / 2, Math.max(2, w / 7), 0, 0, Math.PI * 2); g.fill();
+  };
+  // 3转2 试点：命名商店按标签选预渲染房屋，视觉宽度 = 占地宽 1.8 倍（碰撞不变），
+  // 地面原点对齐占地中心。精灵自带烘焙阴影，不再叠椭圆假阴影。
+  const shopPreName = (label: string): string =>
+    label.includes('Broomsticks') ? 'houseTavern'
+    : label.includes("Hog's Head") || label.includes('Zonko') ? 'houseStone' : 'houseWood';
+  const drawPreShop = (o: { label?: string; x0: number; x1: number; z0: number; z1: number }): boolean => {
+    const pm = preSprite(shopPreName(o.label ?? ''));
+    if (!pm) return false;
+    const k = (1.8 * (o.x1 - o.x0) * TPX) / pm.w;
+    return drawPre(g, pm, w2tx((o.x0 + o.x1) / 2), w2ty((o.z0 + o.z1) / 2), k);
   };
   if (!vs) {
     // fallback: previous code-drawn village items + named shops
@@ -381,8 +403,10 @@ function paintVillageAssets(g: CanvasRenderingContext2D): void {
       const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
       if (!inVillage(cx, cz)) continue;
       const hx = w2tx(cx), hy = w2ty(o.z1);
-      const s = TPX * Math.min((o.x1 - o.x0) / 96, (o.z1 - o.z0) / 72);
-      drawStoneHouse(g, hx, hy, s);
+      if (!drawPreShop(o)) {
+        const s = TPX * Math.min((o.x1 - o.x0) / 96, (o.z1 - o.z0) / 72);
+        drawStoneHouse(g, hx, hy, s);
+      }
       g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'center';
       g.fillText(o.label, hx, hy + 13);
     }
@@ -456,33 +480,58 @@ function paintVillageAssets(g: CanvasRenderingContext2D): void {
   ];
   for (const [tx, tz, spr, wu, hu] of trees) {
     const x = w2tx(tx), y = w2ty(tz);
+    // 3转2：松/圆冠换预渲染树（自带阴影），其余仍用图集精灵 + 椭圆假阴影
+    const pm = spr === vs.pine ? preSprite('treePine') : spr === vs.roundTree ? preSprite('treeRound') : null;
+    if (pm && drawPre(g, pm, x, y, (wu * TPX * 1.1) / pm.w)) continue;
     shadow(x, y, wu * TPX * 0.8);
     g.drawImage(spr, x - (wu * TPX) / 2, y - hu * TPX, wu * TPX, hu * TPX);
   }
   // fence runs along the north edge, gap at the gate/road (x -6..8)
   for (const [fx0, fx1] of [[-27, -8], [10, 28]] as Array<[number, number]>) {
     const x = w2tx(fx0), y = w2ty(143), w = (fx1 - fx0) * TPX;
-    g.drawImage(vs.fenceRun, x, y - 5 * TPX, w, (w / 64) * 16);
+    const pmFence = preSprite('fence');
+    if (pmFence) {
+      // 预渲染栅栏一段 = 1 米；游戏内每 3 世界单位铺一段（柱距与原素材相近）
+      const segW = 3 * TPX, k = segW / pmFence.w;
+      for (let sx = x + segW / 2; sx < x + w; sx += segW) drawPre(g, pmFence, sx, y, k);
+    } else {
+      g.drawImage(vs.fenceRun, x, y - 5 * TPX, w, (w / 64) * 16);
+    }
   }
   // street lamps along R5 (the shared layout places none inside the village:
   // its 12x48 footprint collides with the shop boxes — these are visual-only,
   // mirroring the layout's own road-lamp rhythm: every ~15 units, alternating)
   for (const [lx, lz] of [[-11, 153], [11, 170], [-11, 187], [11, 203]] as Array<[number, number]>) {
     const x = w2tx(lx), y = w2ty(lz), s = TPX;
-    g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+    const pmLamp = preSprite('lamp');
+    if (!(pmLamp && drawPre(g, pmLamp, x, y, (32 * s) / pmLamp.h))) {
+      g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+    }
   }
 
   // ---- layout houses + lamps ----
   for (const it of items) {
     const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
-    if (it.kind === 'cottage') {
-      shadow(x, y, 72 * s);
-      g.drawImage(vs.cottage, x - 36 * s, y - 56 * s, 72 * s, 56 * s);
-    } else if (it.kind === 'stonehouse') {
-      shadow(x, y, 96 * s);
-      g.drawImage(vs.stonehouse, x - 48 * s, y - 72 * s, 96 * s, 72 * s);
+    if (it.kind === 'cottage' || it.kind === 'stonehouse') {
+      // 3转2：原点（占地中心）= 基线（南缘）向北 footD/2；宽度沿用原素材口径
+      const pm = preSprite(it.kind === 'cottage' ? 'houseWood' : 'houseStone');
+      const artW = it.kind === 'cottage' ? 72 * s : 96 * s;
+      if (pm) {
+        const k = artW / pm.w;
+        if (drawPre(g, pm, x, y - (pm.footD / 2) * pm.ppm * k, k)) continue;
+      }
+      if (it.kind === 'cottage') {
+        shadow(x, y, 72 * s);
+        g.drawImage(vs.cottage, x - 36 * s, y - 56 * s, 72 * s, 56 * s);
+      } else {
+        shadow(x, y, 96 * s);
+        g.drawImage(vs.stonehouse, x - 48 * s, y - 72 * s, 96 * s, 72 * s);
+      }
     } else if (it.kind === 'lamp') {
-      g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+      const pmLamp = preSprite('lamp');
+      if (!(pmLamp && drawPre(g, pmLamp, x, y, (32 * s) / pmLamp.h))) {
+        g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+      }
     }
   }
 
@@ -496,9 +545,11 @@ function paintVillageAssets(g: CanvasRenderingContext2D): void {
     const s = TPX * Math.min(fw / 96, fh / 72);
     const spr = o.label.includes('Broomsticks') ? vs.shopRed
       : o.label.includes("Hog's Head") ? vs.shopGreen : vs.shopGray;
-    shadow(hx, hy, 96 * s);
-    g.drawImage(spr, hx - 48 * s, hy - 72 * s, 96 * s, 72 * s);
-    g.drawImage(vs.sign, hx + 32 * s, hy - 16 * s, 16 * s, 16 * s);
+    if (!drawPreShop(o)) {
+      shadow(hx, hy, 96 * s);
+      g.drawImage(spr, hx - 48 * s, hy - 72 * s, 96 * s, 72 * s);
+      g.drawImage(vs.sign, hx + 32 * s, hy - 16 * s, 16 * s, 16 * s);
+    }
     g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'center';
     g.fillText(o.label, hx, hy + 13);
   }
@@ -1442,8 +1493,19 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const spriteKey = charSpriteKey(w.n, String(w.ho).toLowerCase(), w.f, walkFrame);
       const { w: sprW, h: sprH } = charSpriteSize(variant);
       const dh = size * 1.5, dw = (dh * sprW) / sprH;
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(getCharSprite(spriteKey), sx - dw / 2, sy - dh / 2, dw, dh);
+      // 3转2 试点：只有玩家本人用预渲染人物（4 方向 × 站立+4 帧行走），NPC 不动。
+      // 精灵锚点 = 脚下地面原点，对齐原绘制框的底边（sy + dh/2）；平滑缩放。
+      const pmChar = isMe ? preSprite(
+        `char3d-${dirFromAngle(w.f)}-${walkFrame ? 'w' + (wk ? Math.floor(wk.t / 7) % 4 : 1) : 'stand'}`) : null;
+      if (pmChar) {
+        const k = dh / pmChar.h;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + dh / 2 - pmChar.anchorY * k, pmChar.w * k, dh);
+        ctx.imageSmoothingEnabled = false;
+      } else {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(getCharSprite(spriteKey), sx - dw / 2, sy - dh / 2, dw, dh);
+      }
       if (isMe) { ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       // facing tick
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;

@@ -56,3 +56,31 @@ tile 索引（行主序，index = row×12 + col）：
 （`chars.ts`：4 方向 × 行走帧、按学院换袍色）倒退。故第一阶段人物回退代码绘制，
 待找到合适的 CC0 4 方向人物包再换。换色管线（`assets.ts` 的 `hueShift`）已打通，
 当前用于生成绿色屋顶的商店变体，后续可直接用于人物袍子换色。
+
+## 4. 3 转 2 预渲染管线（2026-10-20 起）
+
+像素素材被否决后改走预渲染路线：3D 模型在固定相机（俯角 40°、正南看北）
++ 固定灯光（半球光 + 带阴影主光 + 补光，ACES）下由 `tools/sprite-factory/`
+渲染成透明底 PNG，阴影烘焙进精灵。标准密度 48 px/米，人物 144 px/米。
+产出在 `prerendered/`（PNG + sprites.json 锚点/占地），`assets.ts` 独立加载，
+失败时渲染器回退像素素材/代码绘制。
+
+| 包 | 用途 | License |
+|---|---|---|
+| Kenney Fantasy Town Kit 2.0 | 房屋零件（墙/屋顶/烟囱/灯柱/栅栏），工厂拼装整房 | **CC0**（`models3d/fantasy-town/License.txt`） |
+| Kenney Nature Kit | 树（tree_pineTallA / tree_tall） | **CC0**（`models3d/nature-kit/License.txt`） |
+| Kenney Mini Characters | 人物试点（character-male-a，自带 walk/idle 动画） | **CC0**（`models3d/mini-characters/License.txt`） |
+
+来源：https://kenney.nl/assets/fantasy-town-kit 、/nature-kit 、/mini-characters 。
+模型原件（仅取用件 + 贴图）存 `models3d/`，整包未入库。
+
+已产出精灵：房屋 3 变体（木屋 houseWood / 石屋 houseStone / 高顶酒馆
+houseTavern）、松树、圆冠树、路灯、栅栏、人物 4 方向 ×（站立 + 4 帧行走）。
+
+**缺口清单**：
+
+| 缺口 | 说明 |
+|---|---|
+| 巫师人物包 | 无长袍 + 尖顶帽的 CC0 低多边形人物包；Mini Characters 是现代服装，仅验证管线。人物换袍色未做（单材质贴图图集，需按 UV 区域重涂） |
+| 霍格沃茨专属建筑 | 城堡塔楼/大礼堂无现成模型；仓库自有 3D 客户端的程序化模型（client/models.ts）与渲染耦合深，本阶段未导出，后续单独立项 |
+| 其余村庄物件 | 长椅、花坛、招牌、马车等未建；Quaternius 中世纪包本阶段未下载评估 |
