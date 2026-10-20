@@ -13,6 +13,7 @@ import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush,
   drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing,
   drawSignpost, drawReed, drawMushroom } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
+import { assetsSettled, villageSprites } from './assets.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
 
@@ -341,7 +342,8 @@ const texCastle: Painter = (g, x0, y0, w, h, rnd) => {
   // structures are drawn by paintCastle() as a crisp post-blur pass (see below)
 };
 
-// --- village: cobble streets + houses with roofs ---
+// --- village: tonal patches only. Ground tiles + buildings are drawn crisp
+// --- by paintVillageAssets() after the blur pass (Kenney asset pilot). ---
 const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
   const P = PAL.village;
   // tonal patches
@@ -350,31 +352,164 @@ const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 14 + rnd() * 30,
       rnd() < 0.5 ? hexA(P.dark, 0.22) : hexA(P.light, 0.22));
   }
-  // cobblestone: staggered, soft
-  const step = 5 * TPX;
-  let row = 0;
-  for (let y = y0 + step / 2; y < y0 + h; y += step, row++) {
-    const off = (row % 2) * step / 2;
-    for (let x = x0 + step / 2 + off; x < x0 + w; x += step) {
-      blob(g, x, y, step * 0.32, rnd() < 0.5 ? hexA(P.dark, 0.3) : hexA(P.light, 0.25));
-    }
-  }
-  // buildings from layout.ts (collision-checked, avoids server's named shops)
-  // + server's 5 named buildings drawn from OBSTACLES below
-  const zx0v = (x0 / TPX) + TB.x0, zy0v = (y0 / TPX) + TB.z0;
-  const zx1v = zx0v + w / TPX, zy1v = zy0v + h / TPX;
-  for (const it of itemsInRect(getLayout(), zx0v, zy0v, zx1v, zy1v)) {
-    const hx = w2tx(it.x), hy = w2ty(it.z);
-    if (it.kind === 'cottage') drawCottage(g, hx, hy, TPX * it.s);
-    else if (it.kind === 'stonehouse') drawStoneHouse(g, hx, hy, TPX * it.s);
-    else if (it.kind === 'lamp') drawLamp(g, hx, hy, TPX * it.s);
-  }
 };
 
-// --- server named buildings (Hogsmeade shops): drawn from OBSTACLES, labeled ---
+// --- Hogsmeade asset pilot (Kenney CC0, assets.ts): tiled ground + composed
+// --- houses/trees/lamps, drawn CRISP after the zone blur. Falls back to the
+// --- old code-drawn items when the asset pack failed to load. ---
+const VILLAGE = ZONES.find((z) => z.tex === 'village')!;
+const inVillage = (x: number, z: number): boolean =>
+  x >= VILLAGE.x0 && x <= VILLAGE.x1 && z >= VILLAGE.z0 && z <= VILLAGE.z1;
+
+function paintVillageAssets(g: CanvasRenderingContext2D): void {
+  const vs = villageSprites();
+  const items = itemsInRect(getLayout(), VILLAGE.x0, VILLAGE.z0, VILLAGE.x1, VILLAGE.z1);
+  const shadow = (x: number, y: number, w: number): void => {
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    g.beginPath(); g.ellipse(x, y - 2, w / 2, Math.max(2, w / 7), 0, 0, Math.PI * 2); g.fill();
+  };
+  if (!vs) {
+    // fallback: previous code-drawn village items + named shops
+    for (const it of items) {
+      const hx = w2tx(it.x), hy = w2ty(it.z);
+      if (it.kind === 'cottage') drawCottage(g, hx, hy, TPX * it.s);
+      else if (it.kind === 'stonehouse') drawStoneHouse(g, hx, hy, TPX * it.s);
+      else if (it.kind === 'lamp') drawLamp(g, hx, hy, TPX * it.s);
+    }
+    for (const o of OBSTACLES) {
+      if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
+      const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
+      if (!inVillage(cx, cz)) continue;
+      const hx = w2tx(cx), hy = w2ty(o.z1);
+      const s = TPX * Math.min((o.x1 - o.x0) / 96, (o.z1 - o.z0) / 72);
+      drawStoneHouse(g, hx, hy, s);
+      g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'center';
+      g.fillText(o.label, hx, hy + 13);
+    }
+    return;
+  }
+
+  // ---- ground tiles: grass base, dirt plaza + dirt band along village roads ----
+  const TS = 16; // texture px per tile (1:1 with source art)
+  const gx0 = w2tx(VILLAGE.x0), gy0 = w2ty(VILLAGE.z0);
+  const gx1 = w2tx(VILLAGE.x1), gy1 = w2ty(VILLAGE.z1);
+  const c0 = Math.floor(gx0 / TS), c1 = Math.floor(gx1 / TS);
+  const r0 = Math.floor(gy0 / TS), r1 = Math.floor(gy1 / TS);
+  const roadPts = getLayout().roads.flatMap((r) => r.pts)
+    .filter((p) => p.x > VILLAGE.x0 - 8 && p.x < VILLAGE.x1 + 8 && p.z > VILLAGE.z0 - 8 && p.z < VILLAGE.z1 + 8);
+  const cellWorld = (cx: number, cy: number): [number, number] =>
+    [TB.x0 + (cx * TS + TS / 2) / TPX, TB.z0 + (cy * TS + TS / 2) / TPX];
+  const dirtAt = (wx: number, wz: number): boolean => {
+    if (Math.hypot(wx - 3, wz - 180) < 15) return true; // village plaza
+    for (const p of roadPts) if (Math.hypot(wx - p.x, wz - p.z) < 5.5) return true;
+    return false;
+  };
+  const hash = (a: number, b: number): number => {
+    const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const dirtGrid = new Map<string, boolean>();
+  const isDirt = (cx: number, cy: number): boolean => {
+    const k = cx + ',' + cy;
+    let v = dirtGrid.get(k);
+    if (v === undefined) { const [wx, wz] = cellWorld(cx, cy); v = dirtAt(wx, wz); dirtGrid.set(k, v); }
+    return v;
+  };
+  for (let cy = r0; cy <= r1; cy++) {
+    for (let cx = c0; cx <= c1; cx++) {
+      const [wx, wz] = cellWorld(cx, cy);
+      const inside = inVillage(wx, wz);
+      // outer transition ring: cells just outside the rect fade the tiles in
+      const near = wx > VILLAGE.x0 - 6 && wx < VILLAGE.x1 + 6 && wz > VILLAGE.z0 - 6 && wz < VILLAGE.z1 + 6;
+      if (!inside && !near) continue;
+      // feather the patch edge against the blurred surroundings
+      const edge = wx - VILLAGE.x0 < 6 || VILLAGE.x1 - wx < 6 || wz - VILLAGE.z0 < 6 || VILLAGE.z1 - wz < 6;
+      g.globalAlpha = !inside ? 0.22 : edge ? 0.45 : 1;
+      let tile: HTMLCanvasElement;
+      if (isDirt(cx, cy)) {
+        const n = isDirt(cx, cy - 1), s2 = isDirt(cx, cy + 1), w = isDirt(cx - 1, cy), e = isDirt(cx + 1, cy);
+        if (!n && !w) tile = vs.dirtEdge.tl;
+        else if (!n && !e) tile = vs.dirtEdge.tr;
+        else if (!s2 && !w) tile = vs.dirtEdge.bl;
+        else if (!s2 && !e) tile = vs.dirtEdge.br;
+        else if (!n) tile = vs.dirtEdge.t;
+        else if (!s2) tile = vs.dirtEdge.b;
+        else if (!w) tile = vs.dirtEdge.l;
+        else if (!e) tile = vs.dirtEdge.r;
+        else tile = hash(cx, cy) < 0.12 ? vs.dirtVar : vs.dirtFull;
+      } else {
+        const h = hash(cx, cy);
+        tile = h < 0.8 ? vs.grass[0] : h < 0.94 ? vs.grass[1] : vs.grass[2];
+      }
+      g.drawImage(tile, cx * TS, cy * TS);
+    }
+  }
+  g.globalAlpha = 1;
+
+  // ---- trees + fence runs (fixed decorative spots, clear of buildings/roads) ----
+  const trees: Array<[number, number, HTMLCanvasElement, number, number]> = [
+    [-24, 146, vs.pine, 10, 20], [14, 145, vs.roundTree, 10, 20], [27, 146, vs.pineSmall, 7, 7],
+    [44, 157, vs.pine, 10, 20], [53, 175, vs.autumn, 22, 22], [45, 197, vs.roundTree, 10, 20],
+    [59, 189, vs.thinTree, 9, 18], [-25, 197, vs.pine, 10, 20], [-21, 206, vs.pineOrange, 10, 20],
+    [21, 205, vs.roundTree, 10, 20], [37, 207, vs.pineSmall, 7, 7], [-13, 207, vs.pine, 10, 20],
+    [64, 168, vs.grove, 22, 22],
+  ];
+  for (const [tx, tz, spr, wu, hu] of trees) {
+    const x = w2tx(tx), y = w2ty(tz);
+    shadow(x, y, wu * TPX * 0.8);
+    g.drawImage(spr, x - (wu * TPX) / 2, y - hu * TPX, wu * TPX, hu * TPX);
+  }
+  // fence runs along the north edge, gap at the gate/road (x -6..8)
+  for (const [fx0, fx1] of [[-27, -8], [10, 28]] as Array<[number, number]>) {
+    const x = w2tx(fx0), y = w2ty(143), w = (fx1 - fx0) * TPX;
+    g.drawImage(vs.fenceRun, x, y - 5 * TPX, w, (w / 64) * 16);
+  }
+  // street lamps along R5 (the shared layout places none inside the village:
+  // its 12x48 footprint collides with the shop boxes — these are visual-only,
+  // mirroring the layout's own road-lamp rhythm: every ~15 units, alternating)
+  for (const [lx, lz] of [[-11, 153], [11, 170], [-11, 187], [11, 203]] as Array<[number, number]>) {
+    const x = w2tx(lx), y = w2ty(lz), s = TPX;
+    g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+  }
+
+  // ---- layout houses + lamps ----
+  for (const it of items) {
+    const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
+    if (it.kind === 'cottage') {
+      shadow(x, y, 72 * s);
+      g.drawImage(vs.cottage, x - 36 * s, y - 56 * s, 72 * s, 56 * s);
+    } else if (it.kind === 'stonehouse') {
+      shadow(x, y, 96 * s);
+      g.drawImage(vs.stonehouse, x - 48 * s, y - 72 * s, 96 * s, 72 * s);
+    } else if (it.kind === 'lamp') {
+      g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+    }
+  }
+
+  // ---- server named shops (asset houses + sign + label) ----
+  for (const o of OBSTACLES) {
+    if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
+    const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
+    if (!inVillage(cx, cz)) continue;
+    const hx = w2tx(cx), hy = w2ty(o.z1);
+    const fw = o.x1 - o.x0, fh = o.z1 - o.z0;
+    const s = TPX * Math.min(fw / 96, fh / 72);
+    const spr = o.label.includes('Broomsticks') ? vs.shopRed
+      : o.label.includes("Hog's Head") ? vs.shopGreen : vs.shopGray;
+    shadow(hx, hy, 96 * s);
+    g.drawImage(spr, hx - 48 * s, hy - 72 * s, 96 * s, 72 * s);
+    g.drawImage(vs.sign, hx + 32 * s, hy - 16 * s, 16 * s, 16 * s);
+    g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'center';
+    g.fillText(o.label, hx, hy + 13);
+  }
+}
+
+// --- server named buildings (outside Hogsmeade): drawn from OBSTACLES, labeled ---
 function paintServerBuildings(g: CanvasRenderingContext2D): void {
   for (const o of OBSTACLES) {
     if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
+    // Hogsmeade shops are drawn by paintVillageAssets (asset pilot)
+    if (inVillage((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)) continue;
     const cx = (o.x0 + o.x1) / 2;
     const hx = w2tx(cx), hy = w2ty(o.z1); // anchored on the footprint's south edge (the sprite grows north from its base line)
     // named shops get stone houses, scaled to fit INSIDE the server footprint: the old
@@ -632,7 +767,16 @@ function hexA(hex: string, a: number): string {
 function paintDecorations(g: CanvasRenderingContext2D): void {
   const L = getLayout();
   // roads from layout: dark edge -> base -> light center
+  // (Hogsmeade pilot: the tiled dirt band replaces road strokes inside the
+  // village rect, so strokes are clipped out of it when assets are ready)
   g.lineCap = 'round'; g.lineJoin = 'round';
+  g.save();
+  if (villageSprites()) {
+    const clip = new Path2D();
+    clip.rect(0, 0, TW, TH);
+    clip.rect(w2tx(VILLAGE.x0), w2ty(VILLAGE.z0), (VILLAGE.x1 - VILLAGE.x0) * TPX, (VILLAGE.z1 - VILLAGE.z0) * TPX);
+    g.clip(clip, 'evenodd');
+  }
   for (const road of L.roads) {
     const passes: Array<[number, string]> = [
       [road.width + 2.5, hexA(PAL.path.dark, 0.9)],
@@ -650,6 +794,7 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
       g.stroke();
     }
   }
+  g.restore();
   // bushes & stones from layout (collision-checked at build)
   // + v2 new regions: well/market/gate/dock/boat/lighthouse/web/glowflower/tent/campfire/greenhouse/garden/owlery/scoreboard/hoop
   // L4 视觉层次：灌木/石头是背景板，压暗 30% + 降饱和度，不抢建筑的戏。
@@ -956,6 +1101,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   g.filter = 'blur(9px)';
   g.drawImage(layer, 0, 0);
   g.filter = 'none';
+  // Hogsmeade asset pilot: tiled ground + asset buildings (crisp, pre-decor)
+  paintVillageAssets(g);
   // decorations on top (paths, bushes, stones) — not blurred, crisp details
   paintDecorations(g);
   // castle structures — crisp, drawn after the blur so walls/towers read at 1x
@@ -1084,14 +1231,16 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
 
     // --- ground: single pre-rendered texture blit (culling = source-rect clamp) ---
     // drawSprite leaves imageSmoothingEnabled=false; ground wants smooth scaling.
+    // Ground texture waits for the asset pack to settle (ready or failed);
+    // a failed pack still builds, with code-drawn fallbacks inside.
     ctx.imageSmoothingEnabled = true;
-    const tex = groundTex ?? (groundTex = buildGroundTexture());
+    const tex = groundTex ?? (assetsSettled() ? (groundTex = buildGroundTexture()) : null);
     ctx.fillStyle = GROUND;
     ctx.fillRect(0, 0, W, H);
     const wA = s2w(0, 0), wB = s2w(W, H);
     const sx0 = Math.max(0, w2tx(wA.x)), sy0 = Math.max(0, w2ty(wA.z));
     const sx1 = Math.min(TW, w2tx(wB.x)), sy1 = Math.min(TH, w2ty(wB.z));
-    if (sx1 > sx0 && sy1 > sy0) {
+    if (tex && sx1 > sx0 && sy1 > sy0) {
       const dx = (TB.x0 + sx0 / TPX - cam.x) * cam.zoom + W / 2;
       const dy = (TB.z0 + sy0 / TPX - cam.z) * cam.zoom + H / 2;
       ctx.drawImage(tex, sx0, sy0, sx1 - sx0, sy1 - sy0,
@@ -1149,7 +1298,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.fillStyle = '#fff';
       setFont('16px sans-serif');
       setAlign('center');
-      ctx.fillText('等待快照…', W / 2, H / 2);
+      ctx.fillText(tex ? '等待快照…' : '素材加载中…', W / 2, H / 2);
       perfEnd(t0);
       return;
     }
