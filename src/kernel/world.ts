@@ -2847,7 +2847,14 @@ export class World {
   private wander(c: Creature, speed: number, dt: number) {
     if (dist(c.pos, c.home) > 8) this.stepToward(c, c.home, speed * 0.6, dt);
     else {
-      if (!c.wander || dist(c.wander, c.pos) < 0.5 || this.rng() < 0.005) c.wander = { x: c.home.x + (this.rng() - 0.5) * 12, z: c.home.z + (this.rng() - 0.5) * 12 };
+      if (!c.wander || dist(c.wander, c.pos) < 0.5 || this.rng() < 0.005) {
+        c.wander = { x: c.home.x + (this.rng() - 0.5) * 12, z: c.home.z + (this.rng() - 0.5) * 12 };
+        // a target inside a solid (the lake disc, a trunk, a wall) can never be reached: the walker
+        // presses itself onto the boundary point nearest the target and stays there — and where
+        // several homes face the same shore, they pile into one heap (2026-10-20 review). Resolve
+        // the target out of solids first: the walker strolls to the nearest reachable point instead.
+        if (!CREATURES[c.kind].flying) this.solids.resolve(c.wander, CREATURES[c.kind].radius);
+      }
       this.stepToward(c, c.wander, speed * 0.3, dt);
     }
   }
@@ -2941,6 +2948,11 @@ export class World {
           // acromantula appearing beside whoever walked into the forest)
           const clear = Math.max(8, def.aggro + 2);
           if (def.faction === 'hostile' && [...this.nearWizards(p, clear)].some((w) => this.isActive(w) && dist(w.pos, p) < clear)) continue;
+          // never born in a heap: >= 3 m from every creature already out (2026-10-20 review: whole
+          // species were spawning into the same shore crescent / thicket and reading as one blob)
+          let crowded = false;
+          for (const o of this.creatures.values()) if (dist(o.pos, p) < 3) { crowded = true; break; }
+          if (crowded) continue;
           const hp = def.hp * (def.faction === 'hostile' ? rc.statMultiplier : 1);
           const c: Creature = {
             id: this.nid('c'), kind, pos: p, home: { ...p }, hp, maxHp: hp, facing: this.rng() * 6.28, target: null, attackCd: 0, rootedUntil: 0,

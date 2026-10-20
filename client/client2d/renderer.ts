@@ -375,16 +375,19 @@ const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
 function paintServerBuildings(g: CanvasRenderingContext2D): void {
   for (const o of OBSTACLES) {
     if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
-    const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
-    const hx = w2tx(cx), hy = w2ty(cz);
-    // named shops get stone houses, scaled to footprint
+    const cx = (o.x0 + o.x1) / 2;
+    const hx = w2tx(cx), hy = w2ty(o.z1); // anchored on the footprint's south edge (the sprite grows north from its base line)
+    // named shops get stone houses, scaled to fit INSIDE the server footprint: the old
+    // max(..., 0.7) floor blew a 12x10 m shop up to ~67x50 m of art, merging both shops
+    // into one mega-building that covered the walkable street — players standing on the
+    // street rendered "on the roof" (2026-10-20 review)
     const fw = (o.x1 - o.x0), fh = (o.z1 - o.z0);
-    const s = TPX * Math.max(fw / 96, fh / 72, 0.7);
+    const s = TPX * Math.min(fw / 96, fh / 72);
     drawStoneHouse(g, hx, hy, s);
-    // label
+    // label just south of the base line
     g.fillStyle = '#fff'; g.font = `${Math.max(10, 11 * 1)}px sans-serif`;
     g.textAlign = 'center';
-    g.fillText(o.label, hx, hy + 30 * TPX * 0.5);
+    g.fillText(o.label, hx, hy + 13);
   }
 }
 
@@ -1136,9 +1139,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const best = zoneCand[0];
       if (best) {
         setFont(zoneFont); setAlign('center');
+        // 只登记锚点，文字延后到最终标签层绘制（在所有建筑/实体之上）：
+        // 此处立即画会被随后绘制的建筑盖住一半（2026-10-20 review：「霍格莫德」压在楼后）
         zoneLabels.push({ x: best.x, y: best.y, text: best.text, hw: ctx.measureText(best.text).width / 2 + 2 });
-        ctx.fillStyle = night ? '#cfd4dc' : '#2c2c2c';
-        ctx.fillText(best.text, best.x, best.y);
       }
     }
 
@@ -1416,6 +1419,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       placed.push({ x: nm.x, y, hw: nm.hw });
     }
     // 4) draw
+    // zone labels first (under names, over everything else: they were painted under
+    // buildings before — see the collection pass above)
+    for (const z of zoneLabels) {
+      setFont(zoneFont); setAlign('center');
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 3;
+      ctx.strokeText(z.text, z.x, z.y);
+      ctx.fillStyle = night ? '#cfd4dc' : '#2c2c2c';
+      ctx.fillText(z.text, z.x, z.y);
+    }
     for (const nm of nameQueue) {
       if (nm.dot) {
         ctx.fillStyle = 'rgba(255,255,255,0.45)';

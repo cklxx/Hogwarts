@@ -527,14 +527,26 @@ export function drawStation(g: CanvasRenderingContext2D, x: number, y: number, s
   g.fillRect(x0 - 2 * s, y0 + H - wallH - 14 * s, W + 4 * s, 6 * s);
   g.strokeStyle = OUTLINE; g.strokeRect(x0 - 2 * s, y0 + H - wallH - 14 * s, W + 4 * s, 6 * s);
 
-  // 钟（中央）
-  const cx = x, cy = y0 + H - wallH - 14 * s + 3 * s;
+  // 钟（中央）：先起一座钟楼小山墙承托钟面。旧画法钟面圆心悬在女儿墙上方 8s、
+  // 只有底部 3s 搭着墙，建筑被屏幕下缘切掉时只剩一个漂浮的灰圆（2026-10-20 review）
+  const cx = x;
+  g.fillStyle = '#7f7a71'; // 山墙座（与女儿墙同色）
+  g.fillRect(cx - 10 * s, y0 + H - wallH - 26 * s, 20 * s, 20 * s);
+  g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4);
+  g.strokeRect(cx - 10 * s, y0 + H - wallH - 26 * s, 20 * s, 20 * s);
+  g.fillStyle = '#6b665e'; // 小金字顶
+  g.beginPath();
+  g.moveTo(cx - 11 * s, y0 + H - wallH - 26 * s);
+  g.lineTo(cx, y0 + H - wallH - 32 * s);
+  g.lineTo(cx + 11 * s, y0 + H - wallH - 26 * s);
+  g.closePath(); g.fill(); g.stroke();
+  const ccy = y0 + H - wallH - 16 * s; // 钟面圆心落在山墙座内
   g.fillStyle = '#f5f0e0';
-  g.beginPath(); g.arc(cx, cy - 8 * s, 8 * s, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(cx, ccy, 6.5 * s, 0, Math.PI * 2); g.fill();
   g.strokeStyle = OUTLINE; g.lineWidth = Math.max(1, s * 0.4); g.stroke();
   g.strokeStyle = '#3a3230'; g.lineWidth = Math.max(1, s * 0.4);
-  g.beginPath(); g.moveTo(cx, cy - 8 * s); g.lineTo(cx, cy - 12 * s); g.stroke();
-  g.beginPath(); g.moveTo(cx, cy - 8 * s); g.lineTo(cx + 4 * s, cy - 6 * s); g.stroke();
+  g.beginPath(); g.moveTo(cx, ccy); g.lineTo(cx, ccy - 4 * s); g.stroke();
+  g.beginPath(); g.moveTo(cx, ccy); g.lineTo(cx + 3 * s, ccy + 2 * s); g.stroke();
 
   // 拱门 ×3
   for (const ax of [x - W * 0.3, x, x + W * 0.3]) {
