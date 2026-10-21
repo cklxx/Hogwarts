@@ -3,9 +3,7 @@
  * 用色块 + 字母占位绘制实体（sprite agent 后续替换为精美贴图）。
  */
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
-import { drawSprite } from './sprites.js';
-import { getCharSprite, charSpriteKey, charSpriteSize, variantForName, dirFromAngle, type CharVariant } from './chars.js';
-import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush, drawStone, drawLamp,
+import { drawOak, drawPine, drawDeadTree, drawStoneHouse, drawBush, drawStone,
   drawWell, drawMarketStall, drawVillageGate, drawDock, drawMooringPost, drawBoat, drawLighthouse,
   drawWeb, drawGlowFlower, drawTent, drawCampfire, drawGreenhouse, drawGardenPlot,
   drawOwlery, drawScoreboard, drawTrainingHoop,
@@ -13,7 +11,7 @@ import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush,
   drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing,
   drawSignpost, drawReed, drawMushroom } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
-import { assetsSettled, villageSprites, preSprite, masterPalette, type PreSprite } from './assets.js';
+import { assetsSettled, preSprite, preSpritesReady, masterPalette, type PreSprite } from './assets.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
 
@@ -304,6 +302,45 @@ function drawMoon(ctx: CanvasRenderingContext2D, mx: number, my: number, k: numb
   ctx.restore();
 }
 
+// ------------------------------------------------------------------ 人物分类（原 chars.ts 逻辑辅助，2026-10-21 随手绘人物退役迁入）
+// 素材统一收口后，人物只走工厂 hw 精灵；此处只保留「名字 -> 变体 / 朝向 ->
+// 精灵方向」的纯逻辑，不再有任何代码绘制的人物精灵。
+export type CharDir = 'down' | 'up' | 'left' | 'right';
+export type CharVariant = 'student' | 'professor' | 'merchant' | 'hagrid' | 'elf';
+
+/** Facing angle (radians, screen space: 0=right, PI/2=down) -> sprite dir. */
+export function dirFromAngle(f: number): CharDir {
+  const a = ((f % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  if (a < Math.PI / 4 || a >= Math.PI * 7 / 4) return 'right';
+  if (a < Math.PI * 3 / 4) return 'down';
+  if (a < Math.PI * 5 / 4) return 'left';
+  return 'up';
+}
+
+const ELF_NAMES = ['dobby', 'kreacher', 'winky', 'hokie'];
+const PROFESSOR_NAMES = ['snape', 'mcgonagall', 'dumbledore', 'flitwick', 'sprout', 'binns', 'trelawney'];
+const MERCHANT_NAMES = ['rosmerta', 'flume', 'ollivander', 'fortescue', 'borgin', 'zabini'];
+
+/** Name -> variant. Students (players + student NPCs) get house robes. */
+export function variantForName(name: string): CharVariant {
+  const n = name.toLowerCase();
+  if (n.includes('hagrid')) return 'hagrid';
+  if (ELF_NAMES.some((e) => n.includes(e))) return 'elf';
+  if (PROFESSOR_NAMES.some((e) => n.includes(e))) return 'professor';
+  if (MERCHANT_NAMES.some((e) => n.includes(e))) return 'merchant';
+  return 'student';
+}
+
+// 工厂精灵缺失 = 素材缺口，必须暴露：该实体不绘制 + 每类只警告一次。
+// （旧口径是回退 sprites.ts/chars.ts 代码手绘，把缺口糊住——已废除。）
+const warnedMissing = new Set<string>();
+export function warnMissingSprite(what: string): void {
+  if (!preSpritesReady()) return; // 还在加载：null 不是缺失，不打假警报
+  if (warnedMissing.has(what)) return;
+  warnedMissing.add(what);
+  console.warn(`[2d] factory sprite missing, not drawn: ${what}`);
+}
+
 // ------------------------------------------------------------------ per-frame hot-path caches
 // These avoid per-entity allocations and string work inside draw():
 // - HOSTILE_KINDS: Set lookup instead of a per-creature array literal
@@ -319,9 +356,10 @@ const HOSTILE_KINDS = new Set(['dementor', 'spider', 'troll', 'basilisk', 'drago
  *   → 绘制高 10.7 单位、宽 7.1 单位。
  * - 城堡建筑 U_STRUCT = 3.2 世界单位/模型米（keep/礼堂/塔楼与布局占地
  *   的比值），或直接钉占地宽（商店 = 布局占地 1.0 倍）。
- * - 布局建筑（layout2d FOOT 族）：车站/图书馆/温室/宿舍塔登记宽 = 模型米
- *   × U_STRUCT（FOOT 只定 lot 落位与碰撞）；村庄住宅（茅屋/石屋）沿用
- *   FOOT 口径（村庄构图整体设计，见 size-design.md 第 4 节）。
+ * - 布局建筑（layout2d FOOT 族）：全部登记宽 = 模型米 × U_STRUCT（FOOT
+ *   只定 lot 落位与碰撞）。村庄住宅（茅屋/石屋）原沿用 FOOT 口径，2026-10-21
+ *   素材统一收口时并入本规则（模型 4.07 米 × U_STRUCT ≈ 13.0，取舍见
+ *   size-design.md 第 4 节）。
  * 此前三套口径（建筑占地×1.8、生物 hM×20、登记 visualW 逐个拍）已废除。 */
 export const U_LIVE = 5;
 export const U_STRUCT = 3.2;
@@ -337,7 +375,7 @@ export const FIGURE_W: Record<string, number> = {
   'hw-merchant': 7.4,    // 绘制高 9.9
   'hw-elf': 7.3,         // 绘制高 4.8（1.0 矮小，宽在耳朵）
 };
-/** 人物回退（chars.ts 代码人物）的绘制高（世界单位），与 hw 口径一致。 */
+/** 人物绘制高登记（世界单位，按变体；与 FIGURE_W 同源，见 size-design.md 第 5 节）。 */
 export const FIGURE_DH: Record<string, number> = {
   student: WIZARD_DH, professor: 11.1, hagrid: 11.9, merchant: 9.9, elf: 4.8,
 };
@@ -382,7 +420,7 @@ export const CREATURE_HW: Record<string, { name: string; wM: number }> = {
   birds: { name: 'hw-birds', wM: 7.0 },         // 鸟群展宽 1.4m
 };
 const HW_HOUSES = ['gryffindor', 'slytherin', 'ravenclaw', 'hufflepuff'];
-/** 巫师实体 -> hw 人物精灵基名。merchant/elf 暂无 hw 模型，返回 null 回退 chars.ts。 */
+/** 巫师实体 -> hw 人物精灵基名。全部变体已有 hw 模型；返回 null = 变体未映射（素材缺口，调用方警告并跳过绘制）。 */
 function hwFigureBase(name: string, house: string, variant: CharVariant): string | null {
   const n = name.toLowerCase();
   if (n.includes('norris')) return 'hw-cat'; // 洛丽丝夫人是猫，不是巫师
@@ -619,8 +657,8 @@ const texCastle: Painter = (g, x0, y0, w, h, rnd) => {
   // structures are drawn by paintCastle() as a crisp post-blur pass (see below)
 };
 
-// --- village: tonal patches only. Ground tiles + buildings are drawn crisp
-// --- by paintVillageAssets() after the blur pass (Kenney asset pilot). ---
+// --- village: tonal patches only. 地面走 tile 网格（paintTileGrid），
+// --- 建筑/树/灯由 registerVillageStanding() 注册为站立实体排序绘制。 ---
 const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
   const P = PAL.village;
   // tonal patches
@@ -631,16 +669,9 @@ const texVillage: Painter = (g, x0, y0, w, h, rnd) => {
   }
 };
 
-// --- Hogsmeade asset pilot (Kenney CC0, assets.ts): tiled ground + composed
-// --- houses/trees/lamps, drawn CRISP after the zone blur. Falls back to the
-// --- old code-drawn items when the asset pack failed to load. ---
-const VILLAGE = ZONES.find((z) => z.tex === 'village')!;
-const inVillage = (x: number, z: number): boolean =>
-  x >= VILLAGE.x0 && x <= VILLAGE.x1 && z >= VILLAGE.z0 && z <= VILLAGE.z1;
-
 /** 3转2 精灵绘制：(ox, oy) = 地面原点（占地中心）在纹理空间的落点，
  *  k = 纹理px / 精灵px。精灵已过工厂像素化管线，绘制时关闭平滑缩放保硬像素。
- *  返回 false = 精灵未就绪，调用方走原路径回退。 */
+ *  返回 false = 精灵未就绪，调用方按素材缺失口径处理（不绘制 + 警告）。 */
 function drawPre(g: CanvasRenderingContext2D, pm: PreSprite | null, ox: number, oy: number, k: number): boolean {
   if (!pm) return false;
   g.imageSmoothingEnabled = false;
@@ -649,7 +680,7 @@ function drawPre(g: CanvasRenderingContext2D, pm: PreSprite | null, ox: number, 
 }
 
 /** hw 精灵（地面纹理空间）：以世界坐标 (wx, wz) 为占地中心原点、visualW 为
- *  视觉宽度（世界单位）绘制。返回 false = 精灵未就绪，调用方走原代码绘制。 */
+ *  视觉宽度（世界单位）绘制。返回 false = 精靈未就绪（不存在该行） */
 function drawHwTex(g: CanvasRenderingContext2D, name: string, wx: number, wz: number, visualW: number): boolean {
   const pm = preSprite(name);
   if (!pm) return false;
@@ -706,223 +737,85 @@ function registerPre(name: string, wx: number, wz: number, visualW: number): boo
   return true;
 }
 
-function paintVillageAssets(g: CanvasRenderingContext2D, mode: 'ground' | 'standing'): void {
-  const vs = villageSprites();
-  const items = itemsInRect(getLayout(), VILLAGE.x0, VILLAGE.z0, VILLAGE.x1, VILLAGE.z1);
-  const shadow = (cg: CanvasRenderingContext2D, x: number, y: number, w: number): void => {
-    cg.fillStyle = 'rgba(0,0,0,0.25)';
-    cg.beginPath(); cg.ellipse(x, y - 2, w / 2, Math.max(2, w / 7), 0, 0, Math.PI * 2); cg.fill();
+// --- Hogsmeade（统一系统）：地面走 tile 网格地形（paintTileGrid，村庄广场
+// 土盘与 R5 路面在 buildClassGrid 里分类）；房屋/树/栅栏/路灯全部走工厂
+// 精灵站立注册。Kenney 2D 像素试点层已于 2026-10-21 下线，assets.ts 不再
+// 加载任何图集，村内不再有第二套素材与第二套尺寸口径。 ---
+// 聚落范围（站立注册/跳过判定用）：ZONES 的 village 是地面纹理区（x −30..70），
+// 比聚落实际范围小——4 间命名商店（x −52..−28）与西侧住宅都在纹理区外，
+// 旧口径下它们漏出村庄工厂注册、被别处代码绘制接管。聚落范围按
+// layout2d 村庄布局实测取 x −56..74、z 138..250。
+const VILLAGE_EXT = { x0: -56, z0: 138, x1: 74, z1: 250 };
+const inVillageExt = (x: number, z: number): boolean =>
+  x >= VILLAGE_EXT.x0 && x <= VILLAGE_EXT.x1 && z >= VILLAGE_EXT.z0 && z <= VILLAGE_EXT.z1;
+
+/** 村庄站立实体注册：定点树/栅栏/街灯 + 布局住宅/路灯 + 命名商店，
+ *  全部工厂精灵、全部走 registerPre 的统一深度口径。精灵缺失 = 不注册
+ *  并警告（素材缺口暴露，不回退手绘）。 */
+function registerVillageStanding(): void {
+  const items = itemsInRect(getLayout(), VILLAGE_EXT.x0, VILLAGE_EXT.z0, VILLAGE_EXT.x1, VILLAGE_EXT.z1);
+  const reg = (name: string, x: number, z: number, w: number): void => {
+    if (!registerPre(name, x, z, w)) warnMissingSprite(name);
   };
-  // 3转2 试点：命名商店按标签选预渲染房屋，视觉宽度 = 布局占地宽 1.0 倍
-  // （尺寸系统：建筑钉占地，见 size-design.md；原 1.8 倍拍脑袋系数已废除）。
-  // 地面原点对齐占地中心。精灵自带烘焙阴影，不再叠椭圆假阴影。
+
+  // ---- 定点树（装饰位，避开建筑/道路）：原 Kenney 图集树（小松/秋树丛/
+  // 细树/绿树丛）无工厂对应件，统一改用工厂松/圆冠：小松 = 幼松（宽 6）、
+  // 树丛 = 3 棵簇植。登记宽与尺寸表第 6 节同口径（松/橡按高登记 13.8）。
+  const trees: Array<[number, number, string, number]> = [
+    [-24, 146, 'treePine', 13.8], [14, 145, 'treeRound', 13.8], [27, 146, 'treePine', 6],
+    [44, 157, 'treePine', 13.8], [45, 197, 'treeRound', 13.8],
+    [59, 189, 'treePine', 13.8], [-25, 197, 'treePine', 13.8], [-21, 206, 'treePine', 13.8],
+    [21, 205, 'treeRound', 13.8], [37, 207, 'treePine', 6], [-13, 207, 'treePine', 13.8],
+  ];
+  for (const [tx, tz, name, w] of trees) reg(name, tx, tz, w);
+  // 树丛两处：秋色丛 (53,175) 与绿树丛 (64,168)，各 3 棵簇植
+  for (const [cx, cz] of [[53, 175], [64, 168]] as Array<[number, number]>) {
+    reg('treeRound', cx - 4, cz - 2, 11);
+    reg('treePine', cx + 4, cz + 1, 12);
+    reg('treeRound', cx, cz + 4, 10);
+  }
+  // ---- 村口北缘栅栏两段（门/路留缺口 x -6..8）：工厂栅栏一段全宽 3 世界
+  // 单位（与原素材柱距相近），逐段平铺注册。
+  for (const [fx0, fx1] of [[-27, -8], [10, 28]] as Array<[number, number]>) {
+    for (let cx = fx0 + 1.5; cx < fx1; cx += 3) reg('fence', cx, 143, 3);
+  }
+  // ---- R5 街灯（共享布局在村内放不下路灯：12x48 占地与商店碰撞盒冲突；
+  // 沿用原视觉补点：每约 17 单位一盏、左右交替）。登记宽 12.6 = 工厂灯
+  // 精灵按高 32 世界单位反推（与原绘制同高，见尺寸表第 7 节）。
+  for (const [lx, lz] of [[-11, 153], [11, 170], [-11, 187], [11, 203]] as Array<[number, number]>) {
+    reg('lamp', lx, lz, 12.6);
+  }
+
+  // ---- 布局住宅与路灯 ----
+  // 住宅尺寸收口（size-design.md 第 4/7 节）：茅屋/石屋同模型（houseWood/
+  // houseStone，footW 4.071 米），登记宽 = 模型米 × U_STRUCT ≈ 13.0（× s），
+  // 废除 FOOT 口径（72s/96s）。锚点 = 占地中心：布局 z 为原绘制基线（南缘），
+  // 向北移半个占地深 (footD/2 × W/footW ≈ 3.7s) 与 registerPre 锚点口径对齐。
+  for (const it of items) {
+    if (it.kind === 'cottage' || it.kind === 'stonehouse') {
+      const name = it.kind === 'cottage' ? 'houseWood' : 'houseStone';
+      const W = 13.0 * it.s;
+      reg(name, it.x, it.z - 3.7 * it.s, W);
+    } else if (it.kind === 'lamp') {
+      reg('lamp', it.x, it.z, 12.6 * it.s);
+    }
+  }
+
+  // ---- 命名商店：工厂房屋钉占地（登记宽 = 占地宽，尺寸表第 7 节），
+  // 按标签选变体：三把扫帚 = 高顶酒馆、猪头酒吧/佐科 = 石屋、其余 = 木屋。
+  // 店名标签单独捕获一层（只有文字），排序键与原口径一致（占地南缘）。
   const shopPreName = (label: string): string =>
     label.includes('Broomsticks') ? 'houseTavern'
     : label.includes("Hog's Head") || label.includes('Zonko') ? 'houseStone' : 'houseWood';
-  const drawPreShop = (cg: CanvasRenderingContext2D, o: { label?: string; x0: number; x1: number; z0: number; z1: number }): boolean => {
-    const pm = preSprite(shopPreName(o.label ?? ''));
-    if (!pm) return false;
-    const k = ((o.x1 - o.x0) * TPX) / pm.w;
-    return drawPre(cg, pm, w2tx((o.x0 + o.x1) / 2), w2ty((o.z0 + o.z1) / 2), k);
-  };
-  if (!vs) {
-    // fallback: previous code-drawn village items + named shops（standing 模式逐个捕获）
-    if (mode === 'standing') {
-      for (const it of items) {
-        if (it.kind === 'cottage') {
-          captureStanding(it.z + 2, it.x - 40 * it.s - 3, it.z - 62 * it.s - 3, it.x + 40 * it.s + 3, it.z + 3,
-            (cg) => drawCottage(cg, w2tx(it.x), w2ty(it.z), TPX * it.s));
-        } else if (it.kind === 'stonehouse') {
-          captureStanding(it.z + 2, it.x - 52 * it.s - 3, it.z - 78 * it.s - 3, it.x + 52 * it.s + 3, it.z + 3,
-            (cg) => drawStoneHouse(cg, w2tx(it.x), w2ty(it.z), TPX * it.s));
-        } else if (it.kind === 'lamp') {
-          captureStanding(it.z + 1, it.x - 10, it.z - 38 * it.s - 3, it.x + 10, it.z + 3,
-            (cg) => drawLamp(cg, w2tx(it.x), w2ty(it.z), TPX * it.s));
-        }
-      }
-      for (const o of OBSTACLES) {
-        if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
-        const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
-        if (!inVillage(cx, cz)) continue;
-        captureStanding(o.z1, cx - (o.x1 - o.x0) * 0.8 - 6, o.z0 - 34, cx + (o.x1 - o.x0) * 0.8 + 6, o.z1 + 7, (cg) => {
-          const hx = w2tx(cx), hy = w2ty(o.z1);
-          if (!drawPreShop(cg, o)) {
-            const s = TPX * Math.min((o.x1 - o.x0) / 96, (o.z1 - o.z0) / 72);
-            drawStoneHouse(cg, hx, hy, s);
-          }
-          cg.fillStyle = '#fff'; cg.font = '11px sans-serif'; cg.textAlign = 'center';
-          cg.fillText(o.label!, hx, hy + 13);
-        }, o.z0); // Front 切分线 = 占地北缘
-      }
-    }
-    return;
-  }
-  if (mode === 'standing') { registerVillageStanding(vs, items, shadow, drawPreShop); return; }
-
-  // ---- ground tiles: grass base, dirt plaza + dirt band along village roads ----
-  const TS = 16; // texture px per tile (1:1 with source art)
-  const gx0 = w2tx(VILLAGE.x0), gy0 = w2ty(VILLAGE.z0);
-  const gx1 = w2tx(VILLAGE.x1), gy1 = w2ty(VILLAGE.z1);
-  const c0 = Math.floor(gx0 / TS), c1 = Math.floor(gx1 / TS);
-  const r0 = Math.floor(gy0 / TS), r1 = Math.floor(gy1 / TS);
-  const roadPts = getLayout().roads.flatMap((r) => r.pts)
-    .filter((p) => p.x > VILLAGE.x0 - 8 && p.x < VILLAGE.x1 + 8 && p.z > VILLAGE.z0 - 8 && p.z < VILLAGE.z1 + 8);
-  const cellWorld = (cx: number, cy: number): [number, number] =>
-    [TB.x0 + (cx * TS + TS / 2) / TPX, TB.z0 + (cy * TS + TS / 2) / TPX];
-  const dirtAt = (wx: number, wz: number): boolean => {
-    if (Math.hypot(wx - 3, wz - 180) < 15) return true; // village plaza
-    for (const p of roadPts) if (Math.hypot(wx - p.x, wz - p.z) < 5.5) return true;
-    return false;
-  };
-  const hash = (a: number, b: number): number => {
-    const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
-    return s - Math.floor(s);
-  };
-  const dirtGrid = new Map<string, boolean>();
-  const isDirt = (cx: number, cy: number): boolean => {
-    const k = cx + ',' + cy;
-    let v = dirtGrid.get(k);
-    if (v === undefined) { const [wx, wz] = cellWorld(cx, cy); v = dirtAt(wx, wz); dirtGrid.set(k, v); }
-    return v;
-  };
-  for (let cy = r0; cy <= r1; cy++) {
-    for (let cx = c0; cx <= c1; cx++) {
-      const [wx, wz] = cellWorld(cx, cy);
-      const inside = inVillage(wx, wz);
-      // outer transition ring: cells just outside the rect fade the tiles in
-      const near = wx > VILLAGE.x0 - 6 && wx < VILLAGE.x1 + 6 && wz > VILLAGE.z0 - 6 && wz < VILLAGE.z1 + 6;
-      if (!inside && !near) continue;
-      // feather the patch edge against the blurred surroundings
-      const edge = wx - VILLAGE.x0 < 6 || VILLAGE.x1 - wx < 6 || wz - VILLAGE.z0 < 6 || VILLAGE.z1 - wz < 6;
-      g.globalAlpha = !inside ? 0.22 : edge ? 0.45 : 1;
-      let tile: HTMLCanvasElement;
-      if (isDirt(cx, cy)) {
-        const n = isDirt(cx, cy - 1), s2 = isDirt(cx, cy + 1), w = isDirt(cx - 1, cy), e = isDirt(cx + 1, cy);
-        if (!n && !w) tile = vs.dirtEdge.tl;
-        else if (!n && !e) tile = vs.dirtEdge.tr;
-        else if (!s2 && !w) tile = vs.dirtEdge.bl;
-        else if (!s2 && !e) tile = vs.dirtEdge.br;
-        else if (!n) tile = vs.dirtEdge.t;
-        else if (!s2) tile = vs.dirtEdge.b;
-        else if (!w) tile = vs.dirtEdge.l;
-        else if (!e) tile = vs.dirtEdge.r;
-        else tile = hash(cx, cy) < 0.12 ? vs.dirtVar : vs.dirtFull;
-      } else {
-        const h = hash(cx, cy);
-        tile = h < 0.8 ? vs.grass[0] : h < 0.94 ? vs.grass[1] : vs.grass[2];
-      }
-      g.drawImage(tile, cx * TS, cy * TS);
-    }
-  }
-  g.globalAlpha = 1;
-
-}
-
-/** 霍格莫德站立实体注册（素材就绪分支）：树/栅栏/路灯/布局房/命名商店逐个捕获。
- *  与原 paintVillageAssets 的绘制代码一一对应，只是落点从地面纹理改为站立捕获。 */
-function registerVillageStanding(
-  vs: NonNullable<ReturnType<typeof villageSprites>>,
-  items: ReturnType<typeof itemsInRect>,
-  shadow: (cg: CanvasRenderingContext2D, x: number, y: number, w: number) => void,
-  drawPreShop: (cg: CanvasRenderingContext2D, o: { label?: string; x0: number; x1: number; z0: number; z1: number }) => boolean,
-): void {
-  // ---- trees + fence runs (fixed decorative spots, clear of buildings/roads) ----
-  const trees: Array<[number, number, HTMLCanvasElement, number, number]> = [
-    [-24, 146, vs.pine, 13, 26], [14, 145, vs.roundTree, 13, 26], [27, 146, vs.pineSmall, 8, 8],
-    [44, 157, vs.pine, 13, 26], [53, 175, vs.autumn, 24, 24], [45, 197, vs.roundTree, 13, 26],
-    [59, 189, vs.thinTree, 12, 24], [-25, 197, vs.pine, 13, 26], [-21, 206, vs.pineOrange, 13, 26],
-    [21, 205, vs.roundTree, 13, 26], [37, 207, vs.pineSmall, 8, 8], [-13, 207, vs.pine, 13, 26],
-    [64, 168, vs.grove, 24, 24],
-  ];
-  for (const [tx, tz, spr, wu, hu] of trees) {
-    captureStanding(tz + 1, tx - wu * 0.8 - 4, tz - hu - 16, tx + wu * 0.8 + 4, tz + 3, (cg) => {
-      const x = w2tx(tx), y = w2ty(tz);
-      // 3转2：松/圆冠换预渲染树（自带阴影），其余仍用图集精灵 + 椭圆假阴影。
-      // 工厂树登记宽 13.8 世界单位（松高 7m 按 U_LIVE 投影高导出，见尺寸表），
-      // 与图集树的 (wu, hu) 同步放大，保证村内两种树同尺。
-      const pm = spr === vs.pine ? preSprite('treePine') : spr === vs.roundTree ? preSprite('treeRound') : null;
-      if (pm && drawPre(cg, pm, x, y, (13.8 * TPX) / pm.w)) return;
-      shadow(cg, x, y, wu * TPX * 0.8);
-      cg.drawImage(spr, x - (wu * TPX) / 2, y - hu * TPX, wu * TPX, hu * TPX);
-    });
-  }
-  // fence runs along the north edge, gap at the gate/road (x -6..8)
-  for (const [fx0, fx1] of [[-27, -8], [10, 28]] as Array<[number, number]>) {
-    captureStanding(144, fx0 - 1, 143 - 8, fx1 + 1, 143 + 2, (cg) => {
-      const x = w2tx(fx0), y = w2ty(143), w = (fx1 - fx0) * TPX;
-      const pmFence = preSprite('fence');
-      if (pmFence) {
-        // 预渲染栅栏一段 = 1 米；游戏内每 3 世界单位铺一段（柱距与原素材相近）
-        const segW = 3 * TPX, k = segW / pmFence.w;
-        for (let sx = x + segW / 2; sx < x + w; sx += segW) drawPre(cg, pmFence, sx, y, k);
-      } else {
-        cg.drawImage(vs.fenceRun, x, y - 5 * TPX, w, (w / 64) * 16);
-      }
-    });
-  }
-  // street lamps along R5 (the shared layout places none inside the village:
-  // its 12x48 footprint collides with the shop boxes — these are visual-only,
-  // mirroring the layout's own road-lamp rhythm: every ~15 units, alternating)
-  for (const [lx, lz] of [[-11, 153], [11, 170], [-11, 187], [11, 203]] as Array<[number, number]>) {
-    captureStanding(lz + 1, lx - 9, lz - 36, lx + 9, lz + 2, (cg) => {
-      const x = w2tx(lx), y = w2ty(lz), s = TPX;
-      const pmLamp = preSprite('lamp');
-      if (!(pmLamp && drawPre(cg, pmLamp, x, y, (32 * s) / pmLamp.h))) {
-        cg.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
-      }
-    });
-  }
-
-  // ---- layout houses + lamps ----
-  for (const it of items) {
-    if (it.kind === 'cottage' || it.kind === 'stonehouse') {
-      captureStanding(it.z + 2, it.x - 54 * it.s - 4, it.z - 92 * it.s - 6, it.x + 54 * it.s + 4, it.z + 4, (cg) => {
-        const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
-        // 3转2：原点（占地中心）= 基线（南缘）向北 footD/2；登记宽 = FOOT 宽
-        // （茅屋 76 / 石屋 100 世界单位，与布局碰撞盒同宽，见尺寸表布局族）
-        const pm = preSprite(it.kind === 'cottage' ? 'houseWood' : 'houseStone');
-        const artW = it.kind === 'cottage' ? 72 * s : 96 * s;
-        if (pm) {
-          const k = artW / pm.w;
-          if (drawPre(cg, pm, x, y - (pm.footD / 2) * pm.ppm * k, k)) return;
-        }
-        if (it.kind === 'cottage') {
-          shadow(cg, x, y, 72 * s);
-          cg.drawImage(vs.cottage, x - 36 * s, y - 56 * s, 72 * s, 56 * s);
-        } else {
-          shadow(cg, x, y, 96 * s);
-          cg.drawImage(vs.stonehouse, x - 48 * s, y - 72 * s, 96 * s, 72 * s);
-        }
-      });
-    } else if (it.kind === 'lamp') {
-      captureStanding(it.z + 1, it.x - 9, it.z - 36 * it.s - 3, it.x + 9, it.z + 2, (cg) => {
-        const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
-        const pmLamp = preSprite('lamp');
-        if (!(pmLamp && drawPre(cg, pmLamp, x, y, (32 * s) / pmLamp.h))) {
-          cg.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
-        }
-      });
-    }
-  }
-
-  // ---- server named shops (asset houses + sign + label) ----
   for (const o of OBSTACLES) {
     if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
     const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
-    if (!inVillage(cx, cz)) continue;
-    const fw = o.x1 - o.x0, fh = o.z1 - o.z0;
-    captureStanding(o.z1, cx - fw * 0.95 - 4, o.z0 - fh * 1.5 - 22, cx + fw * 0.95 + 4, o.z1 + 7, (cg) => {
-      const hx = w2tx(cx), hy = w2ty(o.z1);
-      const s = TPX * Math.min(fw / 96, fh / 72);
-      const spr = o.label!.includes('Broomsticks') ? vs.shopRed
-        : o.label!.includes("Hog's Head") ? vs.shopGreen : vs.shopGray;
-      if (!drawPreShop(cg, o)) {
-        shadow(cg, hx, hy, 96 * s);
-        cg.drawImage(spr, hx - 48 * s, hy - 72 * s, 96 * s, 72 * s);
-        cg.drawImage(vs.sign, hx + 32 * s, hy - 16 * s, 16 * s, 16 * s);
-      }
+    if (!inVillageExt(cx, cz)) continue;
+    const fw = o.x1 - o.x0;
+    reg(shopPreName(o.label), cx, cz, fw);
+    captureStanding(o.z1, cx - fw / 2 - 2, o.z1, cx + fw / 2 + 2, o.z1 + 16, (cg) => {
       cg.fillStyle = '#fff'; cg.font = '11px sans-serif'; cg.textAlign = 'center';
-      cg.fillText(o.label!, hx, hy + 13);
+      cg.fillText(o.label!, w2tx(cx), w2ty(o.z1) + 13);
     }, o.z0); // Front 切分线 = 占地北缘
   }
 }
@@ -932,8 +825,8 @@ function registerVillageStanding(
 function registerServerBuildings(): void {
   for (const o of OBSTACLES) {
     if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
-    // Hogsmeade shops are registered by registerVillageStanding (asset pilot)
-    if (inVillage((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)) continue;
+    // Hogsmeade shops are registered by registerVillageStanding
+    if (inVillageExt((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)) continue;
     const cx = (o.x0 + o.x1) / 2;
     const fw = (o.x1 - o.x0), fh = (o.z1 - o.z0);
     captureStanding(o.z1, cx - fw * 0.75 - 6, o.z0 - fh - 34, cx + fw * 0.75 + 6, o.z1 + 7, (cg) => {
@@ -1201,7 +1094,7 @@ function registerWillow(): void {
 function registerStandingAll(): void {
   registerWillow();
   registerCastleStanding();
-  paintVillageAssets(document.createElement('canvas').getContext('2d')!, 'standing');
+  registerVillageStanding();
   registerServerBuildings();
   registerDecorationStanding();
   registerHwLandmarks();
@@ -1223,8 +1116,8 @@ function hexA(hex: string, a: number): string {
 function paintDecorations(g: CanvasRenderingContext2D): void {
   const L = getLayout();
   // 道路不再矢量描边：已在 paintTileGrid 里按 layout 折线栅格化为 dirt
-  // tile 并走 autotile 边缘融合（星露谷式 tile 路面）。村庄内部另有
-  // paintVillageAssets 的平铺路面覆写。
+  // tile 并走 autotile 边缘融合（星露谷式 tile 路面）。村庄路面同口径，
+  // 不再有单独覆写层。
   // bushes & stones from layout (collision-checked at build)
   // + v2 new regions: well/market/gate/dock/boat/lighthouse/web/glowflower/tent/campfire/greenhouse/garden/owlery/scoreboard/hoop
   // L4 视觉层次：灌木/石头是背景板，压暗 30% + 降饱和度，不抢建筑的戏。
@@ -1271,11 +1164,7 @@ function drawLayoutItem(g: CanvasRenderingContext2D, it: { kind: string; x: numb
   const s = TPX * it.s;
   switch (it.kind) {
     case 'bush': case 'stone': case 'mushroom': break; // 已在 deco 图层画过
-    case 'brazier': {
-      const bs = Math.max(16, 20 * TPX * it.s / 3);
-      drawSprite(g, 'brazier', x - bs / 2, y - bs / 2 - 8 * TPX * it.s / 3, bs, bs);
-      break;
-    }
+    case 'brazier': warnMissingSprite('brazier'); break; // 工厂未建模：不绘制，缺口暴露（原 sprites.ts 手绘已退役）
     case 'well': drawWell(g, x, y, s); break;
     case 'marketstall': drawMarketStall(g, x, y, s); break;
     case 'villagegate': drawVillageGate(g, x, y, s); break;
@@ -1312,8 +1201,13 @@ function registerDecorationStanding(): void {
   const L = getLayout();
   const BIG = new Set(['greenhouse', 'station', 'library', 'dormtower', 'shop', 'pub']);
   const MED = new Set(['well', 'marketstall', 'villagegate', 'lighthouse', 'tent', 'owlery', 'scoreboard']);
+  // 村庄内的住宅/路灯/商店/酒吧与 OBSTACLES 命名商店同址，由
+  // registerVillageStanding 用工厂精灵唯一注册，此处跳过避免代码绘制同址
+  // 双画盖住工厂精灵（素材统一收口，2026-10-21）。
+  const VILLAGE_FACTORY_KINDS = new Set(['cottage', 'stonehouse', 'lamp', 'shop', 'pub']);
   for (const it of L.items) {
     if (GROUND_ITEM_KINDS.has(it.kind)) continue;
+    if (VILLAGE_FACTORY_KINDS.has(it.kind) && inVillageExt(it.x, it.z)) continue;
     const ex = BIG.has(it.kind) ? { x: 84 * it.s + 4, n: 118 * it.s + 6 }
       : MED.has(it.kind) ? { x: 48 * it.s + 3, n: 76 * it.s + 5 }
       : { x: 28 * it.s + 3, n: 50 * it.s + 5 };
@@ -1673,6 +1567,8 @@ function buildClassGrid(): { grid: GroundTileKind[]; cols: number; rows: number 
       // 否则可走的四角岸地会被画成水（视觉与碰撞不一致）。
       const lakeWob = (gridHash(col, row, 77) - 0.5) * 3;
       if (Math.hypot(cx + 118, cz - 40) < 30 + lakeWob) kind = 'water';
+      // 霍格莫德广场土盘（原 Kenney 试点层的地面构成，下线后由 tile 网格接管）
+      else if (Math.hypot(cx - 3, cz - 180) < 15) kind = 'dirt';
       else if (onRoad(cx, cz)) kind = 'dirt';
       else if (kind === 'water') kind = 'grass';
       grid[row * cols + col] = kind;
@@ -1786,8 +1682,8 @@ function buildGroundTexture(): HTMLCanvasElement {
     lg.restore();
   }
   g.drawImage(layer, 0, 0);
-  // Hogsmeade asset pilot: tiled ground only（建筑/树/灯改走站立实体排序绘制）
-  paintVillageAssets(g, 'ground');
+  // Hogsmeade 地面已并入 tile 网格（buildClassGrid 的村庄广场土盘 + 道路
+  // dirt 分类）；建筑/树/灯在 registerStandingAll 里注册为站立实体。
   // decorations on top (paths, bushes, stones) — not blurred, crisp details
   paintDecorations(g);
   // castle paved ground — crisp, drawn after the blur
@@ -1944,8 +1840,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
 
     // --- ground: single pre-rendered texture blit (culling = source-rect clamp) ---
     // 地面纹理已像素化：关闭平滑缩放，保硬像素边缘。
-    // Ground texture waits for the asset pack to settle (ready or failed);
-    // a failed pack still builds, with code-drawn fallbacks inside.
+    // Ground texture waits for the factory sprite load to settle (ready or
+    // failed); on failure the world still builds, with sprites simply absent
+    // (each missing entity warns once via warnMissingSprite).
     ctx.imageSmoothingEnabled = false;
     const tex = groundTex ?? (assetsSettled() ? (groundTex = buildGroundTexture()) : null);
     ctx.fillStyle = GROUND;
@@ -2030,7 +1927,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       if (!visible(t.x, t.z)) continue;
       const [sx, sy] = w2s(t.x, t.z);
       const size = Math.max(14, 22 * cam.zoom);
-      drawSprite(ctx, 'tombstone', sx - size / 2, sy - size / 2, size, size);
+      warnMissingSprite('tombstone'); // 工厂未建模：只留名字，碑体不绘制（原 sprites.ts 手绘已退役）
       if (cam.zoom > 0.9) {
         ctx.fillStyle = '#c9c9d4'; setFont('10px sans-serif'); setAlign('center');
         ctx.fillText(t.n.split(' ').pop() ?? t.n, sx, sy + size / 2 + 11);
@@ -2048,7 +1945,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     const meW = meOf();
 
     const drawCreature = (c: SC): void => {
-        // --- creature: hw 预渲染精灵优先，未映射物种走 pixel sprite，hp bar below ---
+        // --- creature: 只走 hw 工厂精灵（未映射/缺失则不绘制并警告），hp bar below ---
         const [sx, sy] = w2s(c.x, c.z);
       const size = Math.max(12, 20 * cam.zoom);
       const hwC = CREATURE_HW[c.k];
@@ -2069,7 +1966,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         topY = sy + dhC / 2 - pmC.anchorY * k;
         r = Math.max(6, Math.min(dwC / 2, 16 * cam.zoom));
       } else {
-        drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
+        // 无工厂精灵（未映射物种或加载失败）：不绘制本体，缺口暴露。
+        // 血条/标记仍走 overlays 的缺省框（topY/r 已按旧框赋值）。
+        warnMissingSprite(`creature:${c.k}`);
       }
       const hostile = c.s.includes('H') || HOSTILE_KINDS.has(c.k);
       // 密度感知：怪堆里只给最近的 3 个敌对显示标记+血条，其余只显示 sprite。
@@ -2127,17 +2026,14 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       } else {
         walkState.set(w.h, { x: w.x, z: w.z, t: 0 });
       }
-      // chars.ts: 4-direction 24x36 sprites, aspect-correct draw (fallback path)
-      const spriteKey = charSpriteKey(w.n, String(w.ho).toLowerCase(), w.f, walkFrame);
-      const { w: sprW, h: sprH } = charSpriteSize(variant);
-      const dh = dhW, dw = (dh * sprW) / sprH;
-      // 3转2 hw 人物：玩家按学院色、NPC 按名字映射（教授/海格/摄魂怪/洛丽丝夫人）。
-      // 行走时播工厂 w0..w3 帧（bobbing+倾斜+袍摆），站立用静态帧；精灵锚点 =
-      // 脚下地面原点，对齐原绘制框的底边（sy + dh/2）；硬像素缩放。
-      // hw 未就绪时回退 chars.ts 代码人物。
+      // 3转2 hw 人物（唯一人物素材）：玩家按学院色、NPC 按名字映射
+      // （教授/海格/摄魂怪/洛丽丝夫人）。行走时播工厂 w0..w3 帧
+      // （bobbing+倾斜+袍摆），站立用静态帧；精灵锚点 = 脚下地面原点，
+      // 对齐绘制框的底边（sy + dh/2）；硬像素缩放。
+      // 精灵缺失时不绘制本体并警告（原 chars.ts 代码人物回退已退役）。
       const hwBase = hwFigureBase(w.n, String(w.ho).toLowerCase(), variant);
       let pmChar: PreSprite | null = null;
-      let charW = dw;
+      let charW = dhW * 0.66;
       if (hwBase === 'hw-cat') {
         pmChar = preSprite('hw-cat');
         charW = CREATURE_HW.cat.wM * cam.zoom; // 猫与生物共用同一登记
@@ -2154,8 +2050,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
         ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + charDh / 2 - pmChar.anchorY * k, charW, charDh);
       } else {
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(getCharSprite(spriteKey), sx - dw / 2, sy - dh / 2, dw, dh);
+        warnMissingSprite(`figure:${hwBase ?? variant}`);
       }
       if (isMe) { ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2); }
       // facing tick
