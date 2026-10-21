@@ -635,7 +635,7 @@
   "anchorX": 5,
   "anchorY": 17,
   "footW": 0.546,
-  "footD": 1.429,
+  "footD": 1.456,
   "ppm": 14,
   "pix": {
    "perMeter": 14,
@@ -981,11 +981,11 @@
  },
  "hw-unicorn": {
   "w": 22,
-  "h": 41,
+  "h": 40,
   "anchorX": 8,
-  "anchorY": 34,
+  "anchorY": 33,
   "footW": 0.94,
-  "footD": 3.242,
+  "footD": 3.096,
   "ppm": 14,
   "pix": {
    "perMeter": 14,
@@ -995,11 +995,11 @@
  },
  "hw-kelpie": {
   "w": 22,
-  "h": 41,
+  "h": 40,
   "anchorX": 8,
-  "anchorY": 34,
+  "anchorY": 33,
   "footW": 0.94,
-  "footD": 3.136,
+  "footD": 3.096,
   "ppm": 14,
   "pix": {
    "perMeter": 14,
@@ -1011,9 +1011,9 @@
   "w": 39,
   "h": 41,
   "anchorX": 14,
-  "anchorY": 34,
+  "anchorY": 33,
   "footW": 2.394,
-  "footD": 3.136,
+  "footD": 3.096,
   "ppm": 14,
   "pix": {
    "perMeter": 14,
@@ -1195,7 +1195,7 @@
   "anchorX": 7,
   "anchorY": 22,
   "footW": 0.818,
-  "footD": 1.963,
+  "footD": 1.896,
   "ppm": 14,
   "pix": {
    "perMeter": 14,
@@ -1237,7 +1237,7 @@
   "anchorX": 8,
   "anchorY": 36,
   "footW": 1,
-  "footD": 3.014,
+  "footD": 3.038,
   "ppm": 14,
   "pix": {
    "perMeter": 14,

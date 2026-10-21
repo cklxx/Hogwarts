@@ -826,10 +826,13 @@ const HW_BUILDERS = {
     const body = sph(0.26, fur, 1.05, 0.78, 1.3); body.position.set(0, 0.34, -0.05); g.add(body);
     const head = sph(0.17, fur); head.position.set(0, 0.5, 0.32); g.add(head);
     for (const s of [1, -1]) {
+      const eye = sph(0.028, std(0x1c1a17, { r: 0.4 }));
+      eye.position.set(s * 0.07, 0.56, 0.45); g.add(eye);
       g.add(at(cone(0.06, 0.14, fur, 6), s * 0.09, 0.62, 0.32));
       g.add(at(cyl(0.035, 0.035, 0.3, fur, 6), s * 0.14, 0, 0.18));
       g.add(at(cyl(0.035, 0.035, 0.3, fur, 6), s * 0.14, 0, -0.28));
     }
+    g.add(at(box(0.05, 0.03, 0.03, std(0xb06a72, { r: 0.7 })), 0, 0.47, 0.5));
     const t1 = cyl(0.03, 0.035, 0.42, fur, 6);
     t1.position.set(0, 0.42, -0.44); t1.rotation.x = -0.7; g.add(t1);
     const t2 = cyl(0.02, 0.03, 0.36, fur, 6);
@@ -1133,14 +1136,14 @@ function horseBase(coat, maneM) {
   const body = sph(0.47, coat, 1, 0.95, 1.95); body.position.y = 1.12; g.add(body);
   legs4(g, coat, 0.25, 0.6, 1.0, 0.07);
   const neck = cyl(0.16, 0.26, 0.85, coat, 10);
-  neck.position.set(0, 1.32, 0.92); neck.rotation.x = 0.6; g.add(neck);
-  const head = sph(0.21, coat, 0.82, 0.85, 1.35); head.position.set(0, 1.92, 1.24); g.add(head);
-  g.add(at(box(0.19, 0.2, 0.34, coat), 0, 1.82, 1.5));
-  for (const s of [1, -1]) g.add(at(cone(0.055, 0.18, coat, 6), s * 0.11, 2.08, 1.16));
+  neck.position.set(0, 1.38, 1.0); neck.rotation.x = 0.45; g.add(neck);
+  const head = sph(0.21, coat, 0.82, 0.85, 1.35); head.position.set(0, 2.0, 1.38); g.add(head);
+  g.add(at(box(0.19, 0.2, 0.34, coat), 0, 1.9, 1.66));
+  for (const s of [1, -1]) g.add(at(cone(0.055, 0.18, coat, 6), s * 0.11, 2.16, 1.3));
   const mane = box(0.09, 0.78, 0.44, maneM);
-  mane.position.set(0, 1.62, 0.68); mane.rotation.x = 0.6; g.add(mane);
+  mane.position.set(0, 1.7, 0.78); mane.rotation.x = 0.45; g.add(mane);
   const tail = cyl(0.045, 0.09, 0.95, maneM, 7);
-  tail.position.set(0, 1.02, -0.98); tail.rotation.x = -0.45; g.add(tail);
+  tail.position.set(0, 1.02, -0.98); tail.rotation.x = -0.22; g.add(tail);
   return g;
 }
 
@@ -1200,7 +1203,11 @@ Object.assign(HW_BUILDERS, {
   'hw-unicorn': () => {
     const g = horseBase(std(0xf2f0eb, { r: 0.55 }), std(0xd8d8e2, { r: 0.5 }));
     const horn = cone(0.05, 0.6, M.gold, 8);
-    horn.position.set(0, 2.14, 1.42); horn.rotation.x = 0.55; g.add(horn);
+    horn.position.set(0, 2.26, 1.5); horn.rotation.x = 0.25; g.add(horn);
+    for (const s of [1, -1]) {
+      const eye = sph(0.045, std(0x2a2a33, { r: 0.4 }));
+      eye.position.set(s * 0.105, 2.08, 1.56); g.add(eye);
+    }
     return g;
   },
   'hw-kelpie': () => {
@@ -1208,9 +1215,10 @@ Object.assign(HW_BUILDERS, {
     for (let i = 0; i < 5; i++) {
       g.add(tube([[0.1, 1.85, 0.95 - i * 0.06], [0.3, 1.5, 0.9 - i * 0.06], [0.26, 1.15, 0.86 - i * 0.06]], 0.03, std(0x2e4d2a)));
     }
+    g.add(at(box(0.2, 0.13, 0.1, std(0x3a5744, { r: 0.5 })), 0, 1.88, 1.68));
     for (const s of [1, -1]) {
-      const eye = sph(0.04, std(0x51ff7a, { e: 0x2fae4e, ei: 1.6 }));
-      eye.position.set(s * 0.13, 1.98, 1.42); g.add(eye);
+      const eye = sph(0.058, std(0x51ff7a, { e: 0x2fae4e, ei: 1.6 }));
+      eye.position.set(s * 0.12, 2.08, 1.58); g.add(eye);
     }
     return g;
   },
@@ -1225,7 +1233,7 @@ Object.assign(HW_BUILDERS, {
       wing.scale.z = 0.14; wing.position.set(s * 0.34, 1.55, -0.15); wing.rotation.z = s * -0.55; wing.rotation.x = -0.3;
       g.add(wing);
       const eye = sph(0.045, std(0xf2f2f2, { e: 0xbbbbbb, ei: 0.9 }));
-      eye.position.set(s * 0.13, 1.98, 1.42); g.add(eye);
+      eye.position.set(s * 0.13, 2.06, 1.56); g.add(eye);
     }
     return g;
   },
@@ -1409,6 +1417,10 @@ Object.assign(HW_BUILDERS, {
     const shell = std(0x8d9299, { r: 0.8 });
     const dome = sph(0.58, shell, 1.15, 0.68, 1.3); dome.position.y = 0.52; g.add(dome);
     const head = sph(0.24, std(0x7d838a), 1, 0.8, 1); head.position.set(0, 0.34, 0.72); g.add(head);
+    for (const s of [1, -1]) {
+      const eye = sph(0.036, std(0x181a1c, { r: 0.35 }));
+      eye.position.set(s * 0.09, 0.43, 0.9); g.add(eye);
+    }
     for (const s of [1, -1]) for (let i = 0; i < 3; i++) {
       g.add(at(cyl(0.05, 0.04, 0.42, shell, 6), s * 0.55, 0, 0.45 - i * 0.45));
     }
@@ -1428,9 +1440,13 @@ Object.assign(HW_BUILDERS, {
       shin.position.set(s * 0.2, 0.22, 0.12); shin.rotation.x = -0.4; g.add(shin);
       g.add(at(box(0.11, 0.06, 0.26, fur), s * 0.2, 0.02, 0.22));
     }
-    const torsoG = new THREE.Group(); torsoG.position.y = 0.85; torsoG.rotation.x = 0.38; g.add(torsoG);
+    const torsoG = new THREE.Group(); torsoG.position.y = 0.85; torsoG.rotation.x = 0.3; g.add(torsoG);
     torsoG.add(cyl(0.23, 0.33, 0.85, fur, 11));
     const head = sph(0.21, fur, 0.9, 0.9, 1.1); head.position.set(0, 1.02, 0.14); torsoG.add(head);
+    for (const s of [1, -1]) {
+      const eye = sph(0.03, std(0xffc84d, { e: 0xcc8a1a, ei: 1.1 }));
+      eye.position.set(s * 0.08, 1.08, 0.3); torsoG.add(eye);
+    }
     torsoG.add(at(box(0.17, 0.15, 0.32, fur), 0, 0.92, 0.36));
     for (const s of [1, -1]) {
       torsoG.add(at(cone(0.06, 0.2, fur, 6), s * 0.12, 1.22, 0.1));
@@ -1462,6 +1478,10 @@ Object.assign(HW_BUILDERS, {
     const body = sph(0.5, tawny, 1, 0.95, 1.8); body.position.y = 1.05; g.add(body);
     legs4(g, tawny, 0.27, 0.58, 0.95, 0.09);
     const head = sph(0.27, M.skin); head.position.set(0, 1.5, 1.0); g.add(head);
+    for (const s of [1, -1]) {
+      const eye = sph(0.034, std(0x241a12, { r: 0.4 }));
+      eye.position.set(s * 0.09, 1.58, 1.23); g.add(eye);
+    }
     const mane = tor(0.31, 0.13, std(0x7a4a26));
     mane.position.set(0, 1.5, 0.88); g.add(mane);
     g.add(at(box(0.2, 0.16, 0.2, M.skin), 0, 1.38, 1.2));
@@ -1475,6 +1495,11 @@ Object.assign(HW_BUILDERS, {
     const body = sph(0.5, coat, 1, 0.95, 1.8); body.position.y = 1.05; g.add(body);
     legs4(g, coat, 0.27, 0.58, 0.95, 0.09);
     const head = sph(0.28, coat); head.position.set(0, 1.45, 1.0); g.add(head);
+    for (const s of [1, -1]) {
+      const eye = sph(0.035, std(0x241a12, { r: 0.4 }));
+      eye.position.set(s * 0.1, 1.53, 1.24); g.add(eye);
+    }
+    g.add(at(box(0.12, 0.08, 0.06, std(0x4a3423, { r: 0.9 })), 0, 1.36, 1.27));
     const mane = tor(0.32, 0.13, std(0x6e4a24));
     mane.position.set(0, 1.45, 0.86); g.add(mane);
     const gNeck = cyl(0.09, 0.12, 0.6, std(0xd8d2c8), 8);
@@ -1861,5 +1886,42 @@ async function profile(name) {
     .map(([x, y]) => `${x.toFixed(1)}:${y.toFixed(2)}`).join(' ');
 }
 
-window.__factory = { ready: true, measure, renderPiece, renderAll, showSprite, debugRoof, profile, PPM, pixelInfo: () => lastPixelInfo };
+/**
+ * 定向重渲：只渲指定 catalog 精灵，沿用给定调色板（hex 数组）过像素管线，
+ * 其余精灵不受影响（局部造型修正用，避免全量重渲导致调色板漂移）。
+ */
+function renderSomePixelated(names, paletteHex) {
+  const palette = paletteHex.map(hexToRgb);
+  const lut = buildPalLUT(palette);
+  const res = {};
+  for (const n of names) {
+    const b = HW_BUILDERS[n];
+    if (!b) { res[n] = null; continue; }
+    const e = renderGroup(b());
+    pixelateSprite(e, palette, lut);
+    res[n] = { dataUrl: e.dataUrl, meta: e.meta };
+  }
+  return res;
+}
+
+/** 朝向标记实验：+z 放红球、-z 放蓝球，渲出来看谁在画面下方（=近相机侧）。 */
+function renderMarkerTest() {
+  const g = new THREE.Group();
+  const red = sph(0.3, std(0xff2020)); red.position.set(0, 0.3, 1.2); g.add(red);
+  const blue = sph(0.3, std(0x2040ff)); blue.position.set(0, 0.3, -1.2); g.add(blue);
+  const post = cyl(0.05, 0.05, 1.6, std(0xdddddd), 8); g.add(post);
+  return renderGroup(g).dataUrl;
+}
+
+/** 朝向调试：按名渲染 catalog 精灵的高清原图（PPM 原生渲染，不像素化）。 */
+function renderRawList(names) {
+  const res = {};
+  for (const n of names) {
+    const b = HW_BUILDERS[n];
+    res[n] = b ? renderGroup(b()).dataUrl : null;
+  }
+  return res;
+}
+
+window.__factory = { ready: true, measure, renderPiece, renderAll, showSprite, debugRoof, profile, PPM, pixelInfo: () => lastPixelInfo, renderRawList, renderMarkerTest, renderSomePixelated };
 status('ready');
