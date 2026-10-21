@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sprite Factory — 3D → 2D prerender</title>
+<style>
+  body { margin: 0; background: #3d5a34; font-family: sans-serif; color: #eef; }
+  #status { padding: 8px 12px; font-size: 14px; background: #22331e; position: sticky; top: 0; }
+  #grid { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; align-items: flex-end; }
+  .cell { background:
+      repeating-conic-gradient(rgba(255,255,255,.14) 0% 25%, rgba(0,0,0,.10) 0% 50%) 0 0/24px 24px;
+    border: 1px solid rgba(255,255,255,.35); padding: 6px; }
+  .cell div { font-size: 12px; text-align: center; padding-top: 4px; color: #fff;
+    text-shadow: 0 1px 2px #000; }
+  .cell img { display: block; image-rendering: auto; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "/node_modules/three/build/three.module.js",
+    "three/addons/": "/node_modules/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="status">sprite factory: loading…</div>
+<div id="grid"></div>
+<script type="module" src="./factory.js"></script>
+</body>
+</html>

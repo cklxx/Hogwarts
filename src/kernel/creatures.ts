@@ -148,7 +148,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   aragog: {
     kind: 'aragog', name: 'Aragog', faction: 'hostile', hp: 200, speed: 5, damage: 20, range: 3, cooldown: 1.5, aggro: 16, radius: 1.4,
-    xp: 100, rep: 10, galleons: 12, weak: { fire: 2 }, spawn: { x: 140, z: 35, r: 12, max: 2 }, bite: { aura: 'poison', secs: 5, mag: 4 },
+    xp: 100, rep: 10, galleons: 12, weak: { fire: 2 }, spawn: { x: 152, z: 52, r: 10, max: 2 }, bite: { aura: 'poison', secs: 5, mag: 4 },
     ranged: { range: 16, power: 0, cooldown: 6, element: 'arcane', kind: 'root', secs: 1.5 },
     lore: 'King of the acromantulas, deep in the forest. His children do not share Hagrid’s fondness for you.',
   },
@@ -160,7 +160,7 @@ export const CREATURES: Record<CreatureKind, CreatureDef> = {
   },
   nundu: {
     kind: 'nundu', name: 'Nundu', faction: 'hostile', hp: 240, speed: 6, damage: 24, range: 3, cooldown: 1.7, aggro: 16, radius: 1.3,
-    xp: 115, rep: 12, galleons: 15, weak: { fire: 1.5 }, allDamage: 0.8, spawn: { x: 125, z: 40, r: 11, max: 1 }, bite: { aura: 'poison', secs: 5, mag: 5 },
+    xp: 115, rep: 12, galleons: 15, weak: { fire: 1.5 }, allDamage: 0.8, spawn: { x: 108, z: 58, r: 9, max: 1 }, bite: { aura: 'poison', secs: 5, mag: 5 },
     lore: 'Its breath alone fells a village. It takes a hundred wizards to subdue one — you are not a hundred wizards.',
   },
   dragon: {

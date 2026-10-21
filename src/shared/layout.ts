@@ -12,6 +12,7 @@
 //    within ~3 m of the grounds' level, so nobody walks up a mountain side.
 import { OBSTACLES, type Obstacle, type Style } from './map.js';
 import { VEIL_H, veilWalls } from './scenes.js';
+import { buildingColliders2D } from './layout2d.js';
 
 /** A footprint on the XZ plane, `h` metres tall. Boxes are axis-aligned; `obox` is a box turned by `yaw` about +Y. */
 export type Collider = { h: number; style: Style; label?: string } & (
@@ -94,6 +95,9 @@ function props(): Collider[] {
     out.push(box(Math.min(inner, outer), D.z, Math.max(inner, outer), D.z + D.depth, D.h, 'stone', 'Door jamb'));
   }
   out.push(box(MIRROR.x - MIRROR.w / 2, MIRROR.z - MIRROR.d / 2, MIRROR.x + MIRROR.w / 2, MIRROR.z + MIRROR.d / 2, MIRROR.h, 'stone', 'Mirror of Erised'));
+  // the 2D client's buildings (src/shared/layout2d.ts): drawn only in 2D, but solid in both —
+  // without these, walkers stood "on the roofs" of cottages/shops the 2D view draws (2026-10-20 review)
+  for (const b of buildingColliders2D()) out.push(box(b.x0, b.z0, b.x1, b.z1, 6, 'house', `2D ${b.kind}`));
   // the veil round each scene (src/shared/scenes.ts): nobody walks the land between, no bolt crosses it
   for (const v of veilWalls()) out.push(box(v.x0, v.z0, v.x1, v.z1, VEIL_H, 'veil', 'Veil'));
   return out;

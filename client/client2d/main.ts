@@ -5,7 +5,9 @@
 import { WS_KEY_PREFIX, WS_PROTOCOL } from '../../src/shared/constants';
 import { SnapDecoder } from '../../src/shared/snapwire';
 import { createRenderer2D, type Snap } from './renderer';
-import { mountHUD, updateHUD } from './hud.js';
+import { mountHUD, updateHUD, showItemInfo } from './hud.js';
+import { getLayout } from './layout.js';
+import { ITEM_INFO } from './components.js';
 
 const LS = 'hogwarts.token';
 const loadToken = () => { try { return localStorage.getItem(LS); } catch { return null; } };
@@ -27,12 +29,40 @@ async function gate(): Promise<string | null> {
 }
 
 async function main() {
+  // debug: #hour=21 / ?hour=21 — freeze the time of day for acceptance
+  // screenshots (the server runs a 900 s day; waiting for night is slow).
+  // NOTE: main() re-runs on ws reconnect and gate() strips the URL hash, so
+  // the override is kept in sessionStorage for the life of the tab.
+  const HOUR_LS = 'hogwarts.hourOverride';
+  const hourOverride = (() => {
+    const m = location.href.match(/[#?&]hour=(\d+(?:\.\d+)?)/);
+    const h = m ? parseFloat(m[1]) : NaN;
+    if (Number.isFinite(h)) {
+      const hh = ((h % 24) + 24) % 24;
+      try { sessionStorage.setItem(HOUR_LS, String(hh)); } catch { /* ignore */ }
+      return hh;
+    }
+    try {
+      const v = parseFloat(sessionStorage.getItem(HOUR_LS) ?? '');
+      return Number.isFinite(v) ? v : null;
+    } catch { return null; }
+  })();
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
   document.body.style.background = '#1a1a1a';
+  // 重连会重跑 main(): 先移除上一次的 canvas, 避免旧 canvas 在 body 里堆积
+  // (HUD 有 mountHUD 的 root 守卫, 不会重复挂载)
+  document.querySelectorAll('canvas[data-2d]').forEach((el) => el.remove());
   const canvas = document.createElement('canvas');
+  canvas.setAttribute('data-2d', 'game');
   document.body.appendChild(canvas);
   const ui = createRenderer2D(canvas);
+  (canvas as any).__renderer = ui;
+  // test hook: goto2d event for automated screenshots
+  addEventListener('goto2d', (e: any) => {
+    const { x, z } = e.detail ?? {};
+    if (typeof x === 'number' && typeof z === 'number') { ui.cam.x = x; ui.cam.z = z; }
+  });
   mountHUD(document.body);
 
   const token = await gate();
@@ -46,8 +76,7 @@ async function main() {
   ws.binaryType = 'arraybuffer';
   const snaps = new SnapDecoder();
 
-  ws.onopen = () => console.log('[2d] ws open');
-  ws.onclose = () => console.log('[2d] ws closed, retry in 3s'), setTimeout(main, 3000);
+  ws.onclose = () => { setTimeout(main, 3000); };
   ws.onerror = (e) => console.warn('[2d] ws error', e);
 
   // --- player controls: WASD move, click cast, 1-9 hotbar ---
@@ -65,8 +94,21 @@ async function main() {
     const k = e.key.toLowerCase();
     if ('wasd'.includes(k) && !keys.has(k)) { keys.add(k); sendInput(); }
     if (k >= '1' && k <= '9') {
-      // hotbar cast: use selected spell slot (server resolves key)
-      ws.send(JSON.stringify({ t: 'cast', key: 'slot' + k }));
+      // hotbar cast: server findSpell resolves '1'-'6' to the hotbar slot
+      ws.send(JSON.stringify({ t: 'cast', key: k }));
+    }
+    if (k === 'e') {
+      // 物品图鉴：40 单位内最近的布局物品
+      const px = (ui.cam as any).x, pz = (ui.cam as any).z;
+      let best: { x: number; z: number; kind: string } | null = null, bd = 40;
+      for (const it of getLayout().items) {
+        const d = Math.hypot(it.x - px, it.z - pz);
+        if (d < bd) { bd = d; best = it; }
+      }
+      if (best) {
+        const info = (ITEM_INFO as Record<string, { name: string; desc: string; grade: string }>)[best.kind];
+        if (info) showItemInfo(info.name, info.desc, info.grade);
+      }
     }
   });
   addEventListener('keyup', (e) => {
@@ -78,7 +120,7 @@ async function main() {
     const r = canvas.getBoundingClientRect();
     // convert screen -> world via renderer camera (exposed on ui)
     const wx = (ui as any).screenToWorld?.(e.clientX - r.left, e.clientY - r.top);
-    if (wx && ws.readyState === 1) ws.send(JSON.stringify({ t: 'cast', key: 'slot1', x: wx.x, z: wx.z }));
+    if (wx && ws.readyState === 1) ws.send(JSON.stringify({ t: 'cast', key: '1', x: wx.x, z: wx.z }));
   });
 
   ws.onmessage = (m: MessageEvent) => {
@@ -93,19 +135,23 @@ async function main() {
     if (msg.t === 'welcome') {
       ui.setMe(msg.handle);
       (main as any)._me = msg.handle;
-      console.log('[2d] welcome as', msg.handle);
+    } else if (msg.t === 'me') {
+      // private state: hotbar + real mana (server fills new wizards' hotbar from the curriculum)
+      (main as any)._meState = msg.s;
     } else if (msg.t === 'snap') {
       const s = msg.s as Snap;
+      if (hourOverride !== null) { s.hour = hourOverride; s.night = hourOverride < 6 || hourOverride >= 20; }
       ui.setSnap(s);
       // feed HUD: map Snap -> HudSnapshot
       const myH = (main as any)._me as string | undefined;
       const me = (myH && s.w.find((w) => w.h === myH)) ?? s.w[0];
+      const meState = (main as any)._meState as { hotbar?: ({ id: string; name: string; mana?: number | null; cd: number; kind?: 'harm' | 'help' | 'self' } | null)[]; mana?: number; maxMana?: number } | undefined;
       try {
         updateHUD({
-          me: me ? { handle: me.h, x: me.x, z: me.z, hp: me.hp, maxHp: me.m, mana: 100, maxMana: 100 } : { handle: '?', x: 0, z: 0, hp: 1, maxHp: 1, mana: 1, maxMana: 1 },
+          me: me ? { handle: me.h, x: me.x, z: me.z, hp: me.hp, maxHp: me.m, mana: meState?.mana ?? 100, maxMana: meState?.maxMana ?? 100 } : { handle: '?', x: 0, z: 0, hp: 1, maxHp: 1, mana: 1, maxMana: 1 },
           wizards: s.w.map((w) => ({ h: w.h, x: w.x, z: w.z })),
           creatures: s.c.map((c) => ({ x: c.x, z: c.z, hostile: c.s.includes('H') })),
-          hotbar: [],
+          hotbar: meState?.hotbar ?? [],
           selected: 0,
           warweek: (s as any).warweek ?? { day: ((s.term.n - 1) % 7) + 1, total: 7 },
           fates: (s as any).fates ?? [],
