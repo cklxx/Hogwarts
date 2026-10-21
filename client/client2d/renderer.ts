@@ -213,6 +213,31 @@ function pixelateGround(c: HTMLCanvasElement): void {
   g.imageSmoothingEnabled = false;
   g.drawImage(small, 0, 0, c.width, c.height);
 }
+/** 捕获专用马赛克 + 量化：与 pixelateGround 同口径（2 纹理px 一格 + 调色板
+ *  量化），但保留透明通道。pixelateGround 面向整幅不透明地面纹理，会把每个
+ *  像素的 alpha 强制为 255；用在站立实体捕获画布上会把透明区变成不透明
+ *  深棕色块（实测角点像素 (0,0,0,0) -> (42,31,26,255)），整幅捕获退化
+ *  为盖住一切的矩形。透明像素在此直接清零，不透明像素保留原 alpha。 */
+function pixelateCapture(c: HTMLCanvasElement): void {
+  const W = c.width >> 1, H = c.height >> 1;
+  const small = document.createElement('canvas'); small.width = W; small.height = H;
+  const sg = small.getContext('2d')!;
+  sg.imageSmoothingEnabled = false;
+  sg.drawImage(c, 0, 0, W, H);
+  const img = sg.getImageData(0, 0, W, H);
+  const d = img.data;
+  const q = makeQuantizer(palRgbs());
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 24) { d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0; continue; }
+    const v = q(d[i], d[i + 1], d[i + 2]);
+    d[i] = v[0]; d[i + 1] = v[1]; d[i + 2] = v[2];
+  }
+  sg.putImageData(img, 0, 0);
+  const g = c.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, c.width, c.height);
+  g.drawImage(small, 0, 0, c.width, c.height);
+}
 /** 仅量化不马赛克（水面波光帧等薄细节）。 */
 function quantizeCanvas(c: HTMLCanvasElement): void {
   const g = c.getContext('2d')!;
@@ -462,15 +487,15 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.6 + rnd() * 2.2,
       rnd() < 0.5 ? hexA('#6b5a3a', 0.4) : hexA(P.dark, 0.5));
   }
-  // 世界单位转纹理 px：TPX=3。树锚点 = 底部中心。
-  const w2x = (wx: number): number => w2tx(wx);
-  const w2y = (wz: number): number => w2ty(wz);
-  // 从世界坐标反推本 zone 的世界范围
+  // 禁林树木保留在地面纹理里（不进站立实体排序）：树冠直径约 72 世界单位、
+  // 间距约 11 单位，冠幅在俯视图里本就是连片地面覆盖；逐棵做站立精灵会把
+  // 整片林地盖成实心树冠毯、埋掉林中一切实体。林内遮挡由生物间 z 排序处理，
+  // 独立地标树（打人柳/村庄树/庭院树/装饰树）才进站立实体。
   const zx0 = (x0 / TPX) + TB.x0, zy0 = (y0 / TPX) + TB.z0;
   const zx1 = zx0 + w / TPX, zy1 = zy0 + h / TPX;
   for (const t of SERVER_TREES) {
     if (t.x < zx0 || t.x > zx1 || t.z < zy0 || t.z > zy1) continue;
-    const tx = w2x(t.x), ty = w2y(t.z);
+    const tx = w2tx(t.x), ty = w2ty(t.z);
     // 确定性种类选择（基于位置哈希，保证每次一致）
     const hk = Math.abs(Math.sin(t.x * 12.9898 + t.z * 78.233) * 43758.5453) % 1;
     if (hk < 0.55) drawOak(g, tx, ty, TPX);
@@ -594,46 +619,100 @@ function drawHwTex(g: CanvasRenderingContext2D, name: string, wx: number, wz: nu
   return drawPre(g, pm, w2tx(wx), w2ty(wz), (visualW * TPX) / pm.w);
 }
 
-function paintVillageAssets(g: CanvasRenderingContext2D): void {
+// ------------------------------------------------------------------ 统一深度排序：站立实体注册表
+// 遮挡修复（2026-10-21）：此前所有建筑/树/道具都烘焙进地面纹理，实体（生物/
+// 巫师）永远画在最上层——站在塔北面的人也压在屋顶上。现在地面纹理只保留
+// 平铺内容；高出地面的对象在烘焙期注册为站立实体，逐帧与生物/巫师按
+// 「占地南缘 z」统一排序绘制（北先南后）。
+// 两类条目：cap = 代码绘制捕获的离屏 canvas（纹理坐标）；pre = hw 预渲染
+// 精灵（逐帧按屏幕坐标绘制）。bx0..bz1 为世界包围盒（裁剪用，宁大勿裁）。
+type Standing =
+  | { kind: 'cap'; key: number; canvas: HTMLCanvasElement; tx0: number; ty0: number; bx0: number; bz0: number; bx1: number; bz1: number }
+  | { kind: 'pre'; key: number; pm: PreSprite; wx: number; wz: number; visualW: number; bx0: number; bz0: number; bx1: number; bz1: number };
+const standing: Standing[] = [];
+
+/** 把一段「以纹理坐标绘制」的代码捕获为独立站立实体。
+ *  key = 占地南缘世界 z；包围盒为世界坐标（须覆盖绘制范围）。 */
+function captureStanding(key: number, wx0: number, wz0: number, wx1: number, wz1: number,
+  draw: (g: CanvasRenderingContext2D) => void): void {
+  const bx0 = Math.floor(w2tx(wx0)), by0 = Math.floor(w2ty(wz0));
+  const bx1 = Math.ceil(w2tx(wx1)), by1 = Math.ceil(w2ty(wz1));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, bx1 - bx0); c.height = Math.max(1, by1 - by0);
+  const g = c.getContext('2d')!;
+  g.translate(-bx0, -by0);
+  draw(g);
+  pixelateCapture(c); // 与地面同口径像素化，但保留透明通道（见 pixelateCapture）
+  standing.push({ kind: 'cap', key, canvas: c, tx0: bx0, ty0: by0, bx0: wx0, bz0: wz0, bx1: wx1, bz1: wz1 });
+}
+
+/** hw 预渲染精灵注册为站立实体（key = 占地南缘 = wz + 占地深度/2）。
+ *  精灵缺失时不注册——捕获的代码绘制在下面兜底。返回是否注册成功。 */
+function registerPre(name: string, wx: number, wz: number, visualW: number): boolean {
+  const pm = preSprite(name);
+  if (!pm) return false;
+  const wPerM = visualW / pm.footW;               // 世界单位 / 模型米
+  const depthW = pm.footD * wPerM;                // 占地深度（世界单位）
+  const northW = (pm.anchorY / pm.ppm) * wPerM;   // 锚点以北图幅（世界单位）
+  standing.push({
+    kind: 'pre', key: wz + depthW / 2, pm, wx, wz, visualW,
+    bx0: wx - visualW / 2 - 2, bx1: wx + visualW / 2 + 2,
+    bz0: wz - northW - 2, bz1: wz + depthW / 2 + 2,
+  });
+  return true;
+}
+
+function paintVillageAssets(g: CanvasRenderingContext2D, mode: 'ground' | 'standing'): void {
   const vs = villageSprites();
   const items = itemsInRect(getLayout(), VILLAGE.x0, VILLAGE.z0, VILLAGE.x1, VILLAGE.z1);
-  const shadow = (x: number, y: number, w: number): void => {
-    g.fillStyle = 'rgba(0,0,0,0.25)';
-    g.beginPath(); g.ellipse(x, y - 2, w / 2, Math.max(2, w / 7), 0, 0, Math.PI * 2); g.fill();
+  const shadow = (cg: CanvasRenderingContext2D, x: number, y: number, w: number): void => {
+    cg.fillStyle = 'rgba(0,0,0,0.25)';
+    cg.beginPath(); cg.ellipse(x, y - 2, w / 2, Math.max(2, w / 7), 0, 0, Math.PI * 2); cg.fill();
   };
   // 3转2 试点：命名商店按标签选预渲染房屋，视觉宽度 = 占地宽 1.8 倍（碰撞不变），
   // 地面原点对齐占地中心。精灵自带烘焙阴影，不再叠椭圆假阴影。
   const shopPreName = (label: string): string =>
     label.includes('Broomsticks') ? 'houseTavern'
     : label.includes("Hog's Head") || label.includes('Zonko') ? 'houseStone' : 'houseWood';
-  const drawPreShop = (o: { label?: string; x0: number; x1: number; z0: number; z1: number }): boolean => {
+  const drawPreShop = (cg: CanvasRenderingContext2D, o: { label?: string; x0: number; x1: number; z0: number; z1: number }): boolean => {
     const pm = preSprite(shopPreName(o.label ?? ''));
     if (!pm) return false;
     const k = (1.8 * (o.x1 - o.x0) * TPX) / pm.w;
-    return drawPre(g, pm, w2tx((o.x0 + o.x1) / 2), w2ty((o.z0 + o.z1) / 2), k);
+    return drawPre(cg, pm, w2tx((o.x0 + o.x1) / 2), w2ty((o.z0 + o.z1) / 2), k);
   };
   if (!vs) {
-    // fallback: previous code-drawn village items + named shops
-    for (const it of items) {
-      const hx = w2tx(it.x), hy = w2ty(it.z);
-      if (it.kind === 'cottage') drawCottage(g, hx, hy, TPX * it.s);
-      else if (it.kind === 'stonehouse') drawStoneHouse(g, hx, hy, TPX * it.s);
-      else if (it.kind === 'lamp') drawLamp(g, hx, hy, TPX * it.s);
-    }
-    for (const o of OBSTACLES) {
-      if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
-      const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
-      if (!inVillage(cx, cz)) continue;
-      const hx = w2tx(cx), hy = w2ty(o.z1);
-      if (!drawPreShop(o)) {
-        const s = TPX * Math.min((o.x1 - o.x0) / 96, (o.z1 - o.z0) / 72);
-        drawStoneHouse(g, hx, hy, s);
+    // fallback: previous code-drawn village items + named shops（standing 模式逐个捕获）
+    if (mode === 'standing') {
+      for (const it of items) {
+        if (it.kind === 'cottage') {
+          captureStanding(it.z + 2, it.x - 40 * it.s - 3, it.z - 62 * it.s - 3, it.x + 40 * it.s + 3, it.z + 3,
+            (cg) => drawCottage(cg, w2tx(it.x), w2ty(it.z), TPX * it.s));
+        } else if (it.kind === 'stonehouse') {
+          captureStanding(it.z + 2, it.x - 52 * it.s - 3, it.z - 78 * it.s - 3, it.x + 52 * it.s + 3, it.z + 3,
+            (cg) => drawStoneHouse(cg, w2tx(it.x), w2ty(it.z), TPX * it.s));
+        } else if (it.kind === 'lamp') {
+          captureStanding(it.z + 1, it.x - 10, it.z - 38 * it.s - 3, it.x + 10, it.z + 3,
+            (cg) => drawLamp(cg, w2tx(it.x), w2ty(it.z), TPX * it.s));
+        }
       }
-      g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'center';
-      g.fillText(o.label, hx, hy + 13);
+      for (const o of OBSTACLES) {
+        if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
+        const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
+        if (!inVillage(cx, cz)) continue;
+        captureStanding(o.z1, cx - (o.x1 - o.x0) * 0.8 - 6, o.z0 - 34, cx + (o.x1 - o.x0) * 0.8 + 6, o.z1 + 7, (cg) => {
+          const hx = w2tx(cx), hy = w2ty(o.z1);
+          if (!drawPreShop(cg, o)) {
+            const s = TPX * Math.min((o.x1 - o.x0) / 96, (o.z1 - o.z0) / 72);
+            drawStoneHouse(cg, hx, hy, s);
+          }
+          cg.fillStyle = '#fff'; cg.font = '11px sans-serif'; cg.textAlign = 'center';
+          cg.fillText(o.label!, hx, hy + 13);
+        });
+      }
     }
     return;
   }
+  if (mode === 'standing') { registerVillageStanding(vs, items, shadow, drawPreShop); return; }
 
   // ---- ground tiles: grass base, dirt plaza + dirt band along village roads ----
   const TS = 16; // texture px per tile (1:1 with source art)
@@ -692,6 +771,16 @@ function paintVillageAssets(g: CanvasRenderingContext2D): void {
   }
   g.globalAlpha = 1;
 
+}
+
+/** 霍格莫德站立实体注册（素材就绪分支）：树/栅栏/路灯/布局房/命名商店逐个捕获。
+ *  与原 paintVillageAssets 的绘制代码一一对应，只是落点从地面纹理改为站立捕获。 */
+function registerVillageStanding(
+  vs: NonNullable<ReturnType<typeof villageSprites>>,
+  items: ReturnType<typeof itemsInRect>,
+  shadow: (cg: CanvasRenderingContext2D, x: number, y: number, w: number) => void,
+  drawPreShop: (cg: CanvasRenderingContext2D, o: { label?: string; x0: number; x1: number; z0: number; z1: number }) => boolean,
+): void {
   // ---- trees + fence runs (fixed decorative spots, clear of buildings/roads) ----
   const trees: Array<[number, number, HTMLCanvasElement, number, number]> = [
     [-24, 146, vs.pine, 10, 20], [14, 145, vs.roundTree, 10, 20], [27, 146, vs.pineSmall, 7, 7],
@@ -701,59 +790,70 @@ function paintVillageAssets(g: CanvasRenderingContext2D): void {
     [64, 168, vs.grove, 22, 22],
   ];
   for (const [tx, tz, spr, wu, hu] of trees) {
-    const x = w2tx(tx), y = w2ty(tz);
-    // 3转2：松/圆冠换预渲染树（自带阴影），其余仍用图集精灵 + 椭圆假阴影
-    const pm = spr === vs.pine ? preSprite('treePine') : spr === vs.roundTree ? preSprite('treeRound') : null;
-    if (pm && drawPre(g, pm, x, y, (wu * TPX * 1.1) / pm.w)) continue;
-    shadow(x, y, wu * TPX * 0.8);
-    g.drawImage(spr, x - (wu * TPX) / 2, y - hu * TPX, wu * TPX, hu * TPX);
+    captureStanding(tz + 1, tx - wu * 0.8 - 4, tz - hu - 16, tx + wu * 0.8 + 4, tz + 3, (cg) => {
+      const x = w2tx(tx), y = w2ty(tz);
+      // 3转2：松/圆冠换预渲染树（自带阴影），其余仍用图集精灵 + 椭圆假阴影
+      const pm = spr === vs.pine ? preSprite('treePine') : spr === vs.roundTree ? preSprite('treeRound') : null;
+      if (pm && drawPre(cg, pm, x, y, (wu * TPX * 1.1) / pm.w)) return;
+      shadow(cg, x, y, wu * TPX * 0.8);
+      cg.drawImage(spr, x - (wu * TPX) / 2, y - hu * TPX, wu * TPX, hu * TPX);
+    });
   }
   // fence runs along the north edge, gap at the gate/road (x -6..8)
   for (const [fx0, fx1] of [[-27, -8], [10, 28]] as Array<[number, number]>) {
-    const x = w2tx(fx0), y = w2ty(143), w = (fx1 - fx0) * TPX;
-    const pmFence = preSprite('fence');
-    if (pmFence) {
-      // 预渲染栅栏一段 = 1 米；游戏内每 3 世界单位铺一段（柱距与原素材相近）
-      const segW = 3 * TPX, k = segW / pmFence.w;
-      for (let sx = x + segW / 2; sx < x + w; sx += segW) drawPre(g, pmFence, sx, y, k);
-    } else {
-      g.drawImage(vs.fenceRun, x, y - 5 * TPX, w, (w / 64) * 16);
-    }
+    captureStanding(144, fx0 - 1, 143 - 8, fx1 + 1, 143 + 2, (cg) => {
+      const x = w2tx(fx0), y = w2ty(143), w = (fx1 - fx0) * TPX;
+      const pmFence = preSprite('fence');
+      if (pmFence) {
+        // 预渲染栅栏一段 = 1 米；游戏内每 3 世界单位铺一段（柱距与原素材相近）
+        const segW = 3 * TPX, k = segW / pmFence.w;
+        for (let sx = x + segW / 2; sx < x + w; sx += segW) drawPre(cg, pmFence, sx, y, k);
+      } else {
+        cg.drawImage(vs.fenceRun, x, y - 5 * TPX, w, (w / 64) * 16);
+      }
+    });
   }
   // street lamps along R5 (the shared layout places none inside the village:
   // its 12x48 footprint collides with the shop boxes — these are visual-only,
   // mirroring the layout's own road-lamp rhythm: every ~15 units, alternating)
   for (const [lx, lz] of [[-11, 153], [11, 170], [-11, 187], [11, 203]] as Array<[number, number]>) {
-    const x = w2tx(lx), y = w2ty(lz), s = TPX;
-    const pmLamp = preSprite('lamp');
-    if (!(pmLamp && drawPre(g, pmLamp, x, y, (32 * s) / pmLamp.h))) {
-      g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
-    }
+    captureStanding(lz + 1, lx - 9, lz - 36, lx + 9, lz + 2, (cg) => {
+      const x = w2tx(lx), y = w2ty(lz), s = TPX;
+      const pmLamp = preSprite('lamp');
+      if (!(pmLamp && drawPre(cg, pmLamp, x, y, (32 * s) / pmLamp.h))) {
+        cg.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+      }
+    });
   }
 
   // ---- layout houses + lamps ----
   for (const it of items) {
-    const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
     if (it.kind === 'cottage' || it.kind === 'stonehouse') {
-      // 3转2：原点（占地中心）= 基线（南缘）向北 footD/2；宽度沿用原素材口径
-      const pm = preSprite(it.kind === 'cottage' ? 'houseWood' : 'houseStone');
-      const artW = it.kind === 'cottage' ? 72 * s : 96 * s;
-      if (pm) {
-        const k = artW / pm.w;
-        if (drawPre(g, pm, x, y - (pm.footD / 2) * pm.ppm * k, k)) continue;
-      }
-      if (it.kind === 'cottage') {
-        shadow(x, y, 72 * s);
-        g.drawImage(vs.cottage, x - 36 * s, y - 56 * s, 72 * s, 56 * s);
-      } else {
-        shadow(x, y, 96 * s);
-        g.drawImage(vs.stonehouse, x - 48 * s, y - 72 * s, 96 * s, 72 * s);
-      }
+      captureStanding(it.z + 2, it.x - 54 * it.s - 4, it.z - 92 * it.s - 6, it.x + 54 * it.s + 4, it.z + 4, (cg) => {
+        const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
+        // 3转2：原点（占地中心）= 基线（南缘）向北 footD/2；宽度沿用原素材口径
+        const pm = preSprite(it.kind === 'cottage' ? 'houseWood' : 'houseStone');
+        const artW = it.kind === 'cottage' ? 72 * s : 96 * s;
+        if (pm) {
+          const k = artW / pm.w;
+          if (drawPre(cg, pm, x, y - (pm.footD / 2) * pm.ppm * k, k)) return;
+        }
+        if (it.kind === 'cottage') {
+          shadow(cg, x, y, 72 * s);
+          cg.drawImage(vs.cottage, x - 36 * s, y - 56 * s, 72 * s, 56 * s);
+        } else {
+          shadow(cg, x, y, 96 * s);
+          cg.drawImage(vs.stonehouse, x - 48 * s, y - 72 * s, 96 * s, 72 * s);
+        }
+      });
     } else if (it.kind === 'lamp') {
-      const pmLamp = preSprite('lamp');
-      if (!(pmLamp && drawPre(g, pmLamp, x, y, (32 * s) / pmLamp.h))) {
-        g.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
-      }
+      captureStanding(it.z + 1, it.x - 9, it.z - 36 * it.s - 3, it.x + 9, it.z + 2, (cg) => {
+        const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
+        const pmLamp = preSprite('lamp');
+        if (!(pmLamp && drawPre(cg, pmLamp, x, y, (32 * s) / pmLamp.h))) {
+          cg.drawImage(vs.lamp, x - 6 * s, y - 32 * s, 12 * s, 32 * s);
+        }
+      });
     }
   }
 
@@ -762,40 +862,45 @@ function paintVillageAssets(g: CanvasRenderingContext2D): void {
     if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
     const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
     if (!inVillage(cx, cz)) continue;
-    const hx = w2tx(cx), hy = w2ty(o.z1);
     const fw = o.x1 - o.x0, fh = o.z1 - o.z0;
-    const s = TPX * Math.min(fw / 96, fh / 72);
-    const spr = o.label.includes('Broomsticks') ? vs.shopRed
-      : o.label.includes("Hog's Head") ? vs.shopGreen : vs.shopGray;
-    if (!drawPreShop(o)) {
-      shadow(hx, hy, 96 * s);
-      g.drawImage(spr, hx - 48 * s, hy - 72 * s, 96 * s, 72 * s);
-      g.drawImage(vs.sign, hx + 32 * s, hy - 16 * s, 16 * s, 16 * s);
-    }
-    g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'center';
-    g.fillText(o.label, hx, hy + 13);
+    captureStanding(o.z1, cx - fw * 0.95 - 4, o.z0 - fh * 1.5 - 22, cx + fw * 0.95 + 4, o.z1 + 7, (cg) => {
+      const hx = w2tx(cx), hy = w2ty(o.z1);
+      const s = TPX * Math.min(fw / 96, fh / 72);
+      const spr = o.label!.includes('Broomsticks') ? vs.shopRed
+        : o.label!.includes("Hog's Head") ? vs.shopGreen : vs.shopGray;
+      if (!drawPreShop(cg, o)) {
+        shadow(cg, hx, hy, 96 * s);
+        cg.drawImage(spr, hx - 48 * s, hy - 72 * s, 96 * s, 72 * s);
+        cg.drawImage(vs.sign, hx + 32 * s, hy - 16 * s, 16 * s, 16 * s);
+      }
+      cg.fillStyle = '#fff'; cg.font = '11px sans-serif'; cg.textAlign = 'center';
+      cg.fillText(o.label!, hx, hy + 13);
+    });
   }
 }
 
-// --- server named buildings (outside Hogsmeade): drawn from OBSTACLES, labeled ---
-function paintServerBuildings(g: CanvasRenderingContext2D): void {
+// --- server named buildings (outside Hogsmeade): from OBSTACLES, labeled.
+// 注册为站立实体（key = 占地南缘 o.z1），逐帧参与深度排序。
+function registerServerBuildings(): void {
   for (const o of OBSTACLES) {
     if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
-    // Hogsmeade shops are drawn by paintVillageAssets (asset pilot)
+    // Hogsmeade shops are registered by registerVillageStanding (asset pilot)
     if (inVillage((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)) continue;
     const cx = (o.x0 + o.x1) / 2;
-    const hx = w2tx(cx), hy = w2ty(o.z1); // anchored on the footprint's south edge (the sprite grows north from its base line)
-    // named shops get stone houses, scaled to fit INSIDE the server footprint: the old
-    // max(..., 0.7) floor blew a 12x10 m shop up to ~67x50 m of art, merging both shops
-    // into one mega-building that covered the walkable street — players standing on the
-    // street rendered "on the roof" (2026-10-20 review)
     const fw = (o.x1 - o.x0), fh = (o.z1 - o.z0);
-    const s = TPX * Math.min(fw / 96, fh / 72);
-    drawStoneHouse(g, hx, hy, s);
-    // label just south of the base line
-    g.fillStyle = '#fff'; g.font = `${Math.max(10, 11 * 1)}px sans-serif`;
-    g.textAlign = 'center';
-    g.fillText(o.label, hx, hy + 13);
+    captureStanding(o.z1, cx - fw * 0.75 - 6, o.z0 - fh - 34, cx + fw * 0.75 + 6, o.z1 + 7, (cg) => {
+      const hx = w2tx(cx), hy = w2ty(o.z1); // anchored on the footprint's south edge (the sprite grows north from its base line)
+      // named shops get stone houses, scaled to fit INSIDE the server footprint: the old
+      // max(..., 0.7) floor blew a 12x10 m shop up to ~67x50 m of art, merging both shops
+      // into one mega-building that covered the walkable street — players standing on the
+      // street rendered "on the roof" (2026-10-20 review)
+      const s = TPX * Math.min(fw / 96, fh / 72);
+      drawStoneHouse(cg, hx, hy, s);
+      // label just south of the base line
+      cg.fillStyle = '#fff'; cg.font = `${Math.max(10, 11 * 1)}px sans-serif`;
+      cg.textAlign = 'center';
+      cg.fillText(o.label!, hx, hy + 13);
+    });
   }
 }
 
@@ -967,10 +1072,19 @@ const texWillow: Painter = (g, x0, y0, w, h, rnd) => {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 12 + rnd() * 26,
       rnd() < 0.5 ? hexA(P.dark, 0.2) : hexA(P.light, 0.2));
   }
+  // 树冠地面投影是地面效果，随地面纹理绘制（半径 40 世界单位的软阴影）。
+  blob(g, w2tx(45) + 8 * TPX, w2ty(0), 40 * TPX, 'rgba(0,0,0,0.25)');
+  // 树身与告示牌不在地面纹理里画（见 paintWillowTree + registerWillow）。
+};
+
+/** 打人柳（纹理坐标绘制，供 captureStanding 捕获为站立实体）。
+ *  part='tree' 树身（地面投影在 texWillow 里）；part='sign' 警告牌 (62,14)，
+ *  与树身分开捕获：两者占地不同，合并捕获会让牌子借树干的深度键排序。 */
+function paintWillowTree(g: CanvasRenderingContext2D, part: 'tree' | 'sign'): void {
+  const rnd = mulberry(4243);
   const tx = w2tx(45), ty = w2ty(0);
   const S = TPX;
-  // ground shadow
-  blob(g, tx + 8 * S, ty, 40 * S, 'rgba(0,0,0,0.25)');
+  if (part === 'tree') {
   // trunk: thick, gnarled
   g.strokeStyle = '#4a352a'; g.lineWidth = 14 * S; g.lineCap = 'round';
   g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx + 3 * S, ty - 40 * S); g.stroke();
@@ -1010,6 +1124,8 @@ const texWillow: Painter = (g, x0, y0, w, h, rnd) => {
   // canopy outline
   g.strokeStyle = '#2a1f1a'; g.lineWidth = Math.max(1, 1.5 * S);
   g.beginPath(); g.ellipse(tx, ty - 62 * S, 34 * S, 22 * S, 0, 0, Math.PI * 2); g.stroke();
+  }
+  if (part === 'sign') {
   // warning sign at (62,14)
   const wx = w2tx(62), wy = w2ty(14);
   g.fillStyle = '#4a3a2c';
@@ -1022,7 +1138,26 @@ const texWillow: Painter = (g, x0, y0, w, h, rnd) => {
   g.fillStyle = '#2a1f1a';
   g.font = `bold ${Math.max(10, 12 * S * 0.5)}px sans-serif`; g.textAlign = 'center';
   g.fillText('!', wx, wy - 13 * S);
+  }
 };
+
+/** 打人柳注册：树身与警告牌分开捕获。
+ *  树身 key = 树干基部 z=0（+2 惯例边距）；包围盒按实测外延：冠幅 x 5..85、
+ *  树冠北至 z≈-84。警告牌 key = 牌基 z=14。 */
+function registerWillow(): void {
+  captureStanding(2, 3, -88, 87, 2, (g) => paintWillowTree(g, 'tree'));
+  captureStanding(14, 50, -16, 74, 15, (g) => paintWillowTree(g, 'sign'));
+}
+
+/** 城堡/村庄/装饰/hw 地标的站立实体统一注册（buildGroundTexture 收尾调用）。 */
+function registerStandingAll(): void {
+  registerWillow();
+  registerCastleStanding();
+  paintVillageAssets(document.createElement('canvas').getContext('2d')!, 'standing');
+  registerServerBuildings();
+  registerDecorationStanding();
+  registerHwLandmarks();
+}
 
 const TEX_PAINT: Record<ZoneTex, Painter> = {
   castle: texCastle, grass: texGrass, forest: texForest,
@@ -1092,48 +1227,77 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
   dg.fillRect(0, 0, TW, TH);
   dg.globalCompositeOperation = 'source-over';
   g.drawImage(decoC, 0, 0);
+  // 只画平铺地面的物件；站立类物件由 registerDecorationStanding 注册排序绘制
   for (const it of L.items) {
-    const x = w2tx(it.x), y = w2ty(it.z);
-    const s = TPX * it.s;
-    switch (it.kind) {
-      case 'bush': case 'stone': case 'mushroom': break; // 已在 deco 图层画过
-      case 'brazier': {
-        const bs = Math.max(16, 20 * TPX * it.s / 3);
-        drawSprite(g, 'brazier', x - bs / 2, y - bs / 2 - 8 * TPX * it.s / 3, bs, bs);
-        break;
-      }
-      case 'well': drawWell(g, x, y, s); break;
-      case 'marketstall': drawMarketStall(g, x, y, s); break;
-      case 'villagegate': drawVillageGate(g, x, y, s); break;
-      case 'dock': if (!preSprite('hw-lake-dock')) drawDock(g, x, y, s); break; // hw 码头在 landmarks pass 合并绘制
-      case 'mooringpost': drawMooringPost(g, x, y, s); break;
-      case 'boat': drawBoat(g, x, y, s); break;
-      case 'lighthouse': drawLighthouse(g, x, y, s); break;
-      case 'web': drawWeb(g, x, y, s); break;
-      case 'glowflower': drawGlowFlower(g, x, y, s); break;
-      case 'tent': drawTent(g, x, y, s); break;
-      case 'campfire': drawCampfire(g, x, y, s); break;
-      case 'greenhouse': if (!drawHwTex(g, 'hw-greenhouse', it.x, it.z, 80 * it.s)) drawGreenhouse(g, x, y, s); break;
-      case 'gardenplot': drawGardenPlot(g, x, y, s); break;
-      case 'owlery': drawOwlery(g, x, y, s); break;
-      case 'scoreboard': drawScoreboard(g, x, y, s); break;
-      case 'traininghoop': drawTrainingHoop(g, x, y, s); break;
-      case 'shop': drawShop(g, x, y, s, it.label ?? '商店'); break;
-      case 'pub': drawPub(g, x, y, s); break;
-      case 'station': if (!drawHwTex(g, 'hw-station', it.x, it.z, 148 * it.s)) drawStation(g, x, y, s); break;
-      case 'library': if (!drawHwTex(g, 'hw-library', it.x, it.z, 108 * it.s)) drawLibrary(g, x, y, s); break;
-      case 'dormtower': if (!drawHwTex(g, 'hw-dorm-tower', it.x, it.z, 64 * it.s)) drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
-      case 'flowerbed': drawFlowerbed(g, x, y, s); break;
-      case 'bench': drawBench(g, x, y, s); break;
-      case 'scarecrow': drawScarecrow(g, x, y, s); break;
-      case 'beehive': drawBeehive(g, x, y, s); break;
-      case 'swing': drawSwing(g, x, y, s); break;
-      case 'signpost': drawSignpost(g, x, y, s); break;
-      case 'reed': drawReed(g, x, y, s); break;
-    }
+    if (!GROUND_ITEM_KINDS.has(it.kind)) continue;
+    drawLayoutItem(g, it);
   }
   // T3 宝可梦式：高草=遭遇区语言。禁林边缘一圈高草，3 层深浅+缺口
   paintTallGrassRing(g);
+}
+
+/** 平铺在地面上、不参与深度排序的布局物件（灌木/石头在 deco 图层另画，此处为空操作）。 */
+const GROUND_ITEM_KINDS = new Set([
+  'bush', 'stone', 'mushroom',
+  'dock', 'boat', 'web', 'glowflower', 'gardenplot', 'flowerbed', 'reed',
+]);
+
+/** 单个布局物件的绘制（纹理坐标）。地面物件由 paintDecorations 直接调用；
+ *  站立物件由 captureStanding 在捕获上下文中调用，代码完全一致。 */
+function drawLayoutItem(g: CanvasRenderingContext2D, it: { kind: string; x: number; z: number; s: number; label?: string }): void {
+  const x = w2tx(it.x), y = w2ty(it.z);
+  const s = TPX * it.s;
+  switch (it.kind) {
+    case 'bush': case 'stone': case 'mushroom': break; // 已在 deco 图层画过
+    case 'brazier': {
+      const bs = Math.max(16, 20 * TPX * it.s / 3);
+      drawSprite(g, 'brazier', x - bs / 2, y - bs / 2 - 8 * TPX * it.s / 3, bs, bs);
+      break;
+    }
+    case 'well': drawWell(g, x, y, s); break;
+    case 'marketstall': drawMarketStall(g, x, y, s); break;
+    case 'villagegate': drawVillageGate(g, x, y, s); break;
+    case 'dock': if (!preSprite('hw-lake-dock')) drawDock(g, x, y, s); break; // hw 码头在 landmarks pass 合并绘制
+    case 'mooringpost': drawMooringPost(g, x, y, s); break;
+    case 'boat': drawBoat(g, x, y, s); break;
+    case 'lighthouse': drawLighthouse(g, x, y, s); break;
+    case 'web': drawWeb(g, x, y, s); break;
+    case 'glowflower': drawGlowFlower(g, x, y, s); break;
+    case 'tent': drawTent(g, x, y, s); break;
+    case 'campfire': drawCampfire(g, x, y, s); break;
+    case 'greenhouse': if (!drawHwTex(g, 'hw-greenhouse', it.x, it.z, 80 * it.s)) drawGreenhouse(g, x, y, s); break;
+    case 'gardenplot': drawGardenPlot(g, x, y, s); break;
+    case 'owlery': drawOwlery(g, x, y, s); break;
+    case 'scoreboard': drawScoreboard(g, x, y, s); break;
+    case 'traininghoop': drawTrainingHoop(g, x, y, s); break;
+    case 'shop': drawShop(g, x, y, s, it.label ?? '商店'); break;
+    case 'pub': drawPub(g, x, y, s); break;
+    case 'station': if (!drawHwTex(g, 'hw-station', it.x, it.z, 148 * it.s)) drawStation(g, x, y, s); break;
+    case 'library': if (!drawHwTex(g, 'hw-library', it.x, it.z, 108 * it.s)) drawLibrary(g, x, y, s); break;
+    case 'dormtower': if (!drawHwTex(g, 'hw-dorm-tower', it.x, it.z, 64 * it.s)) drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
+    case 'flowerbed': drawFlowerbed(g, x, y, s); break;
+    case 'bench': drawBench(g, x, y, s); break;
+    case 'scarecrow': drawScarecrow(g, x, y, s); break;
+    case 'beehive': drawBeehive(g, x, y, s); break;
+    case 'swing': drawSwing(g, x, y, s); break;
+    case 'signpost': drawSignpost(g, x, y, s); break;
+    case 'reed': drawReed(g, x, y, s); break;
+  }
+}
+
+/** 装饰站立实体注册：非地面类的布局物件逐个捕获（key = 基线 z + 基座深）。 */
+function registerDecorationStanding(): void {
+  const L = getLayout();
+  const BIG = new Set(['greenhouse', 'station', 'library', 'dormtower', 'shop', 'pub']);
+  const MED = new Set(['well', 'marketstall', 'villagegate', 'lighthouse', 'tent', 'owlery', 'scoreboard']);
+  for (const it of L.items) {
+    if (GROUND_ITEM_KINDS.has(it.kind)) continue;
+    const ex = BIG.has(it.kind) ? { x: 84 * it.s + 4, n: 118 * it.s + 6 }
+      : MED.has(it.kind) ? { x: 48 * it.s + 3, n: 76 * it.s + 5 }
+      : { x: 28 * it.s + 3, n: 50 * it.s + 5 };
+    captureStanding(it.z + 3 * it.s, it.x - ex.x, it.z - ex.n, it.x + ex.x, it.z + 8 * it.s + 3,
+      (cg) => drawLayoutItem(cg, it));
+  }
 }
 
 // --- T3: tall grass ring at forest edge — "danger here" visual language ---
@@ -1177,7 +1341,7 @@ function paintTallGrassRing(g: CanvasRenderingContext2D): void {
 // Hogwarts-inspired irregular ward: polygonal outer wall, great hall, clock tower,
 // central keep + wing, viaduct, astronomy tower, bell towers, courtyard + well, south gate.
 // World coords; all sizes in world units (TPX tex px per unit).
-function paintCastle(g: CanvasRenderingContext2D): void {
+function paintCastle(g: CanvasRenderingContext2D, part: string): void {
   const S = PAL.stone, R = PAL.roof;
   const X = (x: number): number => w2tx(x);
   const Y = (z: number): number => w2ty(z);
@@ -1262,115 +1426,146 @@ function paintCastle(g: CanvasRenderingContext2D): void {
     drawOak(g, X(x), Y(z), TPX * 0.55);
   };
 
-  // --- 1. inner ward: paved ground ---
-  trace(WALL); g.fillStyle = '#a39c8f'; g.fill();
-  const prnd = mulberry(60221);
-  for (let i = 0; i < 26; i++) {
-    blob(g, X(-52 + prnd() * 100), Y(-102 + prnd() * 56), 8 + prnd() * 18, hexA(WD, 0.15));
+  if (part === 'ground') {
+    // --- 1. inner ward: paved ground ---
+    trace(WALL); g.fillStyle = '#a39c8f'; g.fill();
+    const prnd = mulberry(60221);
+    for (let i = 0; i < 26; i++) {
+      blob(g, X(-52 + prnd() * 100), Y(-102 + prnd() * 56), 8 + prnd() * 18, hexA(WD, 0.15));
+    }
+
+    // --- 2. gate spur path (ward -> main south path at [0,-40]) ---
+    g.strokeStyle = hexA(PAL.path.base, 0.95);
+    g.lineCap = 'round'; g.lineWidth = 4 * TPX;
+    g.beginPath(); g.moveTo(X(-3), Y(-50)); g.lineTo(X(0), Y(-38)); g.stroke();
+
+    // --- 3a. courtyard garden court (flat) ---
+    g.fillStyle = 'rgba(0,0,0,0.18)';
+    roundRect(g, X(-20) + 1.5 * TPX, Y(-56) + 2 * TPX, 38 * TPX, 7 * TPX, 6); g.fill();
+    g.fillStyle = '#8aa864';
+    roundRect(g, X(-20), Y(-56), 38 * TPX, 7 * TPX, 6); g.fill();
   }
 
-  // --- 2. gate spur path (ward -> main south path at [0,-40]) ---
-  g.strokeStyle = hexA(PAL.path.base, 0.95);
-  g.lineCap = 'round'; g.lineWidth = 4 * TPX;
-  g.beginPath(); g.moveTo(X(-3), Y(-50)); g.lineTo(X(0), Y(-38)); g.stroke();
-
-  // --- 3. courtyard: garden court + well + trees ---
-  g.fillStyle = 'rgba(0,0,0,0.18)';
-  roundRect(g, X(-20) + 1.5 * TPX, Y(-56) + 2 * TPX, 38 * TPX, 7 * TPX, 6); g.fill();
-  g.fillStyle = '#8aa864';
-  roundRect(g, X(-20), Y(-56), 38 * TPX, 7 * TPX, 6); g.fill();
-  tree(-14, -52.5); tree(12, -52.5);
-  const wx = X(0), wy = Y(-52.5); // well
-  blob(g, wx + 1.5, wy + 2, 2.2 * TPX, 'rgba(0,0,0,0.25)');
-  blob(g, wx, wy, 2.2 * TPX, WD);
-  blob(g, wx, wy, 1.4 * TPX, '#2a4f6a');
-  blob(g, wx - 1.5, wy - 1.5, 1.2, hexA('#cfe4ef', 0.8));
-
-  // --- 4. buildings ---
-  roofed(-50, -98, -28, -68, 'v'); // great hall (west)
-  clockTower(-17, -101, -10, -94); // clock tower (north)
-  roofed(-14, -88, 14, -60, 'v');  // keep (center)
-  roofed(14, -80, 26, -64, 'h');   // keep east wing
-  roofed(-28, -78, -14, -72, 'h'); // viaduct (hall -> keep)
-  windows(-49.2, -94, 0, 4, 5);    // great hall west windows
-  windows(25.2, -77, 0, 4, 4);     // east wing windows
-
-  // --- 5. outer wall: dark band + lighter wall-walk + crenellations ---
-  trace(WALL); g.strokeStyle = WD; g.lineWidth = 3.6 * TPX; g.lineJoin = 'round'; g.stroke();
-  trace(WALL); g.strokeStyle = hexA(WL, 0.9); g.lineWidth = 2.1 * TPX; g.stroke();
-  trace(WALL);
-  g.strokeStyle = hexA('#ddd6c6', 0.95); g.lineWidth = 1.1 * TPX;
-  g.setLineDash([2.4 * TPX, 2.0 * TPX]); g.stroke(); g.setLineDash([]);
-
-  // --- 6. towers: wall bastions + bell towers + astronomy tower ---
-  tower(-56, -102, 4.5); tower(18, -99, 4.5); tower(53, -59, 5);
-  tower(8, -45.5, 4.5); tower(-52, -59, 4.5);
-  tower(-44, -63, 3.2); tower(-36, -62.5, 2.8);
-  tower(33, -70, 7, true);
-
-  // --- 7. south gate: cut wall, wooden doors, flanking towers ---
-  const gz = -44.6;
-  g.fillStyle = '#a39c8f';
-  g.fillRect(X(-7), Y(-47.5), 8 * TPX, 6 * TPX); // wall cut
-  g.fillStyle = WOB;
-  g.fillRect(X(-6), Y(-46.2), 6 * TPX, 3.2 * TPX); // doors
-  g.fillStyle = WOD;
-  g.fillRect(X(-3.25), Y(-46.2), 0.5 * TPX, 3.2 * TPX); // center seam
-  for (let i = 0; i < 3; i++) {
-    blob(g, X(-5 + i * 2), Y(-45.4), 1.6, WOD);
-    blob(g, X(-5 + i * 2), Y(-43.8), 1.6, WOD);
+  if (part === 'courtyard') {
+    // --- 3b. courtyard trees + well ---
+    tree(-14, -52.5); tree(12, -52.5);
+    const wx = X(0), wy = Y(-52.5); // well
+    blob(g, wx + 1.5, wy + 2, 2.2 * TPX, 'rgba(0,0,0,0.25)');
+    blob(g, wx, wy, 2.2 * TPX, WD);
+    blob(g, wx, wy, 1.4 * TPX, '#2a4f6a');
+    blob(g, wx - 1.5, wy - 1.5, 1.2, hexA('#cfe4ef', 0.8));
   }
-  tower(-8.4, gz, 2.6); tower(2.4, gz - 0.2, 2.6);
+
+  if (part === 'buildings') {
+    // --- 4. buildings ---
+    roofed(-50, -98, -28, -68, 'v'); // great hall (west)
+    clockTower(-17, -101, -10, -94); // clock tower (north)
+    roofed(-14, -88, 14, -60, 'v');  // keep (center)
+    roofed(14, -80, 26, -64, 'h');   // keep east wing
+    roofed(-28, -78, -14, -72, 'h'); // viaduct (hall -> keep)
+    windows(-49.2, -94, 0, 4, 5);    // great hall west windows
+    windows(25.2, -77, 0, 4, 4);     // east wing windows
+  }
+
+  if (part === 'wall') {
+    // --- 5. outer wall: dark band + lighter wall-walk + crenellations ---
+    trace(WALL); g.strokeStyle = WD; g.lineWidth = 3.6 * TPX; g.lineJoin = 'round'; g.stroke();
+    trace(WALL); g.strokeStyle = hexA(WL, 0.9); g.lineWidth = 2.1 * TPX; g.stroke();
+    trace(WALL);
+    g.strokeStyle = hexA('#ddd6c6', 0.95); g.lineWidth = 1.1 * TPX;
+    g.setLineDash([2.4 * TPX, 2.0 * TPX]); g.stroke(); g.setLineDash([]);
+
+    // --- 7a. south gate: cut wall + wooden doors (flanking towers are CASTLE_TOWERS) ---
+    g.fillStyle = '#a39c8f';
+    g.fillRect(X(-7), Y(-47.5), 8 * TPX, 6 * TPX); // wall cut
+    g.fillStyle = WOB;
+    g.fillRect(X(-6), Y(-46.2), 6 * TPX, 3.2 * TPX); // doors
+    g.fillStyle = WOD;
+    g.fillRect(X(-3.25), Y(-46.2), 0.5 * TPX, 3.2 * TPX); // center seam
+    for (let i = 0; i < 3; i++) {
+      blob(g, X(-5 + i * 2), Y(-45.4), 1.6, WOD);
+      blob(g, X(-5 + i * 2), Y(-43.8), 1.6, WOD);
+    }
+  }
+
+  // --- 6. towers: part 't<i>' draws CASTLE_TOWERS[i] only ---
+  CASTLE_TOWERS.forEach(([tx2, tz2, tr, big], i) => {
+    if (part === 't' + i) tower(tx2, tz2, tr, big === 1);
+  });
+}
+
+/** 城堡塔楼表（与 paintCastle 原塔位一致）：[x, z, r, big]。 */
+const CASTLE_TOWERS: Array<[number, number, number, number]> = [
+  [-56, -102, 4.5, 0], [18, -99, 4.5, 0], [53, -59, 5, 0],
+  [8, -45.5, 4.5, 0], [-52, -59, 4.5, 0],
+  [-44, -63, 3.2, 0], [-36, -62.5, 2.8, 0],
+  [33, -70, 7, 1],
+  [-8.4, -44.6, 2.6, 0], [2.4, -44.8, 2.6, 0],
+];
+
+/** 城堡站立实体注册：建筑群一捕获、城墙一捕获、每塔一捕获、庭院树+井一捕获。
+ *  key 口径：建筑群 -77（须低于 hw 礼堂 -75.9 与 hw 高架桥 -73.2，保证 hw 精灵
+ *  仍盖在代码建筑之上）；城墙 -47（南缘）；塔 = z + r - 2（略低于对应 hw 塔）。 */
+function registerCastleStanding(): void {
+  captureStanding(-77, -54, -105, 30, -56, (g) => paintCastle(g, 'buildings'));
+  captureStanding(-47, -62, -110, 57, -40, (g) => paintCastle(g, 'wall'));
+  // 庭院捕获包围盒须覆盖两棵橡树全冠（s=TPX*0.55 的 drawOak：冠幅 ±28、
+  // 北展 54）：锚点 (-14,-52.5)/(12,-52.5) -> x -43..41、z -107..-45
+  captureStanding(-50.5, -43, -107, 41, -45, (g) => paintCastle(g, 'courtyard'));
+  CASTLE_TOWERS.forEach(([tx2, tz2, tr], i) => {
+    captureStanding(tz2 + tr - 2, tx2 - tr - 4, tz2 - tr - 6, tx2 + tr + 4, tz2 + tr + 4,
+      (g) => paintCastle(g, 't' + i));
+  });
 }
 
 // (inGrass retired: scatter placement moved to layout.ts with collision registry)
 
 
 /**
- * 3转2 hw 地标 + 道具 pass（地面纹理烘焙的最后一层）。
+ * 3转2 hw 地标 + 道具注册（站立实体）。
  * 城堡建筑覆盖 paintCastle 的代码绘制（位置/占地沿用 paintCastle 的布局坐标）；
- * 道具按 item-design.md 分类摆放到对应场景。精灵未就绪时 drawHwTex 返回
- * false，什么都不画，底下的代码绘制原样保留（回退）。
+ * 道具按 item-design.md 分类摆放到对应场景。逐帧按占地南缘深度与实体统一
+ * 排序绘制；精灵未就绪时不注册，捕获的代码绘制原样保留（回退）。
  * 视觉宽度口径：建筑 ≈ 占地 1.8 倍（与霍格莫德商店试点一致），道具按实物感。
  */
-function paintHwLandmarks(g: CanvasRenderingContext2D): void {
+function registerHwLandmarks(): void {
   // --- 城堡（paintCastle 坐标：大礼堂西、钟塔北、塔楼群、 南门） ---
-  drawHwTex(g, 'hw-great-hall', -39, -83, 30);
-  drawHwTex(g, 'hw-tower-mid', -13.5, -97.5, 11);   // 钟塔
-  drawHwTex(g, 'hw-tower-tall', -56, -102, 11);
-  drawHwTex(g, 'hw-tower-mid', 18, -99, 11);
-  drawHwTex(g, 'hw-tower-tall', 53, -59, 12);
-  drawHwTex(g, 'hw-tower-mid', 8, -45.5, 10);
-  drawHwTex(g, 'hw-tower-short', -52, -59, 10);
-  drawHwTex(g, 'hw-tower-short', -44, -63, 8);
-  drawHwTex(g, 'hw-tower-short', -36, -62.5, 8);
-  drawHwTex(g, 'hw-astro-tower', 33, -70, 12);      // 天文塔
-  drawHwTex(g, 'hw-castle-wall', -32, -104, 15);
-  drawHwTex(g, 'hw-castle-wall', -4, -103, 15);
-  drawHwTex(g, 'hw-castle-wall', 24, -99.5, 15);
-  drawHwTex(g, 'hw-castle-gate', -3, -45.3, 14);
+  registerPre('hw-great-hall', -39, -83, 30);
+  registerPre('hw-tower-mid', -13.5, -97.5, 11);   // 钟塔
+  registerPre('hw-tower-tall', -56, -102, 11);
+  registerPre('hw-tower-mid', 18, -99, 11);
+  registerPre('hw-tower-tall', 53, -59, 12);
+  registerPre('hw-tower-mid', 8, -45.5, 10);
+  registerPre('hw-tower-short', -52, -59, 10);
+  registerPre('hw-tower-short', -44, -63, 8);
+  registerPre('hw-tower-short', -36, -62.5, 8);
+  registerPre('hw-astro-tower', 33, -70, 12);      // 天文塔
+  registerPre('hw-castle-wall', -32, -104, 15);
+  registerPre('hw-castle-wall', -4, -103, 15);
+  registerPre('hw-castle-wall', 24, -99.5, 15);
+  registerPre('hw-castle-gate', -3, -45.3, 14);
   // --- 城堡主体第二批：主楼 keep + 东翼 + 高架桥（paintCastle 布局坐标） ---
-  drawHwTex(g, 'hw-keep', 0, -74, 37);              // 主楼（代码矩形 -14..14, -88..-60）
-  drawHwTex(g, 'hw-keep', 20, -72, 19);             // 东翼（代码矩形 14..26, -80..-64）
-  drawHwTex(g, 'hw-viaduct', -21, -75, 18);         // 高架桥（代码矩形 -28..-14, -78..-72）
+  registerPre('hw-keep', 0, -74, 37);              // 主楼（代码矩形 -14..14, -88..-60）
+  registerPre('hw-keep', 20, -72, 19);             // 东翼（代码矩形 14..26, -80..-64）
+  registerPre('hw-viaduct', -21, -75, 18);         // 高架桥（代码矩形 -28..-14, -78..-72）
   // --- 魁地奇看台：沿球场四边分段（texPitch 色带之上） ---
   for (const sz of [-176, -161, -146, -131]) {
-    drawHwTex(g, 'hw-pitch-stand', 7, sz, 16);
-    drawHwTex(g, 'hw-pitch-stand', 73, sz, 16);
+    registerPre('hw-pitch-stand', 7, sz, 16);
+    registerPre('hw-pitch-stand', 73, sz, 16);
   }
   for (const sx of [31, 49]) {
-    drawHwTex(g, 'hw-pitch-stand', sx, -200, 16);
-    drawHwTex(g, 'hw-pitch-stand', sx, -100, 16);
+    registerPre('hw-pitch-stand', sx, -200, 16);
+    registerPre('hw-pitch-stand', sx, -100, 16);
   }
   // --- 标志地点 ---
-  drawHwTex(g, 'hw-hagrid-hut', 105, 118, 34);      // 海格小屋（布局石屋位置）
-  drawHwTex(g, 'hw-whomping-willow', 45, 0, 22);    // 打人柳（willow 区中心）
-  drawHwTex(g, 'hw-quidditch-hoops', 40, -178, 26);
-  drawHwTex(g, 'hw-quidditch-hoops', 40, -122, 26);
-  drawHwTex(g, 'hw-lake-dock', -104, 48, 36);       // 黑湖码头（两段 dock 合并）
-  drawHwTex(g, 'hw-express', -44, 300, 44);         // 霍格沃茨特快（车站站台前）
-  drawHwTex(g, 'hw-owl-brown', 86, -84, 5);         // 猫头鹰棚屋栖鸟
-  drawHwTex(g, 'hw-owl-snowy', 75, -82, 5);
+  registerPre('hw-hagrid-hut', 105, 118, 34);      // 海格小屋（布局石屋位置）
+  registerPre('hw-whomping-willow', 45, 0, 22);    // 打人柳（willow 区中心）
+  registerPre('hw-quidditch-hoops', 40, -178, 26);
+  registerPre('hw-quidditch-hoops', 40, -122, 26);
+  registerPre('hw-lake-dock', -104, 48, 36);       // 黑湖码头（两段 dock 合并）
+  registerPre('hw-express', -44, 300, 44);         // 霍格沃茨特快（车站站台前）
+  registerPre('hw-owl-brown', 86, -84, 5);         // 猫头鹰棚屋栖鸟
+  registerPre('hw-owl-snowy', 75, -82, 5);
   // --- 道具（功能类：可交互场景；装饰类：依附建筑/场景） ---
   const props: Array<[string, number, number, number]> = [
     ['hw-cauldron', 99, 128, 5.5],        // 海格小屋前院
@@ -1396,7 +1591,7 @@ function paintHwLandmarks(g: CanvasRenderingContext2D): void {
     ['hw-wand-box', -236, 148, 4],        // 奥利凡德门前
     ['hw-willow-branch', 53, 7, 8],       // 打人柳下断枝
   ];
-  for (const [n, x, z, w] of props) drawHwTex(g, n, x, z, w);
+  for (const [n, x, z, w] of props) registerPre(n, x, z, w);
 }
 
 /** Build the full-world ground texture once. Zone edges are blurred for soft transitions. */
@@ -1430,16 +1625,14 @@ function buildGroundTexture(): HTMLCanvasElement {
   g.filter = 'blur(9px)';
   g.drawImage(layer, 0, 0);
   g.filter = 'none';
-  // Hogsmeade asset pilot: tiled ground + asset buildings (crisp, pre-decor)
-  paintVillageAssets(g);
+  // Hogsmeade asset pilot: tiled ground only（建筑/树/灯改走站立实体排序绘制）
+  paintVillageAssets(g, 'ground');
   // decorations on top (paths, bushes, stones) — not blurred, crisp details
   paintDecorations(g);
-  // castle structures — crisp, drawn after the blur so walls/towers read at 1x
-  paintCastle(g);
-  // server named buildings (Hogsmeade shops) — crisp, after blur
-  paintServerBuildings(g);
-  // 3转2 hw 地标 + 道具：覆盖在代码绘制之上（精灵未就绪时各自回退，代码版保留）
-  paintHwLandmarks(g);
+  // castle paved ground — crisp, drawn after the blur
+  paintCastle(g, 'ground');
+  // 站立实体注册（建筑/树/道具/hw 地标）：逐帧与生物/巫师按占地南缘统一排序
+  registerStandingAll();
   // 收尾：整图马赛克+主调色板量化（地面/代码绘制/hw 精灵统一像素风）
   pixelateGround(c);
   return c;
@@ -1657,65 +1850,17 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       }
     }
 
-    // --- projectiles: glowing core + motion trail ---
-    // trails tracked locally: id -> recent screen positions (no velocity in snapshot)
-    const now = performance.now();
-    for (const id of projTrails.keys()) {
-      const tr = projTrails.get(id)!;
-      if (now - tr.last > 500) projTrails.delete(id); // stale
-    }
-    for (const p of snap.p) {
-      if (!visible(p.x, p.z)) continue;
-      const [sx, sy] = w2s(p.x, p.z);
-      let tr = projTrails.get(p.i);
-      if (!tr) { tr = { pts: [], last: 0 }; projTrails.set(p.i, tr); }
-      tr.last = now;
-      tr.pts.push([sx, sy]);
-      if (tr.pts.length > 6) tr.pts.shift();
-      const col = elemCss(p.e);
-      // trail: fading circles along recent path
-      for (let i = 0; i < tr.pts.length - 1; i++) {
-        const a = (i + 1) / tr.pts.length * 0.35;
-        ctx.globalAlpha = a;
-        ctx.fillStyle = col;
-        ctx.beginPath();
-        ctx.arc(tr.pts[i][0], tr.pts[i][1], Math.max(1.5, 2.5 * cam.zoom * (i + 1) / tr.pts.length), 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      // glow halo
-      const coreR = Math.max(4, 5 * cam.zoom);
-      const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, coreR * 2.5);
-      grad.addColorStop(0, col);
-      grad.addColorStop(0.4, col + 'cc');
-      grad.addColorStop(1, col + '00');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(sx, sy, coreR * 2.5, 0, Math.PI * 2);
-      ctx.fill();
-      // bright core
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(sx, sy, coreR * 0.55, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // --- entities (creatures + wizards): y-sorted by world z so nearer (larger z)
-    // draws over farther — fixes characters clipping through trees/others ---
-    type Ent = { z: number; kind: 'c' | 'w'; c?: (typeof snap.c)[number]; w?: (typeof snap.w)[number] };
-    const ents: Ent[] = [];
-    for (const c of snap.c) { if (visible(c.x, c.z)) ents.push({ z: c.z, kind: 'c', c }); }
-    for (const w of snap.w) { if (visible(w.x, w.z)) ents.push({ z: w.z, kind: 'w', w }); }
-    ents.sort((a, b) => a.z - b.z);
-
-    // name labels collected during y-sorted draw, rendered after (de-collided)
+    // --- 统一深度排序 pass：站立实体（建筑/树/灯/道具/hw 地标）与生物/巫师
+    // 按占地南缘 z 升序绘制（北先南后）。站在塔北面被塔挡住、南面压住塔基；
+    // 此前实体只在彼此间排序、永远盖在烘焙进地面纹理的建筑之上。
+    // 血条/标记/状态文字收集到 overlays，本体全部画完后统一补画（不被南侧
+    // 建筑盖住）；名字仍走最后的标签 pass。
     interface NameLbl { x: number; y: number; n: string; isMe: boolean; dy: number; hw: number; dw2: number; dot: boolean }
     const nameQueue: NameLbl[] = [];
+    const overlays: Array<() => void> = [];
     const meW = meOf();
 
-    for (const e of ents) {
-      if (e.kind === 'c') {
-        const c = e.c!;
+    const drawCreature = (c: SC): void => {
         // --- creature: hw 预渲染精灵优先，未映射物种走 pixel sprite，hp bar below ---
         const [sx, sy] = w2s(c.x, c.z);
       const size = Math.max(12, 20 * cam.zoom);
@@ -1747,25 +1892,28 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         // 粗略：只在玩家 25 格内显示标记，远的怪不需要
         if (d2 > 625) showMarker = false;
       }
-      if (showMarker) {
-        // 红色小菱形标记（头顶），代替大红框——多怪聚集时不糊成一团
-        const dx = sx, dy = topY - 9;
-        ctx.fillStyle = '#ff2a1a';
-        ctx.beginPath();
-        ctx.moveTo(dx, dy - 5); ctx.lineTo(dx + 4, dy);
-        ctx.lineTo(dx, dy + 5); ctx.lineTo(dx - 4, dy);
-        ctx.closePath(); ctx.fill();
-      }
-      // hp bar：受伤必显；敌对只在有标记时显示（避免怪堆血条重叠）
-      if (c.hp < c.m || showMarker) {
-        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(sx - r, topY - 4, r * 2, 2.5);
-        ctx.fillStyle = hostile ? '#ff5a4d' : '#4dff4d';
-        ctx.fillRect(sx - r, topY - 4, (r * 2 * c.hp) / c.m, 2.5);
-      }
+      overlays.push(() => {
+        if (showMarker) {
+          // 红色小菱形标记（头顶），代替大红框——多怪聚集时不糊成一团
+          const dx = sx, dy = topY - 9;
+          ctx.fillStyle = '#ff2a1a';
+          ctx.beginPath();
+          ctx.moveTo(dx, dy - 5); ctx.lineTo(dx + 4, dy);
+          ctx.lineTo(dx, dy + 5); ctx.lineTo(dx - 4, dy);
+          ctx.closePath(); ctx.fill();
+        }
+        // hp bar：受伤必显；敌对只在有标记时显示（避免怪堆血条重叠）
+        if (c.hp < c.m || showMarker) {
+          ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(sx - r, topY - 4, r * 2, 2.5);
+          ctx.fillStyle = hostile ? '#ff5a4d' : '#4dff4d';
+          ctx.fillRect(sx - r, topY - 4, (r * 2 * c.hp) / c.m, 2.5);
+        }
+      });
       // 生物不显示任何文字：敌对有红色菱形+血条，受击有血条，足够辨认。
       // 之前的首字母标签（B/R/S/P）在怪堆里必然糊成一团，已删除。
-      } else {
-        const w = e.w!;
+    };
+
+    const drawWizard = (w: SW): void => {
         // --- wizard: house sprite + hp bar + name (names drawn in 2nd pass with de-collision) ---
       const [sx, sy] = w2s(w.x, w.z);
       const isMe = w.h === myHandle;
@@ -1825,29 +1973,103 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       ctx.moveTo(sx, sy);
       ctx.lineTo(sx + Math.cos(w.f) * (r + 4), sy + Math.sin(w.f) * (r + 4));
       ctx.stroke();
-      // hp bar
-      if (w.hp < w.m) {
-        ctx.fillStyle = '#222'; ctx.fillRect(sx - r, sy - r - 6, r * 2, 3);
-        ctx.fillStyle = w.hp / w.m > 0.4 ? '#4dff4d' : '#ff4d4d';
-        ctx.fillRect(sx - r, sy - r - 6, (r * 2 * w.hp) / w.m, 3);
-      }
       // distance² to player (world units; viewport-center fallback if player unknown)
       const dw2 = meW ? (w.x - meW.x) * (w.x - meW.x) + (w.z - meW.z) * (w.z - meW.z)
         : (sx - vw / 2) * (sx - vw / 2) + (sy - vh / 2) * (sy - vh / 2);
       nameQueue.push({ x: sx, y: sy + r + 13, n: w.n, isMe, dy: 0, hw: 0, dw2, dot: false });
-      // status letters (S shield / X stunned / J jailed)
-      const flags = w.s.replace('N', '');
-      if (flags && cam.zoom > 0.8) {
-        ctx.fillStyle = '#ffec8a'; setFont('10px sans-serif');
-        ctx.fillText(flags, sx, sy - r - 8);
+      overlays.push(() => {
+        // hp bar
+        if (w.hp < w.m) {
+          ctx.fillStyle = '#222'; ctx.fillRect(sx - r, sy - r - 6, r * 2, 3);
+          ctx.fillStyle = w.hp / w.m > 0.4 ? '#4dff4d' : '#ff4d4d';
+          ctx.fillRect(sx - r, sy - r - 6, (r * 2 * w.hp) / w.m, 3);
+        }
+        // status letters (S shield / X stunned / J jailed)
+        const flags = w.s.replace('N', '');
+        if (flags && cam.zoom > 0.8) {
+          ctx.fillStyle = '#ffec8a'; setFont('10px sans-serif');
+          ctx.fillText(flags, sx, sy - r - 8);
+        }
+        // speech
+        if (w.say && cam.zoom > 0.9) {
+          ctx.fillStyle = '#fff'; setFont('10px sans-serif');
+          ctx.fillText(w.say.slice(0, 24), sx, sy - r - 20);
+        }
+      });
+    };
+
+    // --- execute the unified depth-sorted pass ---
+    interface DrawItem { key: number; ord: number; run: () => void }
+    const drawItems: DrawItem[] = [];
+    const vPad = 48;
+    const vx0 = wA.x - vPad, vz0 = wA.z - vPad, vx1 = wB.x + vPad, vz1 = wB.z + vPad;
+    for (const s of standing) {
+      if (s.bx1 < vx0 || s.bx0 > vx1 || s.bz1 < vz0 || s.bz0 > vz1) continue;
+      drawItems.push({
+        key: s.key, ord: 0, run: () => {
+          if (s.kind === 'cap') {
+            const dx = (TB.x0 + s.tx0 / TPX - cam.x) * cam.zoom + vw / 2;
+            const dy = (TB.z0 + s.ty0 / TPX - cam.z) * cam.zoom + vh / 2;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(s.canvas, dx, dy, (s.canvas.width / TPX) * cam.zoom, (s.canvas.height / TPX) * cam.zoom);
+          } else {
+            const [sx, sy] = w2s(s.wx, s.wz);
+            const k = (s.visualW * cam.zoom) / s.pm.w;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(s.pm.img, sx - s.pm.anchorX * k, sy - s.pm.anchorY * k, s.pm.w * k, s.pm.h * k);
+          }
+        },
+      });
+    }
+    for (const c of snap.c) { if (visible(c.x, c.z)) drawItems.push({ key: c.z, ord: 1, run: () => drawCreature(c) }); }
+    for (const w of snap.w) { if (visible(w.x, w.z)) drawItems.push({ key: w.z, ord: 1, run: () => drawWizard(w) }); }
+    drawItems.sort((a, b) => a.key - b.key || a.ord - b.ord);
+    for (const it of drawItems) it.run();
+    for (const ov of overlays) ov();
+
+    // --- projectiles: glowing core + motion trail ---
+    // trails tracked locally: id -> recent screen positions (no velocity in snapshot)
+    const now = performance.now();
+    for (const id of projTrails.keys()) {
+      const tr = projTrails.get(id)!;
+      if (now - tr.last > 500) projTrails.delete(id); // stale
+    }
+    for (const p of snap.p) {
+      if (!visible(p.x, p.z)) continue;
+      const [sx, sy] = w2s(p.x, p.z);
+      let tr = projTrails.get(p.i);
+      if (!tr) { tr = { pts: [], last: 0 }; projTrails.set(p.i, tr); }
+      tr.last = now;
+      tr.pts.push([sx, sy]);
+      if (tr.pts.length > 6) tr.pts.shift();
+      const col = elemCss(p.e);
+      // trail: fading circles along recent path
+      for (let i = 0; i < tr.pts.length - 1; i++) {
+        const a = (i + 1) / tr.pts.length * 0.35;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(tr.pts[i][0], tr.pts[i][1], Math.max(1.5, 2.5 * cam.zoom * (i + 1) / tr.pts.length), 0, Math.PI * 2);
+        ctx.fill();
       }
-      // speech
-      if (w.say && cam.zoom > 0.9) {
-        ctx.fillStyle = '#fff'; setFont('10px sans-serif');
-        ctx.fillText(w.say.slice(0, 24), sx, sy - r - 20);
-      }
-      } // end else (wizard)
-    } // end y-sorted entity loop
+      ctx.globalAlpha = 1;
+      // glow halo
+      const coreR = Math.max(4, 5 * cam.zoom);
+      const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, coreR * 2.5);
+      grad.addColorStop(0, col);
+      grad.addColorStop(0.4, col + 'cc');
+      grad.addColorStop(1, col + '00');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, coreR * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      // bright core
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, coreR * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // --- lighting: applied over the whole world (ground + sprites) so night
     // dims everything consistently. Dusk/dawn get a warm wash, night gets
     // moonlight blue + stars + a moon disc. Names, fx and HUD render above.
