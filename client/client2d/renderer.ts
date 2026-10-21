@@ -112,7 +112,7 @@ function makeQuantizer(pal: Rgb[]): (r: number, g: number, b: number) => Rgb {
   };
 }
 
-type GroundTileKind = 'grass' | 'forest' | 'dirt' | 'stone' | 'water';
+type GroundTileKind = 'grass' | 'forest' | 'dirt' | 'stone' | 'water' | 'sand' | 'grassL';
 const groundTileCache = new Map<GroundTileKind, HTMLCanvasElement>();
 function makeGroundTile(kind: GroundTileKind): HTMLCanvasElement {
   const S = 256;
@@ -124,6 +124,8 @@ function makeGroundTile(kind: GroundTileKind): HTMLCanvasElement {
   const snap = (h: string): Rgb => snapPal(h, pal);
   const shades: Record<GroundTileKind, Array<[string, number]>> = {
     grass: [['#66854c', 0.52], ['#56743f', 0.26], ['#7d9b5e', 0.14], ['#476335', 0.08]],
+    grassL: [['#7d9b5e', 0.52], ['#66854c', 0.26], ['#93ad72', 0.14], ['#56743f', 0.08]],
+    sand: [['#c9b078', 0.55], ['#b89e6e', 0.3], ['#dcc48c', 0.15]],
     forest: [['#274b33', 0.5], ['#1d3325', 0.3], ['#3c6134', 0.12], ['#2e4d2a', 0.08]],
     dirt: [['#a08b62', 0.55], ['#8a744e', 0.3], ['#b89e6e', 0.15]],
     stone: [['#9b958b', 0.6], ['#8f887c', 0.25], ['#b3ada2', 0.15]],
@@ -143,8 +145,8 @@ function makeGroundTile(kind: GroundTileKind): HTMLCanvasElement {
     set(x, y, table[Math.floor(rnd() * table.length)]);
   }
   const dark = snap(kind === 'water' ? '#22425a' : '#476335');
-  const light = snap(kind === 'grass' || kind === 'forest' ? '#7d9b5e' : '#c8c2b6');
-  if (kind === 'grass' || kind === 'forest') {
+  const light = snap(kind === 'grass' || kind === 'grassL' || kind === 'forest' ? '#7d9b5e' : '#c8c2b6');
+  if (kind === 'grass' || kind === 'grassL' || kind === 'forest') {
     // 草叶像素簇：竖簇底深尖浅，绕边回绕保证可平铺
     const n = kind === 'grass' ? 110 : 70;
     for (let i = 0; i < n; i++) {
@@ -160,7 +162,7 @@ function makeGroundTile(kind: GroundTileKind): HTMLCanvasElement {
         for (let k = 0; k < 3; k++) set(x + k, y, twig);
       }
     }
-  } else if (kind === 'dirt') {
+  } else if (kind === 'dirt' || kind === 'sand') {
     for (let i = 0; i < 150; i++) set(Math.floor(rnd() * S), Math.floor(rnd() * S), rnd() < 0.5 ? light : dark);
   } else if (kind === 'stone') {
     // 石板：32 格错缝勾缝 + 板内斑点（底噪保留）
@@ -400,6 +402,13 @@ function buildWaveFrame(phase: number): HTMLCanvasElement {
     g.arc(x, y, r, a, a + 1.1);
   }
   g.stroke();
+  // 波光只落在圆盘水面内（与地形分类同口径）：擦除盘外弧线，避免浮在岸上
+  g.globalCompositeOperation = 'destination-out';
+  const mask = new Path2D();
+  mask.rect(0, 0, w, h);
+  mask.arc(w / 2, h / 2, 29.5 * TPX, 0, Math.PI * 2);
+  g.fill(mask, 'evenodd');
+  g.globalCompositeOperation = 'source-over';
   quantizeCanvas(c); // 波光颜色并入主调色板
   return c;
 }
@@ -626,15 +635,18 @@ function drawHwTex(g: CanvasRenderingContext2D, name: string, wx: number, wz: nu
 // 「占地南缘 z」统一排序绘制（北先南后）。
 // 两类条目：cap = 代码绘制捕获的离屏 canvas（纹理坐标）；pre = hw 预渲染
 // 精灵（逐帧按屏幕坐标绘制）。bx0..bz1 为世界包围盒（裁剪用，宁大勿裁）。
+// frontZ = 占地北缘世界 z：精灵在 frontZ 以北的部分属于星露谷 Front 层
+// （屋顶探出/树冠），在实体层之后统一盖绘，且盖住玩家时渐变半透明；
+// frontZ 以南的部分留在排序层内正常参与深度排序。
 type Standing =
-  | { kind: 'cap'; key: number; canvas: HTMLCanvasElement; tx0: number; ty0: number; bx0: number; bz0: number; bx1: number; bz1: number }
-  | { kind: 'pre'; key: number; pm: PreSprite; wx: number; wz: number; visualW: number; bx0: number; bz0: number; bx1: number; bz1: number };
+  | { kind: 'cap'; key: number; canvas: HTMLCanvasElement; tx0: number; ty0: number; bx0: number; bz0: number; bx1: number; bz1: number; frontZ: number }
+  | { kind: 'pre'; key: number; pm: PreSprite; wx: number; wz: number; visualW: number; bx0: number; bz0: number; bx1: number; bz1: number; frontZ: number };
 const standing: Standing[] = [];
 
 /** 把一段「以纹理坐标绘制」的代码捕获为独立站立实体。
  *  key = 占地南缘世界 z；包围盒为世界坐标（须覆盖绘制范围）。 */
 function captureStanding(key: number, wx0: number, wz0: number, wx1: number, wz1: number,
-  draw: (g: CanvasRenderingContext2D) => void): void {
+  draw: (g: CanvasRenderingContext2D) => void, frontZ?: number): void {
   const bx0 = Math.floor(w2tx(wx0)), by0 = Math.floor(w2ty(wz0));
   const bx1 = Math.ceil(w2tx(wx1)), by1 = Math.ceil(w2ty(wz1));
   const c = document.createElement('canvas');
@@ -643,7 +655,10 @@ function captureStanding(key: number, wx0: number, wz0: number, wx1: number, wz1
   g.translate(-bx0, -by0);
   draw(g);
   pixelateCapture(c); // 与地面同口径像素化，但保留透明通道（见 pixelateCapture）
-  standing.push({ kind: 'cap', key, canvas: c, tx0: bx0, ty0: by0, bx0: wx0, bz0: wz0, bx1: wx1, bz1: wz1 });
+  standing.push({
+    kind: 'cap', key, canvas: c, tx0: bx0, ty0: by0, bx0: wx0, bz0: wz0, bx1: wx1, bz1: wz1,
+    frontZ: frontZ ?? key - 8, // 缺省：占地南缘以北 8 单位起为 Front 层
+  });
 }
 
 /** hw 预渲染精灵注册为站立实体（key = 占地南缘 = wz + 占地深度/2）。
@@ -658,6 +673,7 @@ function registerPre(name: string, wx: number, wz: number, visualW: number): boo
     kind: 'pre', key: wz + depthW / 2, pm, wx, wz, visualW,
     bx0: wx - visualW / 2 - 2, bx1: wx + visualW / 2 + 2,
     bz0: wz - northW - 2, bz1: wz + depthW / 2 + 2,
+    frontZ: wz - depthW / 2, // 占地北缘：锚点以北 depthW/2 起为占地，再北为探出
   });
   return true;
 }
@@ -707,7 +723,7 @@ function paintVillageAssets(g: CanvasRenderingContext2D, mode: 'ground' | 'stand
           }
           cg.fillStyle = '#fff'; cg.font = '11px sans-serif'; cg.textAlign = 'center';
           cg.fillText(o.label!, hx, hy + 13);
-        });
+        }, o.z0); // Front 切分线 = 占地北缘
       }
     }
     return;
@@ -875,7 +891,7 @@ function registerVillageStanding(
       }
       cg.fillStyle = '#fff'; cg.font = '11px sans-serif'; cg.textAlign = 'center';
       cg.fillText(o.label!, hx, hy + 13);
-    });
+    }, o.z0); // Front 切分线 = 占地北缘
   }
 }
 
@@ -900,7 +916,7 @@ function registerServerBuildings(): void {
       cg.fillStyle = '#fff'; cg.font = `${Math.max(10, 11 * 1)}px sans-serif`;
       cg.textAlign = 'center';
       cg.fillText(o.label!, hx, hy + 13);
-    });
+    }, o.z0); // Front 切分线 = 占地北缘
   }
 }
 
@@ -1174,35 +1190,9 @@ function hexA(hex: string, a: number): string {
 // --- decorative scatter: paths, bushes, stones (fixed seeds, drawn over zones) ---
 function paintDecorations(g: CanvasRenderingContext2D): void {
   const L = getLayout();
-  // roads from layout: dark edge -> base -> light center
-  // (Hogsmeade pilot: the tiled dirt band replaces road strokes inside the
-  // village rect, so strokes are clipped out of it when assets are ready)
-  g.lineCap = 'round'; g.lineJoin = 'round';
-  g.save();
-  if (villageSprites()) {
-    const clip = new Path2D();
-    clip.rect(0, 0, TW, TH);
-    clip.rect(w2tx(VILLAGE.x0), w2ty(VILLAGE.z0), (VILLAGE.x1 - VILLAGE.x0) * TPX, (VILLAGE.z1 - VILLAGE.z0) * TPX);
-    g.clip(clip, 'evenodd');
-  }
-  for (const road of L.roads) {
-    const passes: Array<[number, string]> = [
-      [road.width + 2.5, hexA(PAL.path.dark, 0.9)],
-      [road.width, hexA(PAL.path.base, 0.95)],
-      [road.width * 0.45, hexA(PAL.path.light, 0.5)],
-    ];
-    for (const [w, style] of passes) {
-      g.strokeStyle = style;
-      g.lineWidth = w * TPX * 0.5;
-      g.beginPath();
-      road.pts.forEach((p, i) => {
-        const tx = w2tx(p.x), ty = w2ty(p.z);
-        if (i === 0) g.moveTo(tx, ty); else g.lineTo(tx, ty);
-      });
-      g.stroke();
-    }
-  }
-  g.restore();
+  // 道路不再矢量描边：已在 paintTileGrid 里按 layout 折线栅格化为 dirt
+  // tile 并走 autotile 边缘融合（星露谷式 tile 路面）。村庄内部另有
+  // paintVillageAssets 的平铺路面覆写。
   // bushes & stones from layout (collision-checked at build)
   // + v2 new regions: well/market/gate/dock/boat/lighthouse/web/glowflower/tent/campfire/greenhouse/garden/owlery/scoreboard/hoop
   // L4 视觉层次：灌木/石头是背景板，压暗 30% + 降饱和度，不抢建筑的戏。
@@ -1507,14 +1497,16 @@ const CASTLE_TOWERS: Array<[number, number, number, number]> = [
  *  key 口径：建筑群 -77（须低于 hw 礼堂 -75.9 与 hw 高架桥 -73.2，保证 hw 精灵
  *  仍盖在代码建筑之上）；城墙 -47（南缘）；塔 = z + r - 2（略低于对应 hw 塔）。 */
 function registerCastleStanding(): void {
-  captureStanding(-77, -54, -105, 30, -56, (g) => paintCastle(g, 'buildings'));
-  captureStanding(-47, -62, -110, 57, -40, (g) => paintCastle(g, 'wall'));
+  // frontZ：建筑群主体占地北缘 -88（其北为塔尖/屋顶探出，进 Front 层）；
+  // 城墙只留北墙顶一条进 Front；庭院以北 -70 是两棵橡树的树冠主体。
+  captureStanding(-77, -54, -105, 30, -56, (g) => paintCastle(g, 'buildings'), -88);
+  captureStanding(-47, -62, -110, 57, -40, (g) => paintCastle(g, 'wall'), -106);
   // 庭院捕获包围盒须覆盖两棵橡树全冠（s=TPX*0.55 的 drawOak：冠幅 ±28、
   // 北展 54）：锚点 (-14,-52.5)/(12,-52.5) -> x -43..41、z -107..-45
-  captureStanding(-50.5, -43, -107, 41, -45, (g) => paintCastle(g, 'courtyard'));
+  captureStanding(-50.5, -43, -107, 41, -45, (g) => paintCastle(g, 'courtyard'), -70);
   CASTLE_TOWERS.forEach(([tx2, tz2, tr], i) => {
     captureStanding(tz2 + tr - 2, tx2 - tr - 4, tz2 - tr - 6, tx2 + tr + 4, tz2 + tr + 4,
-      (g) => paintCastle(g, 't' + i));
+      (g) => paintCastle(g, 't' + i), tz2 - tr);
   });
 }
 
@@ -1594,37 +1586,174 @@ function registerHwLandmarks(): void {
   for (const [n, x, z, w] of props) registerPre(n, x, z, w);
 }
 
-/** Build the full-world ground texture once. Zone edges are blurred for soft transitions. */
+// ------------------------------------------------------------------ tile 网格地形（星露谷式 autotile 烘焙）
+// 世界按 TILE_U=2 单位栅格化分类（水/沙/草/浅草/土/林/石），逐 tile 画地形
+// 图案，再按四邻居优先级把高优先级地形的图案以噪声锯齿边缘条画入本 tile，
+// 融合交界——等价于星露谷 tilesheet 的手工边缘件，自动化到烘焙期。
+// 替代原 zone 色块填充 + 9px 模糊过渡。分类只读已有世界数据（ZONES /
+// LAKE_ZONE / layout 道路折线），不改布局、碰撞与服务器。
+const TILE_U = 2;
+const GRID_PRIO: Record<GroundTileKind, number> = {
+  water: 0, sand: 1, grass: 2, grassL: 2, dirt: 3, forest: 4, stone: 5,
+};
+
+function buildClassGrid(): { grid: GroundTileKind[]; cols: number; rows: number } {
+  const cols = Math.ceil((TB.x1 - TB.x0) / TILE_U);
+  const rows = Math.ceil((TB.z1 - TB.z0) / TILE_U);
+  const grid: GroundTileKind[] = new Array(cols * rows).fill('grass');
+  const L = getLayout();
+  const roadBox = L.roads.map((r) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const p of r.pts) {
+      x0 = Math.min(x0, p.x); z0 = Math.min(z0, p.z); x1 = Math.max(x1, p.x); z1 = Math.max(z1, p.z);
+    }
+    return { r, x0: x0 - 6, z0: z0 - 6, x1: x1 + 6, z1: z1 + 6 };
+  });
+  const onRoad = (x: number, z: number): boolean => {
+    for (const b of roadBox) {
+      if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue;
+      const p = b.r.pts, lim = b.r.width / 4 + 1.2, lim2 = lim * lim;
+      for (let i = 0; i < p.length - 1; i++) {
+        const ax = p[i].x, az = p[i].z, dx = p[i + 1].x - ax, dz = p[i + 1].z - az;
+        const len2 = dx * dx + dz * dz;
+        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len2));
+        const ex = x - (ax + dx * t), ez = z - (az + dz * t);
+        if (ex * ex + ez * ez < lim2) return true;
+      }
+    }
+    return false;
+  };
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const cx = TB.x0 + (col + 0.5) * TILE_U, cz = TB.z0 + (row + 0.5) * TILE_U;
+      let kind: GroundTileKind = 'grass';
+      for (const zn of ZONES) {
+        if (cx >= zn.x0 && cx < zn.x1 && cz >= zn.z0 && cz < zn.z1) {
+          // 球场修剪条纹：8 单位一带的深浅草（原 texPitch 条纹的 tile 化）
+          kind = zn.tex === 'pitch'
+            ? (Math.floor(cz / 8) % 2 === 0 ? 'grass' : 'grassL')
+            : ZONE_TILE[zn.tex];
+        }
+      }
+      // 黑湖水面 = 碰撞圆盘（src/shared/map.ts 的 disc(-118, 40, r=30)）加
+      // 逐 tile 噪声摆动，形成有机岸线。LAKE_ZONE 矩形只是圆盘的包围盒：
+      // zone 循环已把整个矩形预填为 water，圆盘外必须改回草地（道路优先），
+      // 否则可走的四角岸地会被画成水（视觉与碰撞不一致）。
+      const lakeWob = (gridHash(col, row, 77) - 0.5) * 3;
+      if (Math.hypot(cx + 118, cz - 40) < 30 + lakeWob) kind = 'water';
+      else if (onRoad(cx, cz)) kind = 'dirt';
+      else if (kind === 'water') kind = 'grass';
+      grid[row * cols + col] = kind;
+    }
+  }
+  // 沙岸环：与水 8 邻接的陆地（石面除外）改判 sand，水岸由此成形
+  const src = [...grid];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const k = src[row * cols + col];
+      if (k === 'water' || k === 'sand' || k === 'stone') continue;
+      let shore = false;
+      for (let dr = -1; dr <= 1 && !shore; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const rr = row + dr, cc = col + dc;
+          if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue;
+          if (src[rr * cols + cc] === 'water') { shore = true; break; }
+        }
+      }
+      if (shore) grid[row * cols + col] = 'sand';
+    }
+  }
+  return { grid, cols, rows };
+}
+
+const gridHash = (a: number, b: number, c: number): number => {
+  let h = (Math.imul(a, 374761393) + Math.imul(b, 668265263) + Math.imul(c, 2246822519)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+
+function paintTileGrid(g: CanvasRenderingContext2D): void {
+  const { grid, cols, rows } = buildClassGrid();
+  const TP = TILE_U * TPX; // 6 texture px per tile
+  const pats = new Map<GroundTileKind, CanvasPattern | null>();
+  const pat = (k: GroundTileKind): CanvasPattern | string => {
+    if (!pats.has(k)) pats.set(k, groundTilePattern(g, k));
+    return pats.get(k) ?? GROUND;
+  };
+  const at = (col: number, row: number): GroundTileKind | null =>
+    col < 0 || row < 0 || col >= cols || row >= rows ? null : grid[row * cols + col];
+  g.fillStyle = pat('grass');
+  g.fillRect(0, 0, TW, TH);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const k = grid[row * cols + col];
+      if (k === 'grass') continue;
+      g.fillStyle = pat(k);
+      g.fillRect(col * TP, row * TP, TP, TP);
+    }
+  }
+  // autotile 边缘融合：高优先级邻居的图案沿交界画入本 tile，
+  // 内界深度由逐点噪声决定（25%–55% tile），呈不规则锯齿。
+  const SEG = 3;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const k = grid[row * cols + col];
+      const tx = col * TP, ty = row * TP;
+      for (let d = 0; d < 4; d++) {
+        const dc = d === 0 ? 1 : d === 1 ? -1 : 0;
+        const dr = d === 2 ? 1 : d === 3 ? -1 : 0;
+        const nk = at(col + dc, row + dr);
+        if (!nk || nk === k || GRID_PRIO[nk] <= GRID_PRIO[k]) continue;
+        const inner: Array<[number, number]> = [];
+        for (let i = 0; i <= SEG; i++) {
+          const t = i / SEG;
+          const dep = TP * (0.25 + 0.3 * gridHash(col * 7 + i * 31, row * 13 + d * 17, i * 3 + d * 101));
+          if (d === 0) inner.push([tx + TP - dep, ty + t * TP]);
+          else if (d === 1) inner.push([tx + dep, ty + t * TP]);
+          else if (d === 2) inner.push([tx + t * TP, ty + TP - dep]);
+          else inner.push([tx + t * TP, ty + dep]);
+        }
+        const A: [number, number] = d === 0 ? [tx + TP, ty] : d === 1 ? [tx, ty] : d === 2 ? [tx, ty + TP] : [tx, ty];
+        const B: [number, number] = d === 0 ? [tx + TP, ty + TP] : d === 1 ? [tx, ty + TP] : d === 2 ? [tx + TP, ty + TP] : [tx + TP, ty];
+        g.save();
+        g.beginPath();
+        g.moveTo(A[0], A[1]);
+        g.lineTo(B[0], B[1]);
+        for (let i = SEG; i >= 0; i--) g.lineTo(inner[i][0], inner[i][1]);
+        g.closePath();
+        g.clip();
+        g.fillStyle = pat(nk);
+        g.fillRect(tx, ty, TP, TP);
+        g.restore();
+      }
+    }
+  }
+}
+
+/** Build the full-world ground texture once: tile grid + autotile edges (no blur). */
 function buildGroundTexture(): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = TW; c.height = TH;
   const g = c.getContext('2d')!;
   const rnd = mulberry(20261017);
-  // base ground: 像素草地贴图（主调色板）+ 大色调斑（末尾马赛克统一）
-  g.fillStyle = groundTilePattern(g, 'grass') ?? GROUND;
-  g.fillRect(0, 0, TW, TH);
-  const brnd = mulberry(31337);
-  // large tonal patches
-  for (let i = 0; i < 120; i++) {
-    blob(g, brnd() * TW, brnd() * TH, 20 + brnd() * 50,
-      brnd() < 0.5 ? hexA(PAL.grass.dark, 0.18) : hexA(PAL.grass.light, 0.15));
-  }
-  // zone layer: color + detail, then blurred onto base for soft edges
+  // tile 网格地形 + autotile 边缘融合（替代 zone 色块 + 模糊过渡）
+  paintTileGrid(g);
+  // zone 细节画笔（半透明色斑/草丛/鹅卵石等）画在独立图层后无模糊合成。
+  // 整面型画笔 lake/castle/pitch 已由 tile 网格接管（水面+沙岸、石板地、
+  // 球场条纹），跳过避免双画。
   const layer = document.createElement('canvas');
   layer.width = TW; layer.height = TH;
   const lg = layer.getContext('2d')!;
+  const SKIP_TEX: ReadonlySet<ZoneTex> = new Set(['lake', 'castle', 'pitch']);
   for (const zn of ZONES) {
+    if (SKIP_TEX.has(zn.tex)) continue;
     const x0 = w2tx(zn.x0), y0 = w2ty(zn.z0), w = (zn.x1 - zn.x0) * TPX, h = (zn.z1 - zn.z0) * TPX;
-    lg.fillStyle = groundTilePattern(lg, ZONE_TILE[zn.tex]) ?? zn.pal.base;
-    lg.fillRect(x0, y0, w, h);
     lg.save();
     lg.beginPath(); lg.rect(x0, y0, w, h); lg.clip();
     TEX_PAINT[zn.tex](lg, x0, y0, w, h, rnd);
     lg.restore();
   }
-  g.filter = 'blur(9px)';
   g.drawImage(layer, 0, 0);
-  g.filter = 'none';
   // Hogsmeade asset pilot: tiled ground only（建筑/树/灯改走站立实体排序绘制）
   paintVillageAssets(g, 'ground');
   // decorations on top (paths, bushes, stones) — not blurred, crisp details
@@ -1648,6 +1777,26 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   let snap: Snap | null = null;
   let myHandle = '';
   let follow = true;
+  // Front 层（星露谷式）淡化状态：每站立实体 Front 切片的当前 alpha，
+  // 逐帧向目标 lerp（盖住玩家 -> 0.35，否则 -> 1），避免突变闪烁。
+  const frontAlpha = new Map<Standing, number>();
+  let frameDt = 0.016;
+  // 夜光光源表（懒构建）：全部 layout 路灯 + 定点窗光锚（夜里亮窗的立面）
+  let glowSrc: Array<{ x: number; z: number; r: number; lamp: boolean }> | null = null;
+  const getGlowSrc = (): Array<{ x: number; z: number; r: number; lamp: boolean }> => {
+    if (glowSrc) return glowSrc;
+    const out: Array<{ x: number; z: number; r: number; lamp: boolean }> = [];
+    for (const it of itemsInRect(getLayout(), TB.x0, TB.z0, TB.x1, TB.z1)) {
+      if (it.kind === 'lamp') out.push({ x: it.x, z: it.z, r: 7, lamp: true });
+    }
+    const win: Array<[number, number, number]> = [
+      [0, -78, 15], [-39, -80, 12], [41, -38, 9], [105, 112, 10], [-44, 288, 12],
+      [-23, 158, 9], [21, 156, 9], [-22, 184, 9], [23, 186, 9],
+    ];
+    for (const [x, z, r] of win) out.push({ x, z, r, lamp: false });
+    glowSrc = out;
+    return out;
+  };
   const keys = new Set<string>();
   let groundTex: HTMLCanvasElement | null = null; // built lazily on first frame
 
@@ -1745,6 +1894,12 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     if (keys.has('s') || keys.has('arrowdown')) cam.z += pan;
     if (keys.has('a') || keys.has('arrowleft')) cam.x -= pan;
     if (keys.has('d') || keys.has('arrowright')) cam.x += pan;
+    frameDt = dt;
+    // 相机钳制（星露谷式）：视口不越出纹理世界边界；世界比视口小时居中。
+    const hvx = (canvas.width / devicePixelRatio / 2) / cam.zoom;
+    const hvz = (canvas.height / devicePixelRatio / 2) / cam.zoom;
+    cam.x = TB.x1 - TB.x0 > hvx * 2 ? Math.min(TB.x1 - hvx, Math.max(TB.x0 + hvx, cam.x)) : (TB.x0 + TB.x1) / 2;
+    cam.z = TB.z1 - TB.z0 > hvz * 2 ? Math.min(TB.z1 - hvz, Math.max(TB.z0 + hvz, cam.z)) : (TB.z0 + TB.z1) / 2;
 
     draw();
   }
@@ -2000,23 +2155,82 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
 
     // --- execute the unified depth-sorted pass ---
     interface DrawItem { key: number; ord: number; run: () => void }
+    interface FrontSlice { s: Standing; img: CanvasImageSource; dx: number; dy: number; dw: number; dh: number; fy: number }
     const drawItems: DrawItem[] = [];
+    const frontSlices: FrontSlice[] = [];
     const vPad = 48;
     const vx0 = wA.x - vPad, vz0 = wA.z - vPad, vx1 = wB.x + vPad, vz1 = wB.z + vPad;
+    // 玩家屏幕矩形（与 drawWizard 同口径：dh = max(5, 8z)*4.5，宽取 0.72dh），
+    // 供 Front 切片淡化判定：切片盖住玩家到一定比例才渐变。
+    let meRect: { l: number; t: number; r: number; b: number } | null = null;
+    if (meW) {
+      const [mx, my] = w2s(meW.x, meW.z);
+      const dhM = Math.max(5, 8 * cam.zoom) * 4.5;
+      meRect = { l: mx - dhM * 0.36, t: my - dhM / 2, r: mx + dhM * 0.36, b: my + dhM / 2 };
+    }
+    // 全部角色（巫师+生物）的近似屏幕矩形：Front 切分是昂贵路径（切片要在
+    // Front pass 整幅重绘），只有真有角色压到切片时才拆分；无人被盖的实体
+    // 走整图单次绘制（与旧路径同成本）。矩形取宽松近似并外扩 6px，宁可
+    // 多拆分一次，不可漏盖。
+    interface ActorRect { l: number; t: number; r: number; b: number }
+    const actorRects: ActorRect[] = [];
+    {
+      const dhW = Math.max(5, 8 * cam.zoom) * 4.5;
+      for (const w of snap.w) {
+        if (!visible(w.x, w.z)) continue;
+        const [sx, sy] = w2s(w.x, w.z);
+        actorRects.push({ l: sx - dhW * 0.36 - 6, t: sy - dhW / 2 - 6, r: sx + dhW * 0.36 + 6, b: sy + dhW / 2 + 6 });
+      }
+      for (const c of snap.c) {
+        if (!visible(c.x, c.z)) continue;
+        const [sx, sy] = w2s(c.x, c.z);
+        const hwC = CREATURE_HW[c.k];
+        const dhC = hwC ? hwC.hM * ENTITY_PX_PER_M * cam.zoom : Math.max(12, 20 * cam.zoom);
+        const dwC = hwC ? dhC * 0.8 : dhC;
+        actorRects.push({ l: sx - dwC / 2 - 6, t: sy - dhC / 2 - 6, r: sx + dwC / 2 + 6, b: sy + dhC / 2 + 6 });
+      }
+    }
     for (const s of standing) {
       if (s.bx1 < vx0 || s.bx0 > vx1 || s.bz1 < vz0 || s.bz0 > vz1) continue;
       drawItems.push({
         key: s.key, ord: 0, run: () => {
+          let img: CanvasImageSource, dx: number, dy: number, dw: number, dh: number;
           if (s.kind === 'cap') {
-            const dx = (TB.x0 + s.tx0 / TPX - cam.x) * cam.zoom + vw / 2;
-            const dy = (TB.z0 + s.ty0 / TPX - cam.z) * cam.zoom + vh / 2;
-            ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(s.canvas, dx, dy, (s.canvas.width / TPX) * cam.zoom, (s.canvas.height / TPX) * cam.zoom);
+            img = s.canvas;
+            dx = (TB.x0 + s.tx0 / TPX - cam.x) * cam.zoom + vw / 2;
+            dy = (TB.z0 + s.ty0 / TPX - cam.z) * cam.zoom + vh / 2;
+            dw = (s.canvas.width / TPX) * cam.zoom;
+            dh = (s.canvas.height / TPX) * cam.zoom;
           } else {
             const [sx, sy] = w2s(s.wx, s.wz);
             const k = (s.visualW * cam.zoom) / s.pm.w;
-            ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(s.pm.img, sx - s.pm.anchorX * k, sy - s.pm.anchorY * k, s.pm.w * k, s.pm.h * k);
+            img = s.pm.img;
+            dx = sx - s.pm.anchorX * k; dy = sy - s.pm.anchorY * k;
+            dw = s.pm.w * k; dh = s.pm.h * k;
+          }
+          ctx.imageSmoothingEnabled = false;
+          // Front 切分（星露谷 Front 层）：占地北缘以北的精灵行属于 Front 层，
+          // 延后到 Front pass 盖绘；本 pass 只画南片。两片以 fy 为界互补，
+          // 半透明像素不会双重混合。仅当真有角色压到切片、或该实体正在
+          // 淡化中（alpha<1）才拆分，否则整图绘制（零额外成本）。
+          const fy = (s.frontZ - cam.z) * cam.zoom + vh / 2;
+          let split = false;
+          if (fy > dy + 2 && fy < dy + dh - 2) {
+            if ((frontAlpha.get(s) ?? 1) < 0.999) split = true;
+            else {
+              for (const r of actorRects) {
+                if (r.l < dx + dw && r.r > dx && r.t < fy && r.b > dy) { split = true; break; }
+              }
+            }
+          }
+          if (split) {
+            frontSlices.push({ s, img, dx, dy, dw, dh, fy });
+            ctx.save();
+            ctx.beginPath(); ctx.rect(dx, fy, dw, dy + dh - fy); ctx.clip();
+            ctx.drawImage(img, dx, dy, dw, dh);
+            ctx.restore();
+          } else {
+            ctx.drawImage(img, dx, dy, dw, dh);
           }
         },
       });
@@ -2025,6 +2239,31 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     for (const w of snap.w) { if (visible(w.x, w.z)) drawItems.push({ key: w.z, ord: 1, run: () => drawWizard(w) }); }
     drawItems.sort((a, b) => a.key - b.key || a.ord - b.ord);
     for (const it of drawItems) it.run();
+
+    // --- Front pass（星露谷 Front 层）：屋顶探出/树冠统一盖绘在所有实体
+    // 之后——站在物件北侧的角色会被其 Front 部分盖住，与真实空间一致。
+    // 例外照抄星露谷 FadeWhenBehind/树冠透明：切片盖住玩家本人且玩家在
+    // 该实体排序键以北时，切片渐变至 alpha 0.35（逐帧 lerp，约 0.2s），
+    // 本体（南片）不动。星露谷建筑整栋淡化，我们只淡 Front 切片，差异见
+    // stardew-system.md 第 4 节。
+    for (const f of frontSlices) {
+      const cur = frontAlpha.get(f.s) ?? 1;
+      let target = 1;
+      if (meRect && meW && meW.z < f.s.key) {
+        const ow = Math.min(f.dx + f.dw, meRect.r) - Math.max(f.dx, meRect.l);
+        const oh = Math.min(f.fy, meRect.b) - Math.max(f.dy, meRect.t);
+        if (ow > (meRect.r - meRect.l) * 0.3 && oh > (meRect.b - meRect.t) * 0.25) target = 0.35;
+      }
+      const step = frameDt * 3.2;
+      const na = cur + Math.max(-step, Math.min(step, target - cur));
+      frontAlpha.set(f.s, na);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(f.dx, f.dy, f.dw, f.fy - f.dy); ctx.clip();
+      if (na < 0.999) ctx.globalAlpha = na;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(f.img, f.dx, f.dy, f.dw, f.dh);
+      ctx.restore();
+    }
     for (const ov of overlays) ov();
 
     // --- projectiles: glowing core + motion trail ---
@@ -2092,6 +2331,36 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         // midday warmth, very subtle
         ctx.fillStyle = 'rgba(255,240,200,0.06)';
         ctx.fillRect(0, 0, W, H);
+      }
+    }
+    // --- 夜窗光/灯光（星露谷 NightTiles 点亮 + 光源的等价实现）：光照罩
+    // 之后以 'lighter' 叠加暖色光晕，强度随夜幕深度缩放。路灯双层：
+    // 大而淡的外晕 + 小而亮的内芯（星露谷路灯的双光源结构）。
+    {
+      const nk = 1 - dayFactor;
+      if (nk > 0.05) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const s of getGlowSrc()) {
+          if (!visible(s.x, s.z, s.r + 6)) continue;
+          const [sx, sy] = w2s(s.x, s.z);
+          const cy = sy - 3 * cam.zoom;
+          const R = s.r * cam.zoom;
+          const grad = ctx.createRadialGradient(sx, cy, 0, sx, cy, R);
+          grad.addColorStop(0, `rgba(255,180,92,${(0.30 * nk).toFixed(3)})`);
+          grad.addColorStop(1, 'rgba(255,180,92,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath(); ctx.arc(sx, cy, R, 0, Math.PI * 2); ctx.fill();
+          if (s.lamp) {
+            const R2 = R * 0.38;
+            const grad2 = ctx.createRadialGradient(sx, cy, 0, sx, cy, R2);
+            grad2.addColorStop(0, `rgba(255,214,140,${(0.5 * nk).toFixed(3)})`);
+            grad2.addColorStop(1, 'rgba(255,214,140,0)');
+            ctx.fillStyle = grad2;
+            ctx.beginPath(); ctx.arc(sx, cy, R2, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        ctx.restore();
       }
     }
     // --- unified label layout: wizard names avoid zone labels and each other ---
