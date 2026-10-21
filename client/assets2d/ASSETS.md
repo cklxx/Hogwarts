@@ -1,4 +1,4 @@
-# 2D 素材清单（assets2d/）— 最终收口版（2026-10-21）
+# 2D 素材清单（assets2d/）— 素材统一版（2026-10-21）
 
 2D 客户端素材只有一个来源：**精灵工厂预渲染产出**（`prerendered/`）。
 加载层 `client/client2d/assets.ts` 只加载工厂的 `sprites.json`、PNG 与
@@ -14,7 +14,9 @@
 固定灯光（半球光 + 带阴影主光 + 补光，ACES）下渲染成透明底 PNG，阴影烘焙
 进精灵；全部精灵再过像素化管线：降分辨率（14 px/米，最近邻）+ 主调色板
 量化（中位切分 44 色 + 锚点 20 色，共 55 色，写入 `prerendered/palette.json`）
-+ 1px 描边（#2a1f1a）。产出 273 个精灵。
++ 1px 描边（#2a1f1a）。产出 291 个精灵（含 2026-10-21 布局装饰批次
+新增 18 个：火盆/墓碑/井/摊位/村门/船/灯塔/帐篷/秋千/路牌/系船柱/篝火/
+猫头鹰棚屋/记分牌/训练环/长椅/稻草人/蜂箱）。
 
 | 模型源 | 用途 | License |
 |---|---|---|
@@ -38,19 +40,27 @@
 | 魁地奇看台 / 球门环组 | hw-pitch-stand / hw-quidditch-hoops | §7 |
 | 海格小屋 / 打人柳 / 黑湖码头 / 霍格沃茨特快 | hw-hagrid-hut / hw-whomping-willow / hw-lake-dock / hw-express | §7 |
 | 霍格莫德命名商店（4 间） | houseTavern（三把扫帚）/ houseStone（猪头酒吧·佐科）/ houseWood（其余） | §7（钉占地宽，系数 1.0） |
-| 村庄住宅（茅屋 / 石屋） | houseWood / houseStone | §7 布局族（模型 4.071 米 × U_STRUCT ≈ 13.0s，2026-10-21 并入，取舍见 §4）。注：登记与绘制路径已就绪，但当前布局引擎放置产出为 0 栋（FOOT 碰撞盒与已注册障碍盒冲突，属布局线待修项） |
+| 村庄住宅（茅屋 / 石屋） | houseWood / houseStone | §7 布局族（模型 4.071 米 × U_STRUCT ≈ 13.0s）。放置已修复（2026-10-21）：FOOT 全表按实测占地重标 + 横距/翻面逻辑修正，实产 9 栋沿 R5 成排 + 海格石屋 1 栋（与 hw 小屋精灵同址对齐） |
 | 村庄树 / 栅栏 / 路灯 | treePine / treeRound / fence / lamp | §6（树按高登记 13.8）/ §7（路灯 12.6s） |
 | 人物（学生 4 学院色 / 教授 / 海格 / 摄魂怪 / 商人 / 家养小精灵 / 猫） | hw-wizard-gryffindor·slytherin·ravenclaw·hufflepuff / hw-professor / hw-hagrid / hw-dementor / hw-merchant / hw-elf / hw-cat，各 4 方向 ×（站立 + 4 行走帧） | §5（renderer `FIGURE_W` / `FIGURE_DH`） |
 | 生物（34 种，全物种） | hw-*（renderer `CREATURE_HW` 全映射：spider/aragog/basilisk/hippogriff/troll/dragon/unicorn/phoenix/thestral/kelpie/werewolf/nundu 等） | §8（renderer `CREATURE_HW.wM`） |
-| 道具（坩埚 / 南瓜 / 蜡烛 / 宝箱 / 日记 / 扫帚 / 金飞贼 / 鬼飞球 / 药水瓶 3 色 / 曼德拉草 / 魔杖盒 / 柳条断枝 / 栖木猫头鹰） | hw-cauldron / hw-pumpkin / hw-candle / hw-chest / hw-diary / hw-broomstick / hw-snitch / hw-quaffle / hw-potion-red·green·blue / hw-mandrake / hw-wand-box / hw-willow-branch / hw-owl-brown·snowy | §9 |
-| 布局装饰（井 / 市场摊 / 村庄门 / 帐篷 / 船 / 灯塔 / 长椅 / 稻草人 / 蜂箱 / 秋千 / 路牌 / 芦苇 / 花坛 / 篝火 / 猫头鹰棚屋 / 记分牌 / 训练环 / 对角巷店铺与酒吧 等） | 站立捕获：`components.ts` 矢量绘制为形状源，捕获后过与工厂同款的像素化 + 主调色板收尾（`pixelateCapture`） | layout2d FOOT × s（各物件布局口径） |
+| 道具（坩埚 / 南瓜 / 蜡烛 / 宝箱 / 日记 / 扫帚 / 金飞贼 / 鬼飞球 / 药水瓶 3 色 / 曼德拉草 / 魔杖盒 / 柳条断枝 / 栖木猫头鹰 / 火盆 / 篝火） | hw-cauldron / hw-pumpkin / hw-candle / hw-chest / hw-diary / hw-broomstick / hw-snitch / hw-quaffle / hw-potion-red·green·blue / hw-mandrake / hw-wand-box / hw-willow-branch / hw-owl-brown·snowy / hw-brazier / hw-campfire | §9 |
+| 墓碑（大战周） | hw-tombstone（碑体）+ 名字文字 | §9（登记宽 3.2 世界单位，屏幕空间绘制） |
+| 布局装饰（井 / 市场摊 / 村庄门 / 帐篷 / 船 / 灯塔 / 秋千 / 路牌 / 系船柱 / 猫头鹰棚屋 / 记分牌 / 训练环 / 长椅 / 稻草人 / 蜂箱） | hw-well / hw-market-stall / hw-village-gate / hw-tent / hw-boat / hw-lighthouse / hw-swing / hw-signpost / hw-mooring-post / hw-owlery / hw-scoreboard / hw-training-hoop / hw-bench / hw-scarecrow / hw-beehive | §13（2026-10-21 工厂化批次，`drawLayoutItem` 全量接线，矢量函数已删） |
+| 温室 / 车站 / 图书馆 / 宿舍塔 / 黑湖码头 | hw-greenhouse / hw-station / hw-library / hw-dorm-tower / hw-lake-dock | §7（原矢量回退已删，缺失即警告） |
 
-**已知缺口（工厂未建模，按缺失口径不绘制 + 警告）**：
+**例外（非工厂来源，逐项注明理由）**：
 
-| 缺口 | 触发点 | 说明 |
+| 例外 | 绘制路径 | 理由 |
 |---|---|---|
-| 火盆 brazier | 布局物件 `brazier`（城堡火盆等） | 原 sprites.ts 手绘已退役；待工厂建模后按 §9 登记补入 |
-| 墓碑 tombstone | 大战周墓碑（`snap.warweek.tombstones`） | 同上；当前只显示名字文字 |
+| 对角巷布局商店 / 酒吧（shop / pub） | `components.ts` drawShop / drawPub 矢量捕获 + `pixelateCapture` | 建筑类矢量与服务器命名建筑同口径；工厂房屋件已覆盖村庄命名商店与住宅，对角巷两间布局建筑待工厂店铺模型批次 |
+| 服务器命名建筑（村外，如 Greenhouse Three） | drawStoneHouse 矢量捕获 | 村内命名商店已工厂化；村外命名建筑沿用钉占地矢量捕获 |
+| 地面平铺物（蛛网 / 发光花 / 苗圃 / 花坛 / 芦苇） | drawWeb / drawGlowFlower / drawGardenPlot / drawFlowerbed / drawReed（地面纹理层） | 无竖直体量的地面贴图类，与地面同管线绘制；做 3D 模型无收益 |
+| 灌木 / 石头 / 蘑菇 | drawBush / drawStone / drawMushroom（deco 图层） | 同上，地面散布层 |
+| 城堡 paintCastle 矢量层（建筑群 / 城墙 / 塔 / 庭院） | paintCastle 捕获为站立实体 | 视觉本体已被 hw 精灵覆盖（'pre' 实体压在捕获层之上）；矢量层是 Front 淡化的切分基底（占地/frontZ 口径来源），属功能层保留。未覆盖项：庭院两棵橡树与庭院井（矢量本体，地面纹理层同类处理） |
+| 地面纹理内树木（林地 / 庭院） | drawOak / drawPine / drawDeadTree（纹理烘焙） | 背景林冠画入地面纹理；玩家可达处的站立树已全量工厂精灵 |
+
+**已知缺口**：无。正常游玩路径控制台零 `factory sprite missing` 警告（2026-10-21 unify-v2 验收实测）。
 
 ## 3. 退役记录
 

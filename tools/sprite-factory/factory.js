@@ -1602,6 +1602,245 @@ Object.assign(HW_BUILDERS, {
   },
 });
 
+/** 居中圆柱：几何中心移到原点，供横置（绕 z/x 旋转 90°）的杆件使用。
+ *  cyl() 的几何底在原点，直接横置会单边伸出（帐篷脊杆/秋千梁实测踩过）。 */
+function hcyl(rt, rb, h, mat, seg = 10) {
+  const m = cyl(rt, rb, h, mat, seg);
+  m.geometry.translate(0, -h / 2, 0);
+  return m;
+}
+
+Object.assign(HW_BUILDERS, {
+  // ------------------------------------------------ props & decor batch 3
+  // 布局装饰工厂化（2026-10-21 素材统一最后一公里）：井/摊/篷/船/塔/秋千/
+  // 路牌/村门/系船柱/篝火/火盆/墓碑/棚屋/记分牌/训练环/长椅/稻草人/蜂箱。
+  // 尺寸按真实米建模，登记宽见 client2d/size-design.md §9/§13。
+  'hw-brazier': () => {
+    const g = new THREE.Group();
+    g.add(cyl(0.62, 0.78, 0.3, M.stoneDark, 10));           // 石基
+    g.add(at(cyl(0.16, 0.22, 0.55, M.iron, 8), 0, 0.3, 0)); // 铁柱
+    const bowl = cyl(0.85, 0.42, 0.42, M.iron, 14); bowl.position.y = 0.85; g.add(bowl);
+    const coal = cyl(0.68, 0.68, 0.08, std(0x1c1a1c, { r: 1 }), 14); coal.position.y = 1.22; g.add(coal);
+    const flame = cone(0.4, 0.85, std(0xe86a1e, { e: 0xff7a22, ei: 1.6, r: 0.6 }), 10);
+    flame.position.y = 1.26; g.add(flame);
+    const core = cone(0.2, 0.5, std(0xffc23d, { e: 0xffb52e, ei: 2.0, r: 0.6 }), 8);
+    core.position.y = 1.3; g.add(core);
+    return g;
+  },
+  'hw-tombstone': () => {
+    const g = new THREE.Group();
+    g.add(box(1.3, 0.22, 0.62, M.stoneDark));                       // 底座
+    const slab = box(0.95, 1.05, 0.2, M.stoneLight); slab.position.y = 0.22; g.add(slab);
+    const top = cyl(0.475, 0.475, 0.2, M.stoneLight, 14);           // 圆顶（半圆近似：圆柱横放取上半视觉）
+    top.rotation.x = Math.PI / 2; top.position.y = 1.27; top.scale.set(1, 1, 0.5); g.add(top);
+    g.add(at(box(0.55, 0.5, 0.04, M.stone), 0, 0.55, 0.11));        // 碑面铭文板（浅刻感）
+    g.rotation.z = 0.03;                                            // 微倾，战后墓园感
+    return g;
+  },
+  'hw-well': () => {
+    const g = new THREE.Group();
+    const ring = cyl(1.05, 1.15, 0.62, M.stone, 12); g.add(ring);   // 石砌井台
+    const mouth = cyl(0.82, 0.82, 0.06, std(0x14161c, { r: 1 }), 12); mouth.position.y = 0.6; g.add(mouth);
+    for (const s of [-1, 1]) g.add(at(box(0.14, 1.5, 0.14, M.woodDark), s * 0.92, 0.5, 0));
+    g.add(at(box(2.2, 0.13, 0.16, M.wood), 0, 1.95, 0));            // 横梁
+    for (const s of [-1, 1]) {                                      // 小坡顶
+      const roof = box(2.3, 0.08, 0.8, M.slate);
+      roof.position.set(0, 2.32, s * 0.36); roof.rotation.x = -s * 0.62; g.add(roof);
+    }
+    const rope = cyl(0.025, 0.025, 0.75, M.woodDark, 6); rope.position.y = 1.2; g.add(rope);
+    g.add(at(box(0.34, 0.3, 0.34, M.wood), 0, 0.88, 0));            // 水桶
+    return g;
+  },
+  'hw-market-stall': () => {
+    const g = new THREE.Group();
+    g.add(box(3.4, 0.95, 1.7, M.wood));                             // 货台
+    g.add(at(box(3.5, 0.1, 1.8, M.woodDark), 0, 0.95, 0));          // 台面
+    const goods = [0xd44d4d, 0xe8a33d, 0x5a8c3d, 0x4a7ab5];
+    for (let i = 0; i < 6; i++) g.add(at(sph(0.21, std(goods[i % 4], { r: 0.55 })), -1.25 + i * 0.5, 1.05, 0.25));
+    for (const sx of [-1.55, 1.55]) for (const sz of [-0.7, 0.7])
+      g.add(at(box(0.13, 2.3, 0.13, M.woodDark), sx, 0, sz));       // 支柱
+    for (let i = 0; i < 5; i++) {                                   // 条纹棚（红白）
+      const stripe = box(0.78, 0.07, 2.5, i % 2 ? std(0xf0e8d8) : std(0xc94f4f));
+      stripe.position.set(-1.56 + i * 0.78, 2.62, 0); stripe.rotation.z = 0.1; g.add(stripe);
+    }
+    return g;
+  },
+  'hw-tent': () => {
+    // 整体绕 y 转 -90°：山墙+门朝南（对相机），脊沿 z。footW/footD 随之互换。
+    const g = new THREE.Group();
+    const inner = new THREE.Group(); inner.rotation.y = -Math.PI / 2; g.add(inner);
+    const canvasM = std(0x9a8a68, { r: 1 });
+    for (const s of [-1, 1]) {                                      // A 形双坡
+      const side = box(4.4, 0.09, 2.15, canvasM);
+      side.position.set(0, 1.02, s * 0.78); side.rotation.x = s * 0.83; inner.add(side);
+    }
+    const back = box(4.4, 1.55, 0.07, std(0x877655, { r: 1 })); back.position.set(0, 0, -1.28); inner.add(back);
+    // 山墙（两端三角封口）：Shape 三角挤出，截面在 YZ 平面
+    const tri = new THREE.Shape();
+    tri.moveTo(-1.42, 0); tri.lineTo(1.42, 0); tri.lineTo(0, 1.94); tri.closePath();
+    const gableGeo = new THREE.ExtrudeGeometry(tri, { depth: 0.07, bevelEnabled: false });
+    for (const s of [-1, 1]) {
+      const gable = new THREE.Mesh(gableGeo, std(0x877655, { r: 1 }));
+      gable.rotation.y = Math.PI / 2; gable.position.x = s * 2.16 - (s > 0 ? 0.07 : 0); inner.add(gable);
+    }
+    const flap = box(0.06, 1.25, 0.95, std(0x6e5f43, { r: 1 }));     // 门（东山墙上）
+    flap.position.set(2.22, 0, 0.25); inner.add(flap);
+    const ridge = hcyl(0.05, 0.05, 4.6, M.woodDark, 6);             // 脊杆（居中横置）
+    ridge.rotation.z = Math.PI / 2; ridge.position.y = 2.02; inner.add(ridge);
+    return g;
+  },
+  'hw-boat': () => {
+    const g = new THREE.Group();
+    const hull = sph(1, M.wood, 2.3, 0.42, 0.85); hull.position.y = 0.18; g.add(hull);   // 船体（长轴 x）
+    const inner = sph(1, M.woodDark, 1.95, 0.3, 0.62); inner.position.y = 0.34; g.add(inner); // 舱
+    for (const sx of [-0.9, 0.35]) g.add(at(box(0.28, 0.09, 1.35, M.wood), sx, 0.42, 0)); // 座板
+    const prow = cone(0.3, 0.85, M.wood, 8);                        // 船头上翘
+    prow.position.set(2.25, 0.3, 0); prow.rotation.z = -1.15; g.add(prow);
+    return g;
+  },
+  'hw-lighthouse': () => {
+    const g = new THREE.Group();
+    g.add(cyl(1.25, 1.5, 0.5, M.stoneDark, 10));                    // 岩基
+    const bands = [0xc94f4f, 0xf0e8d8, 0xc94f4f, 0xf0e8d8];
+    bands.forEach((c, i) => { const b = cyl(0.78 - i * 0.07, 0.85 - i * 0.07, 1.25, std(c), 12); b.position.y = 0.5 + i * 1.25; g.add(b); });
+    g.add(at(cyl(0.95, 0.95, 0.14, M.iron, 12), 0, 5.5, 0));        // 灯室平台
+    const lampRoom = cyl(0.55, 0.55, 0.85, std(0xffedb5, { e: 0xffd76a, ei: 2.2, r: 0.3 }), 8);
+    lampRoom.position.y = 5.64; g.add(lampRoom);
+    g.add(at(cone(0.78, 0.7, M.iron, 10), 0, 6.5, 0));              // 顶盖
+    return g;
+  },
+  'hw-swing': () => {
+    const g = new THREE.Group();
+    for (const sx of [-1.5, 1.5]) for (const s of [-1, 1]) {        // 双 A 架腿
+      const leg = box(0.12, 2.6, 0.12, M.woodDark);
+      leg.position.set(sx, 0, s * 0.42); leg.rotation.x = s * 0.32; g.add(leg);
+    }
+    const beam = hcyl(0.07, 0.07, 3.4, M.wood, 8); beam.rotation.z = Math.PI / 2; beam.position.y = 2.42; g.add(beam);
+    for (const sx of [-0.45, 0.45]) {                               // 单座秋千：双绳+座板
+      const rope = cyl(0.02, 0.02, 1.5, M.woodDark, 5); rope.position.set(sx, 0.95, 0); g.add(rope);
+    }
+    g.add(at(box(1.15, 0.08, 0.42, M.wood), 0, 0.18, 0));
+    return g;
+  },
+  'hw-signpost': () => {
+    const g = new THREE.Group();
+    g.add(cyl(0.09, 0.12, 2.5, M.woodDark, 8));                     // 主柱
+    g.add(at(sph(0.13, M.woodDark), 0, 2.55, 0));                   // 柱顶球
+    // 臂轴向：box 经 rotY(ry) 后长轴 = (cos ry, 0, -sin ry)，位置必须沿同轴
+    // （首版用 (sin, cos) 配位，臂与偏移错位渲成一团，已修正）。
+    const arm = (y, ry, len) => {
+      const ax = Math.cos(ry), az = -Math.sin(ry);
+      const a = box(len, 0.3, 0.05, M.wood);
+      a.position.set(ax * len / 2, y, az * len / 2); a.rotation.y = ry;
+      const tip = cone(0.15, 0.34, M.wood, 4);
+      tip.position.set(ax * (len + 0.12), y + 0.02, az * (len + 0.12));
+      tip.rotation.z = -Math.PI / 2; tip.rotation.y = ry; g.add(a, tip);
+    };
+    arm(2.05, 0, 1.35); arm(1.62, Math.PI, 1.15); arm(1.2, Math.PI / 4, 0.95); // 东/西/东北三向
+    return g;
+  },
+  'hw-village-gate': () => {
+    const g = new THREE.Group();
+    for (const s of [-1, 1]) {                                      // 石柱+柱顶球
+      g.add(at(box(0.85, 3.6, 0.85, M.stone), s * 6.8, 0, 0));
+      g.add(at(sph(0.5, M.stoneLight), s * 6.8, 3.85, 0));
+      g.add(at(box(1.05, 0.35, 1.05, M.stoneDark), s * 6.8, 3.55, 0));
+    }
+    g.add(at(box(15.2, 0.55, 0.7, M.wood), 0, 3.35, 0));            // 横梁
+    g.add(at(box(15.6, 0.22, 0.9, M.woodDark), 0, 3.95, 0));        // 梁顶小檐
+    const sign = box(2.6, 1.05, 0.12, M.woodDark); sign.position.set(0, 2.35, 0.42); g.add(sign); // 挂牌
+    for (const s of [-1, 1]) g.add(at(cyl(0.03, 0.03, 0.55, M.iron, 6), s * 1.1, 2.9, 0.42));
+    return g;
+  },
+  'hw-mooring-post': () => {
+    const g = new THREE.Group();
+    g.add(cyl(0.3, 0.36, 0.95, M.woodDark, 9));                     // 桩身
+    g.add(at(sph(0.34, M.wood, 1, 0.55, 1), 0, 0.98, 0));           // 桩帽
+    const rope = tor(0.3, 0.055, std(0x8a7368, { r: 1 })); rope.position.y = 0.62; g.add(rope); // 绳圈
+    return g;
+  },
+  'hw-campfire': () => {
+    const g = new THREE.Group();
+    for (let i = 0; i < 7; i++) {                                   // 石圈
+      const a = (i / 7) * Math.PI * 2;
+      g.add(at(sph(0.17, M.stoneDark), Math.cos(a) * 0.78, 0.02, Math.sin(a) * 0.78));
+    }
+    for (let i = 0; i < 3; i++) {                                   // 交叉柴（居中横置）
+      const log = hcyl(0.07, 0.07, 1.05, M.woodDark, 6);
+      log.position.y = 0.1; log.rotation.z = Math.PI / 2; log.rotation.y = i * Math.PI / 3; g.add(log);
+    }
+    const flame = cone(0.3, 0.72, std(0xe86a1e, { e: 0xff7a22, ei: 1.7, r: 0.6 }), 8);
+    flame.position.y = 0.16; g.add(flame);
+    const core = cone(0.15, 0.42, std(0xffc23d, { e: 0xffb52e, ei: 2.0, r: 0.6 }), 7);
+    core.position.y = 0.2; g.add(core);
+    return g;
+  },
+  'hw-owlery': () => {
+    const g = new THREE.Group();
+    g.add(cyl(2.3, 2.6, 6.4, M.stone, 14));                         // 塔身
+    g.add(at(cone(2.95, 2.6, M.slate, 14), 0, 6.35, 0));            // 锥顶
+    for (let i = 0; i < 5; i++) {                                   // 栖木层环
+      const y = 1.6 + i * 1.05, a = i * 1.35;
+      const perch = box(1.15, 0.09, 0.3, M.woodDark);
+      perch.position.set(Math.sin(a) * 2.5, y, Math.cos(a) * 2.5); perch.rotation.y = a; g.add(perch);
+      const win = box(0.42, 0.55, 0.09, M.winGlow);
+      win.position.set(Math.sin(a + 0.7) * 2.32, y + 0.35, Math.cos(a + 0.7) * 2.32); win.rotation.y = a + 0.7; g.add(win);
+    }
+    return g;
+  },
+  'hw-scoreboard': () => {
+    const g = new THREE.Group();
+    for (const s of [-1, 1]) g.add(at(box(0.22, 3.1, 0.22, M.woodDark), s * 2.2, 0, 0));
+    g.add(at(box(5.6, 2.2, 0.18, M.wood), 0, 1.55, 0));             // 主板
+    g.add(at(box(5.85, 0.3, 0.24, M.woodDark), 0, 3.62, 0));        // 顶檐
+    const cols = [0x8e2323, 0x27436e, 0xd9a92c, 0x1f5c3d];          // 四学院色块（比分格）
+    cols.forEach((c, i) => g.add(at(box(1.05, 1.05, 0.06, std(c)), -1.95 + i * 1.3, 2.0, 0.12)));
+    return g;
+  },
+  'hw-training-hoop': () => {
+    const g = new THREE.Group();
+    g.add(cyl(0.09, 0.13, 5.2, M.woodDark, 8));                     // 杆
+    g.add(at(cyl(0.5, 0.62, 0.3, M.stoneDark, 9), 0, 0, 0));         // 石基
+    const ring = tor(0.52, 0.06, M.gold); ring.position.y = 5.45; g.add(ring); // 金环（水平，与魁地奇球门同语言）
+    return g;
+  },
+  'hw-bench': () => {
+    const g = new THREE.Group();
+    for (const s of [-1, 1]) {
+      g.add(at(box(0.16, 0.5, 0.55, M.iron), s * 1.05, 0, 0));      // 铸铁腿
+      g.add(at(box(0.16, 0.85, 0.12, M.iron), s * 1.05, 0.35, -0.26)); // 靠背支
+    }
+    for (let i = 0; i < 3; i++) g.add(at(box(2.5, 0.07, 0.16, M.wood), 0, 0.5, -0.14 + i * 0.19)); // 座板条
+    for (let i = 0; i < 2; i++) {                                   // 靠背板条（北侧，微后仰）
+      const slat = box(2.5, 0.17, 0.06, M.wood);
+      slat.position.set(0, 0.95 + i * 0.33, -0.33); slat.rotation.x = -0.16; g.add(slat);
+    }
+    return g;
+  },
+  'hw-scarecrow': () => {
+    const g = new THREE.Group();
+    g.add(cyl(0.07, 0.09, 2.3, M.woodDark, 7));                     // 主杆
+    const armBar = hcyl(0.05, 0.05, 1.7, M.woodDark, 6);            // 横臂（居中横置）
+    armBar.rotation.z = Math.PI / 2; armBar.position.y = 1.78; g.add(armBar);
+    const coat = cone(0.52, 1.25, std(0x7a6248, { r: 1 }), 10);     // 破大衣（锥形垂布）
+    coat.position.y = 0.62; g.add(coat);
+    const head = sph(0.34, std(0xe08a2e, { r: 0.8 })); head.position.y = 2.32; g.add(head); // 南瓜头
+    const hat = cyl(0.4, 0.42, 0.1, std(0xa5854f, { r: 1 }), 10); hat.position.y = 2.58; g.add(hat); // 草帽檐
+    g.add(at(cone(0.2, 0.35, std(0xa5854f, { r: 1 }), 8), 0, 2.62, 0));
+    return g;
+  },
+  'hw-beehive': () => {
+    const g = new THREE.Group();
+    const straw = std(0xc9a44f, { r: 1 });
+    [0.95, 0.8, 0.62].forEach((r, i) => {                            // 三层草编箱体（下大上小）
+      const tier = cyl(r, r + 0.06, 0.42, straw, 11); tier.position.y = i * 0.4; g.add(tier);
+    });
+    g.add(at(cone(0.72, 0.4, std(0xa5854f, { r: 1 }), 11), 0, 1.18, 0)); // 草顶
+    g.add(at(box(0.3, 0.14, 0.05, M.woodDark), 0, 0.22, 0.98));     // 出入口
+    return g;
+  },
+});
+
 function buildOwl(bodyM, faceM, speckled) {
   const g = new THREE.Group();
   g.add(at(cyl(0.05, 0.06, 0.34, M.woodDark, 8), 0, 0, 0));

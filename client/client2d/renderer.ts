@@ -4,12 +4,9 @@
  */
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
 import { drawOak, drawPine, drawDeadTree, drawStoneHouse, drawBush, drawStone,
-  drawWell, drawMarketStall, drawVillageGate, drawDock, drawMooringPost, drawBoat, drawLighthouse,
-  drawWeb, drawGlowFlower, drawTent, drawCampfire, drawGreenhouse, drawGardenPlot,
-  drawOwlery, drawScoreboard, drawTrainingHoop,
-  drawShop, drawPub, drawStation, drawLibrary, drawDormTower,
-  drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing,
-  drawSignpost, drawReed, drawMushroom } from './components.js';
+  drawWeb, drawGlowFlower, drawGardenPlot,
+  drawShop, drawPub,
+  drawFlowerbed, drawReed, drawMushroom } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
 import { assetsSettled, preSprite, preSpritesReady, masterPalette, type PreSprite } from './assets.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
@@ -763,7 +760,10 @@ function registerVillageStanding(): void {
   // 树丛 = 3 棵簇植。登记宽与尺寸表第 6 节同口径（松/橡按高登记 13.8）。
   const trees: Array<[number, number, string, number]> = [
     [-24, 146, 'treePine', 13.8], [14, 145, 'treeRound', 13.8], [27, 146, 'treePine', 6],
-    [44, 157, 'treePine', 13.8], [45, 197, 'treeRound', 13.8],
+    // (44,157)/(45,197) 两棵原位在住宅恢复后正压屋身（住宅精灵占地以
+    // item 北移 3.7s 为中心）：分别挪到 (62,146) 村口东 grove 与
+    // (74,220) 尖叫棚屋东南，树干出屋身、仅树冠轻搭屋顶边
+    [62, 146, 'treePine', 13.8], [74, 220, 'treeRound', 13.8],
     [59, 189, 'treePine', 13.8], [-25, 197, 'treePine', 13.8], [-21, 206, 'treePine', 13.8],
     [21, 205, 'treeRound', 13.8], [37, 207, 'treePine', 6], [-13, 207, 'treePine', 13.8],
   ];
@@ -1162,36 +1162,40 @@ const GROUND_ITEM_KINDS = new Set([
 function drawLayoutItem(g: CanvasRenderingContext2D, it: { kind: string; x: number; z: number; s: number; label?: string }): void {
   const x = w2tx(it.x), y = w2ty(it.z);
   const s = TPX * it.s;
+  // 工厂精灵绘制（登记宽见 size-design.md §13）：缺失即警告、不回退矢量
+  const hw = (name: string, w: number): void => {
+    if (!drawHwTex(g, name, it.x, it.z, w * it.s)) warnMissingSprite(name);
+  };
   switch (it.kind) {
     case 'bush': case 'stone': case 'mushroom': break; // 已在 deco 图层画过
-    case 'brazier': warnMissingSprite('brazier'); break; // 工厂未建模：不绘制，缺口暴露（原 sprites.ts 手绘已退役）
-    case 'well': drawWell(g, x, y, s); break;
-    case 'marketstall': drawMarketStall(g, x, y, s); break;
-    case 'villagegate': drawVillageGate(g, x, y, s); break;
-    case 'dock': if (!preSprite('hw-lake-dock')) drawDock(g, x, y, s); break; // hw 码头在 landmarks pass 合并绘制
-    case 'mooringpost': drawMooringPost(g, x, y, s); break;
-    case 'boat': drawBoat(g, x, y, s); break;
-    case 'lighthouse': drawLighthouse(g, x, y, s); break;
+    case 'brazier': hw('hw-brazier', 6); break;
+    case 'well': hw('hw-well', 7); break;
+    case 'marketstall': hw('hw-market-stall', 11.5); break;
+    case 'villagegate': hw('hw-village-gate', 48); break;
+    case 'dock': if (!preSprite('hw-lake-dock')) warnMissingSprite('hw-lake-dock'); break; // hw 码头在 landmarks pass 合并绘制
+    case 'mooringpost': hw('hw-mooring-post', 2.6); break;
+    case 'boat': hw('hw-boat', 15); break;
+    case 'lighthouse': hw('hw-lighthouse', 8.5); break;
     case 'web': drawWeb(g, x, y, s); break;
     case 'glowflower': drawGlowFlower(g, x, y, s); break;
-    case 'tent': drawTent(g, x, y, s); break;
-    case 'campfire': drawCampfire(g, x, y, s); break;
-    case 'greenhouse': if (!drawHwTex(g, 'hw-greenhouse', it.x, it.z, 14 * it.s)) drawGreenhouse(g, x, y, s); break;
+    case 'tent': hw('hw-tent', 11); break;
+    case 'campfire': hw('hw-campfire', 6); break;
+    case 'greenhouse': hw('hw-greenhouse', 14); break;
     case 'gardenplot': drawGardenPlot(g, x, y, s); break;
-    case 'owlery': drawOwlery(g, x, y, s); break;
-    case 'scoreboard': drawScoreboard(g, x, y, s); break;
-    case 'traininghoop': drawTrainingHoop(g, x, y, s); break;
+    case 'owlery': hw('hw-owlery', 17); break;
+    case 'scoreboard': hw('hw-scoreboard', 18); break;
+    case 'traininghoop': hw('hw-training-hoop', 4); break;
     case 'shop': drawShop(g, x, y, s, it.label ?? '商店'); break;
     case 'pub': drawPub(g, x, y, s); break;
-    case 'station': if (!drawHwTex(g, 'hw-station', it.x, it.z, 56 * it.s)) drawStation(g, x, y, s); break;
-    case 'library': if (!drawHwTex(g, 'hw-library', it.x, it.z, 42 * it.s)) drawLibrary(g, x, y, s); break;
-    case 'dormtower': if (!drawHwTex(g, 'hw-dorm-tower', it.x, it.z, 22 * it.s)) drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
+    case 'station': hw('hw-station', 56); break;
+    case 'library': hw('hw-library', 42); break;
+    case 'dormtower': hw('hw-dorm-tower', 22); break;
     case 'flowerbed': drawFlowerbed(g, x, y, s); break;
-    case 'bench': drawBench(g, x, y, s); break;
-    case 'scarecrow': drawScarecrow(g, x, y, s); break;
-    case 'beehive': drawBeehive(g, x, y, s); break;
-    case 'swing': drawSwing(g, x, y, s); break;
-    case 'signpost': drawSignpost(g, x, y, s); break;
+    case 'bench': hw('hw-bench', 8); break;
+    case 'scarecrow': hw('hw-scarecrow', 6); break;
+    case 'beehive': hw('hw-beehive', 6); break;
+    case 'swing': hw('hw-swing', 10); break;
+    case 'signpost': hw('hw-signpost', 5); break;
     case 'reed': drawReed(g, x, y, s); break;
   }
 }
@@ -1927,7 +1931,18 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       if (!visible(t.x, t.z)) continue;
       const [sx, sy] = w2s(t.x, t.z);
       const size = Math.max(14, 22 * cam.zoom);
-      warnMissingSprite('tombstone'); // 工厂未建模：只留名字，碑体不绘制（原 sprites.ts 手绘已退役）
+      // 碑体走工厂精灵（hw-tombstone，登记宽 3.2 世界单位，size-design §9）；
+      // 锚点口径与生物一致（脚下地面原点落在 sy + 绘制高/2）
+      const pmT = preSprite('hw-tombstone');
+      if (pmT) {
+        const dwT = 3.2 * cam.zoom;
+        const kT = dwT / pmT.w;
+        const dhT = pmT.h * kT;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(pmT.img, sx - pmT.anchorX * kT, sy + dhT / 2 - pmT.anchorY * kT, dwT, dhT);
+      } else {
+        warnMissingSprite('hw-tombstone');
+      }
       if (cam.zoom > 0.9) {
         ctx.fillStyle = '#c9c9d4'; setFont('10px sans-serif'); setAlign('center');
         ctx.fillText(t.n.split(' ').pop() ?? t.n, sx, sy + size / 2 + 11);
