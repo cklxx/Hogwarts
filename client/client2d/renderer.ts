@@ -309,49 +309,77 @@ function drawMoon(ctx: CanvasRenderingContext2D, mx: number, my: number, k: numb
 // - HOSTILE_KINDS: Set lookup instead of a per-creature array literal
 // - elemCss: precomputed '#rrggbb' per Element (css() does toString(16) per call)
 const HOSTILE_KINDS = new Set(['dementor', 'spider', 'troll', 'basilisk', 'dragon', 'aragog', 'nundu', 'chimera', 'manticore', 'lethifold', 'werewolf']);
-/** 实体屏幕高度换算：1 米 = 20 × cam.zoom 屏幕 px。
- * 由巫师标定：巫师 1.8m，绘制高 dh = 36 × cam.zoom（见下方 wizard 绘制）。 */
-export const ENTITY_PX_PER_M = 20;
-// 3转2 生物映射：物种 kind -> hw 精灵名 + 目标身高 hM（米，按原著量级，见
-// creature-scale.md）。绘制按高度换算：绘制高 = hM × ENTITY_PX_PER_M × zoom，
-// 宽度按精灵宽高比跟随。此前按宽度 × kw 猜测系数：窄高精灵（独角兽 22×41）
-// 被放大到近 300px、宽扁精灵（蜘蛛）又偏小，已废弃。
-// 未映射的物种继续走 sprites.ts 代码绘制（分批替换中）。
-export const CREATURE_HW: Record<string, { name: string; hM: number }> = {
-  spider: { name: 'hw-spider', hM: 0.8 },       // 腿展自动 ≈1.9m
-  aragog: { name: 'hw-spider', hM: 1.3 },       // 腿展自动 ≈3.1m（原著巨蛛量级）
-  basilisk: { name: 'hw-basilisk', hM: 2.2 },   // 立起的巨蛇
-  hippogriff: { name: 'hw-hippogriff', hM: 2.4 },
-  snare: { name: 'hw-devils-snare', hM: 1.1 },  // 贴地藤蔓团，宽自动 ≈2.0m
-  dementor: { name: 'hw-dementor-down', hM: 2.4 },
-  owl: { name: 'hw-owl-brown', hM: 0.5 },
-  cat: { name: 'hw-cat', hM: 0.4 },
-  pixie: { name: 'hw-pixie', hM: 0.4 },         // 宽自动 ≈0.8m（翅膀）
-  troll: { name: 'hw-troll', hM: 3.5 },
-  inferius: { name: 'hw-inferius', hM: 1.75 },  // 人形
-  unicorn: { name: 'hw-unicorn', hM: 1.6 },
-  phoenix: { name: 'hw-phoenix', hM: 0.6 },     // 翼展自动 ≈1.3m
-  bowtruckle: { name: 'hw-bowtruckle', hM: 0.3 },
-  hinkypunk: { name: 'hw-hinkypunk', hM: 0.55 },
-  redcap: { name: 'hw-redcap', hM: 0.6 },
-  niffler: { name: 'hw-niffler', hM: 0.35 },
-  grindylow: { name: 'hw-grindylow', hM: 0.8 },
-  erkling: { name: 'hw-erkling', hM: 0.9 },
-  kelpie: { name: 'hw-kelpie', hM: 1.7 },
-  thestral: { name: 'hw-thestral', hM: 1.8 },
-  occamy: { name: 'hw-occamy', hM: 1.1 },
-  boggart: { name: 'hw-boggart', hM: 1.7 },
-  runespoor: { name: 'hw-runespoor', hM: 0.9 },
-  skrewt: { name: 'hw-skrewt', hM: 1.0 },
-  thunderbird: { name: 'hw-thunderbird', hM: 1.5 }, // 翼展自动 ≈3.8m
-  werewolf: { name: 'hw-werewolf', hM: 2.1 },
-  lethifold: { name: 'hw-lethifold', hM: 0.5 }, // 贴地滑行的斗篷
-  manticore: { name: 'hw-manticore', hM: 2.0 },
-  chimera: { name: 'hw-chimera', hM: 2.1 },
-  nundu: { name: 'hw-nundu', hM: 2.6 },
-  dragon: { name: 'hw-dragon', hM: 2.5 },      // 幼龙量级
-  serpent: { name: 'hw-serpent', hM: 1.0 },
-  birds: { name: 'hw-birds', hM: 0.8 },         // 一群召唤鸟，宽自动 ≈1.4m
+/** 统一尺寸系统（size-design.md）：全图只有一条绘制规则——精灵按登记的
+ * 世界宽度 W（世界单位）绘制，k = W × zoom / 精灵px宽，高度由精灵自身
+ * 像素比带出（精灵在工厂俯角 40° 下渲染，投影自洽：宽 14px/米、
+ * 竖直 ×cos40°、深度 ×sin40°，标定见 size-design.md 第 1 节）。
+ * 登记值由两条固定尺度从真实米数导出，不再逐物件拍系数：
+ * - 活物（人物/生物/道具/树）U_LIVE = 5 世界单位/真实米，巫师为锚点：
+ *   巫师真实投影高 (1.8 身 + 0.65 帽) × cos40° + 0.4 × sin40° ≈ 2.13 米
+ *   → 绘制高 10.7 单位、宽 7.1 单位。
+ * - 城堡建筑 U_STRUCT = 3.2 世界单位/模型米（keep/礼堂/塔楼与布局占地
+ *   的比值），或直接钉占地宽（商店 = 布局占地 1.0 倍）。
+ * - 布局建筑（layout2d FOOT 族）：车站/图书馆/温室/宿舍塔登记宽 = 模型米
+ *   × U_STRUCT（FOOT 只定 lot 落位与碰撞）；村庄住宅（茅屋/石屋）沿用
+ *   FOOT 口径（村庄构图整体设计，见 size-design.md 第 4 节）。
+ * 此前三套口径（建筑占地×1.8、生物 hM×20、登记 visualW 逐个拍）已废除。 */
+export const U_LIVE = 5;
+export const U_STRUCT = 3.2;
+/** 巫师绘制高（世界单位）：Front 淡化判定与 lineup 共用同一锚点。 */
+export const WIZARD_DH = 10.7;
+/** 人物精灵基名 -> 登记世界宽度（由真实投影高 × U_LIVE × 精灵宽高比导出）。 */
+export const FIGURE_W: Record<string, number> = {
+  'hw-wizard-gryffindor': 7.1, 'hw-wizard-slytherin': 7.1,
+  'hw-wizard-ravenclaw': 7.1, 'hw-wizard-hufflepuff': 7.1,
+  'hw-professor': 7.1,   // 绘制高 11.1（1.85 身 + 高帽）
+  'hw-hagrid': 8.9,      // 绘制高 11.9（2.6 半巨人）
+  'hw-dementor': 8.1,    // 绘制高 10.8（2.4 漂浮）
+  'hw-merchant': 7.4,    // 绘制高 9.9
+  'hw-elf': 7.3,         // 绘制高 4.8（1.0 矮小，宽在耳朵）
+};
+/** 人物回退（chars.ts 代码人物）的绘制高（世界单位），与 hw 口径一致。 */
+export const FIGURE_DH: Record<string, number> = {
+  student: WIZARD_DH, professor: 11.1, hagrid: 11.9, merchant: 9.9, elf: 4.8,
+};
+// 3转2 生物映射：物种 kind -> hw 精灵名 + 登记世界宽度 wM（世界单位）。
+// wM 由 size-design.md 的真实 W×D×H 按锚点维度导出：高体型按投影高
+// （(H·cos40° + D·sin40°) × U_LIVE，再乘精灵宽高比），扁平体型按地面宽
+// （W × U_LIVE）。绘制只用 wM 定宽，高度按精灵比跟随。
+export const CREATURE_HW: Record<string, { name: string; wM: number }> = {
+  spider: { name: 'hw-spider', wM: 9.5 },       // 腿展 1.9m × U_LIVE
+  aragog: { name: 'hw-spider', wM: 15.5 },      // 腿展 3.1m
+  basilisk: { name: 'hw-basilisk', wM: 10.7 },  // 立起 2.2m，绘制高 13.2
+  hippogriff: { name: 'hw-hippogriff', wM: 19.9 }, // 2.4m，绘制高 17.5
+  snare: { name: 'hw-devils-snare', wM: 10.0 }, // 藤蔓团宽 2.0m
+  dementor: { name: 'hw-dementor-down', wM: 8.1 }, // 绘制高 10.8
+  owl: { name: 'hw-owl-brown', wM: 5.2 },       // 绘制高 3.2
+  cat: { name: 'hw-cat', wM: 2.8 },             // 绘制高 3.9
+  pixie: { name: 'hw-pixie', wM: 4.0 },         // 翼展 0.8m
+  troll: { name: 'hw-troll', wM: 26.4 },        // 3.5m，绘制高 18.5
+  inferius: { name: 'hw-inferius', wM: 8.0 },   // 人形 1.75m，绘制高 8.0
+  unicorn: { name: 'hw-unicorn', wM: 7.6 },     // 1.6m，绘制高 13.8（含角）
+  phoenix: { name: 'hw-phoenix', wM: 6.5 },     // 翼展 1.3m
+  bowtruckle: { name: 'hw-bowtruckle', wM: 2.2 },
+  hinkypunk: { name: 'hw-hinkypunk', wM: 3.7 },
+  redcap: { name: 'hw-redcap', wM: 4.4 },
+  niffler: { name: 'hw-niffler', wM: 2.0 },
+  grindylow: { name: 'hw-grindylow', wM: 6.0 },
+  erkling: { name: 'hw-erkling', wM: 6.4 },
+  kelpie: { name: 'hw-kelpie', wM: 7.8 },       // 绘制高 14.2
+  thestral: { name: 'hw-thestral', wM: 13.9 },  // 绘制高 14.6
+  occamy: { name: 'hw-occamy', wM: 10.9 },
+  boggart: { name: 'hw-boggart', wM: 9.4 },
+  runespoor: { name: 'hw-runespoor', wM: 6.0 }, // 贴地长 1.2m
+  skrewt: { name: 'hw-skrewt', wM: 5.0 },       // 长 1.0m
+  thunderbird: { name: 'hw-thunderbird', wM: 19.0 }, // 翼展 3.8m
+  werewolf: { name: 'hw-werewolf', wM: 7.7 },   // 2.1m，绘制高 10.0
+  lethifold: { name: 'hw-lethifold', wM: 7.5 }, // 贴地斗篷宽 1.5m
+  manticore: { name: 'hw-manticore', wM: 8.4 }, // 绘制高 15.7
+  chimera: { name: 'hw-chimera', wM: 8.8 },     // 绘制高 16.4
+  nundu: { name: 'hw-nundu', wM: 12.7 },        // 2.6m，绘制高 20.9
+  dragon: { name: 'hw-dragon', wM: 25.6 },      // 幼龙，绘制高 22.4
+  serpent: { name: 'hw-serpent', wM: 5.1 },
+  birds: { name: 'hw-birds', wM: 7.0 },         // 鸟群展宽 1.4m
 };
 const HW_HOUSES = ['gryffindor', 'slytherin', 'ravenclaw', 'hufflepuff'];
 /** 巫师实体 -> hw 人物精灵基名。merchant/elf 暂无 hw 模型，返回 null 回退 chars.ts。 */
@@ -685,7 +713,8 @@ function paintVillageAssets(g: CanvasRenderingContext2D, mode: 'ground' | 'stand
     cg.fillStyle = 'rgba(0,0,0,0.25)';
     cg.beginPath(); cg.ellipse(x, y - 2, w / 2, Math.max(2, w / 7), 0, 0, Math.PI * 2); cg.fill();
   };
-  // 3转2 试点：命名商店按标签选预渲染房屋，视觉宽度 = 占地宽 1.8 倍（碰撞不变），
+  // 3转2 试点：命名商店按标签选预渲染房屋，视觉宽度 = 布局占地宽 1.0 倍
+  // （尺寸系统：建筑钉占地，见 size-design.md；原 1.8 倍拍脑袋系数已废除）。
   // 地面原点对齐占地中心。精灵自带烘焙阴影，不再叠椭圆假阴影。
   const shopPreName = (label: string): string =>
     label.includes('Broomsticks') ? 'houseTavern'
@@ -693,7 +722,7 @@ function paintVillageAssets(g: CanvasRenderingContext2D, mode: 'ground' | 'stand
   const drawPreShop = (cg: CanvasRenderingContext2D, o: { label?: string; x0: number; x1: number; z0: number; z1: number }): boolean => {
     const pm = preSprite(shopPreName(o.label ?? ''));
     if (!pm) return false;
-    const k = (1.8 * (o.x1 - o.x0) * TPX) / pm.w;
+    const k = ((o.x1 - o.x0) * TPX) / pm.w;
     return drawPre(cg, pm, w2tx((o.x0 + o.x1) / 2), w2ty((o.z0 + o.z1) / 2), k);
   };
   if (!vs) {
@@ -799,18 +828,20 @@ function registerVillageStanding(
 ): void {
   // ---- trees + fence runs (fixed decorative spots, clear of buildings/roads) ----
   const trees: Array<[number, number, HTMLCanvasElement, number, number]> = [
-    [-24, 146, vs.pine, 10, 20], [14, 145, vs.roundTree, 10, 20], [27, 146, vs.pineSmall, 7, 7],
-    [44, 157, vs.pine, 10, 20], [53, 175, vs.autumn, 22, 22], [45, 197, vs.roundTree, 10, 20],
-    [59, 189, vs.thinTree, 9, 18], [-25, 197, vs.pine, 10, 20], [-21, 206, vs.pineOrange, 10, 20],
-    [21, 205, vs.roundTree, 10, 20], [37, 207, vs.pineSmall, 7, 7], [-13, 207, vs.pine, 10, 20],
-    [64, 168, vs.grove, 22, 22],
+    [-24, 146, vs.pine, 13, 26], [14, 145, vs.roundTree, 13, 26], [27, 146, vs.pineSmall, 8, 8],
+    [44, 157, vs.pine, 13, 26], [53, 175, vs.autumn, 24, 24], [45, 197, vs.roundTree, 13, 26],
+    [59, 189, vs.thinTree, 12, 24], [-25, 197, vs.pine, 13, 26], [-21, 206, vs.pineOrange, 13, 26],
+    [21, 205, vs.roundTree, 13, 26], [37, 207, vs.pineSmall, 8, 8], [-13, 207, vs.pine, 13, 26],
+    [64, 168, vs.grove, 24, 24],
   ];
   for (const [tx, tz, spr, wu, hu] of trees) {
     captureStanding(tz + 1, tx - wu * 0.8 - 4, tz - hu - 16, tx + wu * 0.8 + 4, tz + 3, (cg) => {
       const x = w2tx(tx), y = w2ty(tz);
-      // 3转2：松/圆冠换预渲染树（自带阴影），其余仍用图集精灵 + 椭圆假阴影
+      // 3转2：松/圆冠换预渲染树（自带阴影），其余仍用图集精灵 + 椭圆假阴影。
+      // 工厂树登记宽 13.8 世界单位（松高 7m 按 U_LIVE 投影高导出，见尺寸表），
+      // 与图集树的 (wu, hu) 同步放大，保证村内两种树同尺。
       const pm = spr === vs.pine ? preSprite('treePine') : spr === vs.roundTree ? preSprite('treeRound') : null;
-      if (pm && drawPre(cg, pm, x, y, (wu * TPX * 1.1) / pm.w)) return;
+      if (pm && drawPre(cg, pm, x, y, (13.8 * TPX) / pm.w)) return;
       shadow(cg, x, y, wu * TPX * 0.8);
       cg.drawImage(spr, x - (wu * TPX) / 2, y - hu * TPX, wu * TPX, hu * TPX);
     });
@@ -847,7 +878,8 @@ function registerVillageStanding(
     if (it.kind === 'cottage' || it.kind === 'stonehouse') {
       captureStanding(it.z + 2, it.x - 54 * it.s - 4, it.z - 92 * it.s - 6, it.x + 54 * it.s + 4, it.z + 4, (cg) => {
         const x = w2tx(it.x), y = w2ty(it.z), s = TPX * it.s;
-        // 3转2：原点（占地中心）= 基线（南缘）向北 footD/2；宽度沿用原素材口径
+        // 3转2：原点（占地中心）= 基线（南缘）向北 footD/2；登记宽 = FOOT 宽
+        // （茅屋 76 / 石屋 100 世界单位，与布局碰撞盒同宽，见尺寸表布局族）
         const pm = preSprite(it.kind === 'cottage' ? 'houseWood' : 'houseStone');
         const artW = it.kind === 'cottage' ? 72 * s : 96 * s;
         if (pm) {
@@ -1255,16 +1287,16 @@ function drawLayoutItem(g: CanvasRenderingContext2D, it: { kind: string; x: numb
     case 'glowflower': drawGlowFlower(g, x, y, s); break;
     case 'tent': drawTent(g, x, y, s); break;
     case 'campfire': drawCampfire(g, x, y, s); break;
-    case 'greenhouse': if (!drawHwTex(g, 'hw-greenhouse', it.x, it.z, 80 * it.s)) drawGreenhouse(g, x, y, s); break;
+    case 'greenhouse': if (!drawHwTex(g, 'hw-greenhouse', it.x, it.z, 14 * it.s)) drawGreenhouse(g, x, y, s); break;
     case 'gardenplot': drawGardenPlot(g, x, y, s); break;
     case 'owlery': drawOwlery(g, x, y, s); break;
     case 'scoreboard': drawScoreboard(g, x, y, s); break;
     case 'traininghoop': drawTrainingHoop(g, x, y, s); break;
     case 'shop': drawShop(g, x, y, s, it.label ?? '商店'); break;
     case 'pub': drawPub(g, x, y, s); break;
-    case 'station': if (!drawHwTex(g, 'hw-station', it.x, it.z, 148 * it.s)) drawStation(g, x, y, s); break;
-    case 'library': if (!drawHwTex(g, 'hw-library', it.x, it.z, 108 * it.s)) drawLibrary(g, x, y, s); break;
-    case 'dormtower': if (!drawHwTex(g, 'hw-dorm-tower', it.x, it.z, 64 * it.s)) drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
+    case 'station': if (!drawHwTex(g, 'hw-station', it.x, it.z, 56 * it.s)) drawStation(g, x, y, s); break;
+    case 'library': if (!drawHwTex(g, 'hw-library', it.x, it.z, 42 * it.s)) drawLibrary(g, x, y, s); break;
+    case 'dormtower': if (!drawHwTex(g, 'hw-dorm-tower', it.x, it.z, 22 * it.s)) drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
     case 'flowerbed': drawFlowerbed(g, x, y, s); break;
     case 'bench': drawBench(g, x, y, s); break;
     case 'scarecrow': drawScarecrow(g, x, y, s); break;
@@ -1518,28 +1550,28 @@ function registerCastleStanding(): void {
  * 城堡建筑覆盖 paintCastle 的代码绘制（位置/占地沿用 paintCastle 的布局坐标）；
  * 道具按 item-design.md 分类摆放到对应场景。逐帧按占地南缘深度与实体统一
  * 排序绘制；精灵未就绪时不注册，捕获的代码绘制原样保留（回退）。
- * 视觉宽度口径：建筑 ≈ 占地 1.8 倍（与霍格莫德商店试点一致），道具按实物感。
+ * 登记宽度口径：size-design.md 尺寸表（建筑钉占地或 U_STRUCT、活物 U_LIVE）。
  */
 function registerHwLandmarks(): void {
   // --- 城堡（paintCastle 坐标：大礼堂西、钟塔北、塔楼群、 南门） ---
   registerPre('hw-great-hall', -39, -83, 30);
-  registerPre('hw-tower-mid', -13.5, -97.5, 11);   // 钟塔
-  registerPre('hw-tower-tall', -56, -102, 11);
-  registerPre('hw-tower-mid', 18, -99, 11);
-  registerPre('hw-tower-tall', 53, -59, 12);
-  registerPre('hw-tower-mid', 8, -45.5, 10);
-  registerPre('hw-tower-short', -52, -59, 10);
-  registerPre('hw-tower-short', -44, -63, 8);
-  registerPre('hw-tower-short', -36, -62.5, 8);
-  registerPre('hw-astro-tower', 33, -70, 12);      // 天文塔
-  registerPre('hw-castle-wall', -32, -104, 15);
-  registerPre('hw-castle-wall', -4, -103, 15);
-  registerPre('hw-castle-wall', 24, -99.5, 15);
-  registerPre('hw-castle-gate', -3, -45.3, 14);
+  registerPre('hw-tower-mid', -13.5, -97.5, 9);    // 钟塔（塔径 = 布局 2r）
+  registerPre('hw-tower-tall', -56, -102, 9);
+  registerPre('hw-tower-mid', 18, -99, 9);
+  registerPre('hw-tower-tall', 53, -59, 10);
+  registerPre('hw-tower-mid', 8, -45.5, 9);
+  registerPre('hw-tower-short', -52, -59, 9);
+  registerPre('hw-tower-short', -44, -63, 6.5);
+  registerPre('hw-tower-short', -36, -62.5, 5.5);
+  registerPre('hw-astro-tower', 33, -70, 14);      // 天文塔（布局 r=7）
+  registerPre('hw-castle-wall', -32, -104, 14);
+  registerPre('hw-castle-wall', -4, -103, 14);
+  registerPre('hw-castle-wall', 24, -99.5, 14);
+  registerPre('hw-castle-gate', -3, -45.3, 16);
   // --- 城堡主体第二批：主楼 keep + 东翼 + 高架桥（paintCastle 布局坐标） ---
-  registerPre('hw-keep', 0, -74, 37);              // 主楼（代码矩形 -14..14, -88..-60）
-  registerPre('hw-keep', 20, -72, 19);             // 东翼（代码矩形 14..26, -80..-64）
-  registerPre('hw-viaduct', -21, -75, 18);         // 高架桥（代码矩形 -28..-14, -78..-72）
+  registerPre('hw-keep', 0, -74, 37);              // 主楼（模型 11.5m × U_STRUCT；keep 障碍 60 宽含两翼）
+  registerPre('hw-keep', 20, -72, 24);             // 东翼塔楼块（东翼障碍内）
+  registerPre('hw-viaduct', -21, -75, 14);         // 高架桥（钉代码矩形宽 14）
   // --- 魁地奇看台：沿球场四边分段（texPitch 色带之上） ---
   for (const sz of [-176, -161, -146, -131]) {
     registerPre('hw-pitch-stand', 7, sz, 16);
@@ -1550,38 +1582,38 @@ function registerHwLandmarks(): void {
     registerPre('hw-pitch-stand', sx, -100, 16);
   }
   // --- 标志地点 ---
-  registerPre('hw-hagrid-hut', 105, 118, 34);      // 海格小屋（布局石屋位置）
-  registerPre('hw-whomping-willow', 45, 0, 22);    // 打人柳（willow 区中心）
-  registerPre('hw-quidditch-hoops', 40, -178, 26);
-  registerPre('hw-quidditch-hoops', 40, -122, 26);
-  registerPre('hw-lake-dock', -104, 48, 36);       // 黑湖码头（两段 dock 合并）
-  registerPre('hw-express', -44, 300, 44);         // 霍格沃茨特快（车站站台前）
-  registerPre('hw-owl-brown', 86, -84, 5);         // 猫头鹰棚屋栖鸟
-  registerPre('hw-owl-snowy', 75, -82, 5);
+  registerPre('hw-hagrid-hut', 105, 118, 24);      // 海格小屋（7×6m 按 U_LIVE 高度锚 ≈ 绘制高 20）
+  registerPre('hw-whomping-willow', 45, 0, 30);    // 打人柳（冠径 10m，绘制高 ≈29）
+  registerPre('hw-quidditch-hoops', 40, -178, 36); // 球门环组（展开 12m × U_STRUCT，高 ≈31）
+  registerPre('hw-quidditch-hoops', 40, -122, 36);
+  registerPre('hw-lake-dock', -104, 48, 36);       // 黑湖码头（两段 dock 合并跨度 ≈12m × U_STRUCT）
+  registerPre('hw-express', -44, 300, 24);         // 霍格沃茨特快（按投影高登记：车高 4m，地面长 ≈34）
+  registerPre('hw-owl-brown', 86, -84, 7);         // 猫头鹰棚屋栖鸟（与生物 owl 同口径）
+  registerPre('hw-owl-snowy', 75, -82, 7);
   // --- 道具（功能类：可交互场景；装饰类：依附建筑/场景） ---
   const props: Array<[string, number, number, number]> = [
-    ['hw-cauldron', 99, 128, 5.5],        // 海格小屋前院
-    ['hw-cauldron', 6, 186, 5],           // 霍格莫德广场
-    ['hw-pumpkin', 108, 148, 5],          // 南瓜田（texHagrid 南瓜区）
-    ['hw-pumpkin', 118, 152, 5.6],
-    ['hw-pumpkin', 128, 146, 4.6],
-    ['hw-candle', -6, -52, 2.8],          // 城堡庭院
-    ['hw-candle', 6, -52, 2.8],
-    ['hw-candle', -39, -64, 2.8],         // 大礼堂门前
-    ['hw-chest', -24, -48, 5],            // 庭院角
+    ['hw-cauldron', 99, 128, 4.5],        // 海格小屋前院（坩埚 口径 0.8m × U_LIVE）
+    ['hw-cauldron', 6, 186, 4.5],         // 霍格莫德广场
+    ['hw-pumpkin', 108, 148, 5],          // 南瓜田（海格巨型南瓜 ≈1m）
+    ['hw-pumpkin', 118, 152, 5.5],
+    ['hw-pumpkin', 128, 146, 4.5],
+    ['hw-candle', -6, -52, 1.2],          // 城堡庭院（蜡烛 0.3m）
+    ['hw-candle', 6, -52, 1.2],
+    ['hw-candle', -39, -64, 1.2],        // 大礼堂门前
+    ['hw-chest', -24, -48, 5],            // 庭院角（箱 1.0m）
     ['hw-chest', -196, 118, 5],           // 对角巷街口
-    ['hw-diary', 112, -230, 3.8],         // 图书馆门前
-    ['hw-broomstick', 24, -148, 5],       // 魁地奇场边
-    ['hw-snitch', 40, -150, 4.2],         // 球场中央
-    ['hw-quaffle', 45, -145, 3.4],
-    ['hw-potion-red', -146, -52, 3],      // 温室群门前（草药课）
-    ['hw-potion-green', -90, -50, 3],
-    ['hw-potion-blue', -34, -52, 3],
-    ['hw-mandrake', -84, -50, 3.8],
-    ['hw-potion-blue', 14, 166, 3],       // 霍格莫德店前
-    ['hw-devils-snare', 92, 8, 8],        // 禁林边缘
-    ['hw-wand-box', -236, 148, 4],        // 奥利凡德门前
-    ['hw-willow-branch', 53, 7, 8],       // 打人柳下断枝
+    ['hw-diary', 112, -230, 1.6],         // 图书馆门前（书 0.3m）
+    ['hw-broomstick', 24, -148, 6],       // 魁地奇场边（扫帚长 1.6m）
+    ['hw-snitch', 40, -150, 1.6],         // 球场中央（飞贼，可见性下限）
+    ['hw-quaffle', 45, -145, 1.8],        // 鬼飞球 0.3m
+    ['hw-potion-red', -146, -52, 1.2],    // 温室群门前（药水瓶 0.25m）
+    ['hw-potion-green', -90, -50, 1.2],
+    ['hw-potion-blue', -34, -52, 1.2],
+    ['hw-mandrake', -84, -50, 2.4],       // 曼德拉草盆 0.5m
+    ['hw-potion-blue', 14, 166, 1.2],     // 霍格莫德店前
+    ['hw-devils-snare', 92, 8, 9],        // 禁林边缘（藤团宽 2m）
+    ['hw-wand-box', -236, 148, 2],        // 奥利凡德门前（魔杖盒 0.35m）
+    ['hw-willow-branch', 53, 7, 7],       // 打人柳下断枝（≈2m）
   ];
   for (const [n, x, z, w] of props) registerPre(n, x, z, w);
 }
@@ -2025,12 +2057,13 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       let topY = sy - size / 2;
       let r = size / 2;
       if (hwC && pmC) {
-        // 按目标身高换算（见 CREATURE_HW）：绘制高 = hM 米，宽度按宽高比跟随。
-        // 锚点 = 脚下地面原点，落在 sy + 绘制高/2（与巫师同口径：位置点在
-        // 精灵竖直中点）。宽度不再参与定尺寸，窄高/宽扁精灵都不会爆尺寸。
-        const dhC = hwC.hM * ENTITY_PX_PER_M * cam.zoom;
-        const k = dhC / pmC.h;
-        const dwC = pmC.w * k;
+        // 统一尺寸系统（size-design.md）：按登记世界宽度 wM 定宽，
+        // k = wM × zoom / 精灵px宽；高度按精灵宽高比跟随（精灵在工厂
+        // 俯角 40° 下渲染，投影自洽，窄高/宽扁都不会爆尺寸）。
+        // 锚点 = 脚下地面原点，落在 sy + 绘制高/2（与巫师同口径）。
+        const dwC = hwC.wM * cam.zoom;
+        const k = dwC / pmC.w;
+        const dhC = pmC.h * k;
         ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
         ctx.drawImage(pmC.img, sx - pmC.anchorX * k, sy + dhC / 2 - pmC.anchorY * k, dwC, dhC);
         topY = sy + dhC / 2 - pmC.anchorY * k;
@@ -2072,8 +2105,12 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         // --- wizard: house sprite + hp bar + name (names drawn in 2nd pass with de-collision) ---
       const [sx, sy] = w2s(w.x, w.z);
       const isMe = w.h === myHandle;
-      const r = Math.max(5, 8 * cam.zoom);
-      const size = r * 3;
+      // 统一尺寸系统：人物绘制高 = FIGURE_DH（世界单位）× zoom，r/size 由
+      // 绘制高导出（旧口径 dh = 36 × zoom 已废除，见 size-design.md）。
+      const variant: CharVariant = variantForName(w.n);
+      const dhW = (FIGURE_DH[variant] ?? WIZARD_DH) * cam.zoom;
+      const r = Math.max(5, dhW * 0.34);
+      const size = dhW * 0.72;
       // walk animation: 2-frame leg cycle when moving (track position deltas)
       const wk = walkState.get(w.h);
       let walkFrame: 0 | 1 | 2 = 0;
@@ -2091,32 +2128,31 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         walkState.set(w.h, { x: w.x, z: w.z, t: 0 });
       }
       // chars.ts: 4-direction 24x36 sprites, aspect-correct draw (fallback path)
-      const variant: CharVariant = variantForName(w.n);
       const spriteKey = charSpriteKey(w.n, String(w.ho).toLowerCase(), w.f, walkFrame);
       const { w: sprW, h: sprH } = charSpriteSize(variant);
-      const dh = size * 1.5, dw = (dh * sprW) / sprH;
+      const dh = dhW, dw = (dh * sprW) / sprH;
       // 3转2 hw 人物：玩家按学院色、NPC 按名字映射（教授/海格/摄魂怪/洛丽丝夫人）。
       // 行走时播工厂 w0..w3 帧（bobbing+倾斜+袍摆），站立用静态帧；精灵锚点 =
       // 脚下地面原点，对齐原绘制框的底边（sy + dh/2）；硬像素缩放。
       // hw 未就绪时回退 chars.ts 代码人物。
       const hwBase = hwFigureBase(w.n, String(w.ho).toLowerCase(), variant);
       let pmChar: PreSprite | null = null;
-      let charDh = dh;
+      let charW = dw;
       if (hwBase === 'hw-cat') {
         pmChar = preSprite('hw-cat');
-        charDh = size * 0.9; // 猫的体型
+        charW = CREATURE_HW.cat.wM * cam.zoom; // 猫与生物共用同一登记
       } else if (hwBase) {
         const dir = dirFromAngle(w.f);
         pmChar = (walkFrame
           ? preSprite(`${hwBase}-${dir}-w${wk ? Math.floor(wk.t / 7) % 4 : 0}`)
           : null) ?? preSprite(`${hwBase}-${dir}`);
-        if (hwBase === 'hw-hagrid') charDh = dh * 1.3; // 半巨人更高大
-        if (hwBase === 'hw-elf') charDh = dh * 0.62; // 家养小精灵矮小
+        charW = (FIGURE_W[hwBase] ?? 7.1) * cam.zoom; // 按登记世界宽度定宽
       }
       if (pmChar) {
-        const k = charDh / pmChar.h;
+        const k = charW / pmChar.w;
+        const charDh = pmChar.h * k;
         ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
-        ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + dh / 2 - pmChar.anchorY * k, pmChar.w * k, charDh);
+        ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + charDh / 2 - pmChar.anchorY * k, charW, charDh);
       } else {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(getCharSprite(spriteKey), sx - dw / 2, sy - dh / 2, dw, dh);
@@ -2160,12 +2196,12 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     const frontSlices: FrontSlice[] = [];
     const vPad = 48;
     const vx0 = wA.x - vPad, vz0 = wA.z - vPad, vx1 = wB.x + vPad, vz1 = wB.z + vPad;
-    // 玩家屏幕矩形（与 drawWizard 同口径：dh = max(5, 8z)*4.5，宽取 0.72dh），
+    // 玩家屏幕矩形（与 drawWizard 同口径：绘制高 WIZARD_DH × zoom，宽 0.72dh），
     // 供 Front 切片淡化判定：切片盖住玩家到一定比例才渐变。
     let meRect: { l: number; t: number; r: number; b: number } | null = null;
     if (meW) {
       const [mx, my] = w2s(meW.x, meW.z);
-      const dhM = Math.max(5, 8 * cam.zoom) * 4.5;
+      const dhM = WIZARD_DH * cam.zoom;
       meRect = { l: mx - dhM * 0.36, t: my - dhM / 2, r: mx + dhM * 0.36, b: my + dhM / 2 };
     }
     // 全部角色（巫师+生物）的近似屏幕矩形：Front 切分是昂贵路径（切片要在
@@ -2175,7 +2211,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     interface ActorRect { l: number; t: number; r: number; b: number }
     const actorRects: ActorRect[] = [];
     {
-      const dhW = Math.max(5, 8 * cam.zoom) * 4.5;
+      const dhW = WIZARD_DH * cam.zoom;
       for (const w of snap.w) {
         if (!visible(w.x, w.z)) continue;
         const [sx, sy] = w2s(w.x, w.z);
@@ -2185,8 +2221,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         if (!visible(c.x, c.z)) continue;
         const [sx, sy] = w2s(c.x, c.z);
         const hwC = CREATURE_HW[c.k];
-        const dhC = hwC ? hwC.hM * ENTITY_PX_PER_M * cam.zoom : Math.max(12, 20 * cam.zoom);
-        const dwC = hwC ? dhC * 0.8 : dhC;
+        const pmC = hwC ? preSprite(hwC.name) : null;
+        const dwC = hwC ? hwC.wM * cam.zoom : Math.max(12, 20 * cam.zoom);
+        const dhC = hwC && pmC ? dwC * (pmC.h / pmC.w) : dwC;
         actorRects.push({ l: sx - dwC / 2 - 6, t: sy - dhC / 2 - 6, r: sx + dwC / 2 + 6, b: sy + dhC / 2 + 6 });
       }
     }

@@ -1923,5 +1923,60 @@ function renderRawList(names) {
   return res;
 }
 
-window.__factory = { ready: true, measure, renderPiece, renderAll, showSprite, debugRoof, profile, PPM, pixelInfo: () => lastPixelInfo, renderRawList, renderMarkerTest, renderSomePixelated };
+/**
+ * 投影标定（尺寸系统基准，见 client2d/size-design.md）：渲三个标定物，
+ * 用 alpha>200 的紧包围盒量像素跨度（排除半透明烘焙阴影），反推本相机
+ * 的三向投影尺度。cube = 1×1×1 米；plate = 1×0.02×1 米（近零高，量占地
+ * 深度投影）；pole = 0.04×1×0.04 米（近零占地，量竖直投影）。
+ * 返回 raw（PPM=48 原生）与 pixelated（PX_M=14）两套跨度（px）。
+ */
+function alphaBBox(canvas, thresh = 200) {
+  const g = canvas.getContext('2d');
+  const { width: w, height: h } = canvas;
+  const d = g.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (d[(y * w + x) * 4 + 3] > thresh) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  return x1 < 0 ? null : { w: x1 - x0 + 1, h: y1 - y0 + 1, x0, y0 };
+}
+function calibrate() {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.9 });
+  const mk = (sx, sy, sz) => {
+    const grp = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+    m.position.y = sy / 2;
+    grp.add(m);
+    return grp;
+  };
+  const jobs = { cube: mk(1, 1, 1), plate: mk(1, 0.02, 1), pole: mk(0.04, 1, 0.04) };
+  const out = {};
+  for (const [name, grp] of Object.entries(jobs)) {
+    const e = renderGroup(grp);
+    const bb = alphaBBox(e.canvas);
+    const raw = { w: bb.w, h: bb.h, anchorX: e.meta.anchorX, anchorY: e.meta.anchorY, bboxTop: bb.y0, canvasW: e.canvas.width, canvasH: e.canvas.height };
+    const entry = { canvas: e.canvas, meta: e.meta, dataUrl: e.dataUrl };
+    const palette = buildMasterPalette([e.canvas]);
+    pixelateSprite(entry, palette, buildPalLUT(palette));
+    const pb = alphaBBox(entry.canvas);
+    out[name] = { raw, pix: { w: pb.w, h: pb.h }, pixMeta: { w: entry.meta.w, h: entry.meta.h, ppm: entry.meta.ppm } };
+  }
+  const r = out;
+  const G = r.cube.raw.w / PPM;              // 宽度：px/米（原生）→ 应 ≈1 的标度因子×PPM
+  const V = r.pole.raw.h / PPM;              // 竖直 1 米的投影（米） → cos(ELEV)
+  const D = r.plate.raw.h / PPM;             // 占地深 1 米的投影（米） → sin(ELEV)
+  out.derived = {
+    elevDeg: +THREE.MathUtils.radToDeg(ELEV).toFixed(2),
+    widthPxPerM_raw: r.cube.raw.w, vertProjPerM: +V.toFixed(4), depthProjPerM: +D.toFixed(4),
+    cosEl: +Math.cos(ELEV).toFixed(4), sinEl: +Math.sin(ELEV).toFixed(4),
+    cubeH_check: +(V + D).toFixed(4), cubeH_measured: +(r.cube.raw.h / PPM).toFixed(4),
+    pxPerM: PX_M, G14: +(r.cube.pix.w).toFixed(1), V14: +(PX_M * Math.cos(ELEV)).toFixed(2), D14: +(PX_M * Math.sin(ELEV)).toFixed(2),
+  };
+  return out;
+}
+
+window.__factory = { ready: true, measure, renderPiece, renderAll, showSprite, debugRoof, profile, PPM, pixelInfo: () => lastPixelInfo, renderRawList, renderMarkerTest, renderSomePixelated, calibrate };
 status('ready');

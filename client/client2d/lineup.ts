@@ -1,91 +1,173 @@
 /**
- * 生物体型核验页（开发工具）：/lineup.html。
- *
- * 按 renderer.ts 的 CREATURE_HW 体型表，把每种生物与 1.8 米巫师并排画在
- * 同一地面线上，附 1 米刻度与 1.8 米参考线，目视核对比例。
- * 缩放取游戏默认 cam.zoom = 2.75，绘制公式与 renderer 生物路径一致
- * （绘制高 = hM × ENTITY_PX_PER_M × zoom，宽度按精灵宽高比跟随）。
+ * lineup 对照页（?lineup=1）：统一尺寸系统验收图（size-design.md）。
+ * 绘制规则与 renderer 完全一致：精灵按登记世界宽度 W 定宽，
+ * k = W × ZOOM / 精灵px宽，高度按精灵宽高比跟随，地面锚点对齐同一
+ * 条地面线。主对照排：巫师/松树/橡树/商店/塔楼/巨怪/独角兽/特快；
+ * 其下人物排与全部生物网格。刻度为世界单位（活物 1 真实米 = 5 单位，
+ * U_LIVE；建筑登记宽见尺寸表）。
  */
-import { CREATURE_HW, ENTITY_PX_PER_M } from './renderer';
 import { preSprite } from './assets';
-
-const ZOOM = 2.75;
-const PX_M = ENTITY_PX_PER_M * ZOOM; // 1 米的屏幕 px
+import { CREATURE_HW, FIGURE_W } from './renderer';
 
 async function waitSprites(): Promise<void> {
   for (let i = 0; i < 300; i++) {
-    if (preSprite('hw-wizard-gryffindor-down') && preSprite('hw-troll')) return;
+    if (preSprite('hw-wizard-gryffindor-down') && preSprite('hw-troll') && preSprite('hw-express')) return;
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error('prerendered sprites not loaded');
 }
 
-function draw(): void {
-  const kinds = Object.keys(CREATURE_HW);
-  const cols = 6, cellW = 360, cellH = 320;
-  const rows = Math.ceil(kinds.length / cols);
-  const cv = document.createElement('canvas');
-  cv.width = cols * cellW;
-  cv.height = rows * cellH;
-  document.body.appendChild(cv);
-  const g = cv.getContext('2d')!;
-  g.fillStyle = '#7fa65c';
-  g.fillRect(0, 0, cv.width, cv.height);
-  g.imageSmoothingEnabled = false;
+const ZOOM = 4; // 对照页 px / 世界单位
 
-  const wiz = preSprite('hw-wizard-gryffindor-down')!;
-  const wizDh = 1.8 * PX_M; // 与游戏内巫师绘制高一致（36 × zoom）
+interface Item { name: string; label: string; w: number; note: string }
 
-  kinds.forEach((kind, idx) => {
-    const cx = (idx % cols) * cellW, cy = Math.floor(idx / cols) * cellH;
-    const groundY = cy + cellH - 44;
-    g.strokeStyle = 'rgba(0,0,0,0.3)';
-    g.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
-    // 地面线
-    g.fillStyle = '#55703d';
-    g.fillRect(cx, groundY, cellW, 3);
-    // 1 米刻度（左侧竖轴）
-    g.fillStyle = 'rgba(0,0,0,0.55)';
-    g.font = '10px sans-serif';
-    g.textAlign = 'left';
-    for (let m = 1; m <= 4; m++) {
-      const y = groundY - m * PX_M;
-      if (y < cy + 16) break;
-      g.fillRect(cx + 4, y, m === 1 ? 10 : 6, 1.5);
-      g.fillText(m + 'm', cx + 16, y + 3);
-    }
-    // 1.8 米参考线（巫师头顶）
-    const refY = groundY - 1.8 * PX_M;
-    g.strokeStyle = 'rgba(255,255,255,0.5)';
-    g.setLineDash([4, 4]);
-    g.beginPath(); g.moveTo(cx, refY); g.lineTo(cx + cellW, refY); g.stroke();
-    g.setLineDash([]);
-    // 巫师（参照物）
-    const kw = wizDh / wiz.h;
-    g.drawImage(wiz.img, cx + 58 - wiz.anchorX * kw, groundY - wiz.anchorY * kw, wiz.w * kw, wizDh);
-    g.fillStyle = 'rgba(0,0,0,0.55)';
-    g.fillText('wizard 1.8m', cx + 34, groundY + 14);
-    // 生物：与游戏同一公式，锚点落在地面线
-    const { name, hM } = CREATURE_HW[kind];
-    const pm = preSprite(name);
-    g.fillStyle = '#1d1508';
-    g.font = 'bold 13px sans-serif';
-    g.fillText(kind, cx + 8, cy + 16);
-    g.font = '11px sans-serif';
+const MAIN: Item[] = [
+  { name: 'hw-wizard-gryffindor-down', label: '巫师', w: FIGURE_W['hw-wizard-gryffindor'], note: '1.8m+帽0.65m' },
+  { name: 'treePine', label: '松树', w: 13.8, note: '高 7m' },
+  { name: 'treeRound', label: '橡树', w: 13.8, note: '冠径 6m 高 8m' },
+  { name: 'houseWood', label: '商店', w: 14, note: '占地 14×12' },
+  { name: 'hw-tower-tall', label: '塔楼', w: 10, note: '布局径 2r=10' },
+  { name: 'hw-troll', label: '巨怪', w: CREATURE_HW.troll.wM, note: '高 3.5m' },
+  { name: 'hw-unicorn', label: '独角兽', w: CREATURE_HW.unicorn.wM, note: '高 1.6m+角' },
+  { name: 'hw-express', label: '特快车头', w: 24, note: '高 4m 长 11m' },
+];
+
+const FIGURES: Item[] = [
+  { name: 'hw-wizard-gryffindor-down', label: '巫师', w: FIGURE_W['hw-wizard-gryffindor'], note: '高 1.8m' },
+  { name: 'hw-professor-down', label: '教授', w: FIGURE_W['hw-professor'], note: '高 1.85m+帽' },
+  { name: 'hw-hagrid-down', label: '海格', w: FIGURE_W['hw-hagrid'], note: '高 2.6m' },
+  { name: 'hw-dementor-down', label: '摄魂怪', w: FIGURE_W['hw-dementor'], note: '高 2.4m' },
+  { name: 'hw-merchant-down', label: '商人', w: FIGURE_W['hw-merchant'], note: '高 1.75m' },
+  { name: 'hw-elf-down', label: '小精灵', w: FIGURE_W['hw-elf'], note: '高 1.0m' },
+  { name: 'hw-cat', label: '猫', w: CREATURE_HW.cat.wM, note: '体长 0.75m' },
+];
+
+function drawRow(
+  ctx: CanvasRenderingContext2D, items: Item[], groundY: number, x0: number,
+): void {
+  let cx = x0;
+  for (const it of items) {
+    const pm = preSprite(it.name);
+    const wpx = it.w * ZOOM;
     if (pm) {
-      const dhC = hM * PX_M;
-      const k = dhC / pm.h;
-      const dwC = pm.w * k;
-      const x0 = cx + 190;
-      g.drawImage(pm.img, x0 - pm.anchorX * k, groundY - pm.anchorY * k, dwC, dhC);
-      g.fillText(`${name}  h=${hM}m  w=${(dwC / PX_M).toFixed(2)}m`, cx + 8, cy + 31);
+      const k = wpx / pm.w;
+      const dx = cx + wpx / 2 - pm.anchorX * k;
+      const dy = groundY - pm.anchorY * k;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(pm.img, dx, dy, pm.w * k, pm.h * k);
+      ctx.fillStyle = '#ff2a1a';
+      ctx.fillRect(cx + wpx / 2 - 1, groundY - 1, 2, 2);
     } else {
-      g.fillText(name + ' 精灵缺失', cx + 8, cy + 31);
+      ctx.fillStyle = '#999';
+      ctx.fillRect(cx, groundY - wpx, wpx, wpx);
+      ctx.fillStyle = '#fff';
+      ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('未加载', cx + wpx / 2, groundY - wpx / 2);
     }
-  });
-  (window as unknown as { __lineupDone: number }).__lineupDone = kinds.length;
+    const dh = pm ? (it.w * pm.h) / pm.w : it.w;
+    ctx.fillStyle = '#1d2733';
+    ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(it.label, cx + wpx / 2, groundY + 18);
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#5a6a7a';
+    ctx.fillText(`宽 ${it.w} · 高 ${dh.toFixed(1)} 单位`, cx + wpx / 2, groundY + 34);
+    ctx.fillText(it.note, cx + wpx / 2, groundY + 48);
+    cx += wpx + 48;
+  }
 }
 
-waitSprites().then(draw).catch((e) => {
-  document.body.textContent = 'lineup failed: ' + (e as Error).message;
-});
+function ruler(ctx: CanvasRenderingContext2D, y: number, w: number) {
+  ctx.strokeStyle = '#8a97a5'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#5a6a7a'; ctx.textAlign = 'center';
+  for (let x = 0; x <= w; x += 5 * ZOOM) {
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 5); ctx.stroke();
+    ctx.fillText(String(x / ZOOM), x, y + 16);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillText('刻度：世界单位', 4, y - 6);
+}
+
+export async function renderLineupPage(): Promise<void> {
+  await waitSprites();
+  const cv = document.getElementById('cv') as HTMLCanvasElement;
+  const ctx = cv.getContext('2d')!;
+  (window as unknown as { __lineupDone?: boolean }).__lineupDone = false;
+
+  const mainW = MAIN.reduce((s, it) => s + it.w * ZOOM + 48, 0) + 40;
+  const kinds = Object.keys(CREATURE_HW);
+  const perRow = 6;
+  const cellW = 34 * ZOOM + 30;
+  const gridW = perRow * cellW + 40;
+  const W = Math.max(mainW, gridW, 900);
+  const rowH = 46 * ZOOM + 70;
+  const H = 130 + rowH + Math.ceil(kinds.length / perRow) * rowH + 140;
+  cv.width = W; cv.height = H;
+
+  ctx.fillStyle = '#f4f1e8';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1d2733';
+  ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('统一尺寸系统对照（size-design.md）：同排共地面线，按登记世界宽度绘制', 20, 34);
+  ctx.font = '13px sans-serif'; ctx.fillStyle = '#5a6a7a';
+  ctx.fillText('活物 U_LIVE = 5 世界单位/真实米（巫师锚点）；建筑钉占地/布局；精灵为工厂俯角 40° 渲染，高度按自身像素比带出。', 20, 56);
+
+  // --- 主对照排 ---
+  const g1 = 90 + 46 * ZOOM;
+  ctx.strokeStyle = '#3a7d2c'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, g1); ctx.lineTo(W, g1); ctx.stroke();
+  drawRow(ctx, MAIN, g1, 20);
+  ruler(ctx, g1 + 62, W);
+
+  // --- 人物排 ---
+  let y = g1 + 110;
+  ctx.fillStyle = '#1d2733'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('人物', 20, y);
+  const g2 = y + 24 + 16 * ZOOM;
+  ctx.strokeStyle = '#3a7d2c'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, g2); ctx.lineTo(W, g2); ctx.stroke();
+  drawRow(ctx, FIGURES, g2, 20);
+
+  // --- 生物网格 ---
+  y = g2 + 90;
+  ctx.fillStyle = '#1d2733'; ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('生物（全部登记物种）', 20, y);
+  y += 10;
+  const items: Item[] = kinds.map((k) => ({
+    name: CREATURE_HW[k].name, label: k, w: CREATURE_HW[k].wM, note: '',
+  }));
+  for (let r0 = 0; r0 < items.length; r0 += perRow) {
+    const row = items.slice(r0, r0 + perRow);
+    const gy = y + 40 * ZOOM;
+    ctx.strokeStyle = '#b9c4ae'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+    let cx = 20;
+    for (const it of row) {
+      const pm = preSprite(it.name);
+      const wpx = it.w * ZOOM;
+      if (pm) {
+        const k = wpx / pm.w;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(pm.img, cx + cellW / 2 - pm.anchorX * k, gy - pm.anchorY * k, pm.w * k, pm.h * k);
+      }
+      const dh = pm ? (it.w * pm.h) / pm.w : it.w;
+      ctx.fillStyle = '#1d2733'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(it.label, cx + cellW / 2, gy + 16);
+      ctx.font = '11px sans-serif'; ctx.fillStyle = '#5a6a7a';
+      ctx.fillText(`宽 ${it.w} · 高 ${dh.toFixed(1)}`, cx + cellW / 2, gy + 31);
+      cx += cellW;
+    }
+    y = gy + 44;
+  }
+  document.title = '尺寸对照 lineup';
+  (window as unknown as { __lineupDone?: boolean }).__lineupDone = true;
+}
+
+// lineup.html 直接以模块加载本文件：自建画布并启动。
+{
+  const cv = document.createElement('canvas');
+  cv.id = 'cv';
+  document.body.appendChild(cv);
+  renderLineupPage().catch((e) => {
+    document.body.textContent = 'lineup failed: ' + (e as Error).message;
+  });
+}
