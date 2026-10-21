@@ -840,7 +840,9 @@ function buildPotion(color) {
 function buildWizardFigure({ robe, trim, hatH = 0.85, beard = null, hagrid = false } = {}) {
   const g = new THREE.Group();
   const robeM = std(robe, { r: 0.95 });
-  g.add(cyl(0.30, 0.62, 1.55, robeM, 14));
+  const robeMesh = cyl(0.30, 0.62, 1.55, robeM, 14);
+  robeMesh.userData.part = 'robe';
+  g.add(robeMesh);
   const chest = sph(0.30, robeM, 1, 0.72, 1); chest.position.y = 1.52; g.add(chest);
   g.add(at(cyl(0.235, 0.25, 0.15, std(trim), 12), 0, 1.68, 0));
   const head = sph(0.21, M.skin); head.position.y = 1.98; g.add(head);
@@ -861,7 +863,9 @@ function buildWizardFigure({ robe, trim, hatH = 0.85, beard = null, hagrid = fal
   }
   for (const s of [1, -1]) {
     const arm = cyl(0.065, 0.075, 0.62, robeM, 8);
-    arm.position.set(s * 0.36, 1.04, 0.02); arm.rotation.z = s * 0.42; g.add(arm);
+    arm.position.set(s * 0.36, 1.04, 0.02); arm.rotation.z = s * 0.42;
+    arm.userData.part = 'arm'; arm.userData.side = s;
+    g.add(arm);
   }
   const wand = cyl(0.016, 0.02, 0.5, M.woodDark, 6);
   wand.position.set(0.5, 0.9, 0.22); wand.rotation.set(0.9, 0, -0.5); g.add(wand);
@@ -874,6 +878,7 @@ function buildDementor() {
   const g = new THREE.Group();
   const robeM = std(0x17171c, { r: 1 });
   const inner = new THREE.Group(); inner.position.y = 0.34;
+  inner.userData.part = 'inner';
   inner.add(cyl(0.30, 0.68, 1.9, robeM, 14));
   const chest = sph(0.31, robeM, 1, 0.7, 1); chest.position.y = 1.86; inner.add(chest);
   const hood = sph(0.27, std(0x1d1d22, { r: 1 })); hood.position.y = 2.08; inner.add(hood);
@@ -888,6 +893,7 @@ function buildDementor() {
   for (const s of [1, -1]) {
     const arm = cyl(0.045, 0.05, 0.78, robeM, 7);
     arm.position.set(s * 0.33, 1.52, 0.12); arm.rotation.x = 1.85; arm.rotation.z = s * -0.15;
+    arm.userData.part = 'arm'; arm.userData.side = s;
     inner.add(arm);
   }
   g.add(inner);
@@ -901,6 +907,36 @@ function hwShowScale(name) {
   if (/spider|basilisk|hippogriff|owl|cat/.test(name)) return 1.1;
   return 1.7;
 }
+/**
+ * 行走姿态（无骨骼，整体变换模拟）：bobbing（竖直起伏）+ 左右倾斜 +
+ * 手臂反相摆动 + 袍摆滞后摆动。phase ∈ [0,1) 为一个步行周期（两步）。
+ * 摄魂怪无步行：漂浮起伏 + 内层摇摆 + 前伸臂脉动。
+ */
+function poseWalk(fig, base, phase) {
+  const a = phase * Math.PI * 2;
+  const dem = base.includes('dementor');
+  if (dem) {
+    fig.position.y = 0.06 + 0.05 * Math.sin(a);
+    fig.rotation.z = 0.045 * Math.sin(a);
+    fig.rotation.x = 0.03 * Math.sin(a + 0.8);
+  } else {
+    fig.position.y = 0.05 * Math.abs(Math.sin(a));
+    fig.rotation.z = 0.055 * Math.sin(a);
+    fig.rotation.x = 0.025 * Math.sin(a + 1.2);
+  }
+  fig.traverse((o) => {
+    const p = o.userData.part;
+    if (p === 'arm') {
+      o.rotation.x += (o.userData.side ?? 1) * (dem ? 0.14 : 0.5) * Math.sin(a);
+    } else if (p === 'robe') {
+      o.rotation.x = 0.05 * Math.sin(a - 0.7); // 袍摆滞后于身体
+    } else if (p === 'inner') {
+      o.rotation.z = 0.05 * Math.sin(a);
+      o.rotation.x = 0.04 * Math.sin(a + 0.5);
+    }
+  });
+}
+
 async function renderCatalog(out) {
   for (const [name, build] of Object.entries(HW_BUILDERS)) {
     status('rendering ' + name);
@@ -917,13 +953,23 @@ async function renderCatalog(out) {
     'hw-dementor': () => buildDementor(),
   };
   for (const [base, build] of Object.entries(figures)) {
-    const fig = build();
     for (const [dir, yaw] of Object.entries(HW_DIRS)) {
-      fig.rotation.y = yaw;
-      const name = `${base}-${dir}`;
-      status('rendering ' + name);
-      out[name] = renderGroup(fig);
-      if (dir === 'down') showSprite(name, out[name].canvas, 1.4);
+      // 站立帧（原有命名 `${base}-${dir}`）
+      const stand = build();
+      stand.rotation.y = yaw;
+      const sName = `${base}-${dir}`;
+      status('rendering ' + sName);
+      out[sName] = renderGroup(stand);
+      if (dir === 'down') showSprite(sName, out[sName].canvas, 1.4);
+      // 行走帧 w0..w3（每帧新构建，避免姿态变换累积）
+      for (let i = 0; i < 4; i++) {
+        const fig = build();
+        fig.rotation.y = yaw;
+        poseWalk(fig, base, i / 4);
+        const name = `${base}-${dir}-w${i}`;
+        status('rendering ' + name);
+        out[name] = renderGroup(fig);
+      }
     }
   }
 }

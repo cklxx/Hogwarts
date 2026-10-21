@@ -125,6 +125,29 @@ function drawMoon(ctx: CanvasRenderingContext2D, mx: number, my: number, k: numb
 // - HOSTILE_KINDS: Set lookup instead of a per-creature array literal
 // - elemCss: precomputed '#rrggbb' per Element (css() does toString(16) per call)
 const HOSTILE_KINDS = new Set(['dementor', 'spider', 'troll', 'basilisk', 'dragon', 'aragog', 'nundu', 'chimera', 'manticore', 'lethifold', 'werewolf']);
+// 3转2 生物映射：物种 kind -> hw 精灵名 + 目标宽度系数（× 旧绘制 size 的屏幕 px）。
+// 未映射的物种继续走 sprites.ts 代码绘制（分批替换中）。
+const CREATURE_HW: Record<string, { name: string; kw: number }> = {
+  spider: { name: 'hw-spider', kw: 2.6 },
+  aragog: { name: 'hw-spider', kw: 3.6 },
+  basilisk: { name: 'hw-basilisk', kw: 1.7 },
+  hippogriff: { name: 'hw-hippogriff', kw: 1.7 },
+  snare: { name: 'hw-devils-snare', kw: 2.0 },
+  dementor: { name: 'hw-dementor-down', kw: 1.6 },
+  owl: { name: 'hw-owl-brown', kw: 1.6 },
+  cat: { name: 'hw-cat', kw: 1.2 },
+};
+const HW_HOUSES = ['gryffindor', 'slytherin', 'ravenclaw', 'hufflepuff'];
+/** 巫师实体 -> hw 人物精灵基名。merchant/elf 暂无 hw 模型，返回 null 回退 chars.ts。 */
+function hwFigureBase(name: string, house: string, variant: CharVariant): string | null {
+  const n = name.toLowerCase();
+  if (n.includes('norris')) return 'hw-cat'; // 洛丽丝夫人是猫，不是巫师
+  if (n.includes('dementor')) return 'hw-dementor';
+  if (variant === 'hagrid') return 'hw-hagrid';
+  if (variant === 'professor') return 'hw-professor';
+  if (variant === 'student') return 'hw-wizard-' + (HW_HOUSES.includes(house) ? house : 'gryffindor');
+  return null;
+}
 const elemCssCache = new Map<Element, string>();
 // projectile motion trails: id -> recent screen positions + last-seen timestamp
 const projTrails = new Map<string, { pts: [number, number][]; last: number }>();
@@ -370,6 +393,14 @@ function drawPre(g: CanvasRenderingContext2D, pm: PreSprite | null, ox: number, 
   g.drawImage(pm.img, ox - pm.anchorX * k, oy - pm.anchorY * k, pm.w * k, pm.h * k);
   g.imageSmoothingEnabled = false;
   return true;
+}
+
+/** hw 精灵（地面纹理空间）：以世界坐标 (wx, wz) 为占地中心原点、visualW 为
+ *  视觉宽度（世界单位）绘制。返回 false = 精灵未就绪，调用方走原代码绘制。 */
+function drawHwTex(g: CanvasRenderingContext2D, name: string, wx: number, wz: number, visualW: number): boolean {
+  const pm = preSprite(name);
+  if (!pm) return false;
+  return drawPre(g, pm, w2tx(wx), w2ty(wz), (visualW * TPX) / pm.w);
 }
 
 function paintVillageAssets(g: CanvasRenderingContext2D): void {
@@ -883,7 +914,7 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
       case 'well': drawWell(g, x, y, s); break;
       case 'marketstall': drawMarketStall(g, x, y, s); break;
       case 'villagegate': drawVillageGate(g, x, y, s); break;
-      case 'dock': drawDock(g, x, y, s); break;
+      case 'dock': if (!preSprite('hw-lake-dock')) drawDock(g, x, y, s); break; // hw 码头在 landmarks pass 合并绘制
       case 'mooringpost': drawMooringPost(g, x, y, s); break;
       case 'boat': drawBoat(g, x, y, s); break;
       case 'lighthouse': drawLighthouse(g, x, y, s); break;
@@ -891,7 +922,7 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
       case 'glowflower': drawGlowFlower(g, x, y, s); break;
       case 'tent': drawTent(g, x, y, s); break;
       case 'campfire': drawCampfire(g, x, y, s); break;
-      case 'greenhouse': drawGreenhouse(g, x, y, s); break;
+      case 'greenhouse': if (!drawHwTex(g, 'hw-greenhouse', it.x, it.z, 80 * it.s)) drawGreenhouse(g, x, y, s); break;
       case 'gardenplot': drawGardenPlot(g, x, y, s); break;
       case 'owlery': drawOwlery(g, x, y, s); break;
       case 'scoreboard': drawScoreboard(g, x, y, s); break;
@@ -1104,6 +1135,66 @@ function paintCastle(g: CanvasRenderingContext2D): void {
 // (inGrass retired: scatter placement moved to layout.ts with collision registry)
 
 
+/**
+ * 3转2 hw 地标 + 道具 pass（地面纹理烘焙的最后一层）。
+ * 城堡建筑覆盖 paintCastle 的代码绘制（位置/占地沿用 paintCastle 的布局坐标）；
+ * 道具按 item-design.md 分类摆放到对应场景。精灵未就绪时 drawHwTex 返回
+ * false，什么都不画，底下的代码绘制原样保留（回退）。
+ * 视觉宽度口径：建筑 ≈ 占地 1.8 倍（与霍格莫德商店试点一致），道具按实物感。
+ */
+function paintHwLandmarks(g: CanvasRenderingContext2D): void {
+  // --- 城堡（paintCastle 坐标：大礼堂西、钟塔北、塔楼群、 南门） ---
+  drawHwTex(g, 'hw-great-hall', -39, -83, 30);
+  drawHwTex(g, 'hw-tower-mid', -13.5, -97.5, 11);   // 钟塔
+  drawHwTex(g, 'hw-tower-tall', -56, -102, 11);
+  drawHwTex(g, 'hw-tower-mid', 18, -99, 11);
+  drawHwTex(g, 'hw-tower-tall', 53, -59, 12);
+  drawHwTex(g, 'hw-tower-mid', 8, -45.5, 10);
+  drawHwTex(g, 'hw-tower-short', -52, -59, 10);
+  drawHwTex(g, 'hw-tower-short', -44, -63, 8);
+  drawHwTex(g, 'hw-tower-short', -36, -62.5, 8);
+  drawHwTex(g, 'hw-astro-tower', 33, -70, 12);      // 天文塔
+  drawHwTex(g, 'hw-castle-wall', -32, -104, 15);
+  drawHwTex(g, 'hw-castle-wall', -4, -103, 15);
+  drawHwTex(g, 'hw-castle-wall', 24, -99.5, 15);
+  drawHwTex(g, 'hw-castle-gate', -3, -45.3, 14);
+  // --- 标志地点 ---
+  drawHwTex(g, 'hw-hagrid-hut', 105, 118, 34);      // 海格小屋（布局石屋位置）
+  drawHwTex(g, 'hw-whomping-willow', 45, 0, 22);    // 打人柳（willow 区中心）
+  drawHwTex(g, 'hw-quidditch-hoops', 40, -178, 26);
+  drawHwTex(g, 'hw-quidditch-hoops', 40, -122, 26);
+  drawHwTex(g, 'hw-lake-dock', -104, 48, 36);       // 黑湖码头（两段 dock 合并）
+  drawHwTex(g, 'hw-express', -44, 300, 44);         // 霍格沃茨特快（车站站台前）
+  drawHwTex(g, 'hw-owl-brown', 86, -84, 5);         // 猫头鹰棚屋栖鸟
+  drawHwTex(g, 'hw-owl-snowy', 75, -82, 5);
+  // --- 道具（功能类：可交互场景；装饰类：依附建筑/场景） ---
+  const props: Array<[string, number, number, number]> = [
+    ['hw-cauldron', 99, 128, 5.5],        // 海格小屋前院
+    ['hw-cauldron', 6, 186, 5],           // 霍格莫德广场
+    ['hw-pumpkin', 108, 148, 5],          // 南瓜田（texHagrid 南瓜区）
+    ['hw-pumpkin', 118, 152, 5.6],
+    ['hw-pumpkin', 128, 146, 4.6],
+    ['hw-candle', -6, -52, 2.8],          // 城堡庭院
+    ['hw-candle', 6, -52, 2.8],
+    ['hw-candle', -39, -64, 2.8],         // 大礼堂门前
+    ['hw-chest', -24, -48, 5],            // 庭院角
+    ['hw-chest', -196, 118, 5],           // 对角巷街口
+    ['hw-diary', 112, -230, 3.8],         // 图书馆门前
+    ['hw-broomstick', 24, -148, 5],       // 魁地奇场边
+    ['hw-snitch', 40, -150, 4.2],         // 球场中央
+    ['hw-quaffle', 45, -145, 3.4],
+    ['hw-potion-red', -146, -52, 3],      // 温室群门前（草药课）
+    ['hw-potion-green', -90, -50, 3],
+    ['hw-potion-blue', -34, -52, 3],
+    ['hw-mandrake', -84, -50, 3.8],
+    ['hw-potion-blue', 14, 166, 3],       // 霍格莫德店前
+    ['hw-devils-snare', 92, 8, 8],        // 禁林边缘
+    ['hw-wand-box', -236, 148, 4],        // 奥利凡德门前
+    ['hw-willow-branch', 53, 7, 8],       // 打人柳下断枝
+  ];
+  for (const [n, x, z, w] of props) drawHwTex(g, n, x, z, w);
+}
+
 /** Build the full-world ground texture once. Zone edges are blurred for soft transitions. */
 function buildGroundTexture(): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -1160,6 +1251,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   paintCastle(g);
   // server named buildings (Hogsmeade shops) — crisp, after blur
   paintServerBuildings(g);
+  // 3转2 hw 地标 + 道具：覆盖在代码绘制之上（精灵未就绪时各自回退，代码版保留）
+  paintHwLandmarks(g);
   return c;
 }
 
@@ -1434,10 +1527,20 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     for (const e of ents) {
       if (e.kind === 'c') {
         const c = e.c!;
-        // --- creature: pixel sprite per kind, hp bar below ---
+        // --- creature: hw 预渲染精灵优先，未映射物种走 pixel sprite，hp bar below ---
         const [sx, sy] = w2s(c.x, c.z);
       const size = Math.max(12, 20 * cam.zoom);
-      drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
+      const hwC = CREATURE_HW[c.k];
+      const pmC = hwC ? preSprite(hwC.name) : null;
+      if (hwC && pmC) {
+        // 锚点 = 脚下地面原点，对齐旧绘制框底边（sy + size/2）
+        const tw = size * hwC.kw, k = tw / pmC.w;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(pmC.img, sx - pmC.anchorX * k, sy + size / 2 - pmC.anchorY * k, tw, pmC.h * k);
+        ctx.imageSmoothingEnabled = false;
+      } else {
+        drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
+      }
       const hostile = c.s.includes('H') || HOSTILE_KINDS.has(c.k);
       const r = size / 2;
       // 密度感知：怪堆里只给最近的 3 个敌对显示标记+血条，其余只显示 sprite。
@@ -1488,19 +1591,32 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       } else {
         walkState.set(w.h, { x: w.x, z: w.z, t: 0 });
       }
-      // chars.ts: 4-direction 24x36 sprites, aspect-correct draw
+      // chars.ts: 4-direction 24x36 sprites, aspect-correct draw (fallback path)
       const variant: CharVariant = variantForName(w.n);
       const spriteKey = charSpriteKey(w.n, String(w.ho).toLowerCase(), w.f, walkFrame);
       const { w: sprW, h: sprH } = charSpriteSize(variant);
       const dh = size * 1.5, dw = (dh * sprW) / sprH;
-      // 3转2 试点：只有玩家本人用预渲染人物（4 方向 × 站立+4 帧行走），NPC 不动。
-      // 精灵锚点 = 脚下地面原点，对齐原绘制框的底边（sy + dh/2）；平滑缩放。
-      const pmChar = isMe ? preSprite(
-        `char3d-${dirFromAngle(w.f)}-${walkFrame ? 'w' + (wk ? Math.floor(wk.t / 7) % 4 : 1) : 'stand'}`) : null;
+      // 3转2 hw 人物：玩家按学院色、NPC 按名字映射（教授/海格/摄魂怪/洛丽丝夫人）。
+      // 行走时播工厂 w0..w3 帧（bobbing+倾斜+袍摆），站立用静态帧；精灵锚点 =
+      // 脚下地面原点，对齐原绘制框的底边（sy + dh/2）；平滑缩放。
+      // hw 未就绪/未映射（merchant/elf）时回退 chars.ts 代码人物。
+      const hwBase = hwFigureBase(w.n, String(w.ho).toLowerCase(), variant);
+      let pmChar: PreSprite | null = null;
+      let charDh = dh;
+      if (hwBase === 'hw-cat') {
+        pmChar = preSprite('hw-cat');
+        charDh = size * 0.9; // 猫的体型
+      } else if (hwBase) {
+        const dir = dirFromAngle(w.f);
+        pmChar = (walkFrame
+          ? preSprite(`${hwBase}-${dir}-w${wk ? Math.floor(wk.t / 7) % 4 : 0}`)
+          : null) ?? preSprite(`${hwBase}-${dir}`);
+        if (hwBase === 'hw-hagrid') charDh = dh * 1.3; // 半巨人更高大
+      }
       if (pmChar) {
-        const k = dh / pmChar.h;
+        const k = charDh / pmChar.h;
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + dh / 2 - pmChar.anchorY * k, pmChar.w * k, dh);
+        ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + dh / 2 - pmChar.anchorY * k, pmChar.w * k, charDh);
         ctx.imageSmoothingEnabled = false;
       } else {
         ctx.imageSmoothingEnabled = false;
