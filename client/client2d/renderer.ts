@@ -282,44 +282,49 @@ function drawMoon(ctx: CanvasRenderingContext2D, mx: number, my: number, k: numb
 // - HOSTILE_KINDS: Set lookup instead of a per-creature array literal
 // - elemCss: precomputed '#rrggbb' per Element (css() does toString(16) per call)
 const HOSTILE_KINDS = new Set(['dementor', 'spider', 'troll', 'basilisk', 'dragon', 'aragog', 'nundu', 'chimera', 'manticore', 'lethifold', 'werewolf']);
-// 3转2 生物映射：物种 kind -> hw 精灵名 + 目标宽度系数（× 旧绘制 size 的屏幕 px）。
+/** 实体屏幕高度换算：1 米 = 20 × cam.zoom 屏幕 px。
+ * 由巫师标定：巫师 1.8m，绘制高 dh = 36 × cam.zoom（见下方 wizard 绘制）。 */
+export const ENTITY_PX_PER_M = 20;
+// 3转2 生物映射：物种 kind -> hw 精灵名 + 目标身高 hM（米，按原著量级，见
+// creature-scale.md）。绘制按高度换算：绘制高 = hM × ENTITY_PX_PER_M × zoom，
+// 宽度按精灵宽高比跟随。此前按宽度 × kw 猜测系数：窄高精灵（独角兽 22×41）
+// 被放大到近 300px、宽扁精灵（蜘蛛）又偏小，已废弃。
 // 未映射的物种继续走 sprites.ts 代码绘制（分批替换中）。
-const CREATURE_HW: Record<string, { name: string; kw: number }> = {
-  spider: { name: 'hw-spider', kw: 2.6 },
-  aragog: { name: 'hw-spider', kw: 3.6 },
-  basilisk: { name: 'hw-basilisk', kw: 1.7 },
-  hippogriff: { name: 'hw-hippogriff', kw: 1.7 },
-  snare: { name: 'hw-devils-snare', kw: 2.0 },
-  dementor: { name: 'hw-dementor-down', kw: 1.6 },
-  owl: { name: 'hw-owl-brown', kw: 1.6 },
-  cat: { name: 'hw-cat', kw: 1.2 },
-  // 第二批（3转2 补齐）：kw 按 kernel radius 与同类标定
-  pixie: { name: 'hw-pixie', kw: 1.1 },
-  troll: { name: 'hw-troll', kw: 3.2 },
-  inferius: { name: 'hw-inferius', kw: 1.6 },
-  unicorn: { name: 'hw-unicorn', kw: 2.6 },
-  phoenix: { name: 'hw-phoenix', kw: 2.2 },
-  bowtruckle: { name: 'hw-bowtruckle', kw: 0.9 },
-  hinkypunk: { name: 'hw-hinkypunk', kw: 1.2 },
-  redcap: { name: 'hw-redcap', kw: 1.2 },
-  niffler: { name: 'hw-niffler', kw: 1.2 },
-  grindylow: { name: 'hw-grindylow', kw: 1.4 },
-  erkling: { name: 'hw-erkling', kw: 1.3 },
-  kelpie: { name: 'hw-kelpie', kw: 2.2 },
-  thestral: { name: 'hw-thestral', kw: 2.4 },
-  occamy: { name: 'hw-occamy', kw: 2.1 },
-  boggart: { name: 'hw-boggart', kw: 1.7 },
-  runespoor: { name: 'hw-runespoor', kw: 1.9 },
-  skrewt: { name: 'hw-skrewt', kw: 2.0 },
-  thunderbird: { name: 'hw-thunderbird', kw: 2.6 },
-  werewolf: { name: 'hw-werewolf', kw: 2.0 },
-  lethifold: { name: 'hw-lethifold', kw: 2.6 },
-  manticore: { name: 'hw-manticore', kw: 2.6 },
-  chimera: { name: 'hw-chimera', kw: 2.8 },
-  nundu: { name: 'hw-nundu', kw: 3.2 },
-  dragon: { name: 'hw-dragon', kw: 3.6 },
-  serpent: { name: 'hw-serpent', kw: 1.7 },
-  birds: { name: 'hw-birds', kw: 2.0 },
+export const CREATURE_HW: Record<string, { name: string; hM: number }> = {
+  spider: { name: 'hw-spider', hM: 0.8 },       // 腿展自动 ≈1.9m
+  aragog: { name: 'hw-spider', hM: 1.3 },       // 腿展自动 ≈3.1m（原著巨蛛量级）
+  basilisk: { name: 'hw-basilisk', hM: 2.2 },   // 立起的巨蛇
+  hippogriff: { name: 'hw-hippogriff', hM: 2.4 },
+  snare: { name: 'hw-devils-snare', hM: 1.1 },  // 贴地藤蔓团，宽自动 ≈2.0m
+  dementor: { name: 'hw-dementor-down', hM: 2.4 },
+  owl: { name: 'hw-owl-brown', hM: 0.5 },
+  cat: { name: 'hw-cat', hM: 0.4 },
+  pixie: { name: 'hw-pixie', hM: 0.4 },         // 宽自动 ≈0.8m（翅膀）
+  troll: { name: 'hw-troll', hM: 3.5 },
+  inferius: { name: 'hw-inferius', hM: 1.75 },  // 人形
+  unicorn: { name: 'hw-unicorn', hM: 1.6 },
+  phoenix: { name: 'hw-phoenix', hM: 0.6 },     // 翼展自动 ≈1.3m
+  bowtruckle: { name: 'hw-bowtruckle', hM: 0.3 },
+  hinkypunk: { name: 'hw-hinkypunk', hM: 0.55 },
+  redcap: { name: 'hw-redcap', hM: 0.6 },
+  niffler: { name: 'hw-niffler', hM: 0.35 },
+  grindylow: { name: 'hw-grindylow', hM: 0.8 },
+  erkling: { name: 'hw-erkling', hM: 0.9 },
+  kelpie: { name: 'hw-kelpie', hM: 1.7 },
+  thestral: { name: 'hw-thestral', hM: 1.8 },
+  occamy: { name: 'hw-occamy', hM: 1.1 },
+  boggart: { name: 'hw-boggart', hM: 1.7 },
+  runespoor: { name: 'hw-runespoor', hM: 0.9 },
+  skrewt: { name: 'hw-skrewt', hM: 1.0 },
+  thunderbird: { name: 'hw-thunderbird', hM: 1.5 }, // 翼展自动 ≈3.8m
+  werewolf: { name: 'hw-werewolf', hM: 2.1 },
+  lethifold: { name: 'hw-lethifold', hM: 0.5 }, // 贴地滑行的斗篷
+  manticore: { name: 'hw-manticore', hM: 2.0 },
+  chimera: { name: 'hw-chimera', hM: 2.1 },
+  nundu: { name: 'hw-nundu', hM: 2.6 },
+  dragon: { name: 'hw-dragon', hM: 2.5 },      // 幼龙量级
+  serpent: { name: 'hw-serpent', hM: 1.0 },
+  birds: { name: 'hw-birds', hM: 0.8 },         // 一群召唤鸟，宽自动 ≈1.4m
 };
 const HW_HOUSES = ['gryffindor', 'slytherin', 'ravenclaw', 'hufflepuff'];
 /** 巫师实体 -> hw 人物精灵基名。merchant/elf 暂无 hw 模型，返回 null 回退 chars.ts。 */
@@ -1716,16 +1721,24 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const size = Math.max(12, 20 * cam.zoom);
       const hwC = CREATURE_HW[c.k];
       const pmC = hwC ? preSprite(hwC.name) : null;
+      // 精灵顶部屏幕 y 与血条半宽：hw 路径按目标身高算，代码绘制路径用旧框
+      let topY = sy - size / 2;
+      let r = size / 2;
       if (hwC && pmC) {
-        // 锚点 = 脚下地面原点，对齐旧绘制框底边（sy + size/2）
-        const tw = size * hwC.kw, k = tw / pmC.w;
+        // 按目标身高换算（见 CREATURE_HW）：绘制高 = hM 米，宽度按宽高比跟随。
+        // 锚点 = 脚下地面原点，落在 sy + 绘制高/2（与巫师同口径：位置点在
+        // 精灵竖直中点）。宽度不再参与定尺寸，窄高/宽扁精灵都不会爆尺寸。
+        const dhC = hwC.hM * ENTITY_PX_PER_M * cam.zoom;
+        const k = dhC / pmC.h;
+        const dwC = pmC.w * k;
         ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
-        ctx.drawImage(pmC.img, sx - pmC.anchorX * k, sy + size / 2 - pmC.anchorY * k, tw, pmC.h * k);
+        ctx.drawImage(pmC.img, sx - pmC.anchorX * k, sy + dhC / 2 - pmC.anchorY * k, dwC, dhC);
+        topY = sy + dhC / 2 - pmC.anchorY * k;
+        r = Math.max(6, Math.min(dwC / 2, 16 * cam.zoom));
       } else {
         drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
       }
       const hostile = c.s.includes('H') || HOSTILE_KINDS.has(c.k);
-      const r = size / 2;
       // 密度感知：怪堆里只给最近的 3 个敌对显示标记+血条，其余只显示 sprite。
       // 否则 10+ 蜘蛛的红菱形+血条糊成一团，完全看不清。
       let showMarker = hostile;
@@ -1736,7 +1749,7 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       }
       if (showMarker) {
         // 红色小菱形标记（头顶），代替大红框——多怪聚集时不糊成一团
-        const dx = sx, dy = sy - r - 9;
+        const dx = sx, dy = topY - 9;
         ctx.fillStyle = '#ff2a1a';
         ctx.beginPath();
         ctx.moveTo(dx, dy - 5); ctx.lineTo(dx + 4, dy);
@@ -1745,9 +1758,9 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       }
       // hp bar：受伤必显；敌对只在有标记时显示（避免怪堆血条重叠）
       if (c.hp < c.m || showMarker) {
-        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(sx - r, sy - r - 4, r * 2, 2.5);
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(sx - r, topY - 4, r * 2, 2.5);
         ctx.fillStyle = hostile ? '#ff5a4d' : '#4dff4d';
-        ctx.fillRect(sx - r, sy - r - 4, (r * 2 * c.hp) / c.m, 2.5);
+        ctx.fillRect(sx - r, topY - 4, (r * 2 * c.hp) / c.m, 2.5);
       }
       // 生物不显示任何文字：敌对有红色菱形+血条，受击有血条，足够辨认。
       // 之前的首字母标签（B/R/S/P）在怪堆里必然糊成一团，已删除。
