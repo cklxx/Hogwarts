@@ -24,6 +24,10 @@ try:
         pg.goto(BASE, wait_until='domcontentloaded', timeout=30000)
         pg.wait_for_function('window.__factory && window.__factory.ready', timeout=30000)
         out = pg.evaluate('window.__factory.renderAll()')
+        info = pg.evaluate('window.__factory.pixelInfo()')
+        if info:
+            (OUT / 'palette.json').write_text(json.dumps(info, indent=1))
+            print('palette:', len(info['palette']), 'colors,', info['perMeter'], 'px/m')
         OUT.mkdir(parents=True, exist_ok=True)
         meta = {}
         for name, r in out.items():

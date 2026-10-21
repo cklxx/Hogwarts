@@ -124,6 +124,11 @@ let preSettled = false;
 export const preSprite = (name: string): PreSprite | null =>
   preReady ? (preMap.get(name) ?? null) : null;
 
+// 工厂主调色板（palette.json 与 sprites.json 同批产出）：地面贴图生成与
+// 地面量化共用这一块板，保证精灵与地面同一色系。缺失时渲染器用内置回退板。
+let paletteHex: string[] | null = null;
+export const masterPalette = (): string[] | null => paletteHex;
+
 fetch('/assets2d/prerendered/sprites.json')
   .then((r) => { if (!r.ok) throw new Error('sprites.json ' + r.status); return r.json(); })
   .then(async (meta: Record<string, Omit<PreSprite, 'img'>>) => {
@@ -134,7 +139,15 @@ fetch('/assets2d/prerendered/sprites.json')
     preReady = true;
   })
   .catch((e) => console.warn('[2d] prerendered sprites unavailable, fallback:', e))
-  .finally(() => { preSettled = true; });
+  .finally(() => {
+    fetch('/assets2d/prerendered/palette.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((info: { palette?: string[] } | null) => {
+        if (info?.palette?.length) paletteHex = info.palette;
+      })
+      .catch(() => { /* 调色板缺失：渲染器用内置回退板 */ })
+      .finally(() => { preSettled = true; });
+  });
 
 function buildSprites(town: HTMLImageElement, rl: HTMLImageElement): VillageSprites {
   const T = (idx: number) => townTile(town, idx);

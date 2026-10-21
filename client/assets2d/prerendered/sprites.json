@@ -1,1811 +1,3824 @@
 {
  "houseWood": {
-  "w": 226,
-  "h": 130,
-  "anchorX": 102,
-  "anchorY": 94,
+  "w": 66,
+  "h": 38,
+  "anchorX": 30,
+  "anchorY": 27,
   "footW": 4.071,
   "footD": 2.294,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "houseStone": {
-  "w": 226,
-  "h": 130,
-  "anchorX": 102,
-  "anchorY": 94,
+  "w": 66,
+  "h": 38,
+  "anchorX": 30,
+  "anchorY": 27,
   "footW": 4.071,
   "footD": 2.294,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "houseTavern": {
-  "w": 229,
-  "h": 153,
-  "anchorX": 103,
-  "anchorY": 117,
+  "w": 67,
+  "h": 45,
+  "anchorX": 30,
+  "anchorY": 34,
   "footW": 4.134,
   "footD": 2.301,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "treePine": {
-  "w": 114,
-  "h": 270,
-  "anchorX": 46,
-  "anchorY": 260,
+  "w": 33,
+  "h": 79,
+  "anchorX": 13,
+  "anchorY": 76,
   "footW": 1.742,
   "footD": 1.768,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "treeRound": {
-  "w": 102,
-  "h": 252,
-  "anchorX": 40,
-  "anchorY": 243,
+  "w": 30,
+  "h": 74,
+  "anchorX": 12,
+  "anchorY": 71,
   "footW": 1.492,
   "footD": 1.722,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "lamp": {
-  "w": 51,
-  "h": 131,
-  "anchorX": 14,
-  "anchorY": 122,
+  "w": 15,
+  "h": 38,
+  "anchorX": 4,
+  "anchorY": 35,
   "footW": 0.431,
   "footD": 0.447,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "fence": {
-  "w": 66,
-  "h": 24,
-  "anchorX": 28,
-  "anchorY": 19,
+  "w": 19,
+  "h": 7,
+  "anchorX": 8,
+  "anchorY": 6,
   "footW": 1,
   "footD": 0.075,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-down-stand": {
-  "w": 137,
-  "h": 104,
-  "anchorX": 52,
-  "anchorY": 91,
+  "w": 13,
+  "h": 10,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.681,
   "footD": 0.346,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-down-w0": {
-  "w": 140,
-  "h": 107,
-  "anchorX": 53,
-  "anchorY": 93,
+  "w": 14,
+  "h": 10,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.384,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-down-w1": {
-  "w": 140,
-  "h": 108,
-  "anchorX": 53,
-  "anchorY": 93,
+  "w": 14,
+  "h": 11,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.356,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-down-w2": {
-  "w": 145,
-  "h": 106,
-  "anchorX": 56,
-  "anchorY": 93,
+  "w": 14,
+  "h": 10,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.402,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-down-w3": {
-  "w": 144,
-  "h": 108,
-  "anchorX": 56,
-  "anchorY": 93,
+  "w": 14,
+  "h": 11,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.351,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-up-stand": {
-  "w": 137,
-  "h": 102,
-  "anchorX": 52,
-  "anchorY": 89,
+  "w": 13,
+  "h": 10,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.681,
   "footD": 0.346,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-up-w0": {
-  "w": 145,
-  "h": 111,
-  "anchorX": 56,
-  "anchorY": 93,
+  "w": 14,
+  "h": 11,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.384,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-up-w1": {
-  "w": 145,
-  "h": 110,
-  "anchorX": 56,
-  "anchorY": 93,
+  "w": 14,
+  "h": 11,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.356,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-up-w2": {
-  "w": 140,
-  "h": 110,
-  "anchorX": 53,
-  "anchorY": 93,
+  "w": 14,
+  "h": 11,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.402,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-up-w3": {
-  "w": 142,
-  "h": 109,
-  "anchorX": 54,
-  "anchorY": 93,
+  "w": 14,
+  "h": 11,
+  "anchorX": 5,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.351,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-left-stand": {
-  "w": 114,
-  "h": 120,
-  "anchorX": 27,
-  "anchorY": 90,
+  "w": 11,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.681,
   "footD": 0.346,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-left-w0": {
-  "w": 118,
-  "h": 122,
-  "anchorX": 30,
-  "anchorY": 93,
+  "w": 11,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.384,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-left-w1": {
-  "w": 117,
-  "h": 121,
-  "anchorX": 29,
-  "anchorY": 93,
+  "w": 11,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.356,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-left-w2": {
-  "w": 119,
-  "h": 118,
-  "anchorX": 31,
-  "anchorY": 92,
+  "w": 12,
+  "h": 11,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.402,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-left-w3": {
-  "w": 116,
-  "h": 119,
-  "anchorX": 28,
-  "anchorY": 92,
+  "w": 11,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.351,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-right-stand": {
-  "w": 114,
-  "h": 120,
-  "anchorX": 30,
-  "anchorY": 90,
+  "w": 11,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.681,
   "footD": 0.346,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-right-w0": {
-  "w": 119,
-  "h": 119,
-  "anchorX": 32,
-  "anchorY": 92,
+  "w": 12,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.384,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-right-w1": {
-  "w": 118,
-  "h": 118,
-  "anchorX": 30,
-  "anchorY": 92,
+  "w": 11,
+  "h": 11,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.356,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-right-w2": {
-  "w": 122,
-  "h": 121,
-  "anchorX": 34,
-  "anchorY": 93,
+  "w": 12,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.704,
   "footD": 0.402,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "char3d-right-w3": {
-  "w": 117,
-  "h": 121,
-  "anchorX": 29,
-  "anchorY": 93,
+  "w": 11,
+  "h": 12,
+  "anchorX": 3,
+  "anchorY": 9,
   "footW": 0.713,
   "footD": 0.351,
-  "ppm": 144
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-tower-short": {
-  "w": 157,
-  "h": 273,
-  "anchorX": 67,
-  "anchorY": 237,
+  "w": 46,
+  "h": 80,
+  "anchorX": 20,
+  "anchorY": 69,
   "footW": 2.647,
   "footD": 2.688,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-tower-mid": {
-  "w": 169,
-  "h": 397,
-  "anchorX": 73,
-  "anchorY": 358,
+  "w": 49,
+  "h": 116,
+  "anchorX": 21,
+  "anchorY": 105,
   "footW": 2.899,
   "footD": 2.944,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-tower-tall": {
-  "w": 182,
-  "h": 559,
-  "anchorX": 80,
-  "anchorY": 517,
+  "w": 53,
+  "h": 163,
+  "anchorX": 23,
+  "anchorY": 151,
   "footW": 3.151,
   "footD": 3.2,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-castle-wall": {
-  "w": 242,
-  "h": 155,
-  "anchorX": 110,
-  "anchorY": 140,
+  "w": 71,
+  "h": 45,
+  "anchorX": 32,
+  "anchorY": 41,
   "footW": 4.42,
   "footD": 0.87,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-great-hall": {
-  "w": 462,
-  "h": 309,
-  "anchorX": 220,
-  "anchorY": 241,
+  "w": 135,
+  "h": 90,
+  "anchorX": 64,
+  "anchorY": 70,
   "footW": 9,
   "footD": 4.234,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-greenhouse": {
-  "w": 213,
-  "h": 216,
-  "anchorX": 95,
-  "anchorY": 169,
+  "w": 62,
+  "h": 63,
+  "anchorX": 28,
+  "anchorY": 49,
   "footW": 3.8,
   "footD": 3.6,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-astro-tower": {
-  "w": 177,
-  "h": 403,
-  "anchorX": 77,
-  "anchorY": 360,
+  "w": 52,
+  "h": 118,
+  "anchorX": 23,
+  "anchorY": 105,
   "footW": 3.053,
   "footD": 3.1,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-castle-gate": {
-  "w": 291,
-  "h": 190,
-  "anchorX": 134,
-  "anchorY": 167,
+  "w": 85,
+  "h": 55,
+  "anchorX": 39,
+  "anchorY": 48,
   "footW": 5.421,
   "footD": 1.56,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-hagrid-hut": {
-  "w": 278,
-  "h": 238,
-  "anchorX": 128,
-  "anchorY": 161,
+  "w": 81,
+  "h": 69,
+  "anchorX": 37,
+  "anchorY": 47,
   "footW": 5.167,
   "footD": 5.3,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-whomping-willow": {
-  "w": 254,
-  "h": 248,
-  "anchorX": 115,
-  "anchorY": 210,
+  "w": 74,
+  "h": 72,
+  "anchorX": 34,
+  "anchorY": 61,
   "footW": 4.66,
   "footD": 4.954,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-quidditch-hoops": {
-  "w": 256,
-  "h": 224,
-  "anchorX": 117,
-  "anchorY": 218,
+  "w": 75,
+  "h": 65,
+  "anchorX": 34,
+  "anchorY": 63,
   "footW": 4.7,
   "footD": 0.18,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-express": {
-  "w": 251,
-  "h": 266,
-  "anchorX": 128,
-  "anchorY": 161,
-  "footW": 4.601,
-  "footD": 6.013,
-  "ppm": 48
+  "w": 103,
+  "h": 108,
+  "anchorX": 37,
+  "anchorY": 77,
+  "footW": 6.726,
+  "footD": 9.444,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-lake-dock": {
-  "w": 192,
-  "h": 87,
-  "anchorX": 86,
-  "anchorY": 59,
+  "w": 56,
+  "h": 25,
+  "anchorX": 25,
+  "anchorY": 17,
   "footW": 3.4,
   "footD": 1.6,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-owl-brown": {
-  "w": 88,
-  "h": 56,
-  "anchorX": 45,
-  "anchorY": 51,
+  "w": 26,
+  "h": 16,
+  "anchorX": 13,
+  "anchorY": 15,
   "footW": 1.194,
   "footD": 0.749,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-owl-snowy": {
-  "w": 88,
-  "h": 56,
-  "anchorX": 45,
-  "anchorY": 51,
+  "w": 26,
+  "h": 16,
+  "anchorX": 13,
+  "anchorY": 15,
   "footW": 1.194,
   "footD": 0.749,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-spider": {
-  "w": 177,
-  "h": 77,
-  "anchorX": 82,
-  "anchorY": 60,
+  "w": 52,
+  "h": 22,
+  "anchorX": 24,
+  "anchorY": 17,
   "footW": 3.244,
   "footD": 1.659,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-basilisk": {
-  "w": 86,
-  "h": 107,
-  "anchorX": 19,
-  "anchorY": 57,
+  "w": 25,
+  "h": 31,
+  "anchorX": 6,
+  "anchorY": 17,
   "footW": 1.427,
   "footD": 3.633,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-hippogriff": {
-  "w": 174,
-  "h": 138,
-  "anchorX": 66,
-  "anchorY": 108,
-  "footW": 3.391,
-  "footD": 2.647,
-  "ppm": 48
+  "w": 34,
+  "h": 30,
+  "anchorX": 11,
+  "anchorY": 22,
+  "footW": 2.118,
+  "footD": 2.99,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-cat": {
-  "w": 48,
-  "h": 70,
-  "anchorX": 17,
-  "anchorY": 59,
+  "w": 14,
+  "h": 20,
+  "anchorX": 5,
+  "anchorY": 17,
   "footW": 0.546,
   "footD": 1.429,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-cauldron": {
-  "w": 84,
-  "h": 64,
-  "anchorX": 33,
-  "anchorY": 46,
+  "w": 25,
+  "h": 19,
+  "anchorX": 10,
+  "anchorY": 14,
   "footW": 1.2,
   "footD": 1.2,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-wand-box": {
-  "w": 74,
-  "h": 28,
-  "anchorX": 33,
-  "anchorY": 18,
+  "w": 22,
+  "h": 8,
+  "anchorX": 10,
+  "anchorY": 5,
   "footW": 1.26,
   "footD": 0.39,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-broomstick": {
-  "w": 91,
-  "h": 101,
-  "anchorX": 71,
-  "anchorY": 100,
+  "w": 27,
+  "h": 29,
+  "anchorX": 21,
+  "anchorY": 29,
   "footW": 1.51,
   "footD": 0.187,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-pumpkin": {
-  "w": 74,
-  "h": 56,
-  "anchorX": 30,
-  "anchorY": 41,
+  "w": 22,
+  "h": 16,
+  "anchorX": 9,
+  "anchorY": 12,
   "footW": 1.068,
   "footD": 1.068,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-potion-red": {
-  "w": 50,
-  "h": 47,
-  "anchorX": 17,
-  "anchorY": 38,
+  "w": 15,
+  "h": 14,
+  "anchorX": 5,
+  "anchorY": 11,
   "footW": 0.54,
   "footD": 0.532,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-potion-green": {
-  "w": 50,
-  "h": 47,
-  "anchorX": 17,
-  "anchorY": 38,
+  "w": 15,
+  "h": 14,
+  "anchorX": 5,
+  "anchorY": 11,
   "footW": 0.54,
   "footD": 0.532,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-potion-blue": {
-  "w": 50,
-  "h": 47,
-  "anchorX": 17,
-  "anchorY": 38,
+  "w": 15,
+  "h": 14,
+  "anchorX": 5,
+  "anchorY": 11,
   "footW": 0.54,
   "footD": 0.532,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-candle": {
+  "w": 10,
+  "h": 11,
+  "anchorX": 3,
+  "anchorY": 9,
+  "footW": 0.251,
+  "footD": 0.2,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-chest": {
+  "w": 20,
+  "h": 18,
+  "anchorX": 8,
+  "anchorY": 14,
+  "footW": 0.98,
+  "footD": 0.98,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-diary": {
+  "w": 13,
+  "h": 11,
+  "anchorX": 6,
+  "anchorY": 6,
+  "footW": 0.73,
+  "footD": 0.92,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-snitch": {
+  "w": 28,
+  "h": 11,
+  "anchorX": 11,
+  "anchorY": 10,
+  "footW": 1.543,
+  "footD": 0.368,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-quaffle": {
+  "w": 15,
+  "h": 12,
+  "anchorX": 6,
+  "anchorY": 9,
+  "footW": 0.67,
+  "footD": 0.67,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-mandrake": {
+  "w": 19,
+  "h": 19,
+  "anchorX": 6,
+  "anchorY": 15,
+  "footW": 0.751,
+  "footD": 0.712,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-devils-snare": {
+  "w": 31,
+  "h": 17,
+  "anchorX": 13,
+  "anchorY": 12,
+  "footW": 1.875,
+  "footD": 1.337,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-willow-branch": {
+  "w": 47,
+  "h": 25,
+  "anchorX": 24,
+  "anchorY": 26,
+  "footW": 2.743,
+  "footD": 0.347,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-keep": {
+  "w": 170,
+  "h": 211,
+  "anchorX": 82,
+  "anchorY": 168,
+  "footW": 11.5,
+  "footD": 9.5,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-library": {
+  "w": 171,
+  "h": 149,
+  "anchorX": 82,
+  "anchorY": 111,
+  "footW": 11.6,
+  "footD": 7.6,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dorm-tower": {
+  "w": 93,
+  "h": 186,
+  "anchorX": 43,
+  "anchorY": 162,
+  "footW": 6.007,
+  "footD": 6.1,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-pitch-stand": {
+  "w": 159,
+  "h": 78,
+  "anchorX": 70,
+  "anchorY": 60,
+  "footW": 10.704,
+  "footD": 3.513,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-station": {
+  "w": 226,
+  "h": 123,
+  "anchorX": 110,
+  "anchorY": 88,
+  "footW": 15.5,
+  "footD": 7.6,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-viaduct": {
+  "w": 170,
+  "h": 87,
+  "anchorX": 82,
+  "anchorY": 78,
+  "footW": 11.5,
+  "footD": 2.3,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-pixie": {
+  "w": 32,
+  "h": 16,
+  "anchorX": 12,
+  "anchorY": 15,
+  "footW": 1.751,
+  "footD": 0.305,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-troll": {
+  "w": 54,
+  "h": 38,
+  "anchorX": 21,
+  "anchorY": 33,
+  "footW": 3.2,
+  "footD": 1.616,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-inferius": {
+  "w": 25,
+  "h": 25,
+  "anchorX": 9,
+  "anchorY": 18,
+  "footW": 1.12,
+  "footD": 1.409,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-unicorn": {
+  "w": 22,
+  "h": 41,
+  "anchorX": 8,
+  "anchorY": 34,
+  "footW": 0.94,
+  "footD": 3.242,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-kelpie": {
+  "w": 22,
+  "h": 41,
+  "anchorX": 8,
+  "anchorY": 34,
+  "footW": 0.94,
+  "footD": 3.136,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-thestral": {
+  "w": 39,
+  "h": 41,
+  "anchorX": 14,
+  "anchorY": 34,
+  "footW": 2.394,
+  "footD": 3.136,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-phoenix": {
+  "w": 53,
+  "h": 24,
+  "anchorX": 22,
+  "anchorY": 23,
+  "footW": 3.264,
+  "footD": 2.104,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-thunderbird": {
+  "w": 75,
+  "h": 30,
+  "anchorX": 33,
+  "anchorY": 25,
+  "footW": 4.925,
+  "footD": 2.677,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-bowtruckle": {
+  "w": 20,
+  "h": 16,
+  "anchorX": 8,
+  "anchorY": 12,
+  "footW": 0.907,
+  "footD": 0.41,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hinkypunk": {
+  "w": 24,
+  "h": 20,
+  "anchorX": 6,
+  "anchorY": 18,
+  "footW": 1.06,
+  "footD": 0.957,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-redcap": {
+  "w": 22,
+  "h": 17,
+  "anchorX": 5,
+  "anchorY": 14,
+  "footW": 0.967,
+  "footD": 0.5,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-niffler": {
+  "w": 14,
+  "h": 18,
+  "anchorX": 5,
+  "anchorY": 12,
+  "footW": 0.645,
+  "footD": 1.358,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-grindylow": {
+  "w": 25,
+  "h": 18,
+  "anchorX": 9,
+  "anchorY": 14,
+  "footW": 1.163,
+  "footD": 0.832,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-erkling": {
+  "w": 26,
+  "h": 18,
+  "anchorX": 10,
+  "anchorY": 15,
+  "footW": 1.269,
+  "footD": 0.42,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-occamy": {
+  "w": 39,
+  "h": 29,
+  "anchorX": 15,
+  "anchorY": 14,
+  "footW": 2.354,
+  "footD": 2.984,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-boggart": {
+  "w": 30,
+  "h": 27,
+  "anchorX": 12,
+  "anchorY": 20,
+  "footW": 1.543,
+  "footD": 1.32,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-runespoor": {
+  "w": 28,
+  "h": 22,
+  "anchorX": 11,
+  "anchorY": 15,
+  "footW": 1.39,
+  "footD": 1.39,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-skrewt": {
+  "w": 27,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 26,
+  "footW": 1.334,
+  "footD": 2.066,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-werewolf": {
+  "w": 20,
+  "h": 26,
+  "anchorX": 7,
+  "anchorY": 22,
+  "footW": 0.818,
+  "footD": 1.963,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-lethifold": {
   "w": 34,
+  "h": 22,
+  "anchorX": 16,
+  "anchorY": 11,
+  "footW": 2.334,
+  "footD": 2.205,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-manticore": {
+  "w": 23,
+  "h": 43,
+  "anchorX": 8,
+  "anchorY": 36,
+  "footW": 1,
+  "footD": 2.707,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-chimera": {
+  "w": 23,
+  "h": 43,
+  "anchorX": 8,
+  "anchorY": 36,
+  "footW": 1,
+  "footD": 3.014,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-nundu": {
+  "w": 28,
+  "h": 46,
+  "anchorX": 11,
+  "anchorY": 38,
+  "footW": 1.39,
+  "footD": 3.345,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dragon": {
+  "w": 57,
+  "h": 50,
+  "anchorX": 23,
+  "anchorY": 42,
+  "footW": 3.831,
+  "footD": 4.35,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-serpent": {
+  "w": 19,
+  "h": 24,
+  "anchorX": 4,
+  "anchorY": 13,
+  "footW": 0.9,
+  "footD": 2.658,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-birds": {
+  "w": 34,
+  "h": 19,
+  "anchorX": 13,
+  "anchorY": 21,
+  "footW": 1.869,
+  "footD": 0.833,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-down": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-down-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-down-w1": {
+  "w": 27,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-down-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-down-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-up": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-up-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 11,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-up-w1": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-up-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-up-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 12,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-left": {
+  "w": 26,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-left-w0": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 32,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-left-w1": {
+  "w": 26,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.298,
+  "footD": 1.377,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-left-w2": {
+  "w": 26,
+  "h": 40,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-left-w3": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.298,
+  "footD": 1.413,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-right": {
+  "w": 26,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-right-w0": {
+  "w": 26,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-right-w1": {
+  "w": 27,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 37,
+  "footW": 1.298,
+  "footD": 1.384,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-right-w2": {
+  "w": 27,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-gryffindor-right-w3": {
+  "w": 26,
+  "h": 46,
+  "anchorX": 10,
+  "anchorY": 40,
+  "footW": 1.298,
+  "footD": 1.434,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-down": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-down-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-down-w1": {
+  "w": 27,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-down-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-down-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-up": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-up-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 11,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-up-w1": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-up-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-up-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 12,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-left": {
+  "w": 26,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-left-w0": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 32,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-left-w1": {
+  "w": 26,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.298,
+  "footD": 1.377,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-left-w2": {
+  "w": 26,
+  "h": 40,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-left-w3": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.298,
+  "footD": 1.413,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-right": {
+  "w": 26,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-right-w0": {
+  "w": 26,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-right-w1": {
+  "w": 27,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 37,
+  "footW": 1.298,
+  "footD": 1.384,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-right-w2": {
+  "w": 27,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-slytherin-right-w3": {
+  "w": 26,
+  "h": 46,
+  "anchorX": 10,
+  "anchorY": 40,
+  "footW": 1.298,
+  "footD": 1.434,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-down": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-down-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-down-w1": {
+  "w": 27,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-down-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-down-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-up": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-up-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 11,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-up-w1": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-up-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-up-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 12,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-left": {
+  "w": 26,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-left-w0": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 32,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-left-w1": {
+  "w": 26,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.298,
+  "footD": 1.377,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-left-w2": {
+  "w": 26,
+  "h": 40,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-left-w3": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.298,
+  "footD": 1.413,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-right": {
+  "w": 26,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-right-w0": {
+  "w": 26,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-right-w1": {
+  "w": 27,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 37,
+  "footW": 1.298,
+  "footD": 1.384,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-right-w2": {
+  "w": 27,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-ravenclaw-right-w3": {
+  "w": 26,
+  "h": 46,
+  "anchorX": 10,
+  "anchorY": 40,
+  "footW": 1.298,
+  "footD": 1.434,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-down": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-down-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-down-w1": {
+  "w": 27,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-down-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-down-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-up": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 35,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-up-w0": {
+  "w": 28,
+  "h": 41,
+  "anchorX": 11,
+  "anchorY": 34,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-up-w1": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.38,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-up-w2": {
+  "w": 28,
+  "h": 42,
+  "anchorX": 11,
+  "anchorY": 36,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-up-w3": {
+  "w": 29,
+  "h": 42,
+  "anchorX": 12,
+  "anchorY": 36,
+  "footW": 1.424,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-left": {
+  "w": 26,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-left-w0": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 32,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-left-w1": {
+  "w": 26,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.298,
+  "footD": 1.377,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-left-w2": {
+  "w": 26,
+  "h": 40,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-left-w3": {
+  "w": 27,
+  "h": 39,
+  "anchorX": 10,
+  "anchorY": 33,
+  "footW": 1.298,
+  "footD": 1.413,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-right": {
+  "w": 26,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-right-w0": {
+  "w": 26,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-right-w1": {
+  "w": 27,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 37,
+  "footW": 1.298,
+  "footD": 1.384,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-right-w2": {
+  "w": 27,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-wizard-hufflepuff-right-w3": {
+  "w": 26,
+  "h": 46,
+  "anchorX": 10,
+  "anchorY": 40,
+  "footW": 1.298,
+  "footD": 1.434,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-down": {
+  "w": 28,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 37,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-down-w0": {
+  "w": 28,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 37,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-down-w1": {
+  "w": 27,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.38,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-down-w2": {
+  "w": 28,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.359,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-down-w3": {
+  "w": 29,
+  "h": 44,
+  "anchorX": 10,
+  "anchorY": 38,
+  "footW": 1.424,
+  "footD": 1.312,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-up": {
+  "w": 28,
+  "h": 44,
+  "anchorX": 11,
+  "anchorY": 37,
+  "footW": 1.359,
+  "footD": 1.24,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-up-w0": {
+  "w": 28,
+  "h": 43,
+  "anchorX": 12,
+  "anchorY": 36,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-up-w1": {
+  "w": 28,
+  "h": 44,
+  "anchorX": 11,
+  "anchorY": 38,
+  "footW": 1.38,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-up-w2": {
+  "w": 28,
+  "h": 44,
+  "anchorX": 12,
+  "anchorY": 38,
+  "footW": 1.359,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-up-w3": {
+  "w": 29,
+  "h": 44,
+  "anchorX": 12,
+  "anchorY": 38,
+  "footW": 1.424,
+  "footD": 1.285,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-left": {
+  "w": 26,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-left-w0": {
+  "w": 27,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 34,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-left-w1": {
+  "w": 26,
+  "h": 43,
+  "anchorX": 10,
+  "anchorY": 37,
+  "footW": 1.298,
+  "footD": 1.377,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-left-w2": {
+  "w": 26,
+  "h": 42,
+  "anchorX": 10,
+  "anchorY": 36,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-left-w3": {
+  "w": 27,
+  "h": 41,
+  "anchorX": 10,
+  "anchorY": 35,
+  "footW": 1.298,
+  "footD": 1.413,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-right": {
+  "w": 26,
+  "h": 46,
+  "anchorX": 10,
+  "anchorY": 40,
+  "footW": 1.24,
+  "footD": 1.359,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-right-w0": {
+  "w": 26,
+  "h": 46,
+  "anchorX": 10,
+  "anchorY": 40,
+  "footW": 1.289,
+  "footD": 1.369,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-right-w1": {
+  "w": 27,
+  "h": 45,
+  "anchorX": 10,
+  "anchorY": 39,
+  "footW": 1.298,
+  "footD": 1.384,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-right-w2": {
+  "w": 27,
+  "h": 47,
+  "anchorX": 10,
+  "anchorY": 41,
+  "footW": 1.289,
+  "footD": 1.387,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-professor-right-w3": {
+  "w": 26,
+  "h": 48,
+  "anchorX": 10,
+  "anchorY": 42,
+  "footW": 1.298,
+  "footD": 1.434,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-down": {
+  "w": 39,
+  "h": 52,
+  "anchorX": 14,
+  "anchorY": 42,
+  "footW": 2.175,
+  "footD": 1.984,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-down-w0": {
+  "w": 39,
+  "h": 51,
+  "anchorX": 14,
+  "anchorY": 41,
+  "footW": 2.175,
+  "footD": 2.006,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-down-w1": {
+  "w": 38,
+  "h": 52,
+  "anchorX": 14,
+  "anchorY": 42,
+  "footW": 2.209,
+  "footD": 2.1,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-down-w2": {
+  "w": 39,
+  "h": 53,
+  "anchorX": 14,
+  "anchorY": 43,
+  "footW": 2.175,
+  "footD": 2.006,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-down-w3": {
+  "w": 41,
+  "h": 52,
+  "anchorX": 15,
+  "anchorY": 42,
+  "footW": 2.278,
+  "footD": 2.1,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-up": {
+  "w": 39,
+  "h": 51,
+  "anchorX": 18,
+  "anchorY": 41,
+  "footW": 2.175,
+  "footD": 1.984,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-up-w0": {
+  "w": 39,
+  "h": 51,
+  "anchorX": 18,
+  "anchorY": 40,
+  "footW": 2.175,
+  "footD": 2.119,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-up-w1": {
+  "w": 40,
+  "h": 51,
+  "anchorX": 17,
+  "anchorY": 41,
+  "footW": 2.209,
+  "footD": 2.057,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-up-w2": {
+  "w": 39,
+  "h": 51,
+  "anchorX": 18,
+  "anchorY": 41,
+  "footW": 2.175,
+  "footD": 2.119,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-up-w3": {
+  "w": 41,
+  "h": 51,
+  "anchorX": 20,
+  "anchorY": 41,
+  "footW": 2.278,
+  "footD": 2.057,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-left": {
+  "w": 37,
+  "h": 51,
+  "anchorX": 15,
+  "anchorY": 41,
+  "footW": 1.984,
+  "footD": 2.175,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-left-w0": {
+  "w": 38,
+  "h": 51,
+  "anchorX": 15,
+  "anchorY": 41,
+  "footW": 2.063,
+  "footD": 2.219,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-left-w1": {
+  "w": 36,
+  "h": 53,
+  "anchorX": 15,
+  "anchorY": 44,
+  "footW": 2.077,
+  "footD": 2.204,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-left-w2": {
+  "w": 36,
+  "h": 52,
+  "anchorX": 15,
+  "anchorY": 42,
+  "footW": 2.063,
+  "footD": 2.19,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-left-w3": {
+  "w": 38,
+  "h": 50,
+  "anchorX": 15,
+  "anchorY": 40,
+  "footW": 2.077,
+  "footD": 2.261,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-right": {
+  "w": 37,
+  "h": 51,
+  "anchorX": 15,
+  "anchorY": 41,
+  "footW": 1.984,
+  "footD": 2.175,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-right-w0": {
+  "w": 36,
+  "h": 51,
+  "anchorX": 15,
+  "anchorY": 41,
+  "footW": 2.063,
+  "footD": 2.19,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-right-w1": {
+  "w": 38,
+  "h": 50,
+  "anchorX": 15,
+  "anchorY": 40,
+  "footW": 2.077,
+  "footD": 2.214,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-right-w2": {
+  "w": 38,
+  "h": 52,
+  "anchorX": 15,
+  "anchorY": 42,
+  "footW": 2.063,
+  "footD": 2.219,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-hagrid-right-w3": {
+  "w": 36,
+  "h": 53,
+  "anchorX": 15,
+  "anchorY": 44,
+  "footW": 2.077,
+  "footD": 2.294,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dementor-down": {
+  "w": 27,
+  "h": 36,
+  "anchorX": 10,
+  "anchorY": 30,
+  "footW": 1.326,
+  "footD": 1.561,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dementor-down-w0": {
+  "w": 27,
+  "h": 36,
+  "anchorX": 10,
+  "anchorY": 30,
+  "footW": 1.326,
+  "footD": 1.614,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dementor-down-w1": {
+  "w": 27,
+  "h": 36,
+  "anchorX": 10,
+  "anchorY": 31,
+  "footW": 1.502,
+  "footD": 1.657,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dementor-down-w2": {
+  "w": 27,
+  "h": 37,
+  "anchorX": 10,
+  "anchorY": 32,
+  "footW": 1.326,
+  "footD": 1.582,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dementor-down-w3": {
+  "w": 30,
+  "h": 37,
+  "anchorX": 10,
+  "anchorY": 32,
+  "footW": 1.502,
+  "footD": 1.603,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dementor-up": {
+  "w": 27,
+  "h": 36,
+  "anchorX": 10,
+  "anchorY": 31,
+  "footW": 1.326,
+  "footD": 1.561,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dementor-up-w0": {
+  "w": 27,
   "h": 37,
   "anchorX": 10,
   "anchorY": 31,
-  "footW": 0.251,
-  "footD": 0.2,
-  "ppm": 48
- },
- "hw-chest": {
-  "w": 68,
-  "h": 61,
-  "anchorX": 27,
-  "anchorY": 47,
-  "footW": 0.98,
-  "footD": 0.98,
-  "ppm": 48
- },
- "hw-diary": {
-  "w": 44,
-  "h": 38,
-  "anchorX": 20,
-  "anchorY": 21,
-  "footW": 0.73,
-  "footD": 0.92,
-  "ppm": 48
- },
- "hw-snitch": {
-  "w": 96,
-  "h": 36,
-  "anchorX": 37,
-  "anchorY": 32,
-  "footW": 1.543,
-  "footD": 0.368,
-  "ppm": 48
- },
- "hw-quaffle": {
-  "w": 50,
-  "h": 40,
-  "anchorX": 20,
-  "anchorY": 30,
-  "footW": 0.67,
-  "footD": 0.67,
-  "ppm": 48
- },
- "hw-mandrake": {
-  "w": 66,
-  "h": 65,
-  "anchorX": 20,
-  "anchorY": 51,
-  "footW": 0.751,
-  "footD": 0.712,
-  "ppm": 48
- },
- "hw-devils-snare": {
-  "w": 106,
-  "h": 59,
-  "anchorX": 45,
-  "anchorY": 40,
-  "footW": 1.875,
-  "footD": 1.337,
-  "ppm": 48
- },
- "hw-willow-branch": {
-  "w": 160,
-  "h": 86,
-  "anchorX": 80,
-  "anchorY": 90,
-  "footW": 2.743,
-  "footD": 0.347,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-down": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 33,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-down-w0": {
-  "w": 96,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 117,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-down-w1": {
-  "w": 93,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.38,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-down-w2": {
-  "w": 96,
-  "h": 145,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-down-w3": {
-  "w": 99,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 123,
-  "footW": 1.424,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-up": {
-  "w": 95,
-  "h": 143,
-  "anchorX": 39,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-up-w0": {
-  "w": 95,
-  "h": 142,
-  "anchorX": 39,
-  "anchorY": 118,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-up-w1": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 36,
-  "anchorY": 121,
-  "footW": 1.38,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-up-w2": {
-  "w": 95,
-  "h": 145,
-  "anchorX": 39,
-  "anchorY": 123,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-up-w3": {
-  "w": 98,
-  "h": 144,
-  "anchorX": 42,
-  "anchorY": 122,
-  "footW": 1.424,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-left": {
-  "w": 90,
-  "h": 134,
-  "anchorX": 34,
-  "anchorY": 112,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-left-w0": {
-  "w": 92,
-  "h": 133,
-  "anchorX": 33,
-  "anchorY": 110,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-left-w1": {
-  "w": 90,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 119,
-  "footW": 1.298,
-  "footD": 1.377,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-left-w2": {
-  "w": 89,
-  "h": 137,
-  "anchorX": 33,
-  "anchorY": 115,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-left-w3": {
-  "w": 93,
-  "h": 132,
-  "anchorX": 34,
-  "anchorY": 110,
-  "footW": 1.298,
-  "footD": 1.413,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-right": {
-  "w": 90,
-  "h": 151,
-  "anchorX": 34,
-  "anchorY": 129,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-right-w0": {
-  "w": 89,
-  "h": 149,
-  "anchorX": 33,
-  "anchorY": 126,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-right-w1": {
-  "w": 93,
-  "h": 147,
-  "anchorX": 34,
-  "anchorY": 125,
-  "footW": 1.298,
-  "footD": 1.384,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-right-w2": {
-  "w": 92,
-  "h": 152,
-  "anchorX": 33,
-  "anchorY": 131,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-gryffindor-right-w3": {
-  "w": 90,
-  "h": 158,
-  "anchorX": 33,
-  "anchorY": 136,
-  "footW": 1.298,
-  "footD": 1.434,
-  "ppm": 48
- },
- "hw-wizard-slytherin-down": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 33,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-slytherin-down-w0": {
-  "w": 96,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 117,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-slytherin-down-w1": {
-  "w": 93,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.38,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-slytherin-down-w2": {
-  "w": 96,
-  "h": 145,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-slytherin-down-w3": {
-  "w": 99,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 123,
-  "footW": 1.424,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-slytherin-up": {
-  "w": 95,
-  "h": 143,
-  "anchorX": 39,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-slytherin-up-w0": {
-  "w": 95,
-  "h": 142,
-  "anchorX": 39,
-  "anchorY": 118,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-slytherin-up-w1": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 36,
-  "anchorY": 121,
-  "footW": 1.38,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-slytherin-up-w2": {
-  "w": 95,
-  "h": 145,
-  "anchorX": 39,
-  "anchorY": 123,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-slytherin-up-w3": {
-  "w": 98,
-  "h": 144,
-  "anchorX": 42,
-  "anchorY": 122,
-  "footW": 1.424,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-slytherin-left": {
-  "w": 90,
-  "h": 134,
-  "anchorX": 34,
-  "anchorY": 112,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-slytherin-left-w0": {
-  "w": 92,
-  "h": 133,
-  "anchorX": 33,
-  "anchorY": 110,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-slytherin-left-w1": {
-  "w": 90,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 119,
-  "footW": 1.298,
-  "footD": 1.377,
-  "ppm": 48
- },
- "hw-wizard-slytherin-left-w2": {
-  "w": 89,
-  "h": 137,
-  "anchorX": 33,
-  "anchorY": 115,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-slytherin-left-w3": {
-  "w": 93,
-  "h": 132,
-  "anchorX": 34,
-  "anchorY": 110,
-  "footW": 1.298,
-  "footD": 1.413,
-  "ppm": 48
- },
- "hw-wizard-slytherin-right": {
-  "w": 90,
-  "h": 151,
-  "anchorX": 34,
-  "anchorY": 129,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-slytherin-right-w0": {
-  "w": 89,
-  "h": 149,
-  "anchorX": 33,
-  "anchorY": 126,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-slytherin-right-w1": {
-  "w": 93,
-  "h": 147,
-  "anchorX": 34,
-  "anchorY": 125,
-  "footW": 1.298,
-  "footD": 1.384,
-  "ppm": 48
- },
- "hw-wizard-slytherin-right-w2": {
-  "w": 92,
-  "h": 152,
-  "anchorX": 33,
-  "anchorY": 131,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-slytherin-right-w3": {
-  "w": 90,
-  "h": 158,
-  "anchorX": 33,
-  "anchorY": 136,
-  "footW": 1.298,
-  "footD": 1.434,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-down": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 33,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-down-w0": {
-  "w": 96,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 117,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-down-w1": {
-  "w": 93,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.38,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-down-w2": {
-  "w": 96,
-  "h": 145,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-down-w3": {
-  "w": 99,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 123,
-  "footW": 1.424,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-up": {
-  "w": 95,
-  "h": 143,
-  "anchorX": 39,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-up-w0": {
-  "w": 95,
-  "h": 142,
-  "anchorX": 39,
-  "anchorY": 118,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-up-w1": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 36,
-  "anchorY": 121,
-  "footW": 1.38,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-up-w2": {
-  "w": 95,
-  "h": 145,
-  "anchorX": 39,
-  "anchorY": 123,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-up-w3": {
-  "w": 98,
-  "h": 144,
-  "anchorX": 42,
-  "anchorY": 122,
-  "footW": 1.424,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-left": {
-  "w": 90,
-  "h": 134,
-  "anchorX": 34,
-  "anchorY": 112,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-left-w0": {
-  "w": 92,
-  "h": 133,
-  "anchorX": 33,
-  "anchorY": 110,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-left-w1": {
-  "w": 90,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 119,
-  "footW": 1.298,
-  "footD": 1.377,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-left-w2": {
-  "w": 89,
-  "h": 137,
-  "anchorX": 33,
-  "anchorY": 115,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-left-w3": {
-  "w": 93,
-  "h": 132,
-  "anchorX": 34,
-  "anchorY": 110,
-  "footW": 1.298,
-  "footD": 1.413,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-right": {
-  "w": 90,
-  "h": 151,
-  "anchorX": 34,
-  "anchorY": 129,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-right-w0": {
-  "w": 89,
-  "h": 149,
-  "anchorX": 33,
-  "anchorY": 126,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-right-w1": {
-  "w": 93,
-  "h": 147,
-  "anchorX": 34,
-  "anchorY": 125,
-  "footW": 1.298,
-  "footD": 1.384,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-right-w2": {
-  "w": 92,
-  "h": 152,
-  "anchorX": 33,
-  "anchorY": 131,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-ravenclaw-right-w3": {
-  "w": 90,
-  "h": 158,
-  "anchorX": 33,
-  "anchorY": 136,
-  "footW": 1.298,
-  "footD": 1.434,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-down": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 33,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-down-w0": {
-  "w": 96,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 117,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-down-w1": {
-  "w": 93,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.38,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-down-w2": {
-  "w": 96,
-  "h": 145,
-  "anchorX": 33,
-  "anchorY": 122,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-down-w3": {
-  "w": 99,
-  "h": 144,
-  "anchorX": 33,
-  "anchorY": 123,
-  "footW": 1.424,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-up": {
-  "w": 95,
-  "h": 143,
-  "anchorX": 39,
-  "anchorY": 120,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-up-w0": {
-  "w": 95,
-  "h": 142,
-  "anchorX": 39,
-  "anchorY": 118,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-up-w1": {
-  "w": 96,
-  "h": 143,
-  "anchorX": 36,
-  "anchorY": 121,
-  "footW": 1.38,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-up-w2": {
-  "w": 95,
-  "h": 145,
-  "anchorX": 39,
-  "anchorY": 123,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-up-w3": {
-  "w": 98,
-  "h": 144,
-  "anchorX": 42,
-  "anchorY": 122,
-  "footW": 1.424,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-left": {
-  "w": 90,
-  "h": 134,
-  "anchorX": 34,
-  "anchorY": 112,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-left-w0": {
-  "w": 92,
-  "h": 133,
-  "anchorX": 33,
-  "anchorY": 110,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-left-w1": {
-  "w": 90,
-  "h": 140,
-  "anchorX": 33,
-  "anchorY": 119,
-  "footW": 1.298,
-  "footD": 1.377,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-left-w2": {
-  "w": 89,
-  "h": 137,
-  "anchorX": 33,
-  "anchorY": 115,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-left-w3": {
-  "w": 93,
-  "h": 132,
-  "anchorX": 34,
-  "anchorY": 110,
-  "footW": 1.298,
-  "footD": 1.413,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-right": {
-  "w": 90,
-  "h": 151,
-  "anchorX": 34,
-  "anchorY": 129,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-right-w0": {
-  "w": 89,
-  "h": 149,
-  "anchorX": 33,
-  "anchorY": 126,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-right-w1": {
-  "w": 93,
-  "h": 147,
-  "anchorX": 34,
-  "anchorY": 125,
-  "footW": 1.298,
-  "footD": 1.384,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-right-w2": {
-  "w": 92,
-  "h": 152,
-  "anchorX": 33,
-  "anchorY": 131,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-wizard-hufflepuff-right-w3": {
-  "w": 90,
-  "h": 158,
-  "anchorX": 33,
-  "anchorY": 136,
-  "footW": 1.298,
-  "footD": 1.434,
-  "ppm": 48
- },
- "hw-professor-down": {
-  "w": 96,
-  "h": 150,
-  "anchorX": 33,
-  "anchorY": 127,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-professor-down-w0": {
-  "w": 96,
-  "h": 147,
-  "anchorX": 33,
-  "anchorY": 125,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-professor-down-w1": {
-  "w": 93,
-  "h": 152,
-  "anchorX": 33,
-  "anchorY": 130,
-  "footW": 1.38,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-professor-down-w2": {
-  "w": 96,
-  "h": 152,
-  "anchorX": 33,
-  "anchorY": 130,
-  "footW": 1.359,
-  "footD": 1.254,
-  "ppm": 48
- },
- "hw-professor-down-w3": {
-  "w": 99,
-  "h": 152,
-  "anchorX": 33,
-  "anchorY": 130,
-  "footW": 1.424,
-  "footD": 1.312,
-  "ppm": 48
- },
- "hw-professor-up": {
-  "w": 95,
-  "h": 150,
-  "anchorX": 39,
-  "anchorY": 127,
-  "footW": 1.359,
-  "footD": 1.24,
-  "ppm": 48
- },
- "hw-professor-up-w0": {
-  "w": 96,
-  "h": 149,
-  "anchorX": 40,
-  "anchorY": 125,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-professor-up-w1": {
-  "w": 97,
-  "h": 151,
-  "anchorX": 37,
-  "anchorY": 129,
-  "footW": 1.38,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-professor-up-w2": {
-  "w": 96,
-  "h": 152,
-  "anchorX": 40,
-  "anchorY": 130,
-  "footW": 1.359,
-  "footD": 1.324,
-  "ppm": 48
- },
- "hw-professor-up-w3": {
-  "w": 98,
-  "h": 152,
-  "anchorX": 42,
-  "anchorY": 130,
-  "footW": 1.424,
-  "footD": 1.285,
-  "ppm": 48
- },
- "hw-professor-left": {
-  "w": 90,
-  "h": 142,
-  "anchorX": 34,
-  "anchorY": 120,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-professor-left-w0": {
-  "w": 92,
-  "h": 141,
-  "anchorX": 33,
-  "anchorY": 118,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-professor-left-w1": {
-  "w": 90,
-  "h": 147,
-  "anchorX": 33,
-  "anchorY": 126,
-  "footW": 1.298,
-  "footD": 1.377,
-  "ppm": 48
- },
- "hw-professor-left-w2": {
-  "w": 90,
-  "h": 144,
-  "anchorX": 34,
-  "anchorY": 122,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-professor-left-w3": {
-  "w": 93,
-  "h": 139,
-  "anchorX": 34,
-  "anchorY": 117,
-  "footW": 1.298,
-  "footD": 1.413,
-  "ppm": 48
- },
- "hw-professor-right": {
-  "w": 90,
-  "h": 159,
-  "anchorX": 34,
-  "anchorY": 137,
-  "footW": 1.24,
-  "footD": 1.359,
-  "ppm": 48
- },
- "hw-professor-right-w0": {
-  "w": 89,
-  "h": 156,
-  "anchorX": 33,
-  "anchorY": 134,
-  "footW": 1.289,
-  "footD": 1.369,
-  "ppm": 48
- },
- "hw-professor-right-w1": {
-  "w": 93,
-  "h": 153,
-  "anchorX": 34,
-  "anchorY": 131,
-  "footW": 1.298,
-  "footD": 1.384,
-  "ppm": 48
- },
- "hw-professor-right-w2": {
-  "w": 92,
-  "h": 160,
-  "anchorX": 33,
-  "anchorY": 139,
-  "footW": 1.289,
-  "footD": 1.387,
-  "ppm": 48
- },
- "hw-professor-right-w3": {
-  "w": 90,
-  "h": 166,
-  "anchorX": 33,
-  "anchorY": 144,
-  "footW": 1.298,
-  "footD": 1.434,
-  "ppm": 48
- },
- "hw-hagrid-down": {
-  "w": 135,
-  "h": 178,
-  "anchorX": 50,
-  "anchorY": 144,
-  "footW": 2.175,
-  "footD": 1.984,
-  "ppm": 48
- },
- "hw-hagrid-down-w0": {
-  "w": 135,
-  "h": 174,
-  "anchorX": 50,
-  "anchorY": 141,
-  "footW": 2.175,
-  "footD": 2.006,
-  "ppm": 48
- },
- "hw-hagrid-down-w1": {
-  "w": 129,
-  "h": 178,
-  "anchorX": 49,
-  "anchorY": 144,
-  "footW": 2.209,
-  "footD": 2.1,
-  "ppm": 48
- },
- "hw-hagrid-down-w2": {
-  "w": 135,
-  "h": 180,
-  "anchorX": 50,
-  "anchorY": 146,
-  "footW": 2.175,
-  "footD": 2.006,
-  "ppm": 48
- },
- "hw-hagrid-down-w3": {
-  "w": 140,
-  "h": 179,
-  "anchorX": 50,
-  "anchorY": 146,
-  "footW": 2.278,
-  "footD": 2.1,
-  "ppm": 48
- },
- "hw-hagrid-up": {
-  "w": 135,
-  "h": 174,
-  "anchorX": 62,
-  "anchorY": 140,
-  "footW": 2.175,
-  "footD": 1.984,
-  "ppm": 48
- },
- "hw-hagrid-up-w0": {
-  "w": 135,
-  "h": 174,
-  "anchorX": 62,
-  "anchorY": 138,
-  "footW": 2.175,
-  "footD": 2.119,
-  "ppm": 48
- },
- "hw-hagrid-up-w1": {
-  "w": 136,
-  "h": 174,
-  "anchorX": 57,
-  "anchorY": 141,
-  "footW": 2.209,
-  "footD": 2.057,
-  "ppm": 48
- },
- "hw-hagrid-up-w2": {
-  "w": 135,
-  "h": 175,
-  "anchorX": 62,
-  "anchorY": 142,
-  "footW": 2.175,
-  "footD": 2.119,
-  "ppm": 48
- },
- "hw-hagrid-up-w3": {
-  "w": 140,
-  "h": 176,
-  "anchorX": 67,
-  "anchorY": 142,
-  "footW": 2.278,
-  "footD": 2.057,
-  "ppm": 48
- },
- "hw-hagrid-left": {
-  "w": 126,
-  "h": 176,
-  "anchorX": 52,
-  "anchorY": 142,
-  "footW": 1.984,
-  "footD": 2.175,
-  "ppm": 48
- },
- "hw-hagrid-left-w0": {
-  "w": 129,
-  "h": 174,
-  "anchorX": 51,
-  "anchorY": 140,
-  "footW": 2.063,
-  "footD": 2.219,
-  "ppm": 48
- },
- "hw-hagrid-left-w1": {
-  "w": 125,
-  "h": 180,
-  "anchorX": 51,
-  "anchorY": 148,
-  "footW": 2.077,
-  "footD": 2.204,
-  "ppm": 48
- },
- "hw-hagrid-left-w2": {
-  "w": 125,
-  "h": 178,
-  "anchorX": 51,
-  "anchorY": 144,
-  "footW": 2.063,
-  "footD": 2.19,
-  "ppm": 48
- },
- "hw-hagrid-left-w3": {
-  "w": 130,
-  "h": 172,
-  "anchorX": 51,
-  "anchorY": 138,
-  "footW": 2.077,
-  "footD": 2.261,
-  "ppm": 48
- },
- "hw-hagrid-right": {
-  "w": 126,
-  "h": 175,
-  "anchorX": 52,
-  "anchorY": 142,
-  "footW": 1.984,
-  "footD": 2.175,
-  "ppm": 48
- },
- "hw-hagrid-right-w0": {
-  "w": 125,
-  "h": 174,
-  "anchorX": 51,
-  "anchorY": 140,
-  "footW": 2.063,
-  "footD": 2.19,
-  "ppm": 48
- },
- "hw-hagrid-right-w1": {
-  "w": 130,
-  "h": 171,
-  "anchorX": 51,
-  "anchorY": 137,
-  "footW": 2.077,
-  "footD": 2.214,
-  "ppm": 48
- },
- "hw-hagrid-right-w2": {
-  "w": 129,
-  "h": 178,
-  "anchorX": 51,
-  "anchorY": 145,
-  "footW": 2.063,
-  "footD": 2.219,
-  "ppm": 48
- },
- "hw-hagrid-right-w3": {
-  "w": 125,
-  "h": 182,
-  "anchorX": 51,
-  "anchorY": 150,
-  "footW": 2.077,
-  "footD": 2.294,
-  "ppm": 48
- },
- "hw-dementor-down": {
-  "w": 94,
-  "h": 124,
-  "anchorX": 36,
-  "anchorY": 105,
-  "footW": 1.326,
-  "footD": 1.561,
-  "ppm": 48
- },
- "hw-dementor-down-w0": {
-  "w": 94,
-  "h": 124,
-  "anchorX": 36,
-  "anchorY": 105,
-  "footW": 1.326,
-  "footD": 1.614,
-  "ppm": 48
- },
- "hw-dementor-down-w1": {
-  "w": 93,
-  "h": 124,
-  "anchorX": 36,
-  "anchorY": 106,
-  "footW": 1.502,
-  "footD": 1.657,
-  "ppm": 48
- },
- "hw-dementor-down-w2": {
-  "w": 94,
-  "h": 128,
-  "anchorX": 36,
-  "anchorY": 111,
-  "footW": 1.326,
-  "footD": 1.582,
-  "ppm": 48
- },
- "hw-dementor-down-w3": {
-  "w": 102,
-  "h": 128,
-  "anchorX": 34,
-  "anchorY": 110,
-  "footW": 1.502,
-  "footD": 1.603,
-  "ppm": 48
- },
- "hw-dementor-up": {
-  "w": 94,
-  "h": 125,
-  "anchorX": 36,
-  "anchorY": 106,
-  "footW": 1.326,
-  "footD": 1.561,
-  "ppm": 48
- },
- "hw-dementor-up-w0": {
-  "w": 94,
-  "h": 126,
-  "anchorX": 36,
-  "anchorY": 107,
   "footW": 1.326,
   "footD": 1.562,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-up-w1": {
-  "w": 102,
-  "h": 126,
-  "anchorX": 34,
-  "anchorY": 109,
+  "w": 30,
+  "h": 37,
+  "anchorX": 10,
+  "anchorY": 32,
   "footW": 1.502,
   "footD": 1.598,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-up-w2": {
-  "w": 94,
-  "h": 127,
-  "anchorX": 36,
-  "anchorY": 109,
+  "w": 27,
+  "h": 37,
+  "anchorX": 10,
+  "anchorY": 32,
   "footW": 1.326,
   "footD": 1.564,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-up-w3": {
-  "w": 93,
-  "h": 124,
-  "anchorX": 36,
-  "anchorY": 105,
+  "w": 27,
+  "h": 36,
+  "anchorX": 10,
+  "anchorY": 30,
   "footW": 1.502,
   "footD": 1.583,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-left": {
-  "w": 105,
-  "h": 124,
-  "anchorX": 46,
-  "anchorY": 105,
+  "w": 31,
+  "h": 36,
+  "anchorX": 14,
+  "anchorY": 30,
   "footW": 1.561,
   "footD": 1.326,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-left-w0": {
-  "w": 106,
-  "h": 124,
-  "anchorX": 47,
-  "anchorY": 106,
+  "w": 31,
+  "h": 36,
+  "anchorX": 14,
+  "anchorY": 31,
   "footW": 1.586,
   "footD": 1.367,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-left-w1": {
-  "w": 108,
-  "h": 132,
-  "anchorX": 49,
-  "anchorY": 115,
+  "w": 32,
+  "h": 39,
+  "anchorX": 15,
+  "anchorY": 34,
   "footW": 1.628,
   "footD": 1.464,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-left-w2": {
-  "w": 105,
-  "h": 127,
-  "anchorX": 44,
-  "anchorY": 109,
+  "w": 31,
+  "h": 37,
+  "anchorX": 13,
+  "anchorY": 32,
   "footW": 1.571,
   "footD": 1.367,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-left-w3": {
-  "w": 107,
-  "h": 121,
-  "anchorX": 44,
-  "anchorY": 101,
+  "w": 31,
+  "h": 35,
+  "anchorX": 13,
+  "anchorY": 29,
   "footW": 1.594,
   "footD": 1.464,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-right": {
-  "w": 105,
-  "h": 124,
-  "anchorX": 36,
-  "anchorY": 105,
+  "w": 31,
+  "h": 36,
+  "anchorX": 11,
+  "anchorY": 30,
   "footW": 1.561,
   "footD": 1.326,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-right-w0": {
-  "w": 106,
-  "h": 125,
-  "anchorX": 36,
-  "anchorY": 106,
+  "w": 31,
+  "h": 36,
+  "anchorX": 11,
+  "anchorY": 31,
   "footW": 1.586,
   "footD": 1.367,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-right-w1": {
-  "w": 108,
-  "h": 120,
-  "anchorX": 36,
-  "anchorY": 101,
+  "w": 32,
+  "h": 35,
+  "anchorX": 11,
+  "anchorY": 29,
   "footW": 1.628,
   "footD": 1.54,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-right-w2": {
-  "w": 104,
-  "h": 127,
-  "anchorX": 36,
-  "anchorY": 109,
+  "w": 30,
+  "h": 37,
+  "anchorX": 10,
+  "anchorY": 32,
   "footW": 1.571,
   "footD": 1.367,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  },
  "hw-dementor-right-w3": {
-  "w": 104,
-  "h": 132,
-  "anchorX": 37,
-  "anchorY": 114,
+  "w": 30,
+  "h": 39,
+  "anchorX": 11,
+  "anchorY": 34,
   "footW": 1.594,
   "footD": 1.54,
-  "ppm": 48
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-down": {
+  "w": 26,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 28,
+  "footW": 1.254,
+  "footD": 1.28,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-down-w0": {
+  "w": 26,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.254,
+  "footD": 1.293,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-down-w1": {
+  "w": 27,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 28,
+  "footW": 1.331,
+  "footD": 1.35,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-down-w2": {
+  "w": 26,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 28,
+  "footW": 1.254,
+  "footD": 1.293,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-down-w3": {
+  "w": 27,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 29,
+  "footW": 1.331,
+  "footD": 1.35,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-up": {
+  "w": 26,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 28,
+  "footW": 1.254,
+  "footD": 1.28,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-up-w0": {
+  "w": 26,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.254,
+  "footD": 1.361,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-up-w1": {
+  "w": 27,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 28,
+  "footW": 1.331,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-up-w2": {
+  "w": 26,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 28,
+  "footW": 1.254,
+  "footD": 1.361,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-up-w3": {
+  "w": 26,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 28,
+  "footW": 1.331,
+  "footD": 1.324,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-left": {
+  "w": 27,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.28,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-left-w0": {
+  "w": 27,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.328,
+  "footD": 1.283,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-left-w1": {
+  "w": 27,
+  "h": 36,
+  "anchorX": 10,
+  "anchorY": 30,
+  "footW": 1.336,
+  "footD": 1.318,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-left-w2": {
+  "w": 27,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 29,
+  "footW": 1.328,
+  "footD": 1.283,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-left-w3": {
+  "w": 27,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.336,
+  "footD": 1.318,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-right": {
+  "w": 27,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.28,
+  "footD": 1.254,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-right-w0": {
+  "w": 27,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.328,
+  "footD": 1.283,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-right-w1": {
+  "w": 27,
+  "h": 34,
+  "anchorX": 10,
+  "anchorY": 27,
+  "footW": 1.336,
+  "footD": 1.344,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-right-w2": {
+  "w": 27,
+  "h": 35,
+  "anchorX": 10,
+  "anchorY": 29,
+  "footW": 1.328,
+  "footD": 1.283,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-merchant-right-w3": {
+  "w": 27,
+  "h": 36,
+  "anchorX": 10,
+  "anchorY": 30,
+  "footW": 1.336,
+  "footD": 1.344,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-down": {
+  "w": 32,
+  "h": 21,
+  "anchorX": 12,
+  "anchorY": 17,
+  "footW": 1.728,
+  "footD": 0.64,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-down-w0": {
+  "w": 32,
+  "h": 20,
+  "anchorX": 12,
+  "anchorY": 16,
+  "footW": 1.728,
+  "footD": 0.665,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-down-w1": {
+  "w": 32,
+  "h": 21,
+  "anchorX": 13,
+  "anchorY": 17,
+  "footW": 1.725,
+  "footD": 0.676,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-down-w2": {
+  "w": 32,
+  "h": 21,
+  "anchorX": 12,
+  "anchorY": 17,
+  "footW": 1.728,
+  "footD": 0.647,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-down-w3": {
+  "w": 33,
+  "h": 21,
+  "anchorX": 12,
+  "anchorY": 17,
+  "footW": 1.725,
+  "footD": 0.676,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-up": {
+  "w": 32,
+  "h": 21,
+  "anchorX": 12,
+  "anchorY": 17,
+  "footW": 1.728,
+  "footD": 0.64,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-up-w0": {
+  "w": 32,
+  "h": 20,
+  "anchorX": 12,
+  "anchorY": 16,
+  "footW": 1.728,
+  "footD": 0.682,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-up-w1": {
+  "w": 33,
+  "h": 21,
+  "anchorX": 12,
+  "anchorY": 17,
+  "footW": 1.725,
+  "footD": 0.663,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-up-w2": {
+  "w": 32,
+  "h": 21,
+  "anchorX": 12,
+  "anchorY": 17,
+  "footW": 1.728,
+  "footD": 0.682,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-up-w3": {
+  "w": 32,
+  "h": 21,
+  "anchorX": 13,
+  "anchorY": 17,
+  "footW": 1.725,
+  "footD": 0.664,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-left": {
+  "w": 18,
+  "h": 24,
+  "anchorX": 6,
+  "anchorY": 20,
+  "footW": 0.64,
+  "footD": 1.728,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-left-w0": {
+  "w": 18,
+  "h": 24,
+  "anchorX": 6,
+  "anchorY": 20,
+  "footW": 0.665,
+  "footD": 1.728,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-left-w1": {
+  "w": 18,
+  "h": 25,
+  "anchorX": 5,
+  "anchorY": 21,
+  "footW": 0.669,
+  "footD": 1.726,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-left-w2": {
+  "w": 18,
+  "h": 24,
+  "anchorX": 6,
+  "anchorY": 20,
+  "footW": 0.665,
+  "footD": 1.728,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-left-w3": {
+  "w": 18,
+  "h": 25,
+  "anchorX": 6,
+  "anchorY": 21,
+  "footW": 0.669,
+  "footD": 1.726,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-right": {
+  "w": 18,
+  "h": 24,
+  "anchorX": 6,
+  "anchorY": 20,
+  "footW": 0.64,
+  "footD": 1.728,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-right-w0": {
+  "w": 18,
+  "h": 24,
+  "anchorX": 6,
+  "anchorY": 20,
+  "footW": 0.665,
+  "footD": 1.728,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-right-w1": {
+  "w": 18,
+  "h": 25,
+  "anchorX": 6,
+  "anchorY": 21,
+  "footW": 0.669,
+  "footD": 1.725,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-right-w2": {
+  "w": 18,
+  "h": 24,
+  "anchorX": 6,
+  "anchorY": 20,
+  "footW": 0.665,
+  "footD": 1.728,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-elf-right-w3": {
+  "w": 18,
+  "h": 24,
+  "anchorX": 5,
+  "anchorY": 21,
+  "footW": 0.669,
+  "footD": 1.725,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  }
 }

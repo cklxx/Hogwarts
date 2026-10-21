@@ -13,7 +13,7 @@ import { drawOak, drawPine, drawDeadTree, drawCottage, drawStoneHouse, drawBush,
   drawFlowerbed, drawBench, drawScarecrow, drawBeehive, drawSwing,
   drawSignpost, drawReed, drawMushroom } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
-import { assetsSettled, villageSprites, preSprite, type PreSprite } from './assets.js';
+import { assetsSettled, villageSprites, preSprite, masterPalette, type PreSprite } from './assets.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
 import { OBSTACLES } from '../../src/shared/map.js';
 
@@ -69,6 +69,163 @@ const ZONES: Zone[] = [
   { x0: 15, z0: -30, x1: 75, z1: 30, pal: PAL.willow, label: '打人柳', tex: 'willow' },
 ];
 const GROUND = PAL.grass.base;
+
+// ------------------------------------------------------------------ 像素地面
+// 与工厂精灵共用主调色板（masterPalette，源头 palette.json）：程序生成可平铺
+// 像素贴图（1 格 = 1 世界单位），烘焙末尾整图再过马赛克+量化，使地面、
+// 代码绘制与 hw 精灵收敛到同一像素风。调色板缺失时用内置回退板。
+const FALLBACK_PALETTE = [
+  '#2a1f1a', '#ffb84d', '#ffca6a', '#f5f0e0', '#7a1f1f', '#1f5c3d', '#27436e', '#d9a92c', '#d9a441',
+  '#66854c', '#56743f', '#476335', '#7d9b5e', '#a08b62', '#8a744e', '#9b958b', '#7f7a71',
+  '#2a4f6a', '#3c6b8a', '#274b33', '#1d3325', '#8b8e96', '#47536b', '#7a5230', '#3c6134',
+];
+type Rgb = [number, number, number];
+const hexRgb = (h: string): Rgb => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const palRgbs = (): Rgb[] => (masterPalette() ?? FALLBACK_PALETTE).map(hexRgb);
+const snapCache = new Map<string, Rgb>();
+function snapPal(target: string, pal: Rgb[]): Rgb {
+  const hit = snapCache.get(target);
+  if (hit) return hit;
+  const t = hexRgb(target);
+  let best = pal[0], bd = Infinity;
+  for (const p of pal) {
+    const d = (t[0] - p[0]) ** 2 * 3 + (t[1] - p[1]) ** 2 * 4 + (t[2] - p[2]) ** 2 * 2;
+    if (d < bd) { bd = d; best = p; }
+  }
+  snapCache.set(target, best);
+  return best;
+}
+function makeQuantizer(pal: Rgb[]): (r: number, g: number, b: number) => Rgb {
+  const cache = new Map<number, Rgb>();
+  return (r, g, b) => {
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    let v = cache.get(key);
+    if (!v) {
+      let bd = Infinity; v = pal[0];
+      for (const p of pal) {
+        const d = (r - p[0]) ** 2 * 3 + (g - p[1]) ** 2 * 4 + (b - p[2]) ** 2 * 2;
+        if (d < bd) { bd = d; v = p; }
+      }
+      cache.set(key, v);
+    }
+    return v;
+  };
+}
+
+type GroundTileKind = 'grass' | 'forest' | 'dirt' | 'stone' | 'water';
+const groundTileCache = new Map<GroundTileKind, HTMLCanvasElement>();
+function makeGroundTile(kind: GroundTileKind): HTMLCanvasElement {
+  const S = 256;
+  const c = document.createElement('canvas'); c.width = S; c.height = S;
+  const g = c.getContext('2d')!;
+  const img = g.createImageData(S, S);
+  const d = img.data;
+  const pal = palRgbs();
+  const snap = (h: string): Rgb => snapPal(h, pal);
+  const shades: Record<GroundTileKind, Array<[string, number]>> = {
+    grass: [['#66854c', 0.52], ['#56743f', 0.26], ['#7d9b5e', 0.14], ['#476335', 0.08]],
+    forest: [['#274b33', 0.5], ['#1d3325', 0.3], ['#3c6134', 0.12], ['#2e4d2a', 0.08]],
+    dirt: [['#a08b62', 0.55], ['#8a744e', 0.3], ['#b89e6e', 0.15]],
+    stone: [['#9b958b', 0.6], ['#8f887c', 0.25], ['#b3ada2', 0.15]],
+    water: [['#2a4f6a', 0.62], ['#3c6b8a', 0.24], ['#22425a', 0.14]],
+  };
+  const table: Rgb[] = [];
+  for (const [hex, wgt] of shades[kind]) {
+    for (let i = 0; i < Math.round(wgt * 100); i++) table.push(snap(hex));
+  }
+  const rnd = mulberry(9182 + kind.length * 131 + kind.charCodeAt(0));
+  const set = (x: number, y: number, rgb: Rgb): void => {
+    const xx = ((x % S) + S) % S, yy = ((y % S) + S) % S;
+    const i = (yy * S + xx) * 4;
+    d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = 255;
+  };
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    set(x, y, table[Math.floor(rnd() * table.length)]);
+  }
+  const dark = snap(kind === 'water' ? '#22425a' : '#476335');
+  const light = snap(kind === 'grass' || kind === 'forest' ? '#7d9b5e' : '#c8c2b6');
+  if (kind === 'grass' || kind === 'forest') {
+    // 草叶像素簇：竖簇底深尖浅，绕边回绕保证可平铺
+    const n = kind === 'grass' ? 110 : 70;
+    for (let i = 0; i < n; i++) {
+      const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
+      set(x, y, dark); set(x, y - 1, table[0]);
+      if (rnd() < 0.6) set(x + (rnd() < 0.5 ? 1 : -1), y - 1, light);
+    }
+    if (kind === 'forest') {
+      for (let i = 0; i < 46; i++) set(Math.floor(rnd() * S), Math.floor(rnd() * S), light);
+      const twig = snap('#54381f');
+      for (let i = 0; i < 9; i++) {
+        const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
+        for (let k = 0; k < 3; k++) set(x + k, y, twig);
+      }
+    }
+  } else if (kind === 'dirt') {
+    for (let i = 0; i < 150; i++) set(Math.floor(rnd() * S), Math.floor(rnd() * S), rnd() < 0.5 ? light : dark);
+  } else if (kind === 'stone') {
+    // 石板：32 格错缝勾缝 + 板内斑点（底噪保留）
+    const grout = snap('#676b73');
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const row = Math.floor(y / 32);
+      const sx = x + (row % 2) * 16;
+      if (sx % 32 === 0 || y % 32 === 0) set(x, y, grout);
+      else if (rnd() < 0.1) set(x, y, dark);
+    }
+  } else {
+    // water：横向波纹短划
+    const wave = snap('#7fb0cc');
+    for (let i = 0; i < 80; i++) {
+      const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S), len = 3 + Math.floor(rnd() * 3);
+      for (let k = 0; k < len; k++) set(x + k, y, wave);
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+function groundTilePattern(g: CanvasRenderingContext2D, kind: GroundTileKind): CanvasPattern | null {
+  let tile = groundTileCache.get(kind);
+  if (!tile) { tile = makeGroundTile(kind); groundTileCache.set(kind, tile); }
+  const p = g.createPattern(tile, 'repeat');
+  if (p) p.setTransform(new DOMMatrix().scale(TPX, TPX)); // 1 格 = TPX 纹理px = 1 世界单位
+  return p;
+}
+const ZONE_TILE: Record<ZoneTex, GroundTileKind> = {
+  castle: 'stone', alley: 'stone', lake: 'water', forest: 'forest',
+  grass: 'grass', village: 'grass', pitch: 'grass', hagrid: 'grass', willow: 'grass',
+};
+
+/** 整图马赛克（2 纹理px 一格）+ 调色板量化：地面烘焙的收尾工序。 */
+function pixelateGround(c: HTMLCanvasElement): void {
+  const W = c.width >> 1, H = c.height >> 1;
+  const small = document.createElement('canvas'); small.width = W; small.height = H;
+  const sg = small.getContext('2d')!;
+  sg.imageSmoothingEnabled = false;
+  sg.drawImage(c, 0, 0, W, H);
+  const img = sg.getImageData(0, 0, W, H);
+  const d = img.data;
+  const q = makeQuantizer(palRgbs());
+  for (let i = 0; i < d.length; i += 4) {
+    const v = q(d[i], d[i + 1], d[i + 2]);
+    d[i] = v[0]; d[i + 1] = v[1]; d[i + 2] = v[2]; d[i + 3] = 255;
+  }
+  sg.putImageData(img, 0, 0);
+  const g = c.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(small, 0, 0, c.width, c.height);
+}
+/** 仅量化不马赛克（水面波光帧等薄细节）。 */
+function quantizeCanvas(c: HTMLCanvasElement): void {
+  const g = c.getContext('2d')!;
+  const img = g.getImageData(0, 0, c.width, c.height);
+  const d = img.data;
+  const q = makeQuantizer(palRgbs());
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 24) continue;
+    const v = q(d[i], d[i + 1], d[i + 2]);
+    d[i] = v[0]; d[i + 1] = v[1]; d[i + 2] = v[2];
+  }
+  g.putImageData(img, 0, 0);
+}
 
 // ------------------------------------------------------------------ night sky: pre-rendered starfield + moon
 // Both are lazy one-time builds; per frame they cost one drawImage + a few
@@ -136,6 +293,33 @@ const CREATURE_HW: Record<string, { name: string; kw: number }> = {
   dementor: { name: 'hw-dementor-down', kw: 1.6 },
   owl: { name: 'hw-owl-brown', kw: 1.6 },
   cat: { name: 'hw-cat', kw: 1.2 },
+  // 第二批（3转2 补齐）：kw 按 kernel radius 与同类标定
+  pixie: { name: 'hw-pixie', kw: 1.1 },
+  troll: { name: 'hw-troll', kw: 3.2 },
+  inferius: { name: 'hw-inferius', kw: 1.6 },
+  unicorn: { name: 'hw-unicorn', kw: 2.6 },
+  phoenix: { name: 'hw-phoenix', kw: 2.2 },
+  bowtruckle: { name: 'hw-bowtruckle', kw: 0.9 },
+  hinkypunk: { name: 'hw-hinkypunk', kw: 1.2 },
+  redcap: { name: 'hw-redcap', kw: 1.2 },
+  niffler: { name: 'hw-niffler', kw: 1.2 },
+  grindylow: { name: 'hw-grindylow', kw: 1.4 },
+  erkling: { name: 'hw-erkling', kw: 1.3 },
+  kelpie: { name: 'hw-kelpie', kw: 2.2 },
+  thestral: { name: 'hw-thestral', kw: 2.4 },
+  occamy: { name: 'hw-occamy', kw: 2.1 },
+  boggart: { name: 'hw-boggart', kw: 1.7 },
+  runespoor: { name: 'hw-runespoor', kw: 1.9 },
+  skrewt: { name: 'hw-skrewt', kw: 2.0 },
+  thunderbird: { name: 'hw-thunderbird', kw: 2.6 },
+  werewolf: { name: 'hw-werewolf', kw: 2.0 },
+  lethifold: { name: 'hw-lethifold', kw: 2.6 },
+  manticore: { name: 'hw-manticore', kw: 2.6 },
+  chimera: { name: 'hw-chimera', kw: 2.8 },
+  nundu: { name: 'hw-nundu', kw: 3.2 },
+  dragon: { name: 'hw-dragon', kw: 3.6 },
+  serpent: { name: 'hw-serpent', kw: 1.7 },
+  birds: { name: 'hw-birds', kw: 2.0 },
 };
 const HW_HOUSES = ['gryffindor', 'slytherin', 'ravenclaw', 'hufflepuff'];
 /** 巫师实体 -> hw 人物精灵基名。merchant/elf 暂无 hw 模型，返回 null 回退 chars.ts。 */
@@ -145,6 +329,8 @@ function hwFigureBase(name: string, house: string, variant: CharVariant): string
   if (n.includes('dementor')) return 'hw-dementor';
   if (variant === 'hagrid') return 'hw-hagrid';
   if (variant === 'professor') return 'hw-professor';
+  if (variant === 'merchant') return 'hw-merchant';
+  if (variant === 'elf') return 'hw-elf';
   if (variant === 'student') return 'hw-wizard-' + (HW_HOUSES.includes(house) ? house : 'gryffindor');
   return null;
 }
@@ -184,6 +370,7 @@ function buildWaveFrame(phase: number): HTMLCanvasElement {
     g.arc(x, y, r, a, a + 1.1);
   }
   g.stroke();
+  quantizeCanvas(c); // 波光颜色并入主调色板
   return c;
 }
 let waveFrames: HTMLCanvasElement[] | null = null;
@@ -385,13 +572,12 @@ const inVillage = (x: number, z: number): boolean =>
   x >= VILLAGE.x0 && x <= VILLAGE.x1 && z >= VILLAGE.z0 && z <= VILLAGE.z1;
 
 /** 3转2 精灵绘制：(ox, oy) = 地面原点（占地中心）在纹理空间的落点，
- *  k = 纹理px / 精灵px。预渲染图非像素画，绘制时开启平滑缩放。
+ *  k = 纹理px / 精灵px。精灵已过工厂像素化管线，绘制时关闭平滑缩放保硬像素。
  *  返回 false = 精灵未就绪，调用方走原路径回退。 */
 function drawPre(g: CanvasRenderingContext2D, pm: PreSprite | null, ox: number, oy: number, k: number): boolean {
   if (!pm) return false;
-  g.imageSmoothingEnabled = true;
-  g.drawImage(pm.img, ox - pm.anchorX * k, oy - pm.anchorY * k, pm.w * k, pm.h * k);
   g.imageSmoothingEnabled = false;
+  g.drawImage(pm.img, ox - pm.anchorX * k, oy - pm.anchorY * k, pm.w * k, pm.h * k);
   return true;
 }
 
@@ -929,9 +1115,9 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
       case 'traininghoop': drawTrainingHoop(g, x, y, s); break;
       case 'shop': drawShop(g, x, y, s, it.label ?? '商店'); break;
       case 'pub': drawPub(g, x, y, s); break;
-      case 'station': drawStation(g, x, y, s); break;
-      case 'library': drawLibrary(g, x, y, s); break;
-      case 'dormtower': drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
+      case 'station': if (!drawHwTex(g, 'hw-station', it.x, it.z, 148 * it.s)) drawStation(g, x, y, s); break;
+      case 'library': if (!drawHwTex(g, 'hw-library', it.x, it.z, 108 * it.s)) drawLibrary(g, x, y, s); break;
+      case 'dormtower': if (!drawHwTex(g, 'hw-dorm-tower', it.x, it.z, 64 * it.s)) drawDormTower(g, x, y, s, it.label ?? '#7a1f1f'); break;
       case 'flowerbed': drawFlowerbed(g, x, y, s); break;
       case 'bench': drawBench(g, x, y, s); break;
       case 'scarecrow': drawScarecrow(g, x, y, s); break;
@@ -1158,6 +1344,19 @@ function paintHwLandmarks(g: CanvasRenderingContext2D): void {
   drawHwTex(g, 'hw-castle-wall', -4, -103, 15);
   drawHwTex(g, 'hw-castle-wall', 24, -99.5, 15);
   drawHwTex(g, 'hw-castle-gate', -3, -45.3, 14);
+  // --- 城堡主体第二批：主楼 keep + 东翼 + 高架桥（paintCastle 布局坐标） ---
+  drawHwTex(g, 'hw-keep', 0, -74, 37);              // 主楼（代码矩形 -14..14, -88..-60）
+  drawHwTex(g, 'hw-keep', 20, -72, 19);             // 东翼（代码矩形 14..26, -80..-64）
+  drawHwTex(g, 'hw-viaduct', -21, -75, 18);         // 高架桥（代码矩形 -28..-14, -78..-72）
+  // --- 魁地奇看台：沿球场四边分段（texPitch 色带之上） ---
+  for (const sz of [-176, -161, -146, -131]) {
+    drawHwTex(g, 'hw-pitch-stand', 7, sz, 16);
+    drawHwTex(g, 'hw-pitch-stand', 73, sz, 16);
+  }
+  for (const sx of [31, 49]) {
+    drawHwTex(g, 'hw-pitch-stand', sx, -200, 16);
+    drawHwTex(g, 'hw-pitch-stand', sx, -100, 16);
+  }
   // --- 标志地点 ---
   drawHwTex(g, 'hw-hagrid-hut', 105, 118, 34);      // 海格小屋（布局石屋位置）
   drawHwTex(g, 'hw-whomping-willow', 45, 0, 22);    // 打人柳（willow 区中心）
@@ -1201,8 +1400,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   c.width = TW; c.height = TH;
   const g = c.getContext('2d')!;
   const rnd = mulberry(20261017);
-  // base ground: wild grass with tonal patches + tufts
-  g.fillStyle = GROUND;
+  // base ground: 像素草地贴图（主调色板）+ 大色调斑（末尾马赛克统一）
+  g.fillStyle = groundTilePattern(g, 'grass') ?? GROUND;
   g.fillRect(0, 0, TW, TH);
   const brnd = mulberry(31337);
   // large tonal patches
@@ -1210,30 +1409,13 @@ function buildGroundTexture(): HTMLCanvasElement {
     blob(g, brnd() * TW, brnd() * TH, 20 + brnd() * 50,
       brnd() < 0.5 ? hexA(PAL.grass.dark, 0.18) : hexA(PAL.grass.light, 0.15));
   }
-  // grass tufts
-  g.strokeStyle = hexA(PAL.grass.dark, 0.4);
-  g.lineWidth = 1.6;
-  g.beginPath();
-  for (let i = 0; i < 900; i++) {
-    const x = brnd() * TW, y = brnd() * TH;
-    g.moveTo(x - 3, y); g.lineTo(x - 4, y - 5 - brnd() * 3);
-    g.moveTo(x, y); g.lineTo(x, y - 6 - brnd() * 3);
-    g.moveTo(x + 3, y); g.lineTo(x + 4, y - 5 - brnd() * 3);
-  }
-  g.stroke();
-  // fine noise
-  const nb = (TW * TH) / 800;
-  for (let i = 0; i < nb; i++) {
-    g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)';
-    g.fillRect(rnd() * TW, rnd() * TH, 2, 2);
-  }
   // zone layer: color + detail, then blurred onto base for soft edges
   const layer = document.createElement('canvas');
   layer.width = TW; layer.height = TH;
   const lg = layer.getContext('2d')!;
   for (const zn of ZONES) {
     const x0 = w2tx(zn.x0), y0 = w2ty(zn.z0), w = (zn.x1 - zn.x0) * TPX, h = (zn.z1 - zn.z0) * TPX;
-    lg.fillStyle = zn.pal.base;
+    lg.fillStyle = groundTilePattern(lg, ZONE_TILE[zn.tex]) ?? zn.pal.base;
     lg.fillRect(x0, y0, w, h);
     lg.save();
     lg.beginPath(); lg.rect(x0, y0, w, h); lg.clip();
@@ -1253,6 +1435,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   paintServerBuildings(g);
   // 3转2 hw 地标 + 道具：覆盖在代码绘制之上（精灵未就绪时各自回退，代码版保留）
   paintHwLandmarks(g);
+  // 收尾：整图马赛克+主调色板量化（地面/代码绘制/hw 精灵统一像素风）
+  pixelateGround(c);
   return c;
 }
 
@@ -1374,10 +1558,10 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
     // --- ground: single pre-rendered texture blit (culling = source-rect clamp) ---
-    // drawSprite leaves imageSmoothingEnabled=false; ground wants smooth scaling.
+    // 地面纹理已像素化：关闭平滑缩放，保硬像素边缘。
     // Ground texture waits for the asset pack to settle (ready or failed);
     // a failed pack still builds, with code-drawn fallbacks inside.
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     const tex = groundTex ?? (assetsSettled() ? (groundTex = buildGroundTexture()) : null);
     ctx.fillStyle = GROUND;
     ctx.fillRect(0, 0, W, H);
@@ -1535,9 +1719,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       if (hwC && pmC) {
         // 锚点 = 脚下地面原点，对齐旧绘制框底边（sy + size/2）
         const tw = size * hwC.kw, k = tw / pmC.w;
-        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
         ctx.drawImage(pmC.img, sx - pmC.anchorX * k, sy + size / 2 - pmC.anchorY * k, tw, pmC.h * k);
-        ctx.imageSmoothingEnabled = false;
       } else {
         drawSprite(ctx, c.k, sx - size / 2, sy - size / 2, size, size);
       }
@@ -1598,8 +1781,8 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       const dh = size * 1.5, dw = (dh * sprW) / sprH;
       // 3转2 hw 人物：玩家按学院色、NPC 按名字映射（教授/海格/摄魂怪/洛丽丝夫人）。
       // 行走时播工厂 w0..w3 帧（bobbing+倾斜+袍摆），站立用静态帧；精灵锚点 =
-      // 脚下地面原点，对齐原绘制框的底边（sy + dh/2）；平滑缩放。
-      // hw 未就绪/未映射（merchant/elf）时回退 chars.ts 代码人物。
+      // 脚下地面原点，对齐原绘制框的底边（sy + dh/2）；硬像素缩放。
+      // hw 未就绪时回退 chars.ts 代码人物。
       const hwBase = hwFigureBase(w.n, String(w.ho).toLowerCase(), variant);
       let pmChar: PreSprite | null = null;
       let charDh = dh;
@@ -1612,12 +1795,12 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
           ? preSprite(`${hwBase}-${dir}-w${wk ? Math.floor(wk.t / 7) % 4 : 0}`)
           : null) ?? preSprite(`${hwBase}-${dir}`);
         if (hwBase === 'hw-hagrid') charDh = dh * 1.3; // 半巨人更高大
+        if (hwBase === 'hw-elf') charDh = dh * 0.62; // 家养小精灵矮小
       }
       if (pmChar) {
         const k = charDh / pmChar.h;
-        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
         ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + dh / 2 - pmChar.anchorY * k, pmChar.w * k, charDh);
-        ctx.imageSmoothingEnabled = false;
       } else {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(getCharSprite(spriteKey), sx - dw / 2, sy - dh / 2, dw, dh);

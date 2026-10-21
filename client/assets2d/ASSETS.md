@@ -89,3 +89,31 @@ houseTavern）、松树、圆冠树、路灯、栅栏、人物 4 方向 ×（站
 摄魂怪各 4 方向、猫头鹰/蜘蛛/蛇怪/鹰头马身有翼兽/猫、坩埚/扫帚/药水瓶等道具、
 曼德拉草/魔鬼网/柳枝），清单与建模方案见
 `~/workspace/goals/2d/hidden_files/prerender-v2/catalog.md`。精灵总数 89。
+
+**2026-10-21 第二批 + 像素化更新**：
+
+- 补齐城堡主体：`hw-keep`（主楼+东翼复用）、`hw-library`、`hw-dorm-tower`、
+  `hw-pitch-stand`、`hw-station`、`hw-viaduct`，渲染器已接线替换代码绘制。
+- 生物全覆盖：`CREATURE_HW` 映射 34 种（30 野生 + 召唤 serpent/birds +
+  owl/cat），新增 26 个模型（pixie/troll/unicorn/dragon/phoenix/thestral/
+  niffler/kelpie/werewolf/nundu 等），无物种再走代码绘制。
+- 人物补齐：`hw-merchant`、`hw-elf`（各 4 方向 × 站立+4 行走帧）。
+- 弱项返工：`hw-express` 加一节车厢+蒸汽+烟囱；`hw-hippogriff` 翅膀收拢站立。
+- **像素化管线**（`tools/sprite-factory/factory.js`）：全部精灵渲染后统一过
+  降分辨率（14 px/米，最近邻）+ 主调色板量化（中位切分 44 色 + 锚点 20 色，
+  共 55 色，写入 `prerendered/palette.json`）+ 1px 描边（#2a1f1a）。
+  参数写入每条精灵的 `sprites.json` 的 `pix` 字段。精灵总数 273。
+- **地面像素化**（`renderer.ts`）：与精灵共用同一调色板程序生成可平铺贴图
+  （草地/禁林地/石板/水面四种区域底图，土路 kind 已备未启用，256 格/片，噪点+草叶像素簇），区域底图改用
+  贴图填充；烘焙末尾整图过马赛克（2 纹理px/格）+ 调色板量化；水面波光帧同步
+  量化；全部 hw 精灵与地面绘制关闭平滑缩放。
+
+**残留代码手绘清单**（目标：只剩地面细节与个别小物）：
+
+| 残留 | 位置 | 说明 |
+|---|---|---|
+| 地面细节 | renderer.ts 各 TEX_PAINT / paintDecorations | 路径、球场条纹、庭院、蛛网等：烘焙后统一过马赛克+量化，视觉已并入像素风，保留矢量绘制作为形状来源 |
+| 城堡围墙/庭院 | paintCastle | hw 建筑覆盖主体，围墙带与庭院地面仍代码绘制（同上，已过像素收尾） |
+| 回退路径 | sprites.ts / chars.ts | 仅在 hw 精灵未加载时启用；全部物种/人物已有 hw 映射，正常运行时不触发 |
+| 村庄房屋 | paintVillageAssets | Kenney 预渲染房屋（非 hw 工厂），已随地面收尾过量化 |
+
