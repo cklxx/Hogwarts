@@ -292,15 +292,84 @@ deco 散布层盖印（`paintDecorations`，登记宽 $\times s$，压暗 30% �
 |---|---|---|
 | 灌木 | hw-bush | $22s$ |
 | 石头 | hw-stone（moss 变体 = hw-stone-moss；rune 变体归普通版） | $14s$ |
-| 蘑菇 | hw-mushroom | $12s$ |
+
+蘑菇 hw-mushroom（登记宽 $12s$）已移出 deco 层：改走站立排序注册（`registerDecorationStanding` 捕获），见第 15 节。
 
 地面纹理盖印（纹理层，非站立实体）：
 
 | 盖印 | 精灵 | 登记宽 |
 |---|---|---|
-| 禁林橡树 | hw-oak | 64 |
-| 禁林松树 | treePine | 40 |
-| 禁林枯树 | hw-dead-tree | 30 |
 | 海格南瓜田（3$\times$5 排） | hw-pumpkin | 4.5–6.5（逐个抖动） |
 
+禁林树木盖印（原 hw-oak 64 / treePine 40 / hw-dead-tree 30）已退役：树木改站立精灵，见第 15 节。
+
 城堡补注册（`registerCastleSprites`）：庭院橡树 hw-oak 登记宽 50（见第 6 节）；庭院井 hw-well 登记宽 7（第 13 节同口径）；城墙斜段 hw-castle-wall-r1..r6 登记宽 $=$ footW $\times U_{STRUCT}$（13.9 / 11.2 / 6.6 / 8.7 / 13.3 / 3.9），逐边 1–2 段；南墙水平段沿用 hw-castle-wall 登记宽 14。村外命名建筑本体改 houseStone 精灵，登记宽 $=$ 服务器占地宽（与村内命名商店同口径），店名保留文字层。
+
+## 15. 落地感与禁林站立批次（2026-10-22）
+
+### 脚锚点审计
+
+定义（精灵像素口径）：
+
+| 量 | 定义 |
+|---|---|
+| 脚底行 | alpha 包围盒底行（alpha $>24$ 的最大行） |
+| 占地南缘行 | $anchorY + footD/2 \times 14 \times 0.646$（深度投影 $0.646$，第 1 节） |
+| footOffset | 脚底行 $-$ 占地南缘行 |
+| 底部 padding | 图高 $-1-$ 脚底行 |
+
+实测结论：
+
+| 对象 | 结果 |
+|---|---|
+| 全部活体（34 生物 + 人物全帧） | 底部 padding $=0$ 或 $1$ px，非虚浮主因 |
+| 人物（4 学院 $\times$ 4 向 + 教授/海格/商人/小精灵 + 行走帧） | footOffset $\in[-1.1,+0.4]$，全部 $\le 2$ px，不登记 |
+| 生物 10 种（inferius/bowtruckle/redcap/niffler/grindylow/erkling/occamy/boggart/runespoor/lethifold） | $\lvert footOffset\rvert \le 2$，不登记 |
+| 生物 5 种飞行/漂浮（摄魂怪 $-3.1$、pixie $-2.4$、凤凰 $-10.5$、雷鸟 $-9.1$、鸟群 $-7.8$） | 悬空是设定，豁免不登记；仍画接触阴影（地面投影） |
+| 生物 18 种 | 登记 footOffset（下表），绘制时纵向补偿 $-footOffset \times k$，脚底落回占地南缘 |
+
+登记的 footOffset（精灵 px）：
+
+| 精灵 | footOffset | 精灵 | footOffset |
+|---|---|---|---|
+| hw-spider | $-4.5$ | hw-werewolf | $-5.6$ |
+| hw-basilisk | $-3.4$ | hw-manticore | $-6.2$ |
+| hw-hippogriff | $-7.5$ | hw-chimera | $-7.7$ |
+| hw-devils-snare | $-3.0$ | hw-nundu | $-8.1$ |
+| hw-owl-brown | $-3.4$ | hw-dragon | $-12.7$ |
+| hw-cat | $-4.6$ | hw-serpent | $-3.0$ |
+| hw-troll | $-3.3$ | hw-unicorn | $-8.0$ |
+| hw-hinkypunk | $-4.3$ | hw-kelpie | $-8.0$ |
+| hw-skrewt | $-3.3$ | hw-thestral | $-8.0$ |
+
+偏差成因：工厂 3D 包围盒深度（footD）含尾、颈、翼等高位部件，地面站姿深度小于包围盒深度，脚底系统性落在南缘以北。
+
+### 接触阴影
+
+| 项 | 口径 |
+|---|---|
+| 贴图 | 预烘焙 $128$ px 径向渐变，全活体共用，逐帧只缩放绘制 |
+| 透明度 | 中心 alpha $0.34$，边缘衰减到 $0$ |
+| 宽度 | 登记宽 $\times 0.8$ |
+| 高度 | 宽度 $\times 0.646$（地面深度压缩） |
+| 位置 | 中心 $=$ 锚点（占地中心），在实体排序槽内、本体之前绘制 |
+
+精灵自带的工厂烘焙阴影在像素化后只剩淡色污渍且偏侧，不再承担接地功能。
+
+### 禁林站立登记
+
+地面：forest tile 改落叶土（深棕落叶层 + 落叶碎点 + 稀疏林下光斑），且只落在林盘 disc$(165,15,r85)$ 内（盘缘逐 tile 噪声摆动，zone 矩形四角归草地）；主径走廊（$\lvert z-15\rvert<4.2\pm$ 摆动、$82<x<210$）tile 改 dirt 土路。
+
+站立选点（`registerForestStanding`，全部取自服务器树干位子集）：
+
+| 类别 | 精灵 | 登记宽 | 数量口径 |
+|---|---|---|---|
+| 林内松 | treePine | 7.5 | 林内合计 17 棵，间距 $\ge 23$ |
+| 林内圆冠 | treeRound | 7.5 | 同上（哈希分种） |
+| 林内橡 | hw-oak | 24 | $\le 3$ |
+| 林内枯树 | hw-dead-tree | 10 | $\le 2$ |
+| 林缘小树 | treePine / treeRound | 4.6 | 与林内合计 $\le 25$ |
+| 林下灌木 | hw-bush | 10 | 12 丛（不计整树） |
+| 林缘灌木 | hw-bush | 8 | 8 丛（不计整树） |
+
+主径走廊留空口径：$\lvert z-15\rvert<7.5$ 且 $x<208$ 不选点；海格园（距 $(95,30)$ $<14$）与布局道路（距 $<8$）同避。树木全部走统一站立口径：y-sort + Front 淡化。

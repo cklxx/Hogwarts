@@ -117,7 +117,7 @@ function makeGroundTile(kind: GroundTileKind): HTMLCanvasElement {
     grass: [['#66854c', 0.52], ['#56743f', 0.26], ['#7d9b5e', 0.14], ['#476335', 0.08]],
     grassL: [['#7d9b5e', 0.52], ['#66854c', 0.26], ['#93ad72', 0.14], ['#56743f', 0.08]],
     sand: [['#c9b078', 0.55], ['#b89e6e', 0.3], ['#dcc48c', 0.15]],
-    forest: [['#274b33', 0.5], ['#1d3325', 0.3], ['#3c6134', 0.12], ['#2e4d2a', 0.08]],
+    forest: [['#584731', 0.5], ['#463723', 0.28], ['#6a5638', 0.14], ['#38291a', 0.08]],
     dirt: [['#a08b62', 0.55], ['#8a744e', 0.3], ['#b89e6e', 0.15]],
     stone: [['#9b958b', 0.6], ['#8f887c', 0.25], ['#b3ada2', 0.15]],
     water: [['#2a4f6a', 0.62], ['#3c6b8a', 0.24], ['#22425a', 0.14]],
@@ -136,22 +136,37 @@ function makeGroundTile(kind: GroundTileKind): HTMLCanvasElement {
     set(x, y, table[Math.floor(rnd() * table.length)]);
   }
   const dark = snap(kind === 'water' ? '#22425a' : '#476335');
-  const light = snap(kind === 'grass' || kind === 'grassL' || kind === 'forest' ? '#7d9b5e' : '#c8c2b6');
-  if (kind === 'grass' || kind === 'grassL' || kind === 'forest') {
+  const light = snap(kind === 'grass' || kind === 'grassL' ? '#7d9b5e' : kind === 'forest' ? '#cbb080' : '#c8c2b6');
+  if (kind === 'forest') {
+    // 林地地板（禁林重设计，2026-10-22）：深色落叶土 + 落叶碎点 + 稀疏
+    // 林下光斑 + 断枝。不再有草叶簇——树冠地毯退役后，林内地面是落叶层，
+    // 光斑是透过稀疏站立树的光（大光斑在 texForest 细节层另画）。
+    const leaf = snap('#a8842c');
+    const leaf2 = snap('#7d6435');
+    for (let i = 0; i < 120; i++) {
+      const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
+      set(x, y, rnd() < 0.5 ? leaf : leaf2);
+      if (rnd() < 0.5) set(x + 1, y, rnd() < 0.5 ? leaf : leaf2);
+    }
+    // 林下光斑：2-3px 亮簇，稀疏（每 tile 约 14 簇）
+    for (let i = 0; i < 14; i++) {
+      const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
+      set(x, y, light); set(x + 1, y, light);
+      if (rnd() < 0.6) { set(x, y + 1, light); }
+      if (rnd() < 0.3) { set(x + 2, y, light); }
+    }
+    const twig = snap('#54381f');
+    for (let i = 0; i < 9; i++) {
+      const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
+      for (let k = 0; k < 3; k++) set(x + k, y, twig);
+    }
+  } else if (kind === 'grass' || kind === 'grassL') {
     // 草叶像素簇：竖簇底深尖浅，绕边回绕保证可平铺
     const n = kind === 'grass' ? 110 : 70;
     for (let i = 0; i < n; i++) {
       const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
       set(x, y, dark); set(x, y - 1, table[0]);
       if (rnd() < 0.6) set(x + (rnd() < 0.5 ? 1 : -1), y - 1, light);
-    }
-    if (kind === 'forest') {
-      for (let i = 0; i < 46; i++) set(Math.floor(rnd() * S), Math.floor(rnd() * S), light);
-      const twig = snap('#54381f');
-      for (let i = 0; i < 9; i++) {
-        const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
-        for (let k = 0; k < 3; k++) set(x + k, y, twig);
-      }
     }
   } else if (kind === 'dirt' || kind === 'sand') {
     for (let i = 0; i < 150; i++) set(Math.floor(rnd() * S), Math.floor(rnd() * S), rnd() < 0.5 ? light : dark);
@@ -268,6 +283,30 @@ function getStarTex(): HTMLCanvasElement {
   }
   return starTex;
 }
+// ------------------------------------------------------------------ 接触阴影（落地感）
+// 活体虚浮的主因之一：精灵自带的烘焙阴影在像素化后只剩一团淡色污渍，
+// 且位置偏侧，脚下没有明确的接地暗斑。统一改由渲染器在实体绘制前、
+// 其排序槽位内画一张预烘焙的径向渐变椭圆（全活体共用同一张贴图，
+// 逐帧只 drawImage 缩放，禁止每帧新建渐变）。椭圆宽 = 登记宽 × 0.8，
+// 高按地面深度压缩 × 0.646（size-design.md 投影口径），中心 alpha ≈ 0.34。
+let shadowTex: HTMLCanvasElement | null = null;
+function getShadowTex(): HTMLCanvasElement {
+  if (!shadowTex) {
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = S; c.height = S;
+    const g = c.getContext('2d')!;
+    const grad = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    grad.addColorStop(0, 'rgba(22,18,9,0.34)');
+    grad.addColorStop(0.55, 'rgba(22,18,9,0.20)');
+    grad.addColorStop(1, 'rgba(22,18,9,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, S, S);
+    shadowTex = c;
+  }
+  return shadowTex;
+}
+
 let moonGlow: CanvasGradient | null = null;
 /** Moon disc + halo at fixed screen position (mx, my). k = night strength 0..1. */
 function drawMoon(ctx: CanvasRenderingContext2D, mx: number, my: number, k: number) {
@@ -533,21 +572,21 @@ const SERVER_TREES: Array<{ x: number; z: number }> = OBSTACLES.filter(
 ).map((o) => ({ x: (o as { x: number }).x, z: (o as { z: number }).z }));
 const texForest: Painter = (g, x0, y0, w, h, rnd) => {
   const P = PAL.forest;
-  // clearings first (lighter grass showing through)
+  // 林间空地：落叶土亮斑（与林地地板 tile 同色系，不再是草地绿）
   const nc = (w * h) / 26000;
   for (let i = 0; i < nc; i++) {
     const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 14 + rnd() * 26;
-    blob(g, x, y, r, hexA(PAL.grass.dark, 0.5));
+    blob(g, x, y, r, hexA('#6a5638', 0.35));
   }
-  // 地面阴影基底（树冠投影用）
-  const n1 = (w * h) / 1400;
+  // 地面明暗基底（稀疏站立树的地面层次，不再是整面树冠投影）
+  const n1 = (w * h) / 4200;
   for (let i = 0; i < n1; i++) {
-    blob(g, x0 + rnd() * w, y0 + rnd() * h, 10 + rnd() * 16, hexA(P.dark, 0.35));
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 10 + rnd() * 16, hexA(P.dark, 0.16));
   }
-  // dappled sunlight spots — 1x 下可见：更亮更多
-  const nd = (w * h) / 6000;
+  // dappled sunlight spots — 林下光斑：透过树冠的光，1x 下可见
+  const nd = (w * h) / 4500;
   for (let i = 0; i < nd; i++) {
-    blob(g, x0 + rnd() * w, y0 + rnd() * h, 4 + rnd() * 8, hexA(P.detail, 0.45));
+    blob(g, x0 + rnd() * w, y0 + rnd() * h, 4 + rnd() * 8, hexA('#d9c493', 0.4));
   }
   // leaf litter: 落叶碎点
   const nl = (w * h) / 1100;
@@ -555,20 +594,10 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 1.6 + rnd() * 2.2,
       rnd() < 0.5 ? hexA('#6b5a3a', 0.4) : hexA(P.dark, 0.5));
   }
-  // 禁林树木保留在地面纹理里（不进站立实体排序）：树冠直径约 72 世界单位、
-  // 间距约 11 单位，冠幅在俯视图里本就是连片地面覆盖；逐棵做站立精灵会把
-  // 整片林地盖成实心树冠毯、埋掉林中一切实体。林内遮挡由生物间 z 排序处理，
-  // 独立地标树（打人柳/村庄树/庭院树/装饰树）才进站立实体。
-  const zx0 = (x0 / TPX) + TB.x0, zy0 = (y0 / TPX) + TB.z0;
-  const zx1 = zx0 + w / TPX, zy1 = zy0 + h / TPX;
-  for (const t of SERVER_TREES) {
-    if (t.x < zx0 || t.x > zx1 || t.z < zy0 || t.z > zy1) continue;
-    // 确定性种类选择（基于位置哈希，保证每次一致）。树种全为工厂精灵
-    // 盖印（hw-oak / treePine / hw-dead-tree），登记宽按原矢量盖印跨度对齐。
-    const hk = Math.abs(Math.sin(t.x * 12.9898 + t.z * 78.233) * 43758.5453) % 1;
-    const stamp = hk < 0.55 ? ['hw-oak', 64] : hk < 0.85 ? ['treePine', 40] : ['hw-dead-tree', 30];
-    if (!drawHwTex(g, stamp[0] as string, t.x, t.z, stamp[1] as number)) warnMissingSprite(stamp[0] as string);
-  }
+  // 禁林树木已改为站立精灵（registerForestStanding，2026-10-22 重设计）：
+  // 设计密度选点（服务器树干位子集）+ 林缘疏林带，逐帧 y-sort + Front
+  // 淡化。此处不再往地面盖印树冠——旧口径 170 棵盖印成整片深青地毯、
+  // 生物走在树冠上，是虚浮感来源之一，已废除。
   // 区域视觉语言：禁林雾气。12 团半透明灰白，低空漂浮感。
   for (let i = 0; i < 12; i++) {
     const mx = x0 + rnd() * w, my = y0 + rnd() * h;
@@ -980,12 +1009,106 @@ const texWillow: Painter = (g, x0, y0, w, h, rnd) => {
   // （registerHwLandmarks），告示牌 = hw-signpost（registerStandingAll）。
 };
 
+/** 禁林站立树木注册（2026-10-22 重设计，废除地面树冠盖印）：
+ * 设计密度：林内 17 棵 + 林缘疏林带补足至 25 棵整树上限（默认 2.75x 下
+ * 整片禁林同框，任意 1280px 视口可见整树 ≤ 25 的上限即总数上限）。
+ * 选点全部取自服务器树干位（SERVER_TREES 子集：可见的树必有碰撞），
+ * 确定性哈希序贪心、间距 ≥30（不足时 26/23 两档放宽）。主径走廊
+ * （服务器留白 |z−15|<5、x<200）两侧放宽至 7.5 留空，海格园与布局
+ * 道路同避。树种按位置哈希：松/圆冠为主、橡 ≤3、枯树 ≤2。
+ * 林下灌木（hw-bush，不计整树）内 12 丛 + 林缘 8 丛补层次。
+ * 全部走 registerPre：y-sort + Front 淡化与全图同口径，树干可见、
+ * 地面（落叶土 tile）透出。 */
+function registerForestStanding(): void {
+  const reg = (name: string, x: number, z: number, w: number): void => {
+    if (!registerPre(name, x, z, w)) warnMissingSprite(name);
+  };
+  const C = { x: 165, z: 15 };
+  const roads = getLayout().roads;
+  const roadDist = (x: number, z: number): number => {
+    let best = Infinity;
+    for (const r of roads) {
+      const p = r.pts;
+      for (let i = 0; i < p.length - 1; i++) {
+        const ax = p[i].x, az = p[i].z, dx = p[i + 1].x - ax, dz = p[i + 1].z - az;
+        const len2 = dx * dx + dz * dz;
+        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len2));
+        const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  };
+  const hash = (x: number, z: number, s: number): number =>
+    Math.abs(Math.sin(x * 12.9898 + z * 78.233 + s * 37.719) * 43758.5453) % 1;
+  const clearOfTrail = (x: number, z: number): boolean => !(Math.abs(z - C.z) < 7.5 && x < 208);
+  // ---- 林内选点：候选 = 服务器树干位（林盘内、避主径/海格园/道路）
+  const cand = SERVER_TREES.filter((t) =>
+    Math.hypot(t.x - C.x, t.z - C.z) <= 80 && clearOfTrail(t.x, t.z) &&
+    Math.hypot(t.x - 95, t.z - 30) >= 14 && roadDist(t.x, t.z) >= 8);
+  const order = [...cand].sort((a, b) => hash(a.x, a.z, 1) - hash(b.x, b.z, 1));
+  const picked: Array<{ x: number; z: number }> = [];
+  for (const minD of [30, 26, 23]) {
+    for (const t of order) {
+      if (picked.length >= 17) break;
+      if (picked.includes(t)) continue;
+      if (picked.some((p) => Math.hypot(p.x - t.x, p.z - t.z) < minD)) continue;
+      picked.push(t);
+    }
+    if (picked.length >= 17) break;
+  }
+  let oaks = 0, deads = 0;
+  for (const t of picked) {
+    const hk = hash(t.x, t.z, 2);
+    let name = 'treePine', w = 7.5;
+    if (hk >= 0.5 && hk < 0.8) { name = 'treeRound'; w = 7.5; }
+    else if (hk >= 0.8 && hk < 0.92 && oaks < 3) { name = 'hw-oak'; w = 24; oaks++; }
+    else if (hk >= 0.92 && deads < 2) { name = 'hw-dead-tree'; w = 10; deads++; }
+    reg(name, t.x, t.z, w);
+  }
+  // ---- 林缘疏林带：林盘外小树（约 0.6 尺度）补足至 25 棵，与草地衔接
+  let total = picked.length;
+  for (let i = 0; i < 14 && total < 25; i++) {
+    const a = (i / 14) * Math.PI * 2 + hash(i, 7, 3) * 0.35;
+    const r = 90 + hash(i, 11, 4) * 12;
+    const x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r;
+    if (roadDist(x, z) < 9) continue;
+    if (x > 74 && x < 156 && z > 96 && z < 171) continue; // 海格区
+    reg(hash(i, 13, 5) < 0.5 ? 'treePine' : 'treeRound', x, z, 4.6);
+    total++;
+  }
+  // ---- 林下灌木（不计整树）：林内 12 丛 + 林缘 8 丛
+  const features: Array<[number, number]> = [[174, -28], [206, -28], [190, -4], [190, -20]];
+  let bushIn = 0;
+  for (let i = 0; i < 60 && bushIn < 12; i++) {
+    const a = hash(i, 21, 6) * Math.PI * 2, r = 18 + hash(i, 23, 7) * 58;
+    const x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r;
+    if (!clearOfTrail(x, z) || roadDist(x, z) < 7) continue;
+    if (picked.some((p) => Math.hypot(p.x - x, p.z - z) < 9)) continue;
+    if (features.some(([fx, fz]) => Math.hypot(fx - x, fz - z) < 8)) continue;
+    const dc = Math.hypot(x - 130, z + 30);
+    if (dc > 11 && dc < 21) continue; // 独角兽空地的发光花环带
+    reg('hw-bush', x, z, 10);
+    bushIn++;
+  }
+  let bushRing = 0;
+  for (let i = 0; i < 30 && bushRing < 8; i++) {
+    const a = hash(i, 31, 8) * Math.PI * 2, r = 86 + hash(i, 33, 9) * 18;
+    const x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r;
+    if (roadDist(x, z) < 7) continue;
+    if (x > 74 && x < 156 && z > 96 && z < 171) continue; // 海格区
+    reg('hw-bush', x, z, 8);
+    bushRing++;
+  }
+}
+
 /** 城堡/村庄/装饰/hw 地标的站立实体统一注册（buildGroundTexture 收尾调用）。 */
 function registerStandingAll(): void {
   registerCastleSprites();
   registerVillageStanding();
   registerServerBuildings();
   registerDecorationStanding();
+  registerForestStanding();
   registerHwLandmarks();
   // 打人柳警告牌 (62,14)：树身本体在 registerHwLandmarks（hw-whomping-willow）
   if (!registerPre('hw-signpost', 62, 14, 5)) warnMissingSprite('hw-signpost');
@@ -1026,7 +1149,6 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
     switch (it.kind) {
       case 'bush': decoStamp('hw-bush', 22); break;
       case 'stone': decoStamp(it.v === 'moss' ? 'hw-stone-moss' : 'hw-stone', 14); break;
-      case 'mushroom': decoStamp('hw-mushroom', 12); break;
       default: break; // 非 L4 装饰画到主图层
     }
   }
@@ -1045,9 +1167,12 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
   paintTallGrassRing(g);
 }
 
-/** 平铺在地面上、不参与深度排序的布局物件（灌木/石头在 deco 图层另画，此处为空操作）。 */
+/** 平铺在地面上、不参与深度排序的布局物件（灌木/石头在 deco 图层另画，此处为空操作）。
+ *  蘑菇已移出本表（2026-10-22 落地感修复）：改走站立排序注册，生物站在
+ *  蘑菇北侧时脚被菇体轻盖，给出脚落在草丛里的深度线索；此前蘑菇烘焙进
+ *  地面纹理，永远画在生物之下，顺序与该线索相反。 */
 const GROUND_ITEM_KINDS = new Set([
-  'bush', 'stone', 'mushroom',
+  'bush', 'stone',
   'dock', 'boat', 'web', 'glowflower', 'gardenplot', 'flowerbed', 'reed',
 ]);
 
@@ -1069,7 +1194,8 @@ function drawLayoutItem(g: CanvasRenderingContext2D, it: { kind: string; x: numb
     drawHwTex(g, name, it.x, it.z - depthW / 2, vw);
   };
   switch (it.kind) {
-    case 'bush': case 'stone': case 'mushroom': break; // 已在 deco 图层画过
+    case 'bush': case 'stone': break; // 已在 deco 图层画过
+    case 'mushroom': hw('hw-mushroom', 12); break; // 站立排序（registerDecorationStanding 捕获）
     case 'brazier': hw('hw-brazier', 6); break;
     case 'well': hw('hw-well', 7); break;
     case 'marketstall': hw('hw-market-stall', 11.5); break;
@@ -1334,6 +1460,18 @@ function buildClassGrid(): { grid: GroundTileKind[]; cols: number; rows: number 
       else if (Math.hypot(cx - 3, cz - 180) < 15) kind = 'dirt';
       else if (onRoad(cx, cz)) kind = 'dirt';
       else if (kind === 'water') kind = 'grass';
+      // 禁林主径：服务器树木留白走廊（|z−15|<5、x<200，通往阿拉戈克
+      // 巢穴）在 tile 层画成土路，林内主径可读；站立选点对走廊的留空
+      // 口径见 registerForestStanding 的 clearOfTrail。走廊半宽带逐 tile
+      // 噪声摆动，避免尺子般的直边。
+      if (kind === 'forest' && cx > 82 && cx < 210 &&
+        Math.abs(cz - 15) < 4.2 + (gridHash(col, row, 31) - 0.5) * 1.6) kind = 'dirt';
+      // 林地地板只落在林盘内：禁林 = disc(165,15,r85)（服务器真相），
+      // zone 矩形四角在林盘外，落叶土不得铺成整块矩形（实测露馅：整幅
+      // 棕色方块压在草地上）。盘缘带逐 tile 噪声摆动（与湖岸同法），
+      // autotile 再把林地边缘融进草地。
+      if (kind === 'forest' &&
+        Math.hypot(cx - 165, cz - 15) > 85 + (gridHash(col, row, 47) - 0.5) * 4) kind = 'grass';
       // 城堡庭院花坛：原矢量层在院内 (-20..18, -56..-49) 铺的草地带，
       // 矢量层退役后以分类数据保留（两棵橡树与井在其上，见 registerCastleSprites）
       if (cx >= -20 && cx < 18 && cz >= -56 && cz < -49) kind = 'grass';
@@ -1506,7 +1644,10 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       return { n: a.length, avg: sum / a.length, p50: q(0.5), p95: q(0.95), max: a[a.length - 1] };
     };
     (window as any).__2dzoom = () => cam.zoom;
+    (window as any).__2dcam = () => ({ x: cam.x, z: cam.z, zoom: cam.zoom });
     (window as any).__2dents = () => snap ? { w: snap.w.length, c: snap.c.length, p: snap.p.length, fx: snap.fx.length } : null;
+    (window as any).__2dcreatures = () => snap?.c ?? null;
+    (window as any).__2dhour = () => snap?.hour ?? null;
   }
   (window as any).__2dgoto = (x: number, z: number) => { cam.x = x; cam.z = z; follow = false; };
   const perfEnd = (t0: number) => { if (PERF) { perfBuf.push(performance.now() - t0); if (perfBuf.length > 600) perfBuf.shift(); } };
@@ -1548,6 +1689,15 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
   // world -> screen
   const w2s = (x: number, z: number): [number, number] => {
     return [(x - cam.x) * cam.zoom + vw / 2, (z - cam.z) * cam.zoom + vh / 2];
+  };
+  // 接触阴影：以 (sx, anchorScrY) 为椭圆中心画预烘焙贴图（getShadowTex）。
+  // 宽 = 登记世界宽 × 0.8，高再乘地面深度压缩 0.646。在实体的排序槽位内、
+  // 本体之前调用——阴影与本体同序，不会被南侧物件错误盖住或盖住北侧物件。
+  const drawContactShadow = (sx: number, anchorScrY: number, wWorld: number): void => {
+    const dw = wWorld * 0.8 * cam.zoom;
+    const dh = dw * 0.646;
+    ctx.imageSmoothingEnabled = true; // 软边阴影要平滑缩放（精灵绘制处各自关回 false）
+    ctx.drawImage(getShadowTex(), sx - dw / 2, anchorScrY - dh / 2, dw, dh);
   };
   const s2w = (sx: number, sy: number): { x: number; z: number } => {
     const w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
@@ -1738,9 +1888,14 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
         const dwC = hwC.wM * cam.zoom;
         const k = dwC / pmC.w;
         const dhC = pmC.h * k;
+        // 脚锚点补偿（sprites.json footOffset，审计见 size-design.md）：
+        // 脚底偏离占地南缘的精灵整体纵向移位 −footOffset × k，脚底落回
+        // 占地南缘中心行；锚点（占地中心）不动，接触阴影仍画在锚点上。
+        const footShift = pmC.footOffset ? -pmC.footOffset * k : 0;
+        drawContactShadow(sx, sy + dhC / 2, hwC.wM);
         ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
-        ctx.drawImage(pmC.img, sx - pmC.anchorX * k, sy + dhC / 2 - pmC.anchorY * k, dwC, dhC);
-        topY = sy + dhC / 2 - pmC.anchorY * k;
+        ctx.drawImage(pmC.img, sx - pmC.anchorX * k, sy + dhC / 2 - pmC.anchorY * k + footShift, dwC, dhC);
+        topY = sy + dhC / 2 - pmC.anchorY * k + footShift;
         r = Math.max(6, Math.min(dwC / 2, 16 * cam.zoom));
       } else {
         // 无工厂精灵（未映射物种或加载失败）：不绘制本体，缺口暴露。
@@ -1824,8 +1979,12 @@ export function createRenderer2D(canvas: HTMLCanvasElement) {
       if (pmChar) {
         const k = charW / pmChar.w;
         const charDh = pmChar.h * k;
+        // 人物同口径：接触阴影（锚点地面）+ footOffset 补偿（现登记表里
+        // 人物各帧偏差均 ≤2px、无条目，读法与生物统一，防未来新帧漂移）。
+        const footShift = pmChar.footOffset ? -pmChar.footOffset * k : 0;
+        drawContactShadow(sx, sy + charDh / 2, charW / cam.zoom);
         ctx.imageSmoothingEnabled = false; // 像素精灵硬边缘
-        ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + charDh / 2 - pmChar.anchorY * k, charW, charDh);
+        ctx.drawImage(pmChar.img, sx - pmChar.anchorX * k, sy + charDh / 2 - pmChar.anchorY * k + footShift, charW, charDh);
       } else {
         warnMissingSprite(`figure:${hwBase ?? variant}`);
       }

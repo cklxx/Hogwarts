@@ -30,6 +30,11 @@ export interface PreSprite {
   anchorX: number; anchorY: number; // 地面原点（占地中心、y=0）在图内的像素位置
   footW: number; footD: number;     // 3D 占地（米）
   ppm: number;                      // 渲染密度（px/米）
+  /** 脚底（alpha 包围盒底行）与占地南缘中心行的偏差（精灵 px，负 = 脚在
+   *  南缘以北）。仅 |偏差| > 2 的地面生物在 sprites.json 里登记，绘制时
+   *  按 -footOffset × k 纵向补偿，使脚底落回占地南缘。审计见
+   *  size-design.md「脚锚点审计」。飞行/漂浮生物悬空是设定，不登记。 */
+  footOffset?: number;
 }
 const preMap = new Map<string, PreSprite>();
 let preReady = false;
