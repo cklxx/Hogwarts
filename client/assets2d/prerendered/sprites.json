@@ -4072,5 +4072,243 @@
    "outline": "#2a1f1a",
    "colors": 55
   }
+ },
+ "hw-oak": {
+  "w": 77,
+  "h": 64,
+  "anchorX": 35,
+  "anchorY": 55,
+  "footW": 4.862,
+  "footD": 4.529,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-dead-tree": {
+  "w": 40,
+  "h": 41,
+  "anchorX": 15,
+  "anchorY": 38,
+  "footW": 2.258,
+  "footD": 0.956,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-bush": {
+  "w": 39,
+  "h": 19,
+  "anchorX": 17,
+  "anchorY": 14,
+  "footW": 2.385,
+  "footD": 1.526,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-stone": {
+  "w": 29,
+  "h": 18,
+  "anchorX": 12,
+  "anchorY": 12,
+  "footW": 1.806,
+  "footD": 1.282,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-stone-moss": {
+  "w": 29,
+  "h": 18,
+  "anchorX": 12,
+  "anchorY": 12,
+  "footW": 1.806,
+  "footD": 1.282,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-mushroom": {
+  "w": 16,
+  "h": 11,
+  "anchorX": 5,
+  "anchorY": 8,
+  "footW": 0.86,
+  "footD": 0.592,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-web": {
+  "w": 26,
+  "h": 18,
+  "anchorX": 13,
+  "anchorY": 9,
+  "footW": 1.678,
+  "footD": 1.678,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-glowflower": {
+  "w": 14,
+  "h": 12,
+  "anchorX": 4,
+  "anchorY": 10,
+  "footW": 0.475,
+  "footD": 0.392,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-gardenplot": {
+  "w": 29,
+  "h": 17,
+  "anchorX": 14,
+  "anchorY": 10,
+  "footW": 1.82,
+  "footD": 1.34,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-flowerbed": {
+  "w": 26,
+  "h": 15,
+  "anchorX": 12,
+  "anchorY": 9,
+  "footW": 1.5,
+  "footD": 1.05,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-reed": {
+  "w": 29,
+  "h": 23,
+  "anchorX": 11,
+  "anchorY": 21,
+  "footW": 1.408,
+  "footD": 0.211,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-castle-wall-r1": {
+  "w": 69,
+  "h": 62,
+  "anchorX": 31,
+  "anchorY": 49,
+  "footW": 4.328,
+  "footD": 2.73,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-castle-wall-r2": {
+  "w": 58,
+  "h": 73,
+  "anchorX": 26,
+  "anchorY": 55,
+  "footW": 3.514,
+  "footD": 3.903,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-castle-wall-r3": {
+  "w": 38,
+  "h": 78,
+  "anchorX": 16,
+  "anchorY": 57,
+  "footW": 2.054,
+  "footD": 4.477,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-castle-wall-r4": {
+  "w": 47,
+  "h": 77,
+  "anchorX": 20,
+  "anchorY": 57,
+  "footW": 2.73,
+  "footD": 4.328,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-castle-wall-r5": {
+  "w": 67,
+  "h": 66,
+  "anchorX": 30,
+  "anchorY": 51,
+  "footW": 4.143,
+  "footD": 3.151,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
+ },
+ "hw-castle-wall-r6": {
+  "w": 26,
+  "h": 78,
+  "anchorX": 10,
+  "anchorY": 57,
+  "footW": 1.222,
+  "footD": 4.476,
+  "ppm": 14,
+  "pix": {
+   "perMeter": 14,
+   "outline": "#2a1f1a",
+   "colors": 55
+  }
  }
 }

@@ -1841,6 +1841,177 @@ Object.assign(HW_BUILDERS, {
   },
 });
 
+// ------------------------------------------------------------ purge 批次（2026-10-22）
+// 矢量绘制全量退役的替代模型：庭院/禁林橡树、枯树、灌木、石头（含苔藓变体）、
+// 蘑菇、蛛网、发光花、苗圃、花坛、芦苇、城墙斜段（按城墙多边形各边线角绕 Y 旋转）。
+// 城墙段本体与 hw-castle-wall 同构（石墙 + 垛口 + 两窗），只差整组转角。
+function castleWallSeg() {
+  const g = new THREE.Group();
+  g.add(box(4.4, 3, 0.8, M.stone));
+  for (let i = 0; i < 6; i++) g.add(at(box(0.42, 0.34, 0.84, M.stone), -2.0 + i * 0.8, 3, 0));
+  g.add(at(box(0.5, 0.7, 0.1, M.winGlow), -1.1, 1.5, 0.4));
+  g.add(at(box(0.5, 0.7, 0.1, M.winGlow), 1.1, 1.5, 0.4));
+  return g;
+}
+const wallRot = (deg) => () => {
+  const g = castleWallSeg();
+  g.rotation.y = THREE.MathUtils.degToRad(deg);
+  return g;
+};
+Object.assign(HW_BUILDERS, {
+  'hw-castle-wall-r1': wallRot(-26.6),   // NE 边（线角 26.6°）
+  'hw-castle-wall-r2': wallRot(-49.4),   // E 上边（线角 49.4°）
+  'hw-castle-wall-r3': wallRot(-73.6),   // E 下边 / W 边（线角 ≈73.5°）
+  'hw-castle-wall-r4': wallRot(63.4),    // SE 边（线角 -63.4°）
+  'hw-castle-wall-r5': wallRot(-33.7),   // SW 边（线角 33.7°）
+  'hw-castle-wall-r6': wallRot(85),      // NW 边（线角 ≈85°）
+  'hw-oak': () => {
+    const g = new THREE.Group();
+    const bark = std(0x4c3a28, { r: 1 });
+    g.add(cyl(0.30, 0.50, 1.5, bark, 10));
+    const seg2 = cyl(0.20, 0.30, 0.95, bark, 9);
+    seg2.position.set(0.10, 1.38, 0.04); seg2.rotation.z = -0.14; g.add(seg2);
+    const blobs = [
+      [0, 3.05, 0, 1.45, M.leaf],
+      [-1.30, 2.70, 0.30, 1.00, M.leafDark], [1.30, 2.75, -0.25, 1.02, M.leaf],
+      [0.35, 2.65, 1.20, 0.95, M.leafDark], [-0.40, 2.60, -1.20, 0.98, M.leaf],
+      [0.95, 2.85, 0.85, 0.88, M.leafDark], [-0.30, 3.80, -0.10, 0.92, M.leaf],
+    ];
+    for (const [bx, by, bz, br, bm] of blobs) {
+      const b = sph(br, bm, 1.12, 0.78, 1.12); b.position.set(bx, by, bz); g.add(b);
+    }
+    return g;
+  },
+  'hw-dead-tree': () => {
+    const g = new THREE.Group();
+    const bark = std(0x6e5f4e, { r: 1 });
+    const trunk = cyl(0.10, 0.20, 2.7, bark, 8); trunk.rotation.z = 0.05; g.add(trunk);
+    const branches = [
+      // [基点高, 倾角 z, 倾角 x, 长, 梢径]
+      [1.55, 0.85, 0.15, 1.35, 0.035], [1.95, -0.95, -0.10, 1.45, 0.03],
+      [2.30, 0.55, -0.45, 1.10, 0.028], [2.45, -0.40, 0.50, 0.95, 0.025],
+    ];
+    for (const [by, rz, rx, len, rr] of branches) {
+      const b = cyl(rr, 0.06, len, bark, 6);
+      b.position.set(0.02, by, 0); b.rotation.z = rz; b.rotation.x = rx; g.add(b);
+    }
+    return g;
+  },
+  'hw-bush': () => {
+    const g = new THREE.Group();
+    const blobs = [
+      [0, 0.42, 0, 0.62, M.leaf], [-0.58, 0.33, 0.08, 0.48, M.leafDark],
+      [0.58, 0.35, -0.05, 0.50, M.leaf], [0.02, 0.38, -0.42, 0.45, M.leafDark],
+      [0.10, 0.66, 0.05, 0.40, M.leaf],
+    ];
+    for (const [bx, by, bz, br, bm] of blobs) {
+      const b = sph(br, bm, 1.25, 0.62, 1.05); b.position.set(bx, by, bz); g.add(b);
+    }
+    return g;
+  },
+  'hw-stone': () => {
+    const g = new THREE.Group();
+    const main = sph(0.62, M.stone, 1.25, 0.68, 1.05); main.position.y = 0.30; g.add(main);
+    const side = sph(0.34, M.stoneDark, 1.15, 0.65, 1); side.position.set(0.64, 0.17, 0.16); g.add(side);
+    return g;
+  },
+  'hw-stone-moss': () => {
+    const g = new THREE.Group();
+    const main = sph(0.62, M.stone, 1.25, 0.68, 1.05); main.position.y = 0.30; g.add(main);
+    const side = sph(0.34, M.stoneDark, 1.15, 0.65, 1); side.position.set(0.64, 0.17, 0.16); g.add(side);
+    const moss = sph(0.50, std(0x5a7a4a, { r: 1 }), 1.2, 0.34, 1); moss.position.set(-0.10, 0.60, 0); g.add(moss);
+    const moss2 = sph(0.26, std(0x5a7a4a, { r: 1 }), 1.1, 0.3, 1); moss2.position.set(0.55, 0.36, 0.18); g.add(moss2);
+    return g;
+  },
+  'hw-mushroom': () => {
+    const g = new THREE.Group();
+    const cream = std(0xe8dcc0, { r: 0.9 });
+    g.add(cyl(0.085, 0.13, 0.34, cream, 8));
+    const cap = sph(0.30, std(0xc0392b, { r: 0.7 }), 1, 0.55, 1); cap.position.y = 0.36; g.add(cap);
+    for (const [dx, dz] of [[-0.10, 0.06], [0.08, -0.08], [0.13, 0.10], [-0.02, -0.14]]) {
+      const dot = sph(0.045, std(0xf0e8d8, { r: 0.8 })); dot.position.set(dx, 0.50, dz); g.add(dot);
+    }
+    const stem2 = cyl(0.055, 0.085, 0.22, cream, 7); stem2.position.set(0.36, 0, 0.10); g.add(stem2);
+    const cap2 = sph(0.20, std(0x8a6a42, { r: 0.8 }), 1, 0.55, 1); cap2.position.set(0.36, 0.24, 0.10); g.add(cap2);
+    return g;
+  },
+  'hw-web': () => {
+    const g = new THREE.Group();
+    const webMat = std(0xd6dae2, { r: 0.55 });
+    for (const r of [0.28, 0.55, 0.82]) {
+      const ring = tor(r, 0.019, webMat);
+      ring.rotation.x = Math.PI / 2; ring.position.y = 0.05; g.add(ring);
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const spoke = box(0.82, 0.028, 0.038, webMat);
+      spoke.position.set(Math.cos(a) * 0.41, 0.03, Math.sin(a) * 0.41);
+      spoke.rotation.y = -a; g.add(spoke);
+    }
+    const spider = sph(0.06, std(0x1c1c20, { r: 0.5 })); spider.position.y = 0.09; g.add(spider);
+    return g;
+  },
+  'hw-glowflower': () => {
+    const g = new THREE.Group();
+    const glow = std(0x86b8f2, { r: 0.35, e: 0x6fa8ff, ei: 0.75 });
+    const spots = [
+      [-0.17, 0.05, 0.44, 0.075], [0.15, -0.07, 0.54, 0.08], [0.02, 0.15, 0.64, 0.095],
+    ];
+    for (const [sx, sz, sh, hr] of spots) {
+      const stem = cyl(0.02, 0.026, sh, M.leafDark, 6); stem.position.set(sx, 0, sz); g.add(stem);
+      const head = sph(hr, glow); head.position.set(sx, sh + hr * 0.7, sz); g.add(head);
+      const core = sph(hr * 0.4, std(0xcfe4ff, { r: 0.3, e: 0xa8ccff, ei: 0.8 }));
+      core.position.set(sx, sh + hr * 0.85, sz); g.add(core);
+    }
+    const leafB = sph(0.16, M.leaf, 1.3, 0.35, 0.8); leafB.position.set(0, 0.05, 0); g.add(leafB);
+    return g;
+  },
+  'hw-gardenplot': () => {
+    const g = new THREE.Group();
+    g.add(box(1.7, 0.16, 1.25, std(0x5e4632, { r: 1 })));
+    for (const s of [1, -1]) {
+      g.add(at(box(1.8, 0.22, 0.08, M.wood), 0, 0, s * 0.63));
+      const side = box(0.08, 0.22, 1.25, M.wood); side.position.set(s * 0.87, 0, 0); g.add(side);
+    }
+    for (const s of [1, -1]) g.add(at(box(1.55, 0.06, 0.18, std(0x4a3527, { r: 1 })), 0, 0.16, s * 0.30));
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) {
+      const sprout = cone(0.055, 0.14, M.leaf, 6);
+      sprout.position.set(-0.60 + c * 0.40, 0.19, (r === 0 ? -0.30 : 0.30)); g.add(sprout);
+    }
+    return g;
+  },
+  'hw-flowerbed': () => {
+    const g = new THREE.Group();
+    g.add(box(1.5, 0.18, 1.05, M.stone));
+    g.add(at(box(1.34, 0.07, 0.90, std(0x4a3527, { r: 1 })), 0, 0.18, 0));
+    const cols = [0xe86a7a, 0xf5d76e, 0xf0e8d8, 0xe86a7a, 0xb48ae0];
+    cols.forEach((c, i) => {
+      const fx = -0.52 + i * 0.26, fz = (i % 2 === 0 ? -0.18 : 0.18);
+      const stem = cyl(0.014, 0.018, 0.26, M.leafDark, 5); stem.position.set(fx, 0.22, fz); g.add(stem);
+      const head = sph(0.078, std(c, { r: 0.6 })); head.position.set(fx, 0.52, fz); g.add(head);
+    });
+    return g;
+  },
+  'hw-reed': () => {
+    const g = new THREE.Group();
+    const greens = [std(0x527a4e, { r: 1 }), M.leaf, std(0x6a9463, { r: 1 })];
+    const stalks = [
+      [-0.58, 1.30, 0.06, true], [-0.30, 1.08, -0.05, false], [-0.05, 1.45, 0.03, true],
+      [0.22, 1.15, -0.07, false], [0.48, 1.38, 0.05, true], [0.62, 1.02, -0.04, false],
+    ];
+    stalks.forEach(([sx, sh, lean, cat], i) => {
+      const st = cyl(0.016, 0.026, sh, greens[i % 3], 6);
+      st.position.set(sx, 0, (i % 2) * 0.14 - 0.07); st.rotation.z = lean; g.add(st);
+      if (cat) {
+        const tip = cyl(0.05, 0.05, 0.30, std(0x8a6f4d, { r: 1 }), 7);
+        tip.position.set(sx - Math.sin(lean) * sh, sh - 0.02, (i % 2) * 0.14 - 0.07);
+        tip.rotation.z = lean; g.add(tip);
+      }
+    });
+    return g;
+  },
+});
+
 function buildOwl(bodyM, faceM, speckled) {
   const g = new THREE.Group();
   g.add(at(cyl(0.05, 0.06, 0.34, M.woodDark, 8), 0, 0, 0));

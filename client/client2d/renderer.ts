@@ -3,10 +3,6 @@
  * 用色块 + 字母占位绘制实体（sprite agent 后续替换为精美贴图）。
  */
 import { ELEMENT_COLORS, type CreatureKind, type Element, type House } from '../../src/shared/constants';
-import { drawOak, drawPine, drawDeadTree, drawStoneHouse, drawBush, drawStone,
-  drawWeb, drawGlowFlower, drawGardenPlot,
-  drawShop, drawPub,
-  drawFlowerbed, drawReed, drawMushroom } from './components.js';
 import { getLayout, itemsInRect } from './layout.js';
 import { assetsSettled, preSprite, preSpritesReady, masterPalette, type PreSprite } from './assets.js';
 // 服务器地图是唯一的真实数据源（src/shared/map.ts）：2D 视觉必须与服务器碰撞一致
@@ -567,12 +563,11 @@ const texForest: Painter = (g, x0, y0, w, h, rnd) => {
   const zx1 = zx0 + w / TPX, zy1 = zy0 + h / TPX;
   for (const t of SERVER_TREES) {
     if (t.x < zx0 || t.x > zx1 || t.z < zy0 || t.z > zy1) continue;
-    const tx = w2tx(t.x), ty = w2ty(t.z);
-    // 确定性种类选择（基于位置哈希，保证每次一致）
+    // 确定性种类选择（基于位置哈希，保证每次一致）。树种全为工厂精灵
+    // 盖印（hw-oak / treePine / hw-dead-tree），登记宽按原矢量盖印跨度对齐。
     const hk = Math.abs(Math.sin(t.x * 12.9898 + t.z * 78.233) * 43758.5453) % 1;
-    if (hk < 0.55) drawOak(g, tx, ty, TPX);
-    else if (hk < 0.85) drawPine(g, tx, ty, TPX);
-    else drawDeadTree(g, tx, ty, TPX);
+    const stamp = hk < 0.55 ? ['hw-oak', 64] : hk < 0.85 ? ['treePine', 40] : ['hw-dead-tree', 30];
+    if (!drawHwTex(g, stamp[0] as string, t.x, t.z, stamp[1] as number)) warnMissingSprite(stamp[0] as string);
   }
   // 区域视觉语言：禁林雾气。12 团半透明灰白，低空漂浮感。
   for (let i = 0; i < 12; i++) {
@@ -651,7 +646,9 @@ const texCastle: Painter = (g, x0, y0, w, h, rnd) => {
   for (let i = 0; i < nm; i++) {
     blob(g, x0 + rnd() * w, y0 + rnd() * h, 2 + rnd() * 5, hexA('#6b8f5a', 0.4));
   }
-  // structures are drawn by paintCastle() as a crisp post-blur pass (see below)
+  // 建筑本体不在纹理里：全部为工厂精灵站立实体（registerHwLandmarks /
+  // registerCastleSprites）。本画笔只有石面色斑/石板缝/苔藓，且城堡区
+  // 整面已由 tile 网格接管（SKIP_TEX），此画笔现仅作纹理生成器存档。
 };
 
 // --- village: tonal patches only. 地面走 tile 网格（paintTileGrid），
@@ -827,33 +824,16 @@ function registerServerBuildings(): void {
     if (o.kind !== 'box' || o.style !== 'house' || !o.label) continue;
     // Hogsmeade shops are registered by registerVillageStanding
     if (inVillageExt((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)) continue;
-    const cx = (o.x0 + o.x1) / 2;
-    const fw = (o.x1 - o.x0), fh = (o.z1 - o.z0);
-    captureStanding(o.z1, cx - fw * 0.75 - 6, o.z0 - fh - 34, cx + fw * 0.75 + 6, o.z1 + 7, (cg) => {
-      const hx = w2tx(cx), hy = w2ty(o.z1); // anchored on the footprint's south edge (the sprite grows north from its base line)
-      // named shops get stone houses, scaled to fit INSIDE the server footprint: the old
-      // max(..., 0.7) floor blew a 12x10 m shop up to ~67x50 m of art, merging both shops
-      // into one mega-building that covered the walkable street — players standing on the
-      // street rendered "on the roof" (2026-10-20 review)
-      const s = TPX * Math.min(fw / 96, fh / 72);
-      drawStoneHouse(cg, hx, hy, s);
-      // label just south of the base line
-      cg.fillStyle = '#fff'; cg.font = `${Math.max(10, 11 * 1)}px sans-serif`;
-      cg.textAlign = 'center';
-      cg.fillText(o.label!, hx, hy + 13);
+    const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2;
+    const fw = (o.x1 - o.x0);
+    // 建筑本体 = 工厂 houseStone 精灵（登记宽 = 占地宽，与村内命名商店同口径）；
+    // 店名标签单独捕获一层（只有文字），排序键与村内商店一致（占地南缘）。
+    if (!registerPre('houseStone', cx, cz, fw)) warnMissingSprite('houseStone');
+    captureStanding(o.z1, cx - fw / 2 - 2, o.z1, cx + fw / 2 + 2, o.z1 + 16, (cg) => {
+      cg.fillStyle = '#fff'; cg.font = '11px sans-serif'; cg.textAlign = 'center';
+      cg.fillText(o.label!, w2tx(cx), w2ty(o.z1) + 13);
     }, o.z0); // Front 切分线 = 占地北缘
   }
-}
-
-// house: top-down — walls, pitched roof (two slopes), chimney, door shadow
-function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
 }
 
 // --- quidditch pitch: stands ring + mowed field + goal hoops (server positions) ---
@@ -907,16 +887,8 @@ const texPitch: Painter = (g, x0, y0, w, h, rnd) => {
   g.moveTo(fx0 + fw / 2, fz0 + 6); g.lineTo(fx0 + fw / 2, fz1 - 6);
   g.arc(fx0 + fw / 2, fz0 + fh / 2, 26, 0, 7);
   g.stroke();
-  // goal hoops at server positions: x 34/40/46, z -178 / -122
-  for (const wz of [-178, -122]) {
-    for (const wx of [34, 40, 46]) {
-      const hx = w2tx(wx), hy = w2ty(wz);
-      g.strokeStyle = '#3a3230'; g.lineWidth = 3;
-      g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx, hy - 14); g.stroke();
-      g.strokeStyle = '#d4a017'; g.lineWidth = 2.6;
-      g.beginPath(); g.arc(hx, hy - 20, 7, 0, 7); g.stroke();
-    }
-  }
+  // 球门环不在纹理里画：hw-quidditch-hoops 精灵已在 registerHwLandmarks
+  // 按服务器位置 (40,-178)/(40,-122) 注册为站立实体（原纹理矢量环与之双画）。
 };
 
 
@@ -947,14 +919,9 @@ const texAlley: Painter = (g, x0, y0, w, h, rnd) => {
   g.strokeStyle = hexA(P.dark, 0.6); g.lineWidth = 2;
   g.beginPath(); g.moveTo(sx - 9 * TPX, y0); g.lineTo(sx - 9 * TPX, y0 + h); g.stroke();
   g.beginPath(); g.moveTo(sx + 9 * TPX, y0); g.lineTo(sx + 9 * TPX, y0 + h); g.stroke();
-  // hanging lanterns across street
-  for (let i = 0; i < 6; i++) {
-    const ly = y0 + (h / 7) * (i + 1);
-    g.strokeStyle = '#3a3230'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(sx - 9 * TPX, ly); g.lineTo(sx + 9 * TPX, ly); g.stroke();
-    blob(g, sx, ly + 3, 3, '#ffd98a');
-    blob(g, sx, ly + 3, 6, 'rgba(255,217,138,0.25)');
-  }
+  // 跨街吊灯原以矢量线+光晕画在纹理里（物件描绘），已随矢量层退役删除；
+  // 街面只剩鹅卵石与街带（纹理生成器范围）。巷内照明语义由两侧店铺
+  // 精灵的窗光承担。
 };
 
 // --- hagrid's hut area: meadow + pumpkin patch + dirt ---
@@ -975,19 +942,13 @@ const texHagrid: Painter = (g, x0, y0, w, h, rnd) => {
   for (let i = 0; i < 40; i++) {
     blob(g, dx0 + rnd() * (dx1 - dx0), dz0 + rnd() * (dz1 - dz0), 2 + rnd() * 3, 'rgba(0,0,0,0.12)');
   }
-  // pumpkin rows: 3 rows x 5
+  // pumpkin rows: 3 rows x 5（工厂 hw-pumpkin 精灵盖印，位置/抖动沿用原排布；
+  // 世界坐标换算：土 patch 为世界 x 95..135、z 140..160）
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 5; c++) {
-      const px = dx0 + 12 + c * ((dx1 - dx0 - 24) / 4) + (rnd() - 0.5) * 6;
-      const py = dz0 + 14 + r * ((dz1 - dz0 - 28) / 2) + (rnd() - 0.5) * 6;
-      const pr = 7 + rnd() * 3;
-      blob(g, px + 2, py + 1, pr, 'rgba(0,0,0,0.2)');       // shadow
-      blob(g, px, py, pr, '#d08030');                        // pumpkin
-      blob(g, px - pr * 0.3, py - pr * 0.3, pr * 0.45, '#e8a03c'); // highlight
-      g.strokeStyle = '#8a5a20'; g.lineWidth = 1.5;          // ribs
-      g.beginPath(); g.moveTo(px, py - pr); g.lineTo(px, py + pr); g.stroke();
-      g.strokeStyle = '#3d5c3e'; g.lineWidth = 2;            // stem
-      g.beginPath(); g.moveTo(px, py - pr); g.lineTo(px + 2, py - pr - 5); g.stroke();
+      const wx = 95 + 4 + c * 8 + (rnd() - 0.5) * 2;
+      const wz = 140 + 4.7 + r * 6 + (rnd() - 0.5) * 2;
+      if (!drawHwTex(g, 'hw-pumpkin', wx, wz, 4.5 + rnd() * 2)) warnMissingSprite('hw-pumpkin');
     }
   }
   // grass tufts around
@@ -1015,89 +976,19 @@ const texWillow: Painter = (g, x0, y0, w, h, rnd) => {
   }
   // 树冠地面投影是地面效果，随地面纹理绘制（半径 40 世界单位的软阴影）。
   blob(g, w2tx(45) + 8 * TPX, w2ty(0), 40 * TPX, 'rgba(0,0,0,0.25)');
-  // 树身与告示牌不在地面纹理里画（见 paintWillowTree + registerWillow）。
+  // 树身与告示牌不在地面纹理里画：树身 = 工厂 hw-whomping-willow 精灵
+  // （registerHwLandmarks），告示牌 = hw-signpost（registerStandingAll）。
 };
-
-/** 打人柳（纹理坐标绘制，供 captureStanding 捕获为站立实体）。
- *  part='tree' 树身（地面投影在 texWillow 里）；part='sign' 警告牌 (62,14)，
- *  与树身分开捕获：两者占地不同，合并捕获会让牌子借树干的深度键排序。 */
-function paintWillowTree(g: CanvasRenderingContext2D, part: 'tree' | 'sign'): void {
-  const rnd = mulberry(4243);
-  const tx = w2tx(45), ty = w2ty(0);
-  const S = TPX;
-  if (part === 'tree') {
-  // trunk: thick, gnarled
-  g.strokeStyle = '#4a352a'; g.lineWidth = 14 * S; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx + 3 * S, ty - 40 * S); g.stroke();
-  g.strokeStyle = '#2a1f1a'; g.lineWidth = Math.max(1, 1.2 * S);
-  g.beginPath(); g.moveTo(tx - 7 * S, ty); g.lineTo(tx - 4 * S, ty - 40 * S); g.stroke();
-  g.strokeStyle = '#6b4f3a'; g.lineWidth = 4 * S;
-  g.beginPath(); g.moveTo(tx - 2 * S, ty - 4 * S); g.lineTo(tx + 1 * S, ty - 36 * S); g.stroke();
-  // branches
-  g.strokeStyle = '#4a352a'; g.lineWidth = 6 * S;
-  for (const [dx, len] of [[-1, 34], [1, 30], [0, 38]] as const) {
-    g.beginPath();
-    g.moveTo(tx + 3 * S, ty - 40 * S);
-    g.lineTo(tx + (3 + dx * len * 0.5) * S, ty - (40 + len * 0.8) * S);
-    g.stroke();
-  }
-  // drooping canopy: layered hanging blobs
-  const layers: Array<[number, number, string]> = [
-    [52, 34, '#2c4530'], [62, 30, '#3d5c3e'], [72, 25, '#527a4e'],
-  ];
-  for (const [dy, r, col] of layers) {
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2 + dy;
-      const bx = tx + Math.cos(a) * r * S * 0.9;
-      const by = ty - dy * S + Math.sin(a) * r * S * 0.35 + 8 * S;
-      blob(g, bx, by, (10 + rnd() * 8) * S * 0.5, col);
-    }
-  }
-  // hanging strands
-  g.strokeStyle = hexA('#3d5c3e', 0.7); g.lineWidth = 2 * S;
-  g.beginPath();
-  for (let i = 0; i < 24; i++) {
-    const a = (i / 24) * Math.PI * 2;
-    const sx = tx + Math.cos(a) * 30 * S, sy = ty - 58 * S + Math.sin(a) * 8 * S;
-    g.moveTo(sx, sy); g.lineTo(sx + (rnd() - 0.5) * 6 * S, sy + (14 + rnd() * 10) * S);
-  }
-  g.stroke();
-  // canopy outline
-  g.strokeStyle = '#2a1f1a'; g.lineWidth = Math.max(1, 1.5 * S);
-  g.beginPath(); g.ellipse(tx, ty - 62 * S, 34 * S, 22 * S, 0, 0, Math.PI * 2); g.stroke();
-  }
-  if (part === 'sign') {
-  // warning sign at (62,14)
-  const wx = w2tx(62), wy = w2ty(14);
-  g.fillStyle = '#4a3a2c';
-  g.fillRect(wx - 1.5 * S, wy - 16 * S, 3 * S, 16 * S);
-  g.fillStyle = '#e8c03c';
-  g.beginPath();
-  g.moveTo(wx, wy - 28 * S); g.lineTo(wx + 10 * S, wy - 10 * S); g.lineTo(wx - 10 * S, wy - 10 * S);
-  g.closePath(); g.fill();
-  g.strokeStyle = '#2a1f1a'; g.lineWidth = Math.max(1, S * 0.5); g.stroke();
-  g.fillStyle = '#2a1f1a';
-  g.font = `bold ${Math.max(10, 12 * S * 0.5)}px sans-serif`; g.textAlign = 'center';
-  g.fillText('!', wx, wy - 13 * S);
-  }
-};
-
-/** 打人柳注册：树身与警告牌分开捕获。
- *  树身 key = 树干基部 z=0（+2 惯例边距）；包围盒按实测外延：冠幅 x 5..85、
- *  树冠北至 z≈-84。警告牌 key = 牌基 z=14。 */
-function registerWillow(): void {
-  captureStanding(2, 3, -88, 87, 2, (g) => paintWillowTree(g, 'tree'));
-  captureStanding(14, 50, -16, 74, 15, (g) => paintWillowTree(g, 'sign'));
-}
 
 /** 城堡/村庄/装饰/hw 地标的站立实体统一注册（buildGroundTexture 收尾调用）。 */
 function registerStandingAll(): void {
-  registerWillow();
-  registerCastleStanding();
+  registerCastleSprites();
   registerVillageStanding();
   registerServerBuildings();
   registerDecorationStanding();
   registerHwLandmarks();
+  // 打人柳警告牌 (62,14)：树身本体在 registerHwLandmarks（hw-whomping-willow）
+  if (!registerPre('hw-signpost', 62, 14, 5)) warnMissingSprite('hw-signpost');
 }
 
 const TEX_PAINT: Record<ZoneTex, Painter> = {
@@ -1127,12 +1018,15 @@ function paintDecorations(g: CanvasRenderingContext2D): void {
   decoC.width = TW; decoC.height = TH;
   const dg = decoC.getContext('2d')!;
   for (const it of L.items) {
-    const x = w2tx(it.x), y = w2ty(it.z);
-    const s = TPX * it.s;
+    // L4 散布物全为工厂精灵盖印（登记宽见 size-design.md §14，× it.s）；
+    // 石头按 variant 选苔藓版（moss）/普通版（rune 刻痕无 3D 对应，归普通版）。
+    const decoStamp = (name: string, w: number): void => {
+      if (!drawHwTex(dg, name, it.x, it.z, w * it.s)) warnMissingSprite(name);
+    };
     switch (it.kind) {
-      case 'bush': drawBush(dg, x, y, s); break;
-      case 'stone': drawStone(dg, x, y, s, it.v); break;
-      case 'mushroom': drawMushroom(dg, x, y, s); break;
+      case 'bush': decoStamp('hw-bush', 22); break;
+      case 'stone': decoStamp(it.v === 'moss' ? 'hw-stone-moss' : 'hw-stone', 14); break;
+      case 'mushroom': decoStamp('hw-mushroom', 12); break;
       default: break; // 非 L4 装饰画到主图层
     }
   }
@@ -1161,10 +1055,18 @@ const GROUND_ITEM_KINDS = new Set([
  *  站立物件由 captureStanding 在捕获上下文中调用，代码完全一致。 */
 function drawLayoutItem(g: CanvasRenderingContext2D, it: { kind: string; x: number; z: number; s: number; label?: string }): void {
   const x = w2tx(it.x), y = w2ty(it.z);
-  const s = TPX * it.s;
-  // 工厂精灵绘制（登记宽见 size-design.md §13）：缺失即警告、不回退矢量
+  // 工厂精灵绘制（登记宽见 size-design.md §13/§14）：缺失即警告、不回退矢量
   const hw = (name: string, w: number): void => {
     if (!drawHwTex(g, name, it.x, it.z, w * it.s)) warnMissingSprite(name);
+  };
+  // 底边锚定绘制（shop/pub 专用，与原矢量绘制的南缘锚点同口径）：
+  // 精灵占地南缘落在 it.z，避免建筑整体北移压进街道/邻居占地。
+  const hwBase = (name: string, w: number): void => {
+    const pm = preSprite(name);
+    if (!pm) { warnMissingSprite(name); return; }
+    const vw = w * it.s;
+    const depthW = pm.footD * (vw / pm.footW);
+    drawHwTex(g, name, it.x, it.z - depthW / 2, vw);
   };
   switch (it.kind) {
     case 'bush': case 'stone': case 'mushroom': break; // 已在 deco 图层画过
@@ -1176,27 +1078,33 @@ function drawLayoutItem(g: CanvasRenderingContext2D, it: { kind: string; x: numb
     case 'mooringpost': hw('hw-mooring-post', 2.6); break;
     case 'boat': hw('hw-boat', 15); break;
     case 'lighthouse': hw('hw-lighthouse', 8.5); break;
-    case 'web': drawWeb(g, x, y, s); break;
-    case 'glowflower': drawGlowFlower(g, x, y, s); break;
+    case 'web': hw('hw-web', 26); break;
+    case 'glowflower': hw('hw-glowflower', 11); break;
     case 'tent': hw('hw-tent', 11); break;
     case 'campfire': hw('hw-campfire', 6); break;
     case 'greenhouse': hw('hw-greenhouse', 14); break;
-    case 'gardenplot': drawGardenPlot(g, x, y, s); break;
+    case 'gardenplot': hw('hw-gardenplot', 30); break;
     case 'owlery': hw('hw-owlery', 17); break;
     case 'scoreboard': hw('hw-scoreboard', 18); break;
     case 'traininghoop': hw('hw-training-hoop', 4); break;
-    case 'shop': drawShop(g, x, y, s, it.label ?? '商店'); break;
-    case 'pub': drawPub(g, x, y, s); break;
+    case 'shop':
+      hwBase('houseStone', 76);
+      if (it.label) {
+        g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'center';
+        g.fillText(it.label, x, y + 14);
+      }
+      break;
+    case 'pub': hwBase('houseTavern', 84); break;
     case 'station': hw('hw-station', 56); break;
     case 'library': hw('hw-library', 42); break;
     case 'dormtower': hw('hw-dorm-tower', 22); break;
-    case 'flowerbed': drawFlowerbed(g, x, y, s); break;
+    case 'flowerbed': hw('hw-flowerbed', 26); break;
     case 'bench': hw('hw-bench', 8); break;
     case 'scarecrow': hw('hw-scarecrow', 6); break;
     case 'beehive': hw('hw-beehive', 6); break;
     case 'swing': hw('hw-swing', 10); break;
     case 'signpost': hw('hw-signpost', 5); break;
-    case 'reed': drawReed(g, x, y, s); break;
+    case 'reed': hw('hw-reed', 17); break;
   }
 }
 
@@ -1257,187 +1165,38 @@ function paintTallGrassRing(g: CanvasRenderingContext2D): void {
   }
 }
 
-// --- castle structures: crisp top-down pass, drawn AFTER the 9px blur ---
-// Hogwarts-inspired irregular ward: polygonal outer wall, great hall, clock tower,
-// central keep + wing, viaduct, astronomy tower, bell towers, courtyard + well, south gate.
-// World coords; all sizes in world units (TPX tex px per unit).
-function paintCastle(g: CanvasRenderingContext2D, part: string): void {
-  const S = PAL.stone, R = PAL.roof;
-  const X = (x: number): number => w2tx(x);
-  const Y = (z: number): number => w2ty(z);
-  const WD = '#6f6a61', WB = S.base, WL = S.light;
-  const RD = R.dark, RB = R.base, RL = R.light;
-  const WOD = '#4a352a', WOB = '#6b4f3a';
-
-  // irregular outer wall polygon (not a rectangle)
-  const WALL: Array<[number, number]> = [
-    [-56, -102], [-32, -107], [-6, -105], [18, -99], [36, -90],
-    [48, -76], [53, -59], [47, -47], [28, -43.5], [8, -45.5],
-    [-14, -43.5], [-34, -47], [-52, -59], [-58, -79],
-  ];
-  const trace = (pts: Array<[number, number]>): void => {
-    g.beginPath();
-    pts.forEach(([x, z], i) => { if (i === 0) g.moveTo(X(x), Y(z)); else g.lineTo(X(x), Y(z)); });
-    g.closePath();
+/** 城堡站立实体注册（全工厂精灵）：庭院橡树 + 庭院井 + 城墙各边。
+ *  城堡建筑本体（礼堂/keep/塔楼/北墙/城门）在 registerHwLandmarks 注册；
+ *  此处补矢量城堡层退役后的其余覆盖：庭院两棵橡树（工厂新模型 hw-oak）、
+ *  庭院井（hw-well §13 登记宽 7），以及城墙多边形除北墙外的各边——工厂按
+ *  各边线角预渲了旋转变体（hw-castle-wall-r1..r6），逐边注册 1–2 段，
+ *  登记宽 = footW × U_STRUCT（与北墙段同尺度，段长 4.4 米 × 3.2 ≈ 14）。
+ *  Front 淡化走 pre 精灵通用切片（frontZ = 占地北缘），与原捕获口径等价。 */
+function registerCastleSprites(): void {
+  const reg = (name: string, x: number, z: number, w: number): void => {
+    if (!registerPre(name, x, z, w)) warnMissingSprite(name);
   };
-
-  // round tower: shadow + stone ring + crenellations + conical roof hint
-  const tower = (x: number, z: number, r: number, big = false): void => {
-    const cx = X(x), cy = Y(z), rr = r * TPX;
-    blob(g, cx + 1.4 * TPX, cy + 1.8 * TPX, rr, 'rgba(0,0,0,0.3)');
-    blob(g, cx, cy, rr, WD);
-    blob(g, cx, cy, rr * 0.82, WB);
-    const n = big ? 12 : 8;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + 0.3;
-      blob(g, cx + Math.cos(a) * rr * 0.88, cy + Math.sin(a) * rr * 0.88, Math.max(1.6, rr * 0.13), WL);
-    }
-    blob(g, cx, cy, rr * 0.55, RD);
-    blob(g, cx - rr * 0.16, cy - rr * 0.16, rr * 0.2, hexA(RL, 0.85));
-  };
-
-  // pitched-roof building: shadow + walls + two roof slopes + ridge + chimney
-  const roofed = (x0: number, z0: number, x1: number, z1: number, ridge: 'v' | 'h'): void => {
-    const w = (x1 - x0) * TPX, h = (z1 - z0) * TPX;
-    const px = X(x0), py = Y(z0);
-    g.fillStyle = 'rgba(0,0,0,0.28)';
-    roundRect(g, px + 1.5 * TPX, py + 2 * TPX, w, h, 3); g.fill();
-    g.fillStyle = WB;
-    roundRect(g, px, py, w, h, 3); g.fill();
-    g.strokeStyle = hexA(WD, 0.8); g.lineWidth = 1.6;
-    roundRect(g, px, py, w, h, 3); g.stroke();
-    const ox = 0.9 * TPX, rx = px - ox, ry = py - ox, rw = w + ox * 2, rh = h + ox * 2;
-    if (ridge === 'v') {
-      g.fillStyle = RL; g.fillRect(rx, ry, rw / 2, rh);
-      g.fillStyle = RD; g.fillRect(rx + rw / 2, ry, rw / 2, rh);
-      g.fillStyle = hexA(RL, 0.9); g.fillRect(rx + rw / 2 - 1, ry, 2, rh);
-    } else {
-      g.fillStyle = RL; g.fillRect(rx, ry, rw, rh / 2);
-      g.fillStyle = RD; g.fillRect(rx, ry + rh / 2, rw, rh / 2);
-      g.fillStyle = hexA(RL, 0.9); g.fillRect(rx, ry + rh / 2 - 1, rw, 2);
-    }
-    const chx = px + w * 0.72, chy = py + h * 0.2;
-    g.fillStyle = WD; g.fillRect(chx - 2, chy - 4, 5, 9);
-    g.fillStyle = WL; g.fillRect(chx - 2, chy - 4, 5, 2.5);
-  };
-
-  // square tower with hip (pyramid) roof
-  const clockTower = (x0: number, z0: number, x1: number, z1: number): void => {
-    const w = (x1 - x0) * TPX, h = (z1 - z0) * TPX, px = X(x0), py = Y(z0);
-    g.fillStyle = 'rgba(0,0,0,0.28)';
-    g.fillRect(px + 1.5 * TPX, py + 2 * TPX, w, h);
-    g.fillStyle = WB; g.fillRect(px, py, w, h);
-    g.strokeStyle = hexA(WD, 0.8); g.lineWidth = 1.6; g.strokeRect(px, py, w, h);
-    g.fillStyle = RD; g.fillRect(px - TPX, py - TPX, w + 2 * TPX, h + 2 * TPX);
-    g.fillStyle = RB; g.fillRect(px + w * 0.18, py + h * 0.18, w * 0.64, h * 0.64);
-    g.fillStyle = RL; g.fillRect(px + w * 0.36, py + h * 0.36, w * 0.28, h * 0.28);
-  };
-
-  // window row: start (x,z), step (dx,dz), n windows
-  const windows = (x: number, z: number, dx: number, dz: number, n: number): void => {
-    g.fillStyle = 'rgba(30,26,24,0.85)';
-    for (let i = 0; i < n; i++) {
-      g.fillRect(X(x + dx * i) - 2, Y(z + dz * i) - 2, 4, 4);
-    }
-  };
-
-  // courtyard tree: small oak (same component as forest, smaller scale)
-  const tree = (x: number, z: number): void => {
-    drawOak(g, X(x), Y(z), TPX * 0.55);
-  };
-
-  if (part === 'ground') {
-    // --- 1. inner ward: paved ground ---
-    trace(WALL); g.fillStyle = '#a39c8f'; g.fill();
-    const prnd = mulberry(60221);
-    for (let i = 0; i < 26; i++) {
-      blob(g, X(-52 + prnd() * 100), Y(-102 + prnd() * 56), 8 + prnd() * 18, hexA(WD, 0.15));
-    }
-
-    // --- 2. gate spur path (ward -> main south path at [0,-40]) ---
-    g.strokeStyle = hexA(PAL.path.base, 0.95);
-    g.lineCap = 'round'; g.lineWidth = 4 * TPX;
-    g.beginPath(); g.moveTo(X(-3), Y(-50)); g.lineTo(X(0), Y(-38)); g.stroke();
-
-    // --- 3a. courtyard garden court (flat) ---
-    g.fillStyle = 'rgba(0,0,0,0.18)';
-    roundRect(g, X(-20) + 1.5 * TPX, Y(-56) + 2 * TPX, 38 * TPX, 7 * TPX, 6); g.fill();
-    g.fillStyle = '#8aa864';
-    roundRect(g, X(-20), Y(-56), 38 * TPX, 7 * TPX, 6); g.fill();
-  }
-
-  if (part === 'courtyard') {
-    // --- 3b. courtyard trees + well ---
-    tree(-14, -52.5); tree(12, -52.5);
-    const wx = X(0), wy = Y(-52.5); // well
-    blob(g, wx + 1.5, wy + 2, 2.2 * TPX, 'rgba(0,0,0,0.25)');
-    blob(g, wx, wy, 2.2 * TPX, WD);
-    blob(g, wx, wy, 1.4 * TPX, '#2a4f6a');
-    blob(g, wx - 1.5, wy - 1.5, 1.2, hexA('#cfe4ef', 0.8));
-  }
-
-  if (part === 'buildings') {
-    // --- 4. buildings ---
-    roofed(-50, -98, -28, -68, 'v'); // great hall (west)
-    clockTower(-17, -101, -10, -94); // clock tower (north)
-    roofed(-14, -88, 14, -60, 'v');  // keep (center)
-    roofed(14, -80, 26, -64, 'h');   // keep east wing
-    roofed(-28, -78, -14, -72, 'h'); // viaduct (hall -> keep)
-    windows(-49.2, -94, 0, 4, 5);    // great hall west windows
-    windows(25.2, -77, 0, 4, 4);     // east wing windows
-  }
-
-  if (part === 'wall') {
-    // --- 5. outer wall: dark band + lighter wall-walk + crenellations ---
-    trace(WALL); g.strokeStyle = WD; g.lineWidth = 3.6 * TPX; g.lineJoin = 'round'; g.stroke();
-    trace(WALL); g.strokeStyle = hexA(WL, 0.9); g.lineWidth = 2.1 * TPX; g.stroke();
-    trace(WALL);
-    g.strokeStyle = hexA('#ddd6c6', 0.95); g.lineWidth = 1.1 * TPX;
-    g.setLineDash([2.4 * TPX, 2.0 * TPX]); g.stroke(); g.setLineDash([]);
-
-    // --- 7a. south gate: cut wall + wooden doors (flanking towers are CASTLE_TOWERS) ---
-    g.fillStyle = '#a39c8f';
-    g.fillRect(X(-7), Y(-47.5), 8 * TPX, 6 * TPX); // wall cut
-    g.fillStyle = WOB;
-    g.fillRect(X(-6), Y(-46.2), 6 * TPX, 3.2 * TPX); // doors
-    g.fillStyle = WOD;
-    g.fillRect(X(-3.25), Y(-46.2), 0.5 * TPX, 3.2 * TPX); // center seam
-    for (let i = 0; i < 3; i++) {
-      blob(g, X(-5 + i * 2), Y(-45.4), 1.6, WOD);
-      blob(g, X(-5 + i * 2), Y(-43.8), 1.6, WOD);
-    }
-  }
-
-  // --- 6. towers: part 't<i>' draws CASTLE_TOWERS[i] only ---
-  CASTLE_TOWERS.forEach(([tx2, tz2, tr, big], i) => {
-    if (part === 't' + i) tower(tx2, tz2, tr, big === 1);
-  });
-}
-
-/** 城堡塔楼表（与 paintCastle 原塔位一致）：[x, z, r, big]。 */
-const CASTLE_TOWERS: Array<[number, number, number, number]> = [
-  [-56, -102, 4.5, 0], [18, -99, 4.5, 0], [53, -59, 5, 0],
-  [8, -45.5, 4.5, 0], [-52, -59, 4.5, 0],
-  [-44, -63, 3.2, 0], [-36, -62.5, 2.8, 0],
-  [33, -70, 7, 1],
-  [-8.4, -44.6, 2.6, 0], [2.4, -44.8, 2.6, 0],
-];
-
-/** 城堡站立实体注册：建筑群一捕获、城墙一捕获、每塔一捕获、庭院树+井一捕获。
- *  key 口径：建筑群 -77（须低于 hw 礼堂 -75.9 与 hw 高架桥 -73.2，保证 hw 精灵
- *  仍盖在代码建筑之上）；城墙 -47（南缘）；塔 = z + r - 2（略低于对应 hw 塔）。 */
-function registerCastleStanding(): void {
-  // frontZ：建筑群主体占地北缘 -88（其北为塔尖/屋顶探出，进 Front 层）；
-  // 城墙只留北墙顶一条进 Front；庭院以北 -70 是两棵橡树的树冠主体。
-  captureStanding(-77, -54, -105, 30, -56, (g) => paintCastle(g, 'buildings'), -88);
-  captureStanding(-47, -62, -110, 57, -40, (g) => paintCastle(g, 'wall'), -106);
-  // 庭院捕获包围盒须覆盖两棵橡树全冠（s=TPX*0.55 的 drawOak：冠幅 ±28、
-  // 北展 54）：锚点 (-14,-52.5)/(12,-52.5) -> x -43..41、z -107..-45
-  captureStanding(-50.5, -43, -107, 41, -45, (g) => paintCastle(g, 'courtyard'), -70);
-  CASTLE_TOWERS.forEach(([tx2, tz2, tr], i) => {
-    captureStanding(tz2 + tr - 2, tx2 - tr - 4, tz2 - tr - 6, tx2 + tr + 4, tz2 + tr + 4,
-      (g) => paintCastle(g, 't' + i), tz2 - tr);
-  });
+  // 庭院橡树（原矢量橡树冠幅 ±28 世界单位）+ 庭院井
+  reg('hw-oak', -14, -52.5, 50);
+  reg('hw-oak', 12, -52.5, 50);
+  reg('hw-well', 0, -52.5, 7);
+  // 城墙各边（顶点序沿原城墙多边形；北墙 3 段与南门在 registerHwLandmarks）
+  reg('hw-castle-wall-r1', 22.9, -96.5, 13.9);  // NE 边 (18,-99)->(36,-90)
+  reg('hw-castle-wall-r1', 31.1, -92.5, 13.9);
+  reg('hw-castle-wall-r2', 39.3, -86.2, 11.2);  // E 上边 (36,-90)->(48,-76)
+  reg('hw-castle-wall-r2', 44.7, -79.8, 11.2);
+  reg('hw-castle-wall-r3', 49.3, -71.7, 6.6);   // E 下边 (48,-76)->(53,-59)
+  reg('hw-castle-wall-r3', 51.7, -63.3, 6.6);
+  reg('hw-castle-wall-r4', 50, -53, 8.7);       // SE 边 (53,-59)->(47,-47)
+  reg('hw-castle-wall', 37, -45.3, 14);         // 南墙东段
+  reg('hw-castle-wall', 20, -44.5, 14);
+  reg('hw-castle-wall', -24, -44.8, 14);         // 南墙西段
+  reg('hw-castle-wall-r5', -38.6, -50.1, 13.3); // SW 边 (-34,-47)->(-52,-59)
+  reg('hw-castle-wall-r5', -47.4, -55.9, 13.3);
+  reg('hw-castle-wall-r3', -53.5, -64, 6.6);    // W 边 (-52,-59)->(-58,-79)
+  reg('hw-castle-wall-r3', -56.5, -74, 6.6);
+  reg('hw-castle-wall-r6', -57.5, -85, 3.9);    // NW 边 (-58,-79)->(-56,-102)
+  reg('hw-castle-wall-r6', -57, -96, 3.9);
 }
 
 // (inGrass retired: scatter placement moved to layout.ts with collision registry)
@@ -1445,13 +1204,13 @@ function registerCastleStanding(): void {
 
 /**
  * 3转2 hw 地标 + 道具注册（站立实体）。
- * 城堡建筑覆盖 paintCastle 的代码绘制（位置/占地沿用 paintCastle 的布局坐标）；
- * 道具按 item-design.md 分类摆放到对应场景。逐帧按占地南缘深度与实体统一
- * 排序绘制；精灵未就绪时不注册，捕获的代码绘制原样保留（回退）。
+ * 城堡建筑位置/占地沿用城堡布局坐标；道具按 item-design.md 分类摆放到
+ * 对应场景。逐帧按占地南缘深度与实体统一排序绘制；精灵未就绪时不注册
+ * 并警告（无代码绘制回退，素材缺口必须暴露）。
  * 登记宽度口径：size-design.md 尺寸表（建筑钉占地或 U_STRUCT、活物 U_LIVE）。
  */
 function registerHwLandmarks(): void {
-  // --- 城堡（paintCastle 坐标：大礼堂西、钟塔北、塔楼群、 南门） ---
+  // --- 城堡（布局坐标：大礼堂西、钟塔北、塔楼群、南门） ---
   registerPre('hw-great-hall', -39, -83, 30);
   registerPre('hw-tower-mid', -13.5, -97.5, 9);    // 钟塔（塔径 = 布局 2r）
   registerPre('hw-tower-tall', -56, -102, 9);
@@ -1466,7 +1225,7 @@ function registerHwLandmarks(): void {
   registerPre('hw-castle-wall', -4, -103, 14);
   registerPre('hw-castle-wall', 24, -99.5, 14);
   registerPre('hw-castle-gate', -3, -45.3, 16);
-  // --- 城堡主体第二批：主楼 keep + 东翼 + 高架桥（paintCastle 布局坐标） ---
+  // --- 城堡主体第二批：主楼 keep + 东翼 + 高架桥（布局坐标） ---
   registerPre('hw-keep', 0, -74, 37);              // 主楼（模型 11.5m × U_STRUCT；keep 障碍 60 宽含两翼）
   registerPre('hw-keep', 20, -72, 24);             // 东翼塔楼块（东翼障碍内）
   registerPre('hw-viaduct', -21, -75, 14);         // 高架桥（钉代码矩形宽 14）
@@ -1575,6 +1334,9 @@ function buildClassGrid(): { grid: GroundTileKind[]; cols: number; rows: number 
       else if (Math.hypot(cx - 3, cz - 180) < 15) kind = 'dirt';
       else if (onRoad(cx, cz)) kind = 'dirt';
       else if (kind === 'water') kind = 'grass';
+      // 城堡庭院花坛：原矢量层在院内 (-20..18, -56..-49) 铺的草地带，
+      // 矢量层退役后以分类数据保留（两棵橡树与井在其上，见 registerCastleSprites）
+      if (cx >= -20 && cx < 18 && cz >= -56 && cz < -49) kind = 'grass';
       grid[row * cols + col] = kind;
     }
   }
@@ -1690,8 +1452,8 @@ function buildGroundTexture(): HTMLCanvasElement {
   // dirt 分类）；建筑/树/灯在 registerStandingAll 里注册为站立实体。
   // decorations on top (paths, bushes, stones) — not blurred, crisp details
   paintDecorations(g);
-  // castle paved ground — crisp, drawn after the blur
-  paintCastle(g, 'ground');
+  // 城堡院内铺地已由 tile 网格接管（castle 区 stone 分类）；庭院花坛草地
+  // 在 buildClassGrid 里以 grass 分类保留（原矢量层花坛 rect 的数据化）。
   // 站立实体注册（建筑/树/道具/hw 地标）：逐帧与生物/巫师按占地南缘统一排序
   registerStandingAll();
   // 收尾：整图马赛克+主调色板量化（地面/代码绘制/hw 精灵统一像素风）

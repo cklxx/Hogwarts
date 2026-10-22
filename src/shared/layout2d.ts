@@ -64,8 +64,8 @@ export function getBoxes(): Box[] { return boxes; }
 // footW/footD × renderer 登记宽）全表重标：旧表把 lamp/lighthouse/
 // owlery/dormtower/signpost 等的总绘制高误记为深度、cottage/stonehouse
 // 沿用旧单位（绘制宽已降到 13），占地虚大 3–8 倍，是村庄住宅/码头/
-// 营地等成片放置失败的总根因。shop/pub 沿用旧值：其矢量绘制
-// （drawShop/drawPub）与服务器命名建筑盒同口径，未工厂化前不动。
+// 营地等成片放置失败的总根因。shop/pub 沿用旧值：占地与服务器命名建筑盒
+// 同口径（绘制已于 2026-10-22 工厂化，底边锚定，占地不变）。
 const FOOT: Record<ItemKind, [number, number]> = {
   bush: [24, 18], stone: [16, 12],
   cottage: [15, 10], stonehouse: [15, 10],
@@ -636,9 +636,10 @@ export function itemsInRect(r: LayoutResult, x0: number, z0: number, x1: number,
 export { distToRoads };
 
 // --- 建筑碰撞盒（服务器静态碰撞注册用） ------------------------------------------------
-// 与 buildLayout 内灌木镶边用的 BUILDING_KINDS 保持一致。绘制约定（components.ts）：
+// 与 buildLayout 内灌木镶边用的 BUILDING_KINDS 保持一致。绘制约定（历史口径）：
 // 建筑以 item.z 为南墙基线向北展开，地面包围盒 = [x-W/2, z-H, x+W/2, z]，
 // W/H = FOOT × s；横向内缩 6%（屋檐）、北侧内缩 12%（只有屋顶的条带不算墙体）。
+// 注：绘制层已全量工厂精灵化（2026-10-22），此碰撞口径只管碰撞、与视觉无关。
 const COLLIDER_KINDS = new Set(['cottage', 'stonehouse', 'shop', 'pub', 'station',
   'library', 'dormtower', 'greenhouse', 'owlery']);
 export interface BuildingBox { x0: number; z0: number; x1: number; z1: number; kind: ItemKind }
