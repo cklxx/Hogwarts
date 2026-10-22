@@ -458,10 +458,11 @@ async function renderCharacterSet() {
 }
 
 // ------------------------------------------------------------ manifest
-async function renderAll() {
-  const out = {};
+/** 基础件构建表（房屋拼装/零件缩放）：renderAll 渲染与 deriveGeometryAll
+ *  几何派生共用同一批构建函数，保证派生几何与渲染精灵同源。 */
+async function baseJobs() {
   const stoneWin = await piece(FT + 'wall-window-stone.glb');
-  const jobs = {
+  return {
     houseWood: () => buildHouse({
       walls: { plain: 'wall-wood', door: 'wall-wood-doorway-square', win: 'wall-wood-window-shutters' },
       roof: 'roof', wu: 2, du: 3,
@@ -483,6 +484,11 @@ async function renderAll() {
       const g = new THREE.Group(); g.add(p.obj); return g;
     },
   };
+}
+
+async function renderAll() {
+  const out = {};
+  const jobs = await baseJobs();
   for (const [name, build] of Object.entries(jobs)) {
     status('rendering ' + name);
     out[name] = renderGroup(await build());
@@ -2199,23 +2205,26 @@ function poseWalk(fig, base, phase) {
   });
 }
 
+/** 人物构建表（基名 -> 构建函数）：renderCatalog 渲染与几何派生共用。 */
+const FIGURE_BUILDERS = {
+  'hw-wizard-gryffindor': () => buildWizardFigure({ robe: 0x8e2323, trim: 0xd9a441 }),
+  'hw-wizard-slytherin': () => buildWizardFigure({ robe: 0x1f5c3d, trim: 0xc9ccd2 }),
+  'hw-wizard-ravenclaw': () => buildWizardFigure({ robe: 0x27436e, trim: 0xb08d57 }),
+  'hw-wizard-hufflepuff': () => buildWizardFigure({ robe: 0xd9a92c, trim: 0x2b2b30 }),
+  'hw-professor': () => buildWizardFigure({ robe: 0x23232a, trim: 0x23232a, hatH: 1.05, beard: 0xcfd2d6 }),
+  'hw-hagrid': () => buildWizardFigure({ robe: 0x6b4a2f, trim: 0x54381f, hagrid: true }),
+  'hw-dementor': () => buildDementor(),
+  'hw-merchant': () => buildMerchantFigure(),
+  'hw-elf': () => buildElfFigure(),
+};
+
 async function renderCatalog(out) {
   for (const [name, build] of Object.entries(HW_BUILDERS)) {
     status('rendering ' + name);
     out[name] = renderGroup(build());
     showSprite(name, out[name].canvas, hwShowScale(name));
   }
-  const figures = {
-    'hw-wizard-gryffindor': () => buildWizardFigure({ robe: 0x8e2323, trim: 0xd9a441 }),
-    'hw-wizard-slytherin': () => buildWizardFigure({ robe: 0x1f5c3d, trim: 0xc9ccd2 }),
-    'hw-wizard-ravenclaw': () => buildWizardFigure({ robe: 0x27436e, trim: 0xb08d57 }),
-    'hw-wizard-hufflepuff': () => buildWizardFigure({ robe: 0xd9a92c, trim: 0x2b2b30 }),
-    'hw-professor': () => buildWizardFigure({ robe: 0x23232a, trim: 0x23232a, hatH: 1.05, beard: 0xcfd2d6 }),
-    'hw-hagrid': () => buildWizardFigure({ robe: 0x6b4a2f, trim: 0x54381f, hagrid: true }),
-    'hw-dementor': () => buildDementor(),
-    'hw-merchant': () => buildMerchantFigure(),
-    'hw-elf': () => buildElfFigure(),
-  };
+  const figures = FIGURE_BUILDERS;
   for (const [base, build] of Object.entries(figures)) {
     for (const [dir, yaw] of Object.entries(HW_DIRS)) {
       // 站立帧（原有命名 `${base}-${dir}`）
@@ -2333,6 +2342,101 @@ function renderRawList(names) {
   return res;
 }
 
+// ------------------------------------------------------------ 几何派生（manifest 系统）
+// 站姿占地与脚接触南缘从 3D 模型几何派生，替代全包围盒深度（footD 含尾/颈/
+// 翼等高位部件，是脚锚点系统性偏移的根因）与逐物种手量 footOffset。
+// 方法：取模型全部网格顶点（世界坐标），在「地面带」内投影到地面平面：
+//   地面带 = [bbox 底, bbox 底 + clamp(0.28×总高, 0.08, 0.6) 米]
+//   接触带 = [bbox 底, bbox 底 + max(0.04, 0.06×总高) 米]（真正落地的部分）
+// stanceW/stanceD = 地面带投影的 x/z 跨度；stanceS/stanceN = z 最大/最小
+// （相对原点，原点 = 占地中心地面）；contactS = 接触带内 z 最大（脚接触南缘）。
+function stanceGeometry(group) {
+  group.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(group);
+  const H = box.max.y - box.min.y, groundY = box.min.y;
+  const bandTop = groundY + Math.min(0.6, Math.max(0.08, 0.28 * H));
+  const contactTop = groundY + Math.max(0.04, 0.06 * H);
+  let sx0 = Infinity, sx1 = -Infinity, sz0 = Infinity, sz1 = -Infinity;
+  let contactS = -Infinity, bandN = 0, contactN = 0;
+  const v = new THREE.Vector3();
+  const mb = new THREE.Box3();
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    // 网格级截面：与地面带相交的网格，其水平范围计入站姿（拼装件/管状件
+    // 顶点稀疏，只取顶点会漏量整面墙/整条腿的占地）。
+    mb.setFromObject(o);
+    if (mb.min.y <= bandTop && mb.max.y >= groundY) {
+      if (mb.min.x < sx0) sx0 = mb.min.x; if (mb.max.x > sx1) sx1 = mb.max.x;
+      if (mb.min.z < sz0) sz0 = mb.min.z; if (mb.max.z > sz1) sz1 = mb.max.z;
+      bandN++;
+    }
+    if (mb.min.y <= contactTop && mb.max.z > contactS) { contactS = mb.max.z; contactN++; }
+    const pos = o.geometry?.attributes?.position;
+    if (!pos) return;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (v.y <= bandTop) {
+        if (v.x < sx0) sx0 = v.x; if (v.x > sx1) sx1 = v.x;
+        if (v.z < sz0) sz0 = v.z; if (v.z > sz1) sz1 = v.z;
+        bandN++;
+      }
+      if (v.y <= contactTop) { if (v.z > contactS) contactS = v.z; contactN++; }
+    }
+  });
+  const r3 = (n) => +n.toFixed(3);
+  return {
+    bboxW: r3(box.max.x - box.min.x), bboxD: r3(box.max.z - box.min.z), bboxH: r3(H),
+    stanceW: bandN ? r3(sx1 - sx0) : null, stanceD: bandN ? r3(sz1 - sz0) : null,
+    stanceS: bandN ? r3(sz1) : null, stanceN: bandN ? r3(sz0) : null,
+    contactS: contactN ? r3(contactS) : null,
+    bandTop: r3(bandTop - groundY), bandN, contactN,
+  };
+}
+
+/** 全量几何派生：与 renderAll/renderCatalog 完全相同的构建路径，只算几何
+ *  不渲染。返回 { 精灵名: stanceGeometry }。人物逐帧派生（姿态影响站姿）；
+ *  char3d 蒙皮角色用 idle 探针近似（bind pose 顶点，不含骨骼形变）。 */
+async function deriveGeometryAll() {
+  const out = {};
+  const jobs = await baseJobs();
+  for (const [name, build] of Object.entries(jobs)) {
+    status('deriving ' + name);
+    out[name] = stanceGeometry(await build());
+  }
+  for (const [name, build] of Object.entries(HW_BUILDERS)) {
+    status('deriving ' + name);
+    out[name] = stanceGeometry(build());
+  }
+  for (const [base, build] of Object.entries(FIGURE_BUILDERS)) {
+    for (const [dir, yaw] of Object.entries(HW_DIRS)) {
+      const stand = build(); stand.rotation.y = yaw;
+      out[`${base}-${dir}`] = stanceGeometry(stand);
+      for (let i = 0; i < 4; i++) {
+        const fig = build(); fig.rotation.y = yaw; poseWalk(fig, base, i / 4);
+        out[`${base}-${dir}-w${i}`] = stanceGeometry(fig);
+      }
+    }
+  }
+  try {
+    const gltf = await loadGLB(MC + 'character-male-a.glb');
+    const holder = new THREE.Group();
+    const ch = skeletonClone(gltf.scene);
+    holder.add(ch);
+    const mixer = new THREE.AnimationMixer(ch);
+    const idle = gltf.animations.find((a) => a.name === 'idle');
+    if (idle) { mixer.clipAction(idle).play(); mixer.setTime(0.1); }
+    ch.updateMatrixWorld(true);
+    const geo = stanceGeometry(holder);
+    for (const dir of Object.keys(HW_DIRS)) {
+      for (const tag of ['stand', 'w0', 'w1', 'w2', 'w3']) {
+        out[`char3d-${dir}-${tag}`] = { ...geo, skinnedApprox: true };
+      }
+    }
+  } catch (e) { /* char3d 派生失败不阻塞其余素材 */ }
+  status('derive done');
+  return out;
+}
+
 /**
  * 投影标定（尺寸系统基准，见 client2d/size-design.md）：渲三个标定物，
  * 用 alpha>200 的紧包围盒量像素跨度（排除半透明烘焙阴影），反推本相机
@@ -2388,5 +2492,5 @@ function calibrate() {
   return out;
 }
 
-window.__factory = { ready: true, measure, renderPiece, renderAll, showSprite, debugRoof, profile, PPM, pixelInfo: () => lastPixelInfo, renderRawList, renderMarkerTest, renderSomePixelated, calibrate };
+window.__factory = { ready: true, measure, renderPiece, renderAll, showSprite, debugRoof, profile, PPM, pixelInfo: () => lastPixelInfo, renderRawList, renderMarkerTest, renderSomePixelated, calibrate, deriveGeometryAll };
 status('ready');

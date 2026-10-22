@@ -571,8 +571,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -3.4
+  }
  },
  "hw-owl-snowy": {
   "w": 26,
@@ -600,8 +599,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -4.5
+  }
  },
  "hw-basilisk": {
   "w": 25,
@@ -615,8 +613,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -3.4
+  }
  },
  "hw-hippogriff": {
   "w": 34,
@@ -630,8 +627,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -7.5
+  }
  },
  "hw-cat": {
   "w": 14,
@@ -645,8 +641,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -4.6
+  }
  },
  "hw-cauldron": {
   "w": 25,
@@ -842,8 +837,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -3.0
+  }
  },
  "hw-willow-branch": {
   "w": 47,
@@ -969,8 +963,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -3.3
+  }
  },
  "hw-inferius": {
   "w": 25,
@@ -998,8 +991,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -8.0
+  }
  },
  "hw-kelpie": {
   "w": 22,
@@ -1013,8 +1005,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -8.0
+  }
  },
  "hw-thestral": {
   "w": 39,
@@ -1028,8 +1019,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -8.0
+  }
  },
  "hw-phoenix": {
   "w": 53,
@@ -1085,8 +1075,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -4.3
+  }
  },
  "hw-redcap": {
   "w": 22,
@@ -1198,8 +1187,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -3.3
+  }
  },
  "hw-werewolf": {
   "w": 20,
@@ -1213,8 +1201,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -5.6
+  }
  },
  "hw-lethifold": {
   "w": 34,
@@ -1242,8 +1229,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -6.2
+  }
  },
  "hw-chimera": {
   "w": 23,
@@ -1257,8 +1243,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -7.7
+  }
  },
  "hw-nundu": {
   "w": 28,
@@ -1272,8 +1257,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -8.1
+  }
  },
  "hw-dragon": {
   "w": 57,
@@ -1287,8 +1271,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -12.7
+  }
  },
  "hw-serpent": {
   "w": 19,
@@ -1302,8 +1285,7 @@
    "perMeter": 14,
    "outline": "#2a1f1a",
    "colors": 55
-  },
-  "footOffset": -3.0
+  }
  },
  "hw-birds": {
   "w": 34,

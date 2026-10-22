@@ -1,9 +1,9 @@
 # 生物体型表（2D 客户端）
 
-> **口径已迁移（统一尺寸系统）**：绘制不再用本表的 hM×20 口径。
-> 现行规则见 `size-design.md`：生物按登记世界宽度 `wM` 绘制
-> （renderer `CREATURE_HW.wM`），真实 W×D×H 与 wM 全表在 size-design.md
-> 第 8 节。本表保留身高依据（原著量级）作为 size-design 的数据来源。
+> **口径已迁移（manifest 系统）**：绘制不再用本表的 hM×20 口径。
+> 生物设计 W×D×H 的唯一手写源 = `tools/sprite-factory/manifest.json`
+> 的 `creatures` 表；登记宽 `wM` 由 derive.py 派生（derived.json），
+> renderer 经 asset-data 读取。本表保留身高依据（原著量级）作为设计来源存档。
 
 **标定基准（旧口径，存档）**
 

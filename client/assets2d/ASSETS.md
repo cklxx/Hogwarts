@@ -5,8 +5,10 @@
 （paintCastle / components.ts 等）已于 2026-10-22 永久删除，不留回退。
 例外只允许纹理生成器与 UI，逐项见第 2 节末表。
 加载层 `client/client2d/assets.ts` 只加载工厂的 `sprites.json`、PNG 与
-`palette.json`，别无第二素材包。尺寸登记唯一口径见
-`client/client2d/size-design.md`。
+`palette.json`，别无第二素材包。尺寸口径见 `client/client2d/size-design.md`
+（只存规则）；**数值唯一源 = `tools/sprite-factory/manifest.json`**，
+派生数据 = `prerendered/derived.json`（derive.py 生成），消费方经
+`src/shared/asset-data.ts` 读取，验收门 = `npm run lint:assets`。
 
 **缺失口径**：工厂精灵缺失的实体**不绘制**，并在 console 打一次警告
 （`warnMissingSprite`）。素材缺口必须暴露，不再有代码手绘回退糊住。
@@ -35,7 +37,7 @@
 
 ## 2. 最终清单：游戏内可见物 → 来源 → 尺寸登记
 
-尺寸登记位置统一指 `client/client2d/size-design.md` 的章节与 renderer 登记表。
+尺寸登记位置统一指派生表 `prerendered/derived.json`（来源 manifest.json）。
 
 | 类别 | 精灵来源（工厂） | 尺寸登记 |
 |---|---|---|

@@ -15,7 +15,8 @@
     "bot": "tsx scripts/bot.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "find": "tsx scripts/find.ts"
+    "find": "tsx scripts/find.ts",
+    "lint:assets": "tsx scripts/asset-lint.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

@@ -11,6 +11,7 @@
 // 设计依据：~/workspace/goals/2d/hidden_files/map-design.md (v2)
 // ------------------------------------------------------------------
 import { OBSTACLES } from './map.js';
+import { ASSET } from './asset-data.js';
 
 export interface Pt { x: number; z: number }
 export interface Road { id: string; width: number; pts: Pt[] }
@@ -59,26 +60,18 @@ function registerBox(x0: number, z0: number, x1: number, z1: number): void {
 // test/debug: expose collision boxes
 export function getBoxes(): Box[] { return boxes; }
 
-// footprint (world units) per kind — 地面占地（宽 × 地面深，s=1），只记
-// 地面投影，不含竖直高度。2026-10-21 按工厂精灵实测占地（sprites.json
-// footW/footD × renderer 登记宽）全表重标：旧表把 lamp/lighthouse/
-// owlery/dormtower/signpost 等的总绘制高误记为深度、cottage/stonehouse
-// 沿用旧单位（绘制宽已降到 13），占地虚大 3–8 倍，是村庄住宅/码头/
-// 营地等成片放置失败的总根因。shop/pub 沿用旧值：占地与服务器命名建筑盒
-// 同口径（绘制已于 2026-10-22 工厂化，底边锚定，占地不变）。
-const FOOT: Record<ItemKind, [number, number]> = {
-  bush: [24, 18], stone: [16, 12],
-  cottage: [15, 10], stonehouse: [15, 10],
-  lamp: [6, 6], brazier: [9, 9],
-  well: [10, 8], marketstall: [13, 10], villagegate: [52, 12],
-  dock: [16, 64], boat: [19, 12], lighthouse: [11, 11], mooringpost: [5, 5],
-  web: [30, 30], glowflower: [10, 10], tent: [13, 17], campfire: [9, 9],
-  greenhouse: [20, 14], gardenplot: [36, 28],
-  owlery: [48, 24], scoreboard: [40, 12], traininghoop: [10, 10],
-  shop: [76, 68], pub: [114, 88], station: [64, 36], library: [50, 30], dormtower: [28, 20],
-  flowerbed: [30, 18], bench: [12, 6], scarecrow: [10, 10], beehive: [14, 16], swing: [13, 11],
-  signpost: [7, 7], reed: [12, 10], mushroom: [10, 10],
-};
+// footprint (world units) per kind — 地面占地（宽 × 地面深，s=1）。
+// 不再手抄：读派生表（ASSET.layoutKinds[*].foot，manifest → derive.py）。
+// 派生口径分两种（manifest 里逐 kind 声明）：
+// - stance：3D 模型地面带截面（站姿占地）× 绘制尺度 × 1.1 余量——物理占地；
+// - lot：场地/间隙盒（商店地块、记分牌场、路灯间隙等），值在 manifest 里
+//   声明（lotFoot），与物理占地分开，不再混抄成一张表。
+// 历史教训：2026-10-21 前本表把总绘制高误记为深度、住宅沿用旧单位，
+// 占地虚大 3–8 倍，是村庄住宅/码头/营地成片放置失败的总根因；手抄表
+// 与 renderer 登记宽、sprites.json 三处漂移是同类事故，故全量改派生。
+const FOOT: Record<ItemKind, [number, number]> = Object.fromEntries(
+  Object.entries(ASSET.layoutKinds).map(([k, v]) => [k, v.foot]),
+) as Record<ItemKind, [number, number]>;
 
 // --- zone footprints (world, for reference): lake / castle / pitch ---
 //    黑湖 [-155,3,-81,77] / 城堡 [-66,-118,66,-40] / 球场 [0,-215,80,-95]
