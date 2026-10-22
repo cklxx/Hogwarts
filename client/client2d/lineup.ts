@@ -1,91 +1,185 @@
 /**
- * 生物体型核验页（开发工具）：/lineup.html。
- *
- * 按 renderer.ts 的 CREATURE_HW 体型表，把每种生物与 1.8 米巫师并排画在
- * 同一地面线上，附 1 米刻度与 1.8 米参考线，目视核对比例。
- * 缩放取游戏默认 cam.zoom = 2.75，绘制公式与 renderer 生物路径一致
- * （绘制高 = hM × ENTITY_PX_PER_M × zoom，宽度按精灵宽高比跟随）。
+ * lineup 对照页（/lineup.html）：素材系统验收图。
+ * 全部数值读派生表（manifest → derive.py → derived.json，经 asset-data）：
+ * 主对照排、人物排、生物网格、全素材画廊（按类分组、同一尺度、共地面线、
+ * 每排带 1.8m 巫师参照影 + 世界单位刻度）。精灵按规范绘制宽 drawW 定宽，
+ * k = W × ZOOM / 精灵px宽，高度按宽高比跟随，锚点对齐地面线。
  */
-import { CREATURE_HW, ENTITY_PX_PER_M } from './renderer';
 import { preSprite } from './assets';
-
-const ZOOM = 2.75;
-const PX_M = ENTITY_PX_PER_M * ZOOM; // 1 米的屏幕 px
+import { CREATURE_HW, FIGURE_W, drawWOf } from './renderer';
+import { ASSET } from '../../src/shared/asset-data';
 
 async function waitSprites(): Promise<void> {
   for (let i = 0; i < 300; i++) {
-    if (preSprite('hw-wizard-gryffindor-down') && preSprite('hw-troll')) return;
+    if (preSprite('hw-wizard-gryffindor-down') && preSprite('hw-troll') && preSprite('hw-express')) return;
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error('prerendered sprites not loaded');
 }
 
-function draw(): void {
-  const kinds = Object.keys(CREATURE_HW);
-  const cols = 6, cellW = 360, cellH = 320;
-  const rows = Math.ceil(kinds.length / cols);
-  const cv = document.createElement('canvas');
-  cv.width = cols * cellW;
-  cv.height = rows * cellH;
-  document.body.appendChild(cv);
-  const g = cv.getContext('2d')!;
-  g.fillStyle = '#7fa65c';
-  g.fillRect(0, 0, cv.width, cv.height);
-  g.imageSmoothingEnabled = false;
+const ZOOM = 4; // 对照页 px / 世界单位
+const PAGE_W = 2600;
 
-  const wiz = preSprite('hw-wizard-gryffindor-down')!;
-  const wizDh = 1.8 * PX_M; // 与游戏内巫师绘制高一致（36 × zoom）
+interface Item { name: string; label: string; w: number; note: string }
 
-  kinds.forEach((kind, idx) => {
-    const cx = (idx % cols) * cellW, cy = Math.floor(idx / cols) * cellH;
-    const groundY = cy + cellH - 44;
-    g.strokeStyle = 'rgba(0,0,0,0.3)';
-    g.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
-    // 地面线
-    g.fillStyle = '#55703d';
-    g.fillRect(cx, groundY, cellW, 3);
-    // 1 米刻度（左侧竖轴）
-    g.fillStyle = 'rgba(0,0,0,0.55)';
-    g.font = '10px sans-serif';
-    g.textAlign = 'left';
-    for (let m = 1; m <= 4; m++) {
-      const y = groundY - m * PX_M;
-      if (y < cy + 16) break;
-      g.fillRect(cx + 4, y, m === 1 ? 10 : 6, 1.5);
-      g.fillText(m + 'm', cx + 16, y + 3);
-    }
-    // 1.8 米参考线（巫师头顶）
-    const refY = groundY - 1.8 * PX_M;
-    g.strokeStyle = 'rgba(255,255,255,0.5)';
-    g.setLineDash([4, 4]);
-    g.beginPath(); g.moveTo(cx, refY); g.lineTo(cx + cellW, refY); g.stroke();
-    g.setLineDash([]);
-    // 巫师（参照物）
-    const kw = wizDh / wiz.h;
-    g.drawImage(wiz.img, cx + 58 - wiz.anchorX * kw, groundY - wiz.anchorY * kw, wiz.w * kw, wizDh);
-    g.fillStyle = 'rgba(0,0,0,0.55)';
-    g.fillText('wizard 1.8m', cx + 34, groundY + 14);
-    // 生物：与游戏同一公式，锚点落在地面线
-    const { name, hM } = CREATURE_HW[kind];
-    const pm = preSprite(name);
-    g.fillStyle = '#1d1508';
-    g.font = 'bold 13px sans-serif';
-    g.fillText(kind, cx + 8, cy + 16);
-    g.font = '11px sans-serif';
-    if (pm) {
-      const dhC = hM * PX_M;
-      const k = dhC / pm.h;
-      const dwC = pm.w * k;
-      const x0 = cx + 190;
-      g.drawImage(pm.img, x0 - pm.anchorX * k, groundY - pm.anchorY * k, dwC, dhC);
-      g.fillText(`${name}  h=${hM}m  w=${(dwC / PX_M).toFixed(2)}m`, cx + 8, cy + 31);
-    } else {
-      g.fillText(name + ' 精灵缺失', cx + 8, cy + 31);
-    }
-  });
-  (window as unknown as { __lineupDone: number }).__lineupDone = kinds.length;
+function drawItem(ctx: CanvasRenderingContext2D, it: Item, cx: number, groundY: number, ghost = false, lane = 0): number {
+  const pm = preSprite(it.name);
+  const wpx = it.w * ZOOM;
+  if (pm) {
+    const k = wpx / pm.w;
+    ctx.save();
+    if (ghost) ctx.globalAlpha = 0.35;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(pm.img, cx + wpx / 2 - pm.anchorX * k, groundY - pm.anchorY * k, pm.w * k, pm.h * k);
+    ctx.restore();
+    ctx.fillStyle = '#ff2a1a';
+    ctx.fillRect(cx + wpx / 2 - 1, groundY - 1, 2, 2);
+  } else {
+    ctx.fillStyle = '#999';
+    ctx.fillRect(cx, groundY - wpx, wpx, wpx);
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('未加载', cx + wpx / 2, groundY - wpx / 2);
+  }
+  const dh = pm ? (it.w * pm.h) / pm.w : it.w;
+  const ly = groundY + lane * 44; // 密排时标签双行错位，避免相邻压字
+  ctx.fillStyle = '#1d2733';
+  ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(it.label, cx + wpx / 2, ly + 17);
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#5a6a7a';
+  ctx.fillText(`宽 ${it.w} · 高 ${dh.toFixed(1)}`, cx + wpx / 2, ly + 31);
+  if (it.note) ctx.fillText(it.note, cx + wpx / 2, ly + 44);
+  return wpx;
 }
 
-waitSprites().then(draw).catch((e) => {
-  document.body.textContent = 'lineup failed: ' + (e as Error).message;
-});
+/** 流式排布一区物品（巫师参照影起头，超宽换行）。maxH = 本区地面线
+ *  以上的预留高度（世界单位）。返回本区占用的总高度（px）。 */
+function drawFlow(ctx: CanvasRenderingContext2D, items: Item[], y0: number, maxH: number): number {
+  const wiz: Item = { name: 'hw-wizard-gryffindor-down', label: '巫师参照', w: FIGURE_W['hw-wizard-gryffindor']!, note: '1.8m' };
+  let cx = 20, groundY = y0 + maxH * ZOOM, idx = 0;
+  cx += drawItem(ctx, wiz, cx, groundY, true) + 30;
+  for (const it of items) {
+    const wpx = it.w * ZOOM;
+    if (cx + wpx > PAGE_W - 20) {
+      groundY += maxH * ZOOM + 110;
+      cx = 20; idx = 0;
+      cx += drawItem(ctx, wiz, cx, groundY, true) + 30;
+    }
+    cx += drawItem(ctx, it, cx, groundY, false, idx++ % 2) + 34;
+  }
+  return groundY + 110 - y0;
+}
+
+function ruler(ctx: CanvasRenderingContext2D, y: number) {
+  ctx.strokeStyle = '#8a97a5'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y); ctx.stroke();
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#5a6a7a'; ctx.textAlign = 'center';
+  for (let x = 0; x <= PAGE_W; x += 5 * ZOOM) {
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 5); ctx.stroke();
+    ctx.fillText(String(x / ZOOM), x, y + 16);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillText('刻度：世界单位', 4, y - 6);
+}
+
+export async function renderLineupPage(): Promise<void> {
+  await waitSprites();
+  const cv = document.getElementById('cv') as HTMLCanvasElement;
+  const ctx = cv.getContext('2d')!;
+  (window as unknown as { __lineupDone?: boolean }).__lineupDone = false;
+
+  const MAIN: Item[] = [
+    { name: 'hw-wizard-gryffindor-down', label: '巫师', w: FIGURE_W['hw-wizard-gryffindor']!, note: '1.8m+帽0.65m' },
+    { name: 'treePine', label: '松树', w: drawWOf('treePine'), note: '高 7m' },
+    { name: 'treeRound', label: '橡树', w: drawWOf('treeRound'), note: '冠径 6m 高 8m' },
+    { name: 'houseWood', label: '村庄住宅', w: drawWOf('houseWood'), note: '模型 4.07m × U_STRUCT' },
+    { name: 'hw-tower-tall', label: '塔楼', w: drawWOf('hw-tower-tall'), note: '规范宽（实例按布局半径）' },
+    { name: 'hw-troll', label: '巨怪', w: CREATURE_HW.troll!.wM, note: '高 3.5m' },
+    { name: 'hw-unicorn', label: '独角兽', w: CREATURE_HW.unicorn!.wM, note: '高 1.6m+角' },
+    { name: 'hw-express', label: '特快车头', w: drawWOf('hw-express'), note: '高 4m 长 11m' },
+  ];
+  const FIGURES: Item[] = Object.entries(ASSET.figures).map(([base, f]) => ({
+    name: `${base}-down`, label: base.replace('hw-', ''), w: f.w,
+    note: `绘制高 ${f.dh}`,
+  }));
+  const CREATURES: Item[] = Object.entries(ASSET.creatures).map(([kind, c]) => ({
+    name: c.sprite, label: kind, w: c.wM, note: ASSET.sprites[c.sprite]?.flag ? '⚠比例标记' : '',
+  }));
+  const CAT_LABEL: Record<string, string> = {
+    building: '建筑', tree: '树', layout: '布局物件', prop: '道具',
+    stamp: '地面盖印', creature: '生物（精灵规范宽）',
+  };
+  const gallery: Record<string, Item[]> = {};
+  for (const [name, d] of Object.entries(ASSET.sprites)) {
+    if (!d.cat || d.cat === 'figure-frame' || d.cat === 'frame') continue;
+    (gallery[d.cat] ??= []).push({
+      name, label: name, w: d.drawW ?? 10,
+      note: d.drawW == null ? '无规范宽（实例尺度）' : d.flag ? '⚠比例标记' : '',
+    });
+  }
+  for (const items of Object.values(gallery)) items.sort((a, b) => b.w - a.w);
+
+  // 画布高度预估（宁大：末尾按实际用量裁剪）
+  const est = 20000;
+  cv.width = PAGE_W; cv.height = est;
+  ctx.fillStyle = '#f4f1e8';
+  ctx.fillRect(0, 0, PAGE_W, est);
+  ctx.fillStyle = '#1d2733';
+  ctx.font = 'bold 21px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('素材系统阵容（manifest → derive 派生）：同尺度、共地面线、巫师参照', 20, 36);
+  ctx.font = '13px sans-serif'; ctx.fillStyle = '#5a6a7a';
+  ctx.fillText('全部宽度读 derived.json 派生表；活物 U_LIVE = 5 世界单位/真实米，建筑 U_STRUCT = 3.2；⚠ = 模型比例标记（lint PENDING）。', 20, 60);
+
+  let y = 84;
+  const title = (text: string): void => {
+    ctx.fillStyle = '#1d2733';
+    ctx.font = 'bold 17px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(text, 20, y);
+    y += 14;
+  };
+  title('主对照排');
+  y += drawFlow(ctx, MAIN, y, 46) + 14;
+  ruler(ctx, y); y += 44;
+
+  title('人物（全部基名，down 帧）');
+  y += drawFlow(ctx, FIGURES, y, 16) + 14;
+  ruler(ctx, y); y += 44;
+
+  title(`生物（全部 ${CREATURES.length} 物种，按物种登记宽）`);
+  y += drawFlow(ctx, CREATURES, y, 24) + 14;
+  ruler(ctx, y); y += 44;
+
+  for (const [cat, label] of Object.entries(CAT_LABEL)) {
+    const items = gallery[cat];
+    if (!items?.length) continue;
+    title(`全素材 · ${label}（${items.length} 个精灵，规范宽）`);
+    const maxH = Math.min(52, Math.max(12, ...items.map((it) => {
+      const pm = preSprite(it.name);
+      return pm ? (it.w * pm.h) / pm.w : it.w;
+    })));
+    y += drawFlow(ctx, items, y, maxH) + 14;
+    ruler(ctx, y); y += 44;
+  }
+
+  title('无消费方（待拍板）');
+  y += drawFlow(ctx, [{ name: 'char3d-down-stand', label: 'char3d 角色帧 ×20', w: 10, note: '客户端已无引用' }], y, 12) + 30;
+
+  // 裁掉预估多余高度
+  const used = document.createElement('canvas');
+  used.width = PAGE_W; used.height = y;
+  used.getContext('2d')!.drawImage(cv, 0, 0);
+  cv.height = y;
+  ctx.drawImage(used, 0, 0);
+  document.title = '素材阵容 lineup';
+  (window as unknown as { __lineupDone?: boolean }).__lineupDone = true;
+}
+
+// lineup.html 直接以模块加载本文件：自建画布并启动。
+{
+  const cv = document.createElement('canvas');
+  cv.id = 'cv';
+  document.body.appendChild(cv);
+  renderLineupPage().catch((e) => {
+    document.body.textContent = 'lineup failed: ' + (e as Error).message;
+  });
+}

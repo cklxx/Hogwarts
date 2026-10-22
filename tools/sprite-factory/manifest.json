@@ -1,0 +1,3354 @@
+{
+ "version": 1,
+ "comment": "2D 素材唯一手写源。每素材一条定义：模型来源、设计真实尺寸（米）、派生规则。绘制宽/占地/footOffset 全部由 tools/sprite-factory/derive.py 从本文件 + 工厂几何派生，写 client/assets2d/prerendered/derived.json。改尺寸只改本文件，重跑 derive。",
+ "constants": {
+  "G": 14,
+  "V": 10.7,
+  "D": 9.0,
+  "cos40": 0.766,
+  "sin40": 0.643,
+  "U_LIVE": 5,
+  "U_STRUCT": 3.2
+ },
+ "sprites": {
+  "hw-spider": {
+   "src": "builder:hw-spider",
+   "cat": "creature",
+   "design": {
+    "w": 1.9,
+    "d": 1.9,
+    "h": 0.35
+   },
+   "designFrom": "doc",
+   "rule": "live-width"
+  },
+  "hw-basilisk": {
+   "src": "builder:hw-basilisk",
+   "cat": "creature",
+   "design": {
+    "w": 1.2,
+    "d": 1.5,
+    "h": 2.2
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-hippogriff": {
+   "src": "builder:hw-hippogriff",
+   "cat": "creature",
+   "design": {
+    "w": 1.1,
+    "d": 2.6,
+    "h": 2.4
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-devils-snare": {
+   "src": "builder:hw-devils-snare",
+   "cat": "creature",
+   "design": {
+    "w": 2.0,
+    "d": 2.0,
+    "h": 0.5
+   },
+   "designFrom": "doc",
+   "rule": "live-width"
+  },
+  "hw-owl-brown": {
+   "src": "builder:hw-owl-brown",
+   "cat": "creature",
+   "design": {
+    "w": 0.45,
+    "d": 0.4,
+    "h": 0.5
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-owl-snowy": {
+   "src": "builder:hw-owl-snowy",
+   "cat": "creature",
+   "design": {
+    "w": 0.45,
+    "d": 0.4,
+    "h": 0.5
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-cat": {
+   "src": "builder:hw-cat",
+   "cat": "creature",
+   "design": {
+    "w": 0.3,
+    "d": 0.75,
+    "h": 0.4
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-troll": {
+   "src": "builder:hw-troll",
+   "cat": "creature",
+   "design": {
+    "w": 2.0,
+    "d": 1.6,
+    "h": 3.5
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-inferius": {
+   "src": "builder:hw-inferius",
+   "cat": "creature",
+   "design": {
+    "w": 0.55,
+    "d": 0.4,
+    "h": 1.75
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-unicorn": {
+   "src": "builder:hw-unicorn",
+   "cat": "creature",
+   "design": {
+    "w": 0.9,
+    "d": 2.4,
+    "h": 1.6
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-bowtruckle": {
+   "src": "builder:hw-bowtruckle",
+   "cat": "creature",
+   "design": {
+    "w": 0.2,
+    "d": 0.2,
+    "h": 0.3
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-hinkypunk": {
+   "src": "builder:hw-hinkypunk",
+   "cat": "creature",
+   "design": {
+    "w": 0.3,
+    "d": 0.3,
+    "h": 0.55
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-redcap": {
+   "src": "builder:hw-redcap",
+   "cat": "creature",
+   "design": {
+    "w": 0.4,
+    "d": 0.35,
+    "h": 0.6
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-niffler": {
+   "src": "builder:hw-niffler",
+   "cat": "creature",
+   "design": {
+    "w": 0.25,
+    "d": 0.4,
+    "h": 0.35
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-grindylow": {
+   "src": "builder:hw-grindylow",
+   "cat": "creature",
+   "design": {
+    "w": 0.4,
+    "d": 0.4,
+    "h": 0.8
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-erkling": {
+   "src": "builder:hw-erkling",
+   "cat": "creature",
+   "design": {
+    "w": 0.4,
+    "d": 0.3,
+    "h": 0.9
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-kelpie": {
+   "src": "builder:hw-kelpie",
+   "cat": "creature",
+   "design": {
+    "w": 0.9,
+    "d": 2.4,
+    "h": 1.7
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-thestral": {
+   "src": "builder:hw-thestral",
+   "cat": "creature",
+   "design": {
+    "w": 0.9,
+    "d": 2.4,
+    "h": 1.8
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-occamy": {
+   "src": "builder:hw-occamy",
+   "cat": "creature",
+   "design": {
+    "w": 1.0,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-boggart": {
+   "src": "builder:hw-boggart",
+   "cat": "creature",
+   "design": {
+    "w": 0.8,
+    "d": 0.6,
+    "h": 1.7
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-runespoor": {
+   "src": "builder:hw-runespoor",
+   "cat": "creature",
+   "design": {
+    "w": 1.2,
+    "d": 0.9,
+    "h": 0.35
+   },
+   "designFrom": "doc",
+   "rule": "live-width"
+  },
+  "hw-skrewt": {
+   "src": "builder:hw-skrewt",
+   "cat": "creature",
+   "design": {
+    "w": 1.0,
+    "d": 0.8,
+    "h": 0.7
+   },
+   "designFrom": "doc",
+   "rule": "live-width"
+  },
+  "hw-werewolf": {
+   "src": "builder:hw-werewolf",
+   "cat": "creature",
+   "design": {
+    "w": 1.0,
+    "d": 0.6,
+    "h": 2.1
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-lethifold": {
+   "src": "builder:hw-lethifold",
+   "cat": "creature",
+   "design": {
+    "w": 1.5,
+    "d": 1.8,
+    "h": 0.15
+   },
+   "designFrom": "doc",
+   "rule": "live-width"
+  },
+  "hw-manticore": {
+   "src": "builder:hw-manticore",
+   "cat": "creature",
+   "design": {
+    "w": 1.1,
+    "d": 2.5,
+    "h": 2.0
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-chimera": {
+   "src": "builder:hw-chimera",
+   "cat": "creature",
+   "design": {
+    "w": 1.2,
+    "d": 2.6,
+    "h": 2.1
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-nundu": {
+   "src": "builder:hw-nundu",
+   "cat": "creature",
+   "design": {
+    "w": 1.6,
+    "d": 3.4,
+    "h": 2.6
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-dragon": {
+   "src": "builder:hw-dragon",
+   "cat": "creature",
+   "design": {
+    "w": 2.2,
+    "d": 4.0,
+    "h": 2.5
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-serpent": {
+   "src": "builder:hw-serpent",
+   "cat": "creature",
+   "design": {
+    "w": 0.5,
+    "d": 0.8,
+    "h": 1.0
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "hw-pixie": {
+   "src": "builder:hw-pixie",
+   "cat": "creature",
+   "design": {
+    "w": 0.8,
+    "d": 0.3,
+    "h": 0.4
+   },
+   "designFrom": "doc",
+   "rule": "live-width",
+   "fly": true
+  },
+  "hw-phoenix": {
+   "src": "builder:hw-phoenix",
+   "cat": "creature",
+   "design": {
+    "w": 1.3,
+    "d": 0.6,
+    "h": 0.6
+   },
+   "designFrom": "doc",
+   "rule": "live-width",
+   "fly": true
+  },
+  "hw-thunderbird": {
+   "src": "builder:hw-thunderbird",
+   "cat": "creature",
+   "design": {
+    "w": 3.8,
+    "d": 1.2,
+    "h": 1.5
+   },
+   "designFrom": "doc",
+   "rule": "live-width",
+   "fly": true
+  },
+  "hw-birds": {
+   "src": "builder:hw-birds",
+   "cat": "creature",
+   "design": {
+    "w": 1.4,
+    "d": 0.8,
+    "h": 0.8
+   },
+   "designFrom": "doc",
+   "rule": "live-width",
+   "fly": true
+  },
+  "houseWood": {
+   "src": "job:houseWood",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width",
+   "note": "村庄住宅与商店共用模型；设计值按 §11 商店 8×7×5",
+   "intent": {
+    "w": 8,
+    "d": 7,
+    "h": 5
+   }
+  },
+  "houseStone": {
+   "src": "job:houseStone",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width",
+   "note": "村庄住宅与商店共用模型；设计值按 §11 商店 8×7×5",
+   "intent": {
+    "w": 8,
+    "d": 7,
+    "h": 5
+   }
+  },
+  "houseTavern": {
+   "src": "job:houseTavern",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width",
+   "intent": {
+    "w": 8,
+    "d": 7,
+    "h": 6.5
+   }
+  },
+  "hw-keep": {
+   "src": "builder:hw-keep",
+   "cat": "building",
+   "design": {
+    "w": 11.5,
+    "d": 9.5,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-great-hall": {
+   "src": "builder:hw-great-hall",
+   "cat": "building",
+   "design": {
+    "w": 9.375,
+    "d": 4.234,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width",
+   "note": "构图锚：设计宽取 9.375 使登记宽 = 30（模型实宽 9.0）"
+  },
+  "hw-tower-mid": {
+   "src": "builder:hw-tower-mid",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-tower-tall": {
+   "src": "builder:hw-tower-tall",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-tower-short": {
+   "src": "builder:hw-tower-short",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-astro-tower": {
+   "src": "builder:hw-astro-tower",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-wall": {
+   "src": "builder:hw-castle-wall",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-wall-r1": {
+   "src": "builder:hw-castle-wall-r1",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-wall-r2": {
+   "src": "builder:hw-castle-wall-r2",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-wall-r3": {
+   "src": "builder:hw-castle-wall-r3",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-wall-r4": {
+   "src": "builder:hw-castle-wall-r4",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-wall-r5": {
+   "src": "builder:hw-castle-wall-r5",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-wall-r6": {
+   "src": "builder:hw-castle-wall-r6",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-castle-gate": {
+   "src": "builder:hw-castle-gate",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "hw-viaduct": {
+   "src": "builder:hw-viaduct",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 14,
+   "note": "钉代码矩形宽 14"
+  },
+  "hw-pitch-stand": {
+   "src": "builder:hw-pitch-stand",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 16,
+   "note": "看台段宽（球场构图）"
+  },
+  "hw-hagrid-hut": {
+   "src": "builder:hw-hagrid-hut",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 24,
+   "note": "门洞须容海格出入（§7）"
+  },
+  "hw-whomping-willow": {
+   "src": "builder:hw-whomping-willow",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 30,
+   "note": "设计冠径 10m 按 U_LIVE 应约 50，场地折中钉 30（§11 待裁决）",
+   "intent": {
+    "w": 10,
+    "d": 10,
+    "h": 9
+   }
+  },
+  "hw-quidditch-hoops": {
+   "src": "builder:hw-quidditch-hoops",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 36,
+   "note": "球场构图：三环组展开（文档旧称 12m 与模型实宽 4.7 不符，已订正为实测+钉版）"
+  },
+  "hw-lake-dock": {
+   "src": "builder:hw-lake-dock",
+   "cat": "building",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 36,
+   "note": "两段码头合并跨度（文档旧称 12m 与模型实宽 3.4 不符）"
+  },
+  "hw-express": {
+   "src": "builder:hw-express",
+   "cat": "building",
+   "design": {
+    "w": 11,
+    "d": 3,
+    "h": 4
+   },
+   "designFrom": "doc",
+   "rule": "live-height",
+   "note": "按车高锚定（§7）；模型朝向使画面宽为车长与车深混合投影，宽高比标记豁免",
+   "aspectExempt": true
+  },
+  "hw-station": {
+   "src": "builder:hw-station",
+   "cat": "building",
+   "design": {
+    "w": 15.5,
+    "d": 7.6,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-library": {
+   "src": "builder:hw-library",
+   "cat": "building",
+   "design": {
+    "w": 11.6,
+    "d": 7.6,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-dorm-tower": {
+   "src": "builder:hw-dorm-tower",
+   "cat": "building",
+   "design": {
+    "w": 6.007,
+    "d": 6.1,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-greenhouse": {
+   "src": "builder:hw-greenhouse",
+   "cat": "building",
+   "design": {
+    "w": 3.8,
+    "d": 3.6,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-owlery": {
+   "src": "builder:hw-owlery",
+   "cat": "building",
+   "design": {
+    "w": 5.752,
+    "d": 5.9,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "treePine": {
+   "src": "job:treePine",
+   "cat": "tree",
+   "design": {
+    "w": 2,
+    "d": 2,
+    "h": 7
+   },
+   "designFrom": "doc",
+   "rule": "live-height"
+  },
+  "treeRound": {
+   "src": "job:treeRound",
+   "cat": "tree",
+   "design": {
+    "w": 6,
+    "d": 1.0,
+    "h": 8
+   },
+   "designFrom": "doc",
+   "rule": "live-height",
+   "note": "w = 冠径 6（信息），d = 树干 1.0（投影高用）"
+  },
+  "hw-oak": {
+   "src": "builder:hw-oak",
+   "cat": "tree",
+   "design": {
+    "w": 4.9,
+    "d": 4.5,
+    "h": 4.5
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 50,
+   "note": "庭院构图钉版（§6）"
+  },
+  "hw-dead-tree": {
+   "src": "builder:hw-dead-tree",
+   "cat": "tree",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "禁林实例宽 10（放置级）"
+  },
+  "hw-well": {
+   "src": "builder:hw-well",
+   "cat": "layout",
+   "design": {
+    "w": 2.3,
+    "d": 2.3,
+    "h": 2.6
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-market-stall": {
+   "src": "builder:hw-market-stall",
+   "cat": "layout",
+   "design": {
+    "w": 3.903,
+    "d": 2.5,
+    "h": 2.7
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-village-gate": {
+   "src": "builder:hw-village-gate",
+   "cat": "layout",
+   "design": {
+    "w": 15.6,
+    "d": 1.05,
+    "h": 4.2
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-boat": {
+   "src": "builder:hw-boat",
+   "cat": "layout",
+   "design": {
+    "w": 5.448,
+    "d": 1.674,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-lighthouse": {
+   "src": "builder:hw-lighthouse",
+   "cat": "layout",
+   "design": {
+    "w": 2.853,
+    "d": 3.0,
+    "h": 7.2
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-tent": {
+   "src": "builder:hw-tent",
+   "cat": "layout",
+   "design": {
+    "w": 3.144,
+    "d": 4.6,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-swing": {
+   "src": "builder:hw-swing",
+   "cat": "layout",
+   "design": {
+    "w": 3.4,
+    "d": 2.59,
+    "h": 2.5
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-bench": {
+   "src": "builder:hw-bench",
+   "cat": "layout",
+   "design": {
+    "w": 2.5,
+    "d": 0.707,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-beehive": {
+   "src": "builder:hw-beehive",
+   "cat": "layout",
+   "design": {
+    "w": 2.0,
+    "d": 1.979,
+    "h": 1.6
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-scarecrow": {
+   "src": "builder:hw-scarecrow",
+   "cat": "layout",
+   "design": {
+    "w": 1.7,
+    "d": 1.04,
+    "h": 2.9
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-training-hoop": {
+   "src": "builder:hw-training-hoop",
+   "cat": "layout",
+   "design": {
+    "w": 1.221,
+    "d": 1.203,
+    "h": 5.9
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-signpost": {
+   "src": "builder:hw-signpost",
+   "cat": "layout",
+   "design": {
+    "w": 3.42,
+    "d": 1.253,
+    "h": 2.7
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 5,
+   "note": "登记 5（§13），小于 struct 派生 10.9：路牌按可读性钉版"
+  },
+  "hw-mooring-post": {
+   "src": "builder:hw-mooring-post",
+   "cat": "layout",
+   "design": {
+    "w": 0.71,
+    "d": 0.698,
+    "h": 1.1
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-campfire": {
+   "src": "builder:hw-campfire",
+   "cat": "layout",
+   "design": {
+    "w": 1.823,
+    "d": 1.856,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  },
+  "hw-brazier": {
+   "src": "builder:hw-brazier",
+   "cat": "layout",
+   "design": {
+    "w": 1.7,
+    "d": 1.7,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "struct-width",
+   "note": "§9 盆径 1.7m"
+  },
+  "hw-mushroom": {
+   "src": "builder:hw-mushroom",
+   "cat": "stamp",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 12,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-web": {
+   "src": "builder:hw-web",
+   "cat": "stamp",
+   "design": {
+    "w": 1.7,
+    "d": 1.7,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 26,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-glowflower": {
+   "src": "builder:hw-glowflower",
+   "cat": "stamp",
+   "design": {
+    "w": 0.5,
+    "d": 0.4,
+    "h": 0.65
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 11,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-gardenplot": {
+   "src": "builder:hw-gardenplot",
+   "cat": "stamp",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 30,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-flowerbed": {
+   "src": "builder:hw-flowerbed",
+   "cat": "stamp",
+   "design": {
+    "w": 1.5,
+    "d": 1.05,
+    "h": 0.55
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 26,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-reed": {
+   "src": "builder:hw-reed",
+   "cat": "stamp",
+   "design": {
+    "w": 1.4,
+    "d": 0.21,
+    "h": 1.5
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 17,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-bush": {
+   "src": "builder:hw-bush",
+   "cat": "stamp",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 22,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-stone": {
+   "src": "builder:hw-stone",
+   "cat": "stamp",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 14,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-stone-moss": {
+   "src": "builder:hw-stone-moss",
+   "cat": "stamp",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 14,
+   "note": "地面盖印：可见性放大口径（§14），非到比例物件"
+  },
+  "hw-pumpkin": {
+   "src": "builder:hw-pumpkin",
+   "cat": "prop",
+   "design": {
+    "w": 1.0,
+    "d": 1.0,
+    "h": 1.0
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 5
+  },
+  "hw-cauldron": {
+   "src": "builder:hw-cauldron",
+   "cat": "prop",
+   "design": {
+    "w": 0.8,
+    "d": 0.8,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 4.5
+  },
+  "hw-candle": {
+   "src": "builder:hw-candle",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 1.2
+  },
+  "hw-diary": {
+   "src": "builder:hw-diary",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 1.6
+  },
+  "hw-broomstick": {
+   "src": "builder:hw-broomstick",
+   "cat": "prop",
+   "design": {
+    "w": 1.6,
+    "d": null,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 6
+  },
+  "hw-snitch": {
+   "src": "builder:hw-snitch",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 1.6
+  },
+  "hw-quaffle": {
+   "src": "builder:hw-quaffle",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 1.8
+  },
+  "hw-potion-red": {
+   "src": "builder:hw-potion-red",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 1.2
+  },
+  "hw-potion-green": {
+   "src": "builder:hw-potion-green",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 1.2
+  },
+  "hw-potion-blue": {
+   "src": "builder:hw-potion-blue",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 1.2
+  },
+  "hw-mandrake": {
+   "src": "builder:hw-mandrake",
+   "cat": "prop",
+   "design": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 2.4
+  },
+  "hw-wand-box": {
+   "src": "builder:hw-wand-box",
+   "cat": "prop",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "pin",
+   "pin": 2
+  },
+  "hw-willow-branch": {
+   "src": "builder:hw-willow-branch",
+   "cat": "prop",
+   "design": {
+    "w": 2.0,
+    "d": null,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 7
+  },
+  "hw-tombstone": {
+   "src": "builder:hw-tombstone",
+   "cat": "prop",
+   "design": {
+    "w": 0.95,
+    "d": 0.62,
+    "h": 1.5
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 3.2
+  },
+  "hw-chest": {
+   "src": "builder:hw-chest",
+   "cat": "prop",
+   "design": {
+    "w": 1.0,
+    "d": 1.0,
+    "h": null
+   },
+   "designFrom": "doc",
+   "rule": "live-width"
+  },
+  "fence": {
+   "src": "job:fence",
+   "cat": "layout",
+   "design": null,
+   "designFrom": "measured",
+   "rule": "struct-width"
+  },
+  "lamp": {
+   "src": "job:lamp",
+   "cat": "layout",
+   "design": {
+    "w": null,
+    "d": null,
+    "h": 3.1
+   },
+   "designFrom": "doc",
+   "rule": "pin",
+   "pin": 12.6,
+   "note": "按绘制高 32 世界单位钉版（§7）"
+  },
+  "char3d-down-stand": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-down-w0": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-down-w1": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-down-w2": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-down-w3": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-up-stand": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-up-w0": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-up-w1": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-up-w2": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-up-w3": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-left-stand": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-left-w0": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-left-w1": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-left-w2": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-left-w3": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-right-stand": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-right-w0": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-right-w1": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-right-w2": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "char3d-right-w3": {
+   "src": "char3d",
+   "cat": "frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "无消费方：客户端已无任何引用（renderCharacterSet 产出）"
+  },
+  "hw-wizard-gryffindor-down": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-down-w0": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-down-w1": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-down-w2": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-down-w3": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-up": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-up-w0": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-up-w1": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-up-w2": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-up-w3": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-left": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-left-w0": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-left-w1": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-left-w2": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-left-w3": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-right": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-right-w0": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-right-w1": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-right-w2": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-gryffindor-right-w3": {
+   "src": "figure:hw-wizard-gryffindor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-gryffindor"
+  },
+  "hw-wizard-slytherin-down": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-down-w0": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-down-w1": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-down-w2": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-down-w3": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-up": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-up-w0": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-up-w1": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-up-w2": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-up-w3": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-left": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-left-w0": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-left-w1": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-left-w2": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-left-w3": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-right": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-right-w0": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-right-w1": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-right-w2": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-slytherin-right-w3": {
+   "src": "figure:hw-wizard-slytherin",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-slytherin"
+  },
+  "hw-wizard-ravenclaw-down": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-down-w0": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-down-w1": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-down-w2": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-down-w3": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-up": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-up-w0": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-up-w1": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-up-w2": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-up-w3": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-left": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-left-w0": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-left-w1": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-left-w2": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-left-w3": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-right": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-right-w0": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-right-w1": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-right-w2": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-ravenclaw-right-w3": {
+   "src": "figure:hw-wizard-ravenclaw",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-ravenclaw"
+  },
+  "hw-wizard-hufflepuff-down": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-down-w0": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-down-w1": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-down-w2": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-down-w3": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-up": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-up-w0": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-up-w1": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-up-w2": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-up-w3": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-left": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-left-w0": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-left-w1": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-left-w2": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-left-w3": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-right": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-right-w0": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-right-w1": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-right-w2": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-wizard-hufflepuff-right-w3": {
+   "src": "figure:hw-wizard-hufflepuff",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-wizard-hufflepuff"
+  },
+  "hw-professor-down": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-down-w0": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-down-w1": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-down-w2": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-down-w3": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-up": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-up-w0": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-up-w1": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-up-w2": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-up-w3": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-left": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-left-w0": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-left-w1": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-left-w2": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-left-w3": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-right": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-right-w0": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-right-w1": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-right-w2": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-professor-right-w3": {
+   "src": "figure:hw-professor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-professor"
+  },
+  "hw-hagrid-down": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-down-w0": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-down-w1": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-down-w2": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-down-w3": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-up": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-up-w0": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-up-w1": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-up-w2": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-up-w3": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-left": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-left-w0": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-left-w1": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-left-w2": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-left-w3": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-right": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-right-w0": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-right-w1": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-right-w2": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-hagrid-right-w3": {
+   "src": "figure:hw-hagrid",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-hagrid"
+  },
+  "hw-dementor-down": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-down-w0": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-down-w1": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-down-w2": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-down-w3": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-up": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-up-w0": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-up-w1": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-up-w2": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-up-w3": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-left": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-left-w0": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-left-w1": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-left-w2": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-left-w3": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-right": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-right-w0": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-right-w1": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-right-w2": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-dementor-right-w3": {
+   "src": "figure:hw-dementor",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-dementor",
+   "fly": true
+  },
+  "hw-merchant-down": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-down-w0": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-down-w1": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-down-w2": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-down-w3": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-up": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-up-w0": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-up-w1": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-up-w2": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-up-w3": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-left": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-left-w0": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-left-w1": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-left-w2": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-left-w3": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-right": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-right-w0": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-right-w1": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-right-w2": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-merchant-right-w3": {
+   "src": "figure:hw-merchant",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-merchant"
+  },
+  "hw-elf-down": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-down-w0": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-down-w1": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-down-w2": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-down-w3": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-up": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-up-w0": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-up-w1": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-up-w2": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-up-w3": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-left": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-left-w0": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-left-w1": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-left-w2": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-left-w3": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-right": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-right-w0": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-right-w1": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-right-w2": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-elf-right-w3": {
+   "src": "figure:hw-elf",
+   "cat": "figure-frame",
+   "design": null,
+   "designFrom": "measured",
+   "rule": null,
+   "note": "base=hw-elf"
+  },
+  "hw-scoreboard": {
+   "src": "builder:hw-scoreboard",
+   "cat": "layout",
+   "design": {
+    "w": 5.85,
+    "d": 0.27,
+    "h": 3.9
+   },
+   "designFrom": "doc",
+   "rule": "struct-width"
+  }
+ },
+ "creatures": {
+  "spider": {
+   "sprite": "hw-spider",
+   "design": {
+    "w": 1.9,
+    "d": 1.9,
+    "h": 0.35
+   },
+   "anchor": "width"
+  },
+  "aragog": {
+   "sprite": "hw-spider",
+   "design": {
+    "w": 3.1,
+    "d": 3.1,
+    "h": 0.9
+   },
+   "anchor": "width"
+  },
+  "basilisk": {
+   "sprite": "hw-basilisk",
+   "design": {
+    "w": 1.2,
+    "d": 1.5,
+    "h": 2.2
+   },
+   "anchor": "height"
+  },
+  "hippogriff": {
+   "sprite": "hw-hippogriff",
+   "design": {
+    "w": 1.1,
+    "d": 2.6,
+    "h": 2.4
+   },
+   "anchor": "height"
+  },
+  "snare": {
+   "sprite": "hw-devils-snare",
+   "design": {
+    "w": 2.0,
+    "d": 2.0,
+    "h": 0.5
+   },
+   "anchor": "width"
+  },
+  "dementor": {
+   "sprite": "hw-dementor-down",
+   "design": {
+    "w": 0.9,
+    "d": 0.5,
+    "h": 2.4
+   },
+   "anchor": "height",
+   "fly": true
+  },
+  "owl": {
+   "sprite": "hw-owl-brown",
+   "design": {
+    "w": 0.45,
+    "d": 0.4,
+    "h": 0.5
+   },
+   "anchor": "height"
+  },
+  "cat": {
+   "sprite": "hw-cat",
+   "design": {
+    "w": 0.3,
+    "d": 0.75,
+    "h": 0.4
+   },
+   "anchor": "height"
+  },
+  "pixie": {
+   "sprite": "hw-pixie",
+   "design": {
+    "w": 0.8,
+    "d": 0.3,
+    "h": 0.4
+   },
+   "anchor": "width",
+   "fly": true
+  },
+  "troll": {
+   "sprite": "hw-troll",
+   "design": {
+    "w": 2.0,
+    "d": 1.6,
+    "h": 3.5
+   },
+   "anchor": "height"
+  },
+  "inferius": {
+   "sprite": "hw-inferius",
+   "design": {
+    "w": 0.55,
+    "d": 0.4,
+    "h": 1.75
+   },
+   "anchor": "height"
+  },
+  "unicorn": {
+   "sprite": "hw-unicorn",
+   "design": {
+    "w": 0.9,
+    "d": 2.4,
+    "h": 1.6
+   },
+   "anchor": "height"
+  },
+  "phoenix": {
+   "sprite": "hw-phoenix",
+   "design": {
+    "w": 1.3,
+    "d": 0.6,
+    "h": 0.6
+   },
+   "anchor": "width",
+   "fly": true
+  },
+  "bowtruckle": {
+   "sprite": "hw-bowtruckle",
+   "design": {
+    "w": 0.2,
+    "d": 0.2,
+    "h": 0.3
+   },
+   "anchor": "height"
+  },
+  "hinkypunk": {
+   "sprite": "hw-hinkypunk",
+   "design": {
+    "w": 0.3,
+    "d": 0.3,
+    "h": 0.55
+   },
+   "anchor": "height"
+  },
+  "redcap": {
+   "sprite": "hw-redcap",
+   "design": {
+    "w": 0.4,
+    "d": 0.35,
+    "h": 0.6
+   },
+   "anchor": "height"
+  },
+  "niffler": {
+   "sprite": "hw-niffler",
+   "design": {
+    "w": 0.25,
+    "d": 0.4,
+    "h": 0.35
+   },
+   "anchor": "height"
+  },
+  "grindylow": {
+   "sprite": "hw-grindylow",
+   "design": {
+    "w": 0.4,
+    "d": 0.4,
+    "h": 0.8
+   },
+   "anchor": "height"
+  },
+  "erkling": {
+   "sprite": "hw-erkling",
+   "design": {
+    "w": 0.4,
+    "d": 0.3,
+    "h": 0.9
+   },
+   "anchor": "height"
+  },
+  "kelpie": {
+   "sprite": "hw-kelpie",
+   "design": {
+    "w": 0.9,
+    "d": 2.4,
+    "h": 1.7
+   },
+   "anchor": "height"
+  },
+  "thestral": {
+   "sprite": "hw-thestral",
+   "design": {
+    "w": 0.9,
+    "d": 2.4,
+    "h": 1.8
+   },
+   "anchor": "height"
+  },
+  "occamy": {
+   "sprite": "hw-occamy",
+   "design": {
+    "w": 1.0,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "anchor": "height"
+  },
+  "boggart": {
+   "sprite": "hw-boggart",
+   "design": {
+    "w": 0.8,
+    "d": 0.6,
+    "h": 1.7
+   },
+   "anchor": "height"
+  },
+  "runespoor": {
+   "sprite": "hw-runespoor",
+   "design": {
+    "w": 1.2,
+    "d": 0.9,
+    "h": 0.35
+   },
+   "anchor": "width"
+  },
+  "skrewt": {
+   "sprite": "hw-skrewt",
+   "design": {
+    "w": 1.0,
+    "d": 0.8,
+    "h": 0.7
+   },
+   "anchor": "width"
+  },
+  "thunderbird": {
+   "sprite": "hw-thunderbird",
+   "design": {
+    "w": 3.8,
+    "d": 1.2,
+    "h": 1.5
+   },
+   "anchor": "width",
+   "fly": true
+  },
+  "werewolf": {
+   "sprite": "hw-werewolf",
+   "design": {
+    "w": 1.0,
+    "d": 0.6,
+    "h": 2.1
+   },
+   "anchor": "height"
+  },
+  "lethifold": {
+   "sprite": "hw-lethifold",
+   "design": {
+    "w": 1.5,
+    "d": 1.8,
+    "h": 0.15
+   },
+   "anchor": "width"
+  },
+  "manticore": {
+   "sprite": "hw-manticore",
+   "design": {
+    "w": 1.1,
+    "d": 2.5,
+    "h": 2.0
+   },
+   "anchor": "height"
+  },
+  "chimera": {
+   "sprite": "hw-chimera",
+   "design": {
+    "w": 1.2,
+    "d": 2.6,
+    "h": 2.1
+   },
+   "anchor": "height"
+  },
+  "nundu": {
+   "sprite": "hw-nundu",
+   "design": {
+    "w": 1.6,
+    "d": 3.4,
+    "h": 2.6
+   },
+   "anchor": "height"
+  },
+  "dragon": {
+   "sprite": "hw-dragon",
+   "design": {
+    "w": 2.2,
+    "d": 4.0,
+    "h": 2.5
+   },
+   "anchor": "height"
+  },
+  "serpent": {
+   "sprite": "hw-serpent",
+   "design": {
+    "w": 0.5,
+    "d": 0.8,
+    "h": 1.0
+   },
+   "anchor": "height"
+  },
+  "birds": {
+   "sprite": "hw-birds",
+   "design": {
+    "w": 1.4,
+    "d": 0.8,
+    "h": 0.8
+   },
+   "anchor": "width",
+   "fly": true
+  }
+ },
+ "figures": {
+  "hw-wizard-gryffindor": {
+   "design": {
+    "w": 0.5,
+    "d": 0.4,
+    "h": 1.8,
+    "hat": 0.65
+   },
+   "variant": "student"
+  },
+  "hw-wizard-slytherin": {
+   "design": {
+    "w": 0.5,
+    "d": 0.4,
+    "h": 1.8,
+    "hat": 0.65
+   },
+   "variant": "student"
+  },
+  "hw-wizard-ravenclaw": {
+   "design": {
+    "w": 0.5,
+    "d": 0.4,
+    "h": 1.8,
+    "hat": 0.65
+   },
+   "variant": "student"
+  },
+  "hw-wizard-hufflepuff": {
+   "design": {
+    "w": 0.5,
+    "d": 0.4,
+    "h": 1.8,
+    "hat": 0.65
+   },
+   "variant": "student"
+  },
+  "hw-professor": {
+   "design": {
+    "w": 0.5,
+    "d": 0.4,
+    "h": 1.85,
+    "hat": 0.7
+   },
+   "variant": "professor"
+  },
+  "hw-hagrid": {
+   "design": {
+    "w": 1.1,
+    "d": 0.6,
+    "h": 2.6,
+    "hat": 0
+   },
+   "variant": "hagrid"
+  },
+  "hw-dementor": {
+   "design": {
+    "w": 0.9,
+    "d": 0.5,
+    "h": 2.4,
+    "hat": 0
+   },
+   "variant": null
+  },
+  "hw-merchant": {
+   "design": {
+    "w": 0.5,
+    "d": 0.4,
+    "h": 1.75,
+    "hat": 0.5
+   },
+   "variant": "merchant"
+  },
+  "hw-elf": {
+   "design": {
+    "w": 0.8,
+    "d": 0.3,
+    "h": 1.0,
+    "hat": 0
+   },
+   "variant": "elf"
+  }
+ },
+ "layoutKinds": {
+  "bush": {
+   "sprite": "hw-bush"
+  },
+  "stone": {
+   "sprite": "hw-stone",
+   "variants": {
+    "moss": "hw-stone-moss"
+   }
+  },
+  "cottage": {
+   "sprite": "houseWood"
+  },
+  "stonehouse": {
+   "sprite": "houseStone"
+  },
+  "lamp": {
+   "sprite": "lamp",
+   "footMode": "lot",
+   "lotFoot": [
+    6,
+    6
+   ]
+  },
+  "brazier": {
+   "sprite": "hw-brazier"
+  },
+  "well": {
+   "sprite": "hw-well"
+  },
+  "marketstall": {
+   "sprite": "hw-market-stall"
+  },
+  "villagegate": {
+   "sprite": "hw-village-gate",
+   "footMode": "lot",
+   "lotFoot": [
+    52,
+    12
+   ]
+  },
+  "dock": {
+   "sprite": "hw-lake-dock",
+   "footMode": "lot",
+   "lotFoot": [
+    16,
+    64
+   ]
+  },
+  "boat": {
+   "sprite": "hw-boat",
+   "footMode": "lot",
+   "lotFoot": [
+    19,
+    12
+   ]
+  },
+  "lighthouse": {
+   "sprite": "hw-lighthouse"
+  },
+  "mooringpost": {
+   "sprite": "hw-mooring-post",
+   "footMode": "lot",
+   "lotFoot": [
+    5,
+    5
+   ]
+  },
+  "web": {
+   "sprite": "hw-web"
+  },
+  "glowflower": {
+   "sprite": "hw-glowflower"
+  },
+  "tent": {
+   "sprite": "hw-tent"
+  },
+  "campfire": {
+   "sprite": "hw-campfire"
+  },
+  "greenhouse": {
+   "sprite": "hw-greenhouse"
+  },
+  "gardenplot": {
+   "sprite": "hw-gardenplot"
+  },
+  "owlery": {
+   "sprite": "hw-owlery",
+   "footMode": "lot",
+   "lotFoot": [
+    48,
+    24
+   ]
+  },
+  "scoreboard": {
+   "sprite": "hw-scoreboard",
+   "footMode": "lot",
+   "lotFoot": [
+    40,
+    12
+   ]
+  },
+  "traininghoop": {
+   "sprite": "hw-training-hoop",
+   "footMode": "lot",
+   "lotFoot": [
+    10,
+    10
+   ]
+  },
+  "shop": {
+   "sprite": "houseStone",
+   "drawPin": 76,
+   "footMode": "lot",
+   "lotFoot": [
+    76,
+    68
+   ]
+  },
+  "pub": {
+   "sprite": "houseTavern",
+   "drawPin": 84,
+   "footMode": "lot",
+   "lotFoot": [
+    114,
+    88
+   ]
+  },
+  "station": {
+   "sprite": "hw-station"
+  },
+  "library": {
+   "sprite": "hw-library"
+  },
+  "dormtower": {
+   "sprite": "hw-dorm-tower"
+  },
+  "flowerbed": {
+   "sprite": "hw-flowerbed"
+  },
+  "bench": {
+   "sprite": "hw-bench",
+   "footMode": "lot",
+   "lotFoot": [
+    12,
+    6
+   ]
+  },
+  "scarecrow": {
+   "sprite": "hw-scarecrow",
+   "footMode": "lot",
+   "lotFoot": [
+    10,
+    10
+   ]
+  },
+  "beehive": {
+   "sprite": "hw-beehive",
+   "footMode": "lot",
+   "lotFoot": [
+    14,
+    16
+   ]
+  },
+  "swing": {
+   "sprite": "hw-swing",
+   "footMode": "lot",
+   "lotFoot": [
+    13,
+    11
+   ]
+  },
+  "signpost": {
+   "sprite": "hw-signpost",
+   "footMode": "lot",
+   "lotFoot": [
+    7,
+    7
+   ]
+  },
+  "reed": {
+   "sprite": "hw-reed",
+   "footMode": "lot",
+   "lotFoot": [
+    12,
+    10
+   ]
+  },
+  "mushroom": {
+   "sprite": "hw-mushroom",
+   "footMode": "lot",
+   "lotFoot": [
+    10,
+    10
+   ]
+  }
+ }
+}

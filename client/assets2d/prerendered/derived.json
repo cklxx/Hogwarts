@@ -1,0 +1,6064 @@
+{
+ "version": 1,
+ "source": "tools/sprite-factory/manifest.json + derive.py（勿手改，改 manifest 后重跑 derive）",
+ "constants": {
+  "G": 14,
+  "V": 10.7,
+  "D": 9.0,
+  "cos40": 0.766,
+  "sin40": 0.643,
+  "U_LIVE": 5,
+  "U_STRUCT": 3.2
+ },
+ "sprites": {
+  "hw-spider": {
+   "cat": "creature",
+   "model": {
+    "w": 3.244,
+    "d": 1.659,
+    "h": 1.004
+   },
+   "stance": {
+    "w": 3.244,
+    "d": 1.636,
+    "s": 0.645,
+    "n": -0.99,
+    "contactS": 0.491
+   },
+   "footOffsetPx": -3.8,
+   "drawW": 9.5,
+   "flag": "宽高比 几何实测 1.77 vs 设计 1.28（+39%）"
+  },
+  "hw-basilisk": {
+   "cat": "creature",
+   "model": {
+    "w": 1.427,
+    "d": 3.633,
+    "h": 1.79
+   },
+   "stance": {
+    "w": 1.427,
+    "d": 3.118,
+    "s": 1.666,
+    "n": -1.453,
+    "contactS": 1.605
+   },
+   "footOffsetPx": null,
+   "drawW": 10.68,
+   "flag": "宽高比 几何实测 0.38 vs 设计 0.45（-15%）"
+  },
+  "hw-hippogriff": {
+   "cat": "creature",
+   "model": {
+    "w": 2.118,
+    "d": 2.99,
+    "h": 2.155
+   },
+   "stance": {
+    "w": 0.797,
+    "d": 1.254,
+    "s": 0.584,
+    "n": -0.67,
+    "contactS": 0.584
+   },
+   "footOffsetPx": null,
+   "drawW": 19.89,
+   "flag": "宽高比 几何实测 0.59 vs 设计 0.31（+89%）"
+  },
+  "hw-devils-snare": {
+   "cat": "creature",
+   "model": {
+    "w": 1.875,
+    "d": 1.337,
+    "h": 0.573
+   },
+   "stance": {
+    "w": 1.875,
+    "d": 1.337,
+    "s": 0.677,
+    "n": -0.66,
+    "contactS": 0.677
+   },
+   "footOffsetPx": -3.1,
+   "drawW": 10.0,
+   "flag": "宽高比 几何实测 1.44 vs 设计 1.20（+20%）"
+  },
+  "hw-owl-brown": {
+   "cat": "creature",
+   "model": {
+    "w": 1.194,
+    "d": 0.749,
+    "h": 1.3
+   },
+   "stance": {
+    "w": 0.91,
+    "d": 0.12,
+    "s": 0.06,
+    "n": -0.06,
+    "contactS": 0.06
+   },
+   "footOffsetPx": null,
+   "drawW": 5.2,
+   "flag": null
+  },
+  "hw-owl-snowy": {
+   "cat": "creature",
+   "model": {
+    "w": 1.194,
+    "d": 0.749,
+    "h": 1.3
+   },
+   "stance": {
+    "w": 0.91,
+    "d": 0.12,
+    "s": 0.06,
+    "n": -0.06,
+    "contactS": 0.06
+   },
+   "footOffsetPx": null,
+   "drawW": 5.2,
+   "flag": null
+  },
+  "hw-cat": {
+   "cat": "creature",
+   "model": {
+    "w": 0.546,
+    "d": 1.456,
+    "h": 0.764
+   },
+   "stance": {
+    "w": 0.546,
+    "d": 0.666,
+    "s": 0.283,
+    "n": -0.383,
+    "contactS": 0.215
+   },
+   "footOffsetPx": null,
+   "drawW": 2.76,
+   "flag": null
+  },
+  "hw-troll": {
+   "cat": "creature",
+   "model": {
+    "w": 3.2,
+    "d": 1.616,
+    "h": 3.07
+   },
+   "stance": {
+    "w": 2.78,
+    "d": 0.999,
+    "s": 0.51,
+    "n": -0.489,
+    "contactS": 0.51
+   },
+   "footOffsetPx": null,
+   "drawW": 26.36,
+   "flag": "宽高比 几何实测 0.94 vs 设计 0.54（+75%）"
+  },
+  "hw-inferius": {
+   "cat": "creature",
+   "model": {
+    "w": 1.12,
+    "d": 1.409,
+    "h": 1.979
+   },
+   "stance": {
+    "w": 1.12,
+    "d": 1.409,
+    "s": 0.863,
+    "n": -0.547,
+    "contactS": 0.863
+   },
+   "footOffsetPx": null,
+   "drawW": 7.99,
+   "flag": "宽高比 几何实测 0.46 vs 设计 0.34（+34%）"
+  },
+  "hw-unicorn": {
+   "cat": "creature",
+   "model": {
+    "w": 0.94,
+    "d": 3.096,
+    "h": 2.854
+   },
+   "stance": {
+    "w": 0.636,
+    "d": 1.333,
+    "s": 0.67,
+    "n": -0.663,
+    "contactS": 0.67
+   },
+   "footOffsetPx": null,
+   "drawW": 7.61,
+   "flag": "宽高比 几何实测 0.23 vs 设计 0.33（-31%）"
+  },
+  "hw-bowtruckle": {
+   "cat": "creature",
+   "model": {
+    "w": 0.907,
+    "d": 0.41,
+    "h": 1.072
+   },
+   "stance": {
+    "w": 0.631,
+    "d": 0.361,
+    "s": 0.312,
+    "n": -0.05,
+    "contactS": 0.312
+   },
+   "footOffsetPx": null,
+   "drawW": 2.24,
+   "flag": "宽高比 几何实测 0.84 vs 设计 0.56（+50%）"
+  },
+  "hw-hinkypunk": {
+   "cat": "creature",
+   "model": {
+    "w": 1.06,
+    "d": 0.957,
+    "h": 1.614
+   },
+   "stance": {
+    "w": 0.72,
+    "d": 0.72,
+    "s": 0.36,
+    "n": -0.36,
+    "contactS": 0.035
+   },
+   "footOffsetPx": -3.2,
+   "drawW": 3.69,
+   "flag": "宽高比 几何实测 0.57 vs 设计 0.49（+17%）"
+  },
+  "hw-redcap": {
+   "cat": "creature",
+   "model": {
+    "w": 0.967,
+    "d": 0.5,
+    "h": 1.14
+   },
+   "stance": {
+    "w": 0.967,
+    "d": 0.5,
+    "s": 0.25,
+    "n": -0.25,
+    "contactS": 0.25
+   },
+   "footOffsetPx": null,
+   "drawW": 4.43,
+   "flag": "宽高比 几何实测 0.81 vs 设计 0.58（+39%）"
+  },
+  "hw-niffler": {
+   "cat": "creature",
+   "model": {
+    "w": 0.645,
+    "d": 1.358,
+    "h": 0.6
+   },
+   "stance": {
+    "w": 0.645,
+    "d": 0.991,
+    "s": 0.591,
+    "n": -0.4,
+    "contactS": 0.591
+   },
+   "footOffsetPx": null,
+   "drawW": 2.04,
+   "flag": null
+  },
+  "hw-grindylow": {
+   "cat": "creature",
+   "model": {
+    "w": 1.163,
+    "d": 0.832,
+    "h": 1.24
+   },
+   "stance": {
+    "w": 0.571,
+    "d": 0.6,
+    "s": 0.3,
+    "n": -0.3,
+    "contactS": 0.3
+   },
+   "footOffsetPx": null,
+   "drawW": 6.04,
+   "flag": "宽高比 几何实测 0.78 vs 设计 0.46（+70%）"
+  },
+  "hw-erkling": {
+   "cat": "creature",
+   "model": {
+    "w": 1.269,
+    "d": 0.42,
+    "h": 1.301
+   },
+   "stance": {
+    "w": 0.399,
+    "d": 0.42,
+    "s": 0.21,
+    "n": -0.21,
+    "contactS": 0.21
+   },
+   "footOffsetPx": null,
+   "drawW": 6.37,
+   "flag": "宽高比 几何实测 1.00 vs 设计 0.45（+121%）"
+  },
+  "hw-kelpie": {
+   "cat": "creature",
+   "model": {
+    "w": 0.94,
+    "d": 3.096,
+    "h": 2.498
+   },
+   "stance": {
+    "w": 0.636,
+    "d": 1.333,
+    "s": 0.67,
+    "n": -0.663,
+    "contactS": 0.67
+   },
+   "footOffsetPx": null,
+   "drawW": 7.82,
+   "flag": "宽高比 几何实测 0.24 vs 设计 0.32（-24%）"
+  },
+  "hw-thestral": {
+   "cat": "creature",
+   "model": {
+    "w": 2.394,
+    "d": 3.096,
+    "h": 2.649
+   },
+   "stance": {
+    "w": 0.636,
+    "d": 1.333,
+    "s": 0.67,
+    "n": -0.663,
+    "contactS": 0.67
+   },
+   "footOffsetPx": null,
+   "drawW": 13.9,
+   "flag": "宽高比 几何实测 0.60 vs 设计 0.31（+93%）"
+  },
+  "hw-occamy": {
+   "cat": "creature",
+   "model": {
+    "w": 2.354,
+    "d": 2.984,
+    "h": 1.279
+   },
+   "stance": {
+    "w": 2.354,
+    "d": 2.564,
+    "s": 1.406,
+    "n": -1.158,
+    "contactS": 1.406
+   },
+   "footOffsetPx": null,
+   "drawW": 10.85,
+   "flag": "宽高比 几何实测 0.81 vs 设计 0.62（+31%）"
+  },
+  "hw-boggart": {
+   "cat": "creature",
+   "model": {
+    "w": 1.543,
+    "d": 1.32,
+    "h": 1.566
+   },
+   "stance": {
+    "w": 1.543,
+    "d": 1.32,
+    "s": 0.66,
+    "n": -0.66,
+    "contactS": 0.66
+   },
+   "footOffsetPx": null,
+   "drawW": 9.38,
+   "flag": "宽高比 几何实测 0.75 vs 设计 0.47（+59%）"
+  },
+  "hw-runespoor": {
+   "cat": "creature",
+   "model": {
+    "w": 1.39,
+    "d": 1.39,
+    "h": 1.562
+   },
+   "stance": {
+    "w": 1.39,
+    "d": 1.39,
+    "s": 0.695,
+    "n": -0.695,
+    "contactS": 0.69
+   },
+   "footOffsetPx": null,
+   "drawW": 6.0,
+   "flag": "宽高比 几何实测 0.66 vs 设计 1.42（-53%）"
+  },
+  "hw-skrewt": {
+   "cat": "creature",
+   "model": {
+    "w": 1.334,
+    "d": 2.066,
+    "h": 2.04
+   },
+   "stance": {
+    "w": 1.334,
+    "d": 1.699,
+    "s": 0.956,
+    "n": -0.743,
+    "contactS": 0.5
+   },
+   "footOffsetPx": -2.6,
+   "drawW": 5.0,
+   "flag": "宽高比 几何实测 0.46 vs 设计 0.95（-52%）"
+  },
+  "hw-werewolf": {
+   "cat": "creature",
+   "model": {
+    "w": 0.818,
+    "d": 1.896,
+    "h": 2.175
+   },
+   "stance": {
+    "w": 0.818,
+    "d": 0.494,
+    "s": 0.35,
+    "n": -0.144,
+    "contactS": 0.35
+   },
+   "footOffsetPx": null,
+   "drawW": 7.67,
+   "flag": "宽高比 几何实测 0.28 vs 设计 0.50（-43%）"
+  },
+  "hw-lethifold": {
+   "cat": "creature",
+   "model": {
+    "w": 2.334,
+    "d": 2.205,
+    "h": 0.537
+   },
+   "stance": {
+    "w": 2.334,
+    "d": 2.205,
+    "s": 1.102,
+    "n": -1.102,
+    "contactS": 1.102
+   },
+   "footOffsetPx": null,
+   "drawW": 7.5,
+   "flag": null
+  },
+  "hw-manticore": {
+   "cat": "creature",
+   "model": {
+    "w": 1,
+    "d": 2.707,
+    "h": 2.62
+   },
+   "stance": {
+    "w": 1,
+    "d": 1.773,
+    "s": 0.886,
+    "n": -0.886,
+    "contactS": 0.67
+   },
+   "footOffsetPx": null,
+   "drawW": 8.4,
+   "flag": "宽高比 几何实测 0.27 vs 设计 0.35（-24%）"
+  },
+  "hw-chimera": {
+   "cat": "creature",
+   "model": {
+    "w": 1,
+    "d": 3.038,
+    "h": 2.355
+   },
+   "stance": {
+    "w": 1,
+    "d": 1.773,
+    "s": 0.886,
+    "n": -0.886,
+    "contactS": 0.67
+   },
+   "footOffsetPx": null,
+   "drawW": 8.77,
+   "flag": "宽高比 几何实测 0.27 vs 设计 0.37（-27%）"
+  },
+  "hw-nundu": {
+   "cat": "creature",
+   "model": {
+    "w": 1.39,
+    "d": 3.345,
+    "h": 2.12
+   },
+   "stance": {
+    "w": 0.854,
+    "d": 1.569,
+    "s": 0.79,
+    "n": -0.779,
+    "contactS": 0.79
+   },
+   "footOffsetPx": null,
+   "drawW": 12.72,
+   "flag": null
+  },
+  "hw-dragon": {
+   "cat": "creature",
+   "model": {
+    "w": 3.831,
+    "d": 4.35,
+    "h": 3.323
+   },
+   "stance": {
+    "w": 1.04,
+    "d": 2.92,
+    "s": 0.922,
+    "n": -1.998,
+    "contactS": 0.69
+   },
+   "footOffsetPx": null,
+   "drawW": 25.58,
+   "flag": "宽高比 几何实测 0.72 vs 设计 0.49（+46%）"
+  },
+  "hw-serpent": {
+   "cat": "creature",
+   "model": {
+    "w": 0.9,
+    "d": 2.658,
+    "h": 1.238
+   },
+   "stance": {
+    "w": 0.9,
+    "d": 2.198,
+    "s": 1.17,
+    "n": -1.028,
+    "contactS": 1.097
+   },
+   "footOffsetPx": null,
+   "drawW": 5.07,
+   "flag": null
+  },
+  "hw-pixie": {
+   "cat": "creature",
+   "model": {
+    "w": 1.751,
+    "d": 0.305,
+    "h": 1.232
+   },
+   "stance": {
+    "w": 0.28,
+    "d": 0.305,
+    "s": 0.165,
+    "n": -0.14,
+    "contactS": 0.165
+   },
+   "footOffsetPx": null,
+   "drawW": 4.0,
+   "flag": null
+  },
+  "hw-phoenix": {
+   "cat": "creature",
+   "model": {
+    "w": 3.264,
+    "d": 2.104,
+    "h": 2.058
+   },
+   "stance": {
+    "w": 0.685,
+    "d": 0.995,
+    "s": -0.379,
+    "n": -1.374,
+    "contactS": -0.379
+   },
+   "footOffsetPx": null,
+   "drawW": 6.5,
+   "flag": "宽高比 几何实测 1.11 vs 设计 1.54（-28%）"
+  },
+  "hw-thunderbird": {
+   "cat": "creature",
+   "model": {
+    "w": 4.925,
+    "d": 2.677,
+    "h": 1.803
+   },
+   "stance": {
+    "w": 4.925,
+    "d": 2.677,
+    "s": 1.168,
+    "n": -1.509,
+    "contactS": 0.579
+   },
+   "footOffsetPx": null,
+   "drawW": 19.0,
+   "flag": "宽高比 几何实测 1.59 vs 设计 1.98（-20%）"
+  },
+  "hw-birds": {
+   "cat": "creature",
+   "model": {
+    "w": 1.869,
+    "d": 0.833,
+    "h": 0.873
+   },
+   "stance": {
+    "w": 1.869,
+    "d": 0.749,
+    "s": 0.337,
+    "n": -0.412,
+    "contactS": -0.046
+   },
+   "footOffsetPx": null,
+   "drawW": 7.0,
+   "flag": "宽高比 几何实测 1.55 vs 设计 1.24（+25%）"
+  },
+  "houseWood": {
+   "cat": "building",
+   "model": {
+    "w": 4.071,
+    "d": 2.294,
+    "h": 1.721
+   },
+   "stance": {
+    "w": 3.1,
+    "d": 2.1,
+    "s": 1.05,
+    "n": -1.05,
+    "contactS": 1.05
+   },
+   "footOffsetPx": null,
+   "drawW": 13.03,
+   "flag": "宽高比 几何实测 1.46 vs 设计 0.96（+52%）"
+  },
+  "houseStone": {
+   "cat": "building",
+   "model": {
+    "w": 4.071,
+    "d": 2.294,
+    "h": 2.078
+   },
+   "stance": {
+    "w": 3.1,
+    "d": 2.1,
+    "s": 1.05,
+    "n": -1.05,
+    "contactS": 1.05
+   },
+   "footOffsetPx": null,
+   "drawW": 13.03,
+   "flag": "宽高比 几何实测 1.33 vs 设计 0.96（+38%）"
+  },
+  "houseTavern": {
+   "cat": "building",
+   "model": {
+    "w": 4.134,
+    "d": 2.301,
+    "h": 2.375
+   },
+   "stance": {
+    "w": 3.125,
+    "d": 2.1,
+    "s": 1.05,
+    "n": -1.05,
+    "contactS": 1.05
+   },
+   "footOffsetPx": null,
+   "drawW": 13.23,
+   "flag": "宽高比 几何实测 1.25 vs 设计 0.84（+49%）"
+  },
+  "hw-keep": {
+   "cat": "building",
+   "model": {
+    "w": 11.5,
+    "d": 9.5,
+    "h": 15
+   },
+   "stance": {
+    "w": 11.1,
+    "d": 9.2,
+    "s": 4.65,
+    "n": -4.55,
+    "contactS": 4.65
+   },
+   "footOffsetPx": null,
+   "drawW": 36.8,
+   "flag": null
+  },
+  "hw-great-hall": {
+   "cat": "building",
+   "model": {
+    "w": 9,
+    "d": 4.234,
+    "h": 5.55
+   },
+   "stance": {
+    "w": 8.4,
+    "d": 4.07,
+    "s": 2.07,
+    "n": -2,
+    "contactS": 2.07
+   },
+   "footOffsetPx": null,
+   "drawW": 30.0,
+   "flag": null
+  },
+  "hw-tower-mid": {
+   "cat": "building",
+   "model": {
+    "w": 2.899,
+    "d": 2.944,
+    "h": 9.65
+   },
+   "stance": {
+    "w": 2.265,
+    "d": 2.3,
+    "s": 1.15,
+    "n": -1.15,
+    "contactS": 1.15
+   },
+   "footOffsetPx": null,
+   "drawW": 9.28,
+   "flag": null
+  },
+  "hw-tower-tall": {
+   "cat": "building",
+   "model": {
+    "w": 3.151,
+    "d": 3.2,
+    "h": 13.95
+   },
+   "stance": {
+    "w": 2.462,
+    "d": 2.5,
+    "s": 1.25,
+    "n": -1.25,
+    "contactS": 1.25
+   },
+   "footOffsetPx": null,
+   "drawW": 10.08,
+   "flag": null
+  },
+  "hw-tower-short": {
+   "cat": "building",
+   "model": {
+    "w": 2.647,
+    "d": 2.688,
+    "h": 6.35
+   },
+   "stance": {
+    "w": 2.068,
+    "d": 2.1,
+    "s": 1.05,
+    "n": -1.05,
+    "contactS": 1.05
+   },
+   "footOffsetPx": null,
+   "drawW": 8.47,
+   "flag": null
+  },
+  "hw-astro-tower": {
+   "cat": "building",
+   "model": {
+    "w": 3.053,
+    "d": 3.1,
+    "h": 9.245
+   },
+   "stance": {
+    "w": 2.561,
+    "d": 2.6,
+    "s": 1.3,
+    "n": -1.3,
+    "contactS": 1.3
+   },
+   "footOffsetPx": null,
+   "drawW": 9.77,
+   "flag": null
+  },
+  "hw-castle-wall": {
+   "cat": "building",
+   "model": {
+    "w": 4.42,
+    "d": 0.87,
+    "h": 3.34
+   },
+   "stance": {
+    "w": 4.4,
+    "d": 0.8,
+    "s": 0.4,
+    "n": -0.4,
+    "contactS": 0.4
+   },
+   "footOffsetPx": null,
+   "drawW": 14.14,
+   "flag": null
+  },
+  "hw-castle-wall-r1": {
+   "cat": "building",
+   "model": {
+    "w": 4.328,
+    "d": 2.73,
+    "h": 3.34
+   },
+   "stance": {
+    "w": 4.292,
+    "d": 2.685,
+    "s": 1.343,
+    "n": -1.343,
+    "contactS": 1.343
+   },
+   "footOffsetPx": null,
+   "drawW": 13.85,
+   "flag": null
+  },
+  "hw-castle-wall-r2": {
+   "cat": "building",
+   "model": {
+    "w": 3.514,
+    "d": 3.903,
+    "h": 3.34
+   },
+   "stance": {
+    "w": 3.471,
+    "d": 3.861,
+    "s": 1.931,
+    "n": -1.931,
+    "contactS": 1.931
+   },
+   "footOffsetPx": null,
+   "drawW": 11.24,
+   "flag": null
+  },
+  "hw-castle-wall-r3": {
+   "cat": "building",
+   "model": {
+    "w": 2.054,
+    "d": 4.477,
+    "h": 3.34
+   },
+   "stance": {
+    "w": 2.01,
+    "d": 4.447,
+    "s": 2.223,
+    "n": -2.223,
+    "contactS": 2.223
+   },
+   "footOffsetPx": null,
+   "drawW": 6.57,
+   "flag": null
+  },
+  "hw-castle-wall-r4": {
+   "cat": "building",
+   "model": {
+    "w": 2.73,
+    "d": 4.328,
+    "h": 3.34
+   },
+   "stance": {
+    "w": 2.685,
+    "d": 4.292,
+    "s": 2.146,
+    "n": -2.146,
+    "contactS": 2.146
+   },
+   "footOffsetPx": null,
+   "drawW": 8.74,
+   "flag": null
+  },
+  "hw-castle-wall-r5": {
+   "cat": "building",
+   "model": {
+    "w": 4.143,
+    "d": 3.151,
+    "h": 3.34
+   },
+   "stance": {
+    "w": 4.104,
+    "d": 3.107,
+    "s": 1.553,
+    "n": -1.553,
+    "contactS": 1.553
+   },
+   "footOffsetPx": null,
+   "drawW": 13.26,
+   "flag": null
+  },
+  "hw-castle-wall-r6": {
+   "cat": "building",
+   "model": {
+    "w": 1.222,
+    "d": 4.476,
+    "h": 3.34
+   },
+   "stance": {
+    "w": 1.18,
+    "d": 4.453,
+    "s": 2.226,
+    "n": -2.226,
+    "contactS": 2.226
+   },
+   "footOffsetPx": null,
+   "drawW": 3.91,
+   "flag": null
+  },
+  "hw-castle-gate": {
+   "cat": "building",
+   "model": {
+    "w": 5.421,
+    "d": 1.56,
+    "h": 4.45
+   },
+   "stance": {
+    "w": 5.109,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": 17.35,
+   "flag": null
+  },
+  "hw-viaduct": {
+   "cat": "building",
+   "model": {
+    "w": 11.5,
+    "d": 2.3,
+    "h": 6.17
+   },
+   "stance": {
+    "w": 11,
+    "d": 1.8,
+    "s": 0.9,
+    "n": -0.9,
+    "contactS": 0.9
+   },
+   "footOffsetPx": null,
+   "drawW": 14.0,
+   "flag": null
+  },
+  "hw-pitch-stand": {
+   "cat": "building",
+   "model": {
+    "w": 10.704,
+    "d": 3.513,
+    "h": 4.4
+   },
+   "stance": {
+    "w": 9.878,
+    "d": 3.265,
+    "s": 1.925,
+    "n": -1.34,
+    "contactS": 1.875
+   },
+   "footOffsetPx": null,
+   "drawW": 16.0,
+   "flag": null
+  },
+  "hw-hagrid-hut": {
+   "cat": "building",
+   "model": {
+    "w": 5.167,
+    "d": 5.3,
+    "h": 3.65
+   },
+   "stance": {
+    "w": 3.802,
+    "d": 4.35,
+    "s": 2.4,
+    "n": -1.95,
+    "contactS": 2.4
+   },
+   "footOffsetPx": null,
+   "drawW": 24.0,
+   "flag": null
+  },
+  "hw-whomping-willow": {
+   "cat": "building",
+   "model": {
+    "w": 4.66,
+    "d": 4.954,
+    "h": 4.302
+   },
+   "stance": {
+    "w": 1.484,
+    "d": 1.56,
+    "s": 0.78,
+    "n": -0.78,
+    "contactS": 0.78
+   },
+   "footOffsetPx": null,
+   "drawW": 30.0,
+   "flag": null
+  },
+  "hw-quidditch-hoops": {
+   "cat": "building",
+   "model": {
+    "w": 4.7,
+    "d": 0.18,
+    "h": 5.8
+   },
+   "stance": {
+    "w": 3.58,
+    "d": 0.18,
+    "s": 0.09,
+    "n": -0.09,
+    "contactS": 0.09
+   },
+   "footOffsetPx": null,
+   "drawW": 36.0,
+   "flag": null
+  },
+  "hw-lake-dock": {
+   "cat": "building",
+   "model": {
+    "w": 3.4,
+    "d": 1.6,
+    "h": 0.85
+   },
+   "stance": {
+    "w": 3.4,
+    "d": 1.6,
+    "s": 0.8,
+    "n": -0.8,
+    "contactS": 0.8
+   },
+   "footOffsetPx": null,
+   "drawW": 36.0,
+   "flag": null
+  },
+  "hw-express": {
+   "cat": "building",
+   "model": {
+    "w": 6.726,
+    "d": 9.444,
+    "h": 4.792
+   },
+   "stance": {
+    "w": 2.651,
+    "d": 2.237,
+    "s": 3.122,
+    "n": 0.885,
+    "contactS": 3.122
+   },
+   "footOffsetPx": null,
+   "drawW": 23.81,
+   "flag": null
+  },
+  "hw-station": {
+   "cat": "building",
+   "model": {
+    "w": 15.5,
+    "d": 7.6,
+    "h": 5.45
+   },
+   "stance": {
+    "w": 15.5,
+    "d": 7.6,
+    "s": 3.8,
+    "n": -3.8,
+    "contactS": 3.8
+   },
+   "footOffsetPx": null,
+   "drawW": 49.6,
+   "flag": null
+  },
+  "hw-library": {
+   "cat": "building",
+   "model": {
+    "w": 11.6,
+    "d": 7.6,
+    "h": 7.76
+   },
+   "stance": {
+    "w": 11.6,
+    "d": 7.6,
+    "s": 4.1,
+    "n": -3.5,
+    "contactS": 4.1
+   },
+   "footOffsetPx": null,
+   "drawW": 37.12,
+   "flag": null
+  },
+  "hw-dorm-tower": {
+   "cat": "building",
+   "model": {
+    "w": 6.007,
+    "d": 6.1,
+    "h": 15
+   },
+   "stance": {
+    "w": 5.121,
+    "d": 5.2,
+    "s": 2.6,
+    "n": -2.6,
+    "contactS": 2.6
+   },
+   "footOffsetPx": null,
+   "drawW": 19.22,
+   "flag": null
+  },
+  "hw-greenhouse": {
+   "cat": "building",
+   "model": {
+    "w": 3.8,
+    "d": 3.6,
+    "h": 3.07
+   },
+   "stance": {
+    "w": 3.8,
+    "d": 2.85,
+    "s": 1.45,
+    "n": -1.4,
+    "contactS": 1.4
+   },
+   "footOffsetPx": null,
+   "drawW": 12.16,
+   "flag": null
+  },
+  "hw-owlery": {
+   "cat": "building",
+   "model": {
+    "w": 5.752,
+    "d": 5.9,
+    "h": 8.95
+   },
+   "stance": {
+    "w": 5.07,
+    "d": 5.2,
+    "s": 2.6,
+    "n": -2.6,
+    "contactS": 2.6
+   },
+   "footOffsetPx": null,
+   "drawW": 18.41,
+   "flag": null
+  },
+  "treePine": {
+   "cat": "tree",
+   "model": {
+    "w": 1.742,
+    "d": 1.768,
+    "h": 6.9
+   },
+   "stance": {
+    "w": 1.742,
+    "d": 1.768,
+    "s": 0.884,
+    "n": -0.884,
+    "contactS": 0.884
+   },
+   "footOffsetPx": null,
+   "drawW": 13.89,
+   "flag": null
+  },
+  "treeRound": {
+   "cat": "tree",
+   "model": {
+    "w": 1.492,
+    "d": 1.722,
+    "h": 6.3
+   },
+   "stance": {
+    "w": 1.492,
+    "d": 1.722,
+    "s": 0.861,
+    "n": -0.861,
+    "contactS": 0.861
+   },
+   "footOffsetPx": null,
+   "drawW": 13.72,
+   "flag": "宽高比 几何实测 0.25 vs 设计 0.89（-72%）"
+  },
+  "hw-oak": {
+   "cat": "tree",
+   "model": {
+    "w": 4.862,
+    "d": 4.529,
+    "h": 4.518
+   },
+   "stance": {
+    "w": 0.951,
+    "d": 1,
+    "s": 0.5,
+    "n": -0.5,
+    "contactS": 0.5
+   },
+   "footOffsetPx": null,
+   "drawW": 50.0,
+   "flag": null
+  },
+  "hw-dead-tree": {
+   "cat": "tree",
+   "model": {
+    "w": 2.258,
+    "d": 0.956,
+    "h": 3.274
+   },
+   "stance": {
+    "w": 0.534,
+    "d": 0.4,
+    "s": 0.2,
+    "n": -0.2,
+    "contactS": 0.2
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-well": {
+   "cat": "layout",
+   "model": {
+    "w": 2.3,
+    "d": 2.3,
+    "h": 2.618
+   },
+   "stance": {
+    "w": 2.3,
+    "d": 2.3,
+    "s": 1.15,
+    "n": -1.15,
+    "contactS": 1.15
+   },
+   "footOffsetPx": null,
+   "drawW": 7.36,
+   "flag": null
+  },
+  "hw-market-stall": {
+   "cat": "layout",
+   "model": {
+    "w": 3.903,
+    "d": 2.5,
+    "h": 2.729
+   },
+   "stance": {
+    "w": 3.4,
+    "d": 1.7,
+    "s": 0.85,
+    "n": -0.85,
+    "contactS": 0.85
+   },
+   "footOffsetPx": null,
+   "drawW": 12.49,
+   "flag": null
+  },
+  "hw-village-gate": {
+   "cat": "layout",
+   "model": {
+    "w": 15.6,
+    "d": 1.05,
+    "h": 4.35
+   },
+   "stance": {
+    "w": 14.45,
+    "d": 0.85,
+    "s": 0.425,
+    "n": -0.425,
+    "contactS": 0.425
+   },
+   "footOffsetPx": null,
+   "drawW": 49.92,
+   "flag": null
+  },
+  "hw-boat": {
+   "cat": "layout",
+   "model": {
+    "w": 5.448,
+    "d": 1.674,
+    "h": 1.161
+   },
+   "stance": {
+    "w": 5.448,
+    "d": 1.674,
+    "s": 0.837,
+    "n": -0.837,
+    "contactS": 0.837
+   },
+   "footOffsetPx": null,
+   "drawW": 17.43,
+   "flag": null
+  },
+  "hw-lighthouse": {
+   "cat": "layout",
+   "model": {
+    "w": 2.853,
+    "d": 3,
+    "h": 7.2
+   },
+   "stance": {
+    "w": 2.853,
+    "d": 3,
+    "s": 1.5,
+    "n": -1.5,
+    "contactS": 1.5
+   },
+   "footOffsetPx": null,
+   "drawW": 9.13,
+   "flag": null
+  },
+  "hw-tent": {
+   "cat": "layout",
+   "model": {
+    "w": 3.144,
+    "d": 4.6,
+    "h": 2.063
+   },
+   "stance": {
+    "w": 3.144,
+    "d": 4.45,
+    "s": 2.25,
+    "n": -2.2,
+    "contactS": 2.25
+   },
+   "footOffsetPx": null,
+   "drawW": 10.06,
+   "flag": null
+  },
+  "hw-swing": {
+   "cat": "layout",
+   "model": {
+    "w": 3.4,
+    "d": 2.59,
+    "h": 2.509
+   },
+   "stance": {
+    "w": 3.12,
+    "d": 2.59,
+    "s": 1.295,
+    "n": -1.295,
+    "contactS": 1.295
+   },
+   "footOffsetPx": null,
+   "drawW": 10.88,
+   "flag": null
+  },
+  "hw-bench": {
+   "cat": "layout",
+   "model": {
+    "w": 2.5,
+    "d": 0.707,
+    "h": 1.453
+   },
+   "stance": {
+    "w": 2.26,
+    "d": 0.595,
+    "s": 0.275,
+    "n": -0.32,
+    "contactS": 0.275
+   },
+   "footOffsetPx": null,
+   "drawW": 8.0,
+   "flag": null
+  },
+  "hw-beehive": {
+   "cat": "layout",
+   "model": {
+    "w": 1.999,
+    "d": 1.979,
+    "h": 1.58
+   },
+   "stance": {
+    "w": 1.999,
+    "d": 1.979,
+    "s": 1.01,
+    "n": -0.969,
+    "contactS": 1.01
+   },
+   "footOffsetPx": null,
+   "drawW": 6.4,
+   "flag": null
+  },
+  "hw-scarecrow": {
+   "cat": "layout",
+   "model": {
+    "w": 1.7,
+    "d": 1.04,
+    "h": 2.97
+   },
+   "stance": {
+    "w": 0.175,
+    "d": 0.171,
+    "s": 0.09,
+    "n": -0.081,
+    "contactS": 0.09
+   },
+   "footOffsetPx": null,
+   "drawW": 5.44,
+   "flag": null
+  },
+  "hw-training-hoop": {
+   "cat": "layout",
+   "model": {
+    "w": 1.221,
+    "d": 1.203,
+    "h": 6.03
+   },
+   "stance": {
+    "w": 1.221,
+    "d": 1.203,
+    "s": 0.62,
+    "n": -0.583,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": 3.91,
+   "flag": null
+  },
+  "hw-signpost": {
+   "cat": "layout",
+   "model": {
+    "w": 3.42,
+    "d": 1.253,
+    "h": 2.68
+   },
+   "stance": {
+    "w": 0.24,
+    "d": 0.24,
+    "s": 0.12,
+    "n": -0.12,
+    "contactS": 0.12
+   },
+   "footOffsetPx": null,
+   "drawW": 5.0,
+   "flag": null
+  },
+  "hw-mooring-post": {
+   "cat": "layout",
+   "model": {
+    "w": 0.71,
+    "d": 0.698,
+    "h": 1.167
+   },
+   "stance": {
+    "w": 0.71,
+    "d": 0.698,
+    "s": 0.36,
+    "n": -0.338,
+    "contactS": 0.36
+   },
+   "footOffsetPx": null,
+   "drawW": 2.27,
+   "flag": null
+  },
+  "hw-campfire": {
+   "cat": "layout",
+   "model": {
+    "w": 1.823,
+    "d": 1.856,
+    "h": 1.03
+   },
+   "stance": {
+    "w": 1.823,
+    "d": 1.856,
+    "s": 0.928,
+    "n": -0.928,
+    "contactS": 0.928
+   },
+   "footOffsetPx": null,
+   "drawW": 5.83,
+   "flag": null
+  },
+  "hw-brazier": {
+   "cat": "layout",
+   "model": {
+    "w": 1.657,
+    "d": 1.7,
+    "h": 2.11
+   },
+   "stance": {
+    "w": 1.484,
+    "d": 1.56,
+    "s": 0.78,
+    "n": -0.78,
+    "contactS": 0.78
+   },
+   "footOffsetPx": null,
+   "drawW": 5.44,
+   "flag": null
+  },
+  "hw-mushroom": {
+   "cat": "stamp",
+   "model": {
+    "w": 0.86,
+    "d": 0.592,
+    "h": 0.545
+   },
+   "stance": {
+    "w": 0.69,
+    "d": 0.427,
+    "s": 0.297,
+    "n": -0.13,
+    "contactS": 0.185
+   },
+   "footOffsetPx": null,
+   "drawW": 12.0,
+   "flag": null
+  },
+  "hw-web": {
+   "cat": "stamp",
+   "model": {
+    "w": 1.678,
+    "d": 1.678,
+    "h": 0.12
+   },
+   "stance": {
+    "w": 1.678,
+    "d": 1.678,
+    "s": 0.839,
+    "n": -0.839,
+    "contactS": 0.839
+   },
+   "footOffsetPx": null,
+   "drawW": 26.0,
+   "flag": null
+  },
+  "hw-glowflower": {
+   "cat": "stamp",
+   "model": {
+    "w": 0.475,
+    "d": 0.392,
+    "h": 0.807
+   },
+   "stance": {
+    "w": 0.416,
+    "d": 0.302,
+    "s": 0.176,
+    "n": -0.126,
+    "contactS": 0.176
+   },
+   "footOffsetPx": null,
+   "drawW": 11.0,
+   "flag": null
+  },
+  "hw-gardenplot": {
+   "cat": "stamp",
+   "model": {
+    "w": 1.82,
+    "d": 1.34,
+    "h": 0.33
+   },
+   "stance": {
+    "w": 1.82,
+    "d": 1.34,
+    "s": 0.67,
+    "n": -0.67,
+    "contactS": 0.67
+   },
+   "footOffsetPx": null,
+   "drawW": 30.0,
+   "flag": null
+  },
+  "hw-flowerbed": {
+   "cat": "stamp",
+   "model": {
+    "w": 1.5,
+    "d": 1.05,
+    "h": 0.598
+   },
+   "stance": {
+    "w": 1.5,
+    "d": 1.05,
+    "s": 0.525,
+    "n": -0.525,
+    "contactS": 0.525
+   },
+   "footOffsetPx": null,
+   "drawW": 26.0,
+   "flag": null
+  },
+  "hw-reed": {
+   "cat": "stamp",
+   "model": {
+    "w": 1.408,
+    "d": 0.211,
+    "h": 1.733
+   },
+   "stance": {
+    "w": 1.364,
+    "d": 0.192,
+    "s": 0.096,
+    "n": -0.096,
+    "contactS": 0.096
+   },
+   "footOffsetPx": null,
+   "drawW": 17.0,
+   "flag": null
+  },
+  "hw-bush": {
+   "cat": "stamp",
+   "model": {
+    "w": 2.385,
+    "d": 1.526,
+    "h": 0.876
+   },
+   "stance": {
+    "w": 2.385,
+    "d": 1.526,
+    "s": 0.641,
+    "n": -0.885,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": 22.0,
+   "flag": null
+  },
+  "hw-stone": {
+   "cat": "stamp",
+   "model": {
+    "w": 1.806,
+    "d": 1.282,
+    "h": 0.843
+   },
+   "stance": {
+    "w": 1.806,
+    "d": 1.282,
+    "s": 0.641,
+    "n": -0.641,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": 14.0,
+   "flag": null
+  },
+  "hw-stone-moss": {
+   "cat": "stamp",
+   "model": {
+    "w": 1.806,
+    "d": 1.282,
+    "h": 0.892
+   },
+   "stance": {
+    "w": 1.806,
+    "d": 1.282,
+    "s": 0.641,
+    "n": -0.641,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": 14.0,
+   "flag": null
+  },
+  "hw-pumpkin": {
+   "cat": "prop",
+   "model": {
+    "w": 1.068,
+    "d": 1.068,
+    "h": 1.007
+   },
+   "stance": {
+    "w": 1.068,
+    "d": 1.068,
+    "s": 0.534,
+    "n": -0.534,
+    "contactS": 0.534
+   },
+   "footOffsetPx": null,
+   "drawW": 5.0,
+   "flag": null
+  },
+  "hw-cauldron": {
+   "cat": "prop",
+   "model": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.235
+   },
+   "stance": {
+    "w": 1.064,
+    "d": 1.08,
+    "s": 0.54,
+    "n": -0.54,
+    "contactS": 0.362
+   },
+   "footOffsetPx": null,
+   "drawW": 4.5,
+   "flag": null
+  },
+  "hw-candle": {
+   "cat": "prop",
+   "model": {
+    "w": 0.251,
+    "d": 0.2,
+    "h": 0.744
+   },
+   "stance": {
+    "w": 0.251,
+    "d": 0.2,
+    "s": 0.1,
+    "n": -0.1,
+    "contactS": 0.1
+   },
+   "footOffsetPx": null,
+   "drawW": 1.2,
+   "flag": null
+  },
+  "hw-diary": {
+   "cat": "prop",
+   "model": {
+    "w": 0.73,
+    "d": 0.92,
+    "h": 0.12
+   },
+   "stance": {
+    "w": 0.73,
+    "d": 0.92,
+    "s": 0.46,
+    "n": -0.46,
+    "contactS": 0.44
+   },
+   "footOffsetPx": null,
+   "drawW": 1.6,
+   "flag": null
+  },
+  "hw-broomstick": {
+   "cat": "prop",
+   "model": {
+    "w": 1.51,
+    "d": 0.187,
+    "h": 2.536
+   },
+   "stance": {
+    "w": 0.571,
+    "d": 0.187,
+    "s": 0.094,
+    "n": -0.094,
+    "contactS": 0.094
+   },
+   "footOffsetPx": null,
+   "drawW": 6.0,
+   "flag": null
+  },
+  "hw-snitch": {
+   "cat": "prop",
+   "model": {
+    "w": 1.543,
+    "d": 0.368,
+    "h": 0.715
+   },
+   "stance": {
+    "w": 0.368,
+    "d": 0.368,
+    "s": 0.184,
+    "n": -0.184,
+    "contactS": 0.167
+   },
+   "footOffsetPx": null,
+   "drawW": 1.6,
+   "flag": null
+  },
+  "hw-quaffle": {
+   "cat": "prop",
+   "model": {
+    "w": 0.67,
+    "d": 0.67,
+    "h": 0.62
+   },
+   "stance": {
+    "w": 0.62,
+    "d": 0.611,
+    "s": 0.305,
+    "n": -0.305,
+    "contactS": 0.305
+   },
+   "footOffsetPx": null,
+   "drawW": 1.8,
+   "flag": null
+  },
+  "hw-potion-red": {
+   "cat": "prop",
+   "model": {
+    "w": 0.54,
+    "d": 0.532,
+    "h": 0.847
+   },
+   "stance": {
+    "w": 0.54,
+    "d": 0.532,
+    "s": 0.266,
+    "n": -0.266,
+    "contactS": 0.266
+   },
+   "footOffsetPx": null,
+   "drawW": 1.2,
+   "flag": null
+  },
+  "hw-potion-green": {
+   "cat": "prop",
+   "model": {
+    "w": 0.54,
+    "d": 0.532,
+    "h": 0.847
+   },
+   "stance": {
+    "w": 0.54,
+    "d": 0.532,
+    "s": 0.266,
+    "n": -0.266,
+    "contactS": 0.266
+   },
+   "footOffsetPx": null,
+   "drawW": 1.2,
+   "flag": null
+  },
+  "hw-potion-blue": {
+   "cat": "prop",
+   "model": {
+    "w": 0.54,
+    "d": 0.532,
+    "h": 0.847
+   },
+   "stance": {
+    "w": 0.54,
+    "d": 0.532,
+    "s": 0.266,
+    "n": -0.266,
+    "contactS": 0.266
+   },
+   "footOffsetPx": null,
+   "drawW": 1.2,
+   "flag": null
+  },
+  "hw-mandrake": {
+   "cat": "prop",
+   "model": {
+    "w": 0.751,
+    "d": 0.712,
+    "h": 1.075
+   },
+   "stance": {
+    "w": 0.68,
+    "d": 0.68,
+    "s": 0.34,
+    "n": -0.34,
+    "contactS": 0.34
+   },
+   "footOffsetPx": null,
+   "drawW": 2.4,
+   "flag": null
+  },
+  "hw-wand-box": {
+   "cat": "prop",
+   "model": {
+    "w": 1.26,
+    "d": 0.39,
+    "h": 0.24
+   },
+   "stance": {
+    "w": 1.2,
+    "d": 0.39,
+    "s": 0.195,
+    "n": -0.195,
+    "contactS": 0.195
+   },
+   "footOffsetPx": null,
+   "drawW": 2.0,
+   "flag": null
+  },
+  "hw-willow-branch": {
+   "cat": "prop",
+   "model": {
+    "w": 2.743,
+    "d": 0.347,
+    "h": 1.857
+   },
+   "stance": {
+    "w": 2.743,
+    "d": 0.347,
+    "s": 0.173,
+    "n": -0.173,
+    "contactS": 0.043
+   },
+   "footOffsetPx": null,
+   "drawW": 7.0,
+   "flag": null
+  },
+  "hw-tombstone": {
+   "cat": "prop",
+   "model": {
+    "w": 1.306,
+    "d": 0.62,
+    "h": 1.54
+   },
+   "stance": {
+    "w": 1.306,
+    "d": 0.62,
+    "s": 0.31,
+    "n": -0.31,
+    "contactS": 0.31
+   },
+   "footOffsetPx": null,
+   "drawW": 3.2,
+   "flag": null
+  },
+  "hw-chest": {
+   "cat": "prop",
+   "model": {
+    "w": 0.98,
+    "d": 0.98,
+    "h": 0.77
+   },
+   "stance": {
+    "w": 0.98,
+    "d": 0.66,
+    "s": 0.33,
+    "n": -0.33,
+    "contactS": 0.33
+   },
+   "footOffsetPx": null,
+   "drawW": 5.0,
+   "flag": null
+  },
+  "fence": {
+   "cat": "layout",
+   "model": {
+    "w": 1,
+    "d": 0.075,
+    "h": 0.38
+   },
+   "stance": {
+    "w": 1,
+    "d": 0.075,
+    "s": 0.038,
+    "n": -0.038,
+    "contactS": 0.038
+   },
+   "footOffsetPx": null,
+   "drawW": 3.2,
+   "flag": null
+  },
+  "lamp": {
+   "cat": "layout",
+   "model": {
+    "w": 0.431,
+    "d": 0.447,
+    "h": 3.1
+   },
+   "stance": {
+    "w": 0.431,
+    "d": 0.447,
+    "s": 0.223,
+    "n": -0.223,
+    "contactS": 0.223
+   },
+   "footOffsetPx": null,
+   "drawW": 12.6,
+   "flag": null
+  },
+  "char3d-down-stand": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-down-w0": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-down-w1": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-down-w2": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-down-w3": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-up-stand": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-up-w0": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-up-w1": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-up-w2": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-up-w3": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-left-stand": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-left-w0": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-left-w1": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-left-w2": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-left-w3": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-right-stand": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-right-w0": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-right-w1": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-right-w2": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "char3d-right-w3": {
+   "cat": "frame",
+   "model": {
+    "w": 0.681,
+    "d": 0.346,
+    "h": 0.674
+   },
+   "stance": {
+    "w": 0.681,
+    "d": 0.272,
+    "s": 0.108,
+    "n": -0.164,
+    "contactS": 0.108
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.62,
+    "n": -0.634,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.312,
+    "h": 3.308
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.693,
+    "n": -0.62,
+    "contactS": 0.693
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.634,
+    "n": -0.62,
+    "contactS": 0.634
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.312,
+    "h": 3.288
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.62,
+    "n": -0.693,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.705,
+    "n": -0.619,
+    "contactS": 0.705
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.285,
+    "h": 3.297
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.62,
+    "n": -0.665,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.619,
+    "n": -0.705,
+    "contactS": 0.619
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.285,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.665,
+    "n": -0.62,
+    "contactS": 0.665
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.377,
+    "h": 3.296
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.605,
+    "n": -0.676,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.413,
+    "h": 3.279
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.676,
+    "n": -0.605,
+    "contactS": 0.676
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.384,
+    "h": 3.307
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.704,
+    "n": -0.605,
+    "contactS": 0.704
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-gryffindor-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.434,
+    "h": 3.284
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.605,
+    "n": -0.704,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.62,
+    "n": -0.634,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.312,
+    "h": 3.308
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.693,
+    "n": -0.62,
+    "contactS": 0.693
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.634,
+    "n": -0.62,
+    "contactS": 0.634
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.312,
+    "h": 3.288
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.62,
+    "n": -0.693,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.705,
+    "n": -0.619,
+    "contactS": 0.705
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.285,
+    "h": 3.297
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.62,
+    "n": -0.665,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.619,
+    "n": -0.705,
+    "contactS": 0.619
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.285,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.665,
+    "n": -0.62,
+    "contactS": 0.665
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.377,
+    "h": 3.296
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.605,
+    "n": -0.676,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.413,
+    "h": 3.279
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.676,
+    "n": -0.605,
+    "contactS": 0.676
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.384,
+    "h": 3.307
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.704,
+    "n": -0.605,
+    "contactS": 0.704
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-slytherin-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.434,
+    "h": 3.284
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.605,
+    "n": -0.704,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.62,
+    "n": -0.634,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.312,
+    "h": 3.308
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.693,
+    "n": -0.62,
+    "contactS": 0.693
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.634,
+    "n": -0.62,
+    "contactS": 0.634
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.312,
+    "h": 3.288
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.62,
+    "n": -0.693,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.705,
+    "n": -0.619,
+    "contactS": 0.705
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.285,
+    "h": 3.297
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.62,
+    "n": -0.665,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.619,
+    "n": -0.705,
+    "contactS": 0.619
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.285,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.665,
+    "n": -0.62,
+    "contactS": 0.665
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.377,
+    "h": 3.296
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.605,
+    "n": -0.676,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.413,
+    "h": 3.279
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.676,
+    "n": -0.605,
+    "contactS": 0.676
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.384,
+    "h": 3.307
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.704,
+    "n": -0.605,
+    "contactS": 0.704
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-ravenclaw-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.434,
+    "h": 3.284
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.605,
+    "n": -0.704,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.62,
+    "n": -0.634,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.312,
+    "h": 3.308
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.693,
+    "n": -0.62,
+    "contactS": 0.693
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.247
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.634,
+    "n": -0.62,
+    "contactS": 0.634
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.312,
+    "h": 3.288
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.62,
+    "n": -0.693,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.705,
+    "n": -0.619,
+    "contactS": 0.705
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.285,
+    "h": 3.297
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.62,
+    "n": -0.665,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.276
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.619,
+    "n": -0.705,
+    "contactS": 0.619
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.285,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.665,
+    "n": -0.62,
+    "contactS": 0.665
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.377,
+    "h": 3.296
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.605,
+    "n": -0.676,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.413,
+    "h": 3.279
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.676,
+    "n": -0.605,
+    "contactS": 0.676
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.24
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.277
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.384,
+    "h": 3.307
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.704,
+    "n": -0.605,
+    "contactS": 0.704
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.268
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-wizard-hufflepuff-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.434,
+    "h": 3.284
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.605,
+    "n": -0.704,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.44
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.447
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.62,
+    "n": -0.634,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.312,
+    "h": 3.508
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.693,
+    "n": -0.62,
+    "contactS": 0.693
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.254,
+    "h": 3.447
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.254,
+    "s": 0.634,
+    "n": -0.62,
+    "contactS": 0.634
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.312,
+    "h": 3.488
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.312,
+    "s": 0.62,
+    "n": -0.693,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.24,
+    "h": 3.44
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.24,
+    "s": 0.62,
+    "n": -0.62,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.476
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.705,
+    "n": -0.619,
+    "contactS": 0.705
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.38,
+    "d": 1.285,
+    "h": 3.496
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.62,
+    "n": -0.665,
+    "contactS": 0.62
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.359,
+    "d": 1.324,
+    "h": 3.476
+   },
+   "stance": {
+    "w": 1.209,
+    "d": 1.324,
+    "s": 0.619,
+    "n": -0.705,
+    "contactS": 0.619
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.424,
+    "d": 1.285,
+    "h": 3.477
+   },
+   "stance": {
+    "w": 1.295,
+    "d": 1.285,
+    "s": 0.665,
+    "n": -0.62,
+    "contactS": 0.665
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.44
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.468
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.377,
+    "h": 3.496
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.605,
+    "n": -0.676,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.477
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.413,
+    "h": 3.479
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.281,
+    "s": 0.676,
+    "n": -0.605,
+    "contactS": 0.676
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.24,
+    "d": 1.359,
+    "h": 3.44
+   },
+   "stance": {
+    "w": 1.24,
+    "d": 1.209,
+    "s": 0.604,
+    "n": -0.604,
+    "contactS": 0.604
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.369,
+    "h": 3.477
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.641,
+    "n": -0.605,
+    "contactS": 0.641
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.384,
+    "h": 3.506
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.704,
+    "n": -0.605,
+    "contactS": 0.704
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.289,
+    "d": 1.387,
+    "h": 3.468
+   },
+   "stance": {
+    "w": 1.289,
+    "d": 1.246,
+    "s": 0.605,
+    "n": -0.641,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-professor-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.298,
+    "d": 1.434,
+    "h": 3.483
+   },
+   "stance": {
+    "w": 1.298,
+    "d": 1.309,
+    "s": 0.605,
+    "n": -0.704,
+    "contactS": 0.605
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.175,
+    "d": 1.984,
+    "h": 3.633
+   },
+   "stance": {
+    "w": 1.934,
+    "d": 1.984,
+    "s": 0.992,
+    "n": -0.992,
+    "contactS": 0.992
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.175,
+    "d": 2.006,
+    "h": 3.651
+   },
+   "stance": {
+    "w": 1.934,
+    "d": 2.006,
+    "s": 0.992,
+    "n": -1.014,
+    "contactS": 0.992
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.209,
+    "d": 2.1,
+    "h": 3.753
+   },
+   "stance": {
+    "w": 2.072,
+    "d": 2.1,
+    "s": 1.109,
+    "n": -0.991,
+    "contactS": 1.109
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.175,
+    "d": 2.006,
+    "h": 3.648
+   },
+   "stance": {
+    "w": 1.934,
+    "d": 2.006,
+    "s": 1.014,
+    "n": -0.992,
+    "contactS": 1.014
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.278,
+    "d": 2.1,
+    "h": 3.752
+   },
+   "stance": {
+    "w": 2.072,
+    "d": 2.1,
+    "s": 0.991,
+    "n": -1.109,
+    "contactS": 0.991
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.175,
+    "d": 1.984,
+    "h": 3.633
+   },
+   "stance": {
+    "w": 1.934,
+    "d": 1.984,
+    "s": 0.992,
+    "n": -0.992,
+    "contactS": 0.992
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.175,
+    "d": 2.119,
+    "h": 3.695
+   },
+   "stance": {
+    "w": 1.934,
+    "d": 2.119,
+    "s": 1.128,
+    "n": -0.99,
+    "contactS": 1.128
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.209,
+    "d": 2.057,
+    "h": 3.734
+   },
+   "stance": {
+    "w": 2.072,
+    "d": 2.057,
+    "s": 0.992,
+    "n": -1.064,
+    "contactS": 0.992
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.175,
+    "d": 2.119,
+    "h": 3.698
+   },
+   "stance": {
+    "w": 1.934,
+    "d": 2.119,
+    "s": 0.99,
+    "n": -1.128,
+    "contactS": 0.99
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.278,
+    "d": 2.057,
+    "h": 3.735
+   },
+   "stance": {
+    "w": 2.072,
+    "d": 2.057,
+    "s": 1.064,
+    "n": -0.992,
+    "contactS": 1.064
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.984,
+    "d": 2.175,
+    "h": 3.633
+   },
+   "stance": {
+    "w": 1.984,
+    "d": 1.934,
+    "s": 0.967,
+    "n": -0.967,
+    "contactS": 0.967
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.063,
+    "d": 2.219,
+    "h": 3.696
+   },
+   "stance": {
+    "w": 2.063,
+    "d": 1.993,
+    "s": 1.025,
+    "n": -0.968,
+    "contactS": 1.025
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.077,
+    "d": 2.204,
+    "h": 3.729
+   },
+   "stance": {
+    "w": 2.077,
+    "d": 2.05,
+    "s": 0.968,
+    "n": -1.082,
+    "contactS": 0.968
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.063,
+    "d": 2.19,
+    "h": 3.696
+   },
+   "stance": {
+    "w": 2.063,
+    "d": 1.993,
+    "s": 0.968,
+    "n": -1.025,
+    "contactS": 0.968
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.077,
+    "d": 2.261,
+    "h": 3.729
+   },
+   "stance": {
+    "w": 2.077,
+    "d": 2.05,
+    "s": 1.082,
+    "n": -0.968,
+    "contactS": 1.082
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.984,
+    "d": 2.175,
+    "h": 3.633
+   },
+   "stance": {
+    "w": 1.984,
+    "d": 1.934,
+    "s": 0.967,
+    "n": -0.967,
+    "contactS": 0.967
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.063,
+    "d": 2.19,
+    "h": 3.696
+   },
+   "stance": {
+    "w": 2.063,
+    "d": 1.993,
+    "s": 1.025,
+    "n": -0.968,
+    "contactS": 1.025
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.077,
+    "d": 2.214,
+    "h": 3.75
+   },
+   "stance": {
+    "w": 2.077,
+    "d": 2.094,
+    "s": 1.126,
+    "n": -0.968,
+    "contactS": 1.126
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.063,
+    "d": 2.219,
+    "h": 3.696
+   },
+   "stance": {
+    "w": 2.063,
+    "d": 1.993,
+    "s": 0.968,
+    "n": -1.025,
+    "contactS": 0.968
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-hagrid-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 2.077,
+    "d": 2.294,
+    "h": 3.75
+   },
+   "stance": {
+    "w": 2.077,
+    "d": 2.094,
+    "s": 0.968,
+    "n": -1.126,
+    "contactS": 0.968
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.326,
+    "d": 1.561,
+    "h": 2.69
+   },
+   "stance": {
+    "w": 1.326,
+    "d": 1.36,
+    "s": 0.68,
+    "n": -0.68,
+    "contactS": 0.563
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.326,
+    "d": 1.614,
+    "h": 2.721
+   },
+   "stance": {
+    "w": 1.326,
+    "d": 1.436,
+    "s": 0.764,
+    "n": -0.672,
+    "contactS": 0.573
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.502,
+    "d": 1.657,
+    "h": 2.78
+   },
+   "stance": {
+    "w": 1.502,
+    "d": 1.469,
+    "s": 0.795,
+    "n": -0.674,
+    "contactS": 0.575
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.326,
+    "d": 1.582,
+    "h": 2.721
+   },
+   "stance": {
+    "w": 1.326,
+    "d": 1.436,
+    "s": 0.672,
+    "n": -0.764,
+    "contactS": 0.569
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.502,
+    "d": 1.603,
+    "h": 2.78
+   },
+   "stance": {
+    "w": 1.502,
+    "d": 1.469,
+    "s": 0.674,
+    "n": -0.795,
+    "contactS": 0.575
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.326,
+    "d": 1.561,
+    "h": 2.69
+   },
+   "stance": {
+    "w": 1.326,
+    "d": 1.36,
+    "s": 0.68,
+    "n": -0.68,
+    "contactS": 0.563
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.326,
+    "d": 1.562,
+    "h": 2.692
+   },
+   "stance": {
+    "w": 1.326,
+    "d": 1.364,
+    "s": 0.692,
+    "n": -0.673,
+    "contactS": 0.571
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.502,
+    "d": 1.598,
+    "h": 2.767
+   },
+   "stance": {
+    "w": 1.502,
+    "d": 1.387,
+    "s": 0.687,
+    "n": -0.7,
+    "contactS": 0.575
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.326,
+    "d": 1.564,
+    "h": 2.692
+   },
+   "stance": {
+    "w": 1.326,
+    "d": 1.364,
+    "s": 0.673,
+    "n": -0.692,
+    "contactS": 0.556
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.502,
+    "d": 1.583,
+    "h": 2.767
+   },
+   "stance": {
+    "w": 1.502,
+    "d": 1.387,
+    "s": 0.7,
+    "n": -0.687,
+    "contactS": 0.557
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.561,
+    "d": 1.326,
+    "h": 2.69
+   },
+   "stance": {
+    "w": 1.36,
+    "d": 1.326,
+    "s": 0.663,
+    "n": -0.663,
+    "contactS": 0.613
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.586,
+    "d": 1.367,
+    "h": 2.718
+   },
+   "stance": {
+    "w": 1.396,
+    "d": 1.367,
+    "s": 0.711,
+    "n": -0.656,
+    "contactS": 0.622
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.628,
+    "d": 1.464,
+    "h": 2.76
+   },
+   "stance": {
+    "w": 1.428,
+    "d": 1.464,
+    "s": 0.654,
+    "n": -0.811,
+    "contactS": 0.628
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.571,
+    "d": 1.367,
+    "h": 2.718
+   },
+   "stance": {
+    "w": 1.396,
+    "d": 1.367,
+    "s": 0.656,
+    "n": -0.711,
+    "contactS": 0.612
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.594,
+    "d": 1.464,
+    "h": 2.76
+   },
+   "stance": {
+    "w": 1.428,
+    "d": 1.464,
+    "s": 0.811,
+    "n": -0.654,
+    "contactS": 0.625
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.561,
+    "d": 1.326,
+    "h": 2.69
+   },
+   "stance": {
+    "w": 1.36,
+    "d": 1.326,
+    "s": 0.663,
+    "n": -0.663,
+    "contactS": 0.613
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.586,
+    "d": 1.367,
+    "h": 2.718
+   },
+   "stance": {
+    "w": 1.396,
+    "d": 1.367,
+    "s": 0.711,
+    "n": -0.656,
+    "contactS": 0.622
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.628,
+    "d": 1.54,
+    "h": 2.786
+   },
+   "stance": {
+    "w": 1.428,
+    "d": 1.54,
+    "s": 0.902,
+    "n": -0.638,
+    "contactS": 0.64
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.571,
+    "d": 1.367,
+    "h": 2.718
+   },
+   "stance": {
+    "w": 1.396,
+    "d": 1.367,
+    "s": 0.656,
+    "n": -0.711,
+    "contactS": 0.612
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-dementor-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.594,
+    "d": 1.54,
+    "h": 2.786
+   },
+   "stance": {
+    "w": 1.428,
+    "d": 1.54,
+    "s": 0.638,
+    "n": -0.902,
+    "contactS": 0.626
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.254,
+    "d": 1.28,
+    "h": 2.34
+   },
+   "stance": {
+    "w": 1.248,
+    "d": 1.28,
+    "s": 0.64,
+    "n": -0.64,
+    "contactS": 0.64
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.254,
+    "d": 1.293,
+    "h": 2.35
+   },
+   "stance": {
+    "w": 1.248,
+    "d": 1.293,
+    "s": 0.64,
+    "n": -0.653,
+    "contactS": 0.64
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.331,
+    "d": 1.35,
+    "h": 2.415
+   },
+   "stance": {
+    "w": 1.331,
+    "d": 1.35,
+    "s": 0.71,
+    "n": -0.64,
+    "contactS": 0.71
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.254,
+    "d": 1.293,
+    "h": 2.35
+   },
+   "stance": {
+    "w": 1.248,
+    "d": 1.293,
+    "s": 0.653,
+    "n": -0.64,
+    "contactS": 0.653
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.331,
+    "d": 1.35,
+    "h": 2.415
+   },
+   "stance": {
+    "w": 1.331,
+    "d": 1.35,
+    "s": 0.64,
+    "n": -0.71,
+    "contactS": 0.64
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.254,
+    "d": 1.28,
+    "h": 2.34
+   },
+   "stance": {
+    "w": 1.248,
+    "d": 1.28,
+    "s": 0.64,
+    "n": -0.64,
+    "contactS": 0.64
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.254,
+    "d": 1.361,
+    "h": 2.38
+   },
+   "stance": {
+    "w": 1.248,
+    "d": 1.361,
+    "s": 0.722,
+    "n": -0.639,
+    "contactS": 0.722
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.331,
+    "d": 1.324,
+    "h": 2.404
+   },
+   "stance": {
+    "w": 1.331,
+    "d": 1.324,
+    "s": 0.64,
+    "n": -0.684,
+    "contactS": 0.64
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.254,
+    "d": 1.361,
+    "h": 2.38
+   },
+   "stance": {
+    "w": 1.248,
+    "d": 1.361,
+    "s": 0.639,
+    "n": -0.722,
+    "contactS": 0.639
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.331,
+    "d": 1.324,
+    "h": 2.404
+   },
+   "stance": {
+    "w": 1.331,
+    "d": 1.324,
+    "s": 0.684,
+    "n": -0.64,
+    "contactS": 0.684
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.28,
+    "d": 1.254,
+    "h": 2.34
+   },
+   "stance": {
+    "w": 1.28,
+    "d": 1.248,
+    "s": 0.624,
+    "n": -0.624,
+    "contactS": 0.624
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.328,
+    "d": 1.283,
+    "h": 2.38
+   },
+   "stance": {
+    "w": 1.328,
+    "d": 1.283,
+    "s": 0.659,
+    "n": -0.624,
+    "contactS": 0.659
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.336,
+    "d": 1.318,
+    "h": 2.401
+   },
+   "stance": {
+    "w": 1.336,
+    "d": 1.318,
+    "s": 0.624,
+    "n": -0.693,
+    "contactS": 0.624
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.328,
+    "d": 1.283,
+    "h": 2.38
+   },
+   "stance": {
+    "w": 1.328,
+    "d": 1.283,
+    "s": 0.624,
+    "n": -0.659,
+    "contactS": 0.624
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.336,
+    "d": 1.318,
+    "h": 2.401
+   },
+   "stance": {
+    "w": 1.336,
+    "d": 1.318,
+    "s": 0.693,
+    "n": -0.624,
+    "contactS": 0.693
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.28,
+    "d": 1.254,
+    "h": 2.34
+   },
+   "stance": {
+    "w": 1.28,
+    "d": 1.248,
+    "s": 0.624,
+    "n": -0.624,
+    "contactS": 0.624
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.328,
+    "d": 1.283,
+    "h": 2.38
+   },
+   "stance": {
+    "w": 1.328,
+    "d": 1.283,
+    "s": 0.659,
+    "n": -0.624,
+    "contactS": 0.659
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.336,
+    "d": 1.344,
+    "h": 2.414
+   },
+   "stance": {
+    "w": 1.336,
+    "d": 1.344,
+    "s": 0.72,
+    "n": -0.624,
+    "contactS": 0.72
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.328,
+    "d": 1.283,
+    "h": 2.38
+   },
+   "stance": {
+    "w": 1.328,
+    "d": 1.283,
+    "s": 0.624,
+    "n": -0.659,
+    "contactS": 0.624
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-merchant-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.336,
+    "d": 1.344,
+    "h": 2.414
+   },
+   "stance": {
+    "w": 1.336,
+    "d": 1.344,
+    "s": 0.624,
+    "n": -0.72,
+    "contactS": 0.624
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-down": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.728,
+    "d": 0.64,
+    "h": 1.376
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.64,
+    "s": 0.32,
+    "n": -0.32,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-down-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.728,
+    "d": 0.665,
+    "h": 1.385
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.647,
+    "s": 0.32,
+    "n": -0.327,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-down-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.725,
+    "d": 0.676,
+    "h": 1.425
+   },
+   "stance": {
+    "w": 0.683,
+    "d": 0.676,
+    "s": 0.357,
+    "n": -0.32,
+    "contactS": 0.357
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-down-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.728,
+    "d": 0.647,
+    "h": 1.385
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.647,
+    "s": 0.327,
+    "n": -0.32,
+    "contactS": 0.327
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-down-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.725,
+    "d": 0.676,
+    "h": 1.425
+   },
+   "stance": {
+    "w": 0.683,
+    "d": 0.676,
+    "s": 0.32,
+    "n": -0.357,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-up": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.728,
+    "d": 0.64,
+    "h": 1.376
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.64,
+    "s": 0.32,
+    "n": -0.32,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-up-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.728,
+    "d": 0.682,
+    "h": 1.4
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.682,
+    "s": 0.363,
+    "n": -0.32,
+    "contactS": 0.363
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-up-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.725,
+    "d": 0.663,
+    "h": 1.419
+   },
+   "stance": {
+    "w": 0.683,
+    "d": 0.663,
+    "s": 0.32,
+    "n": -0.343,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-up-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.728,
+    "d": 0.682,
+    "h": 1.4
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.682,
+    "s": 0.32,
+    "n": -0.363,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-up-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 1.725,
+    "d": 0.664,
+    "h": 1.419
+   },
+   "stance": {
+    "w": 0.683,
+    "d": 0.663,
+    "s": 0.343,
+    "n": -0.32,
+    "contactS": 0.343
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-left": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.64,
+    "d": 1.728,
+    "h": 1.376
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.64,
+    "s": 0.32,
+    "n": -0.32,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-left-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.665,
+    "d": 1.728,
+    "h": 1.4
+   },
+   "stance": {
+    "w": 0.665,
+    "d": 0.658,
+    "s": 0.338,
+    "n": -0.32,
+    "contactS": 0.338
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-left-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.669,
+    "d": 1.726,
+    "h": 1.415
+   },
+   "stance": {
+    "w": 0.669,
+    "d": 0.676,
+    "s": 0.32,
+    "n": -0.356,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-left-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.665,
+    "d": 1.728,
+    "h": 1.4
+   },
+   "stance": {
+    "w": 0.665,
+    "d": 0.658,
+    "s": 0.32,
+    "n": -0.338,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-left-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.669,
+    "d": 1.726,
+    "h": 1.415
+   },
+   "stance": {
+    "w": 0.669,
+    "d": 0.676,
+    "s": 0.356,
+    "n": -0.32,
+    "contactS": 0.356
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-right": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.64,
+    "d": 1.728,
+    "h": 1.376
+   },
+   "stance": {
+    "w": 0.64,
+    "d": 0.64,
+    "s": 0.32,
+    "n": -0.32,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-right-w0": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.665,
+    "d": 1.728,
+    "h": 1.4
+   },
+   "stance": {
+    "w": 0.665,
+    "d": 0.658,
+    "s": 0.338,
+    "n": -0.32,
+    "contactS": 0.338
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-right-w1": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.669,
+    "d": 1.725,
+    "h": 1.425
+   },
+   "stance": {
+    "w": 0.669,
+    "d": 0.69,
+    "s": 0.37,
+    "n": -0.32,
+    "contactS": 0.37
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-right-w2": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.665,
+    "d": 1.728,
+    "h": 1.4
+   },
+   "stance": {
+    "w": 0.665,
+    "d": 0.658,
+    "s": 0.32,
+    "n": -0.338,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-elf-right-w3": {
+   "cat": "figure-frame",
+   "model": {
+    "w": 0.669,
+    "d": 1.725,
+    "h": 1.425
+   },
+   "stance": {
+    "w": 0.669,
+    "d": 0.69,
+    "s": 0.32,
+    "n": -0.37,
+    "contactS": 0.32
+   },
+   "footOffsetPx": null,
+   "drawW": null,
+   "flag": null
+  },
+  "hw-scoreboard": {
+   "cat": "layout",
+   "model": {
+    "w": 5.85,
+    "d": 0.27,
+    "h": 3.92
+   },
+   "stance": {
+    "w": 4.62,
+    "d": 0.22,
+    "s": 0.11,
+    "n": -0.11,
+    "contactS": 0.11
+   },
+   "footOffsetPx": null,
+   "drawW": 18.72,
+   "flag": null
+  }
+ },
+ "creatures": {
+  "spider": {
+   "sprite": "hw-spider",
+   "wM": 9.5
+  },
+  "aragog": {
+   "sprite": "hw-spider",
+   "wM": 15.5
+  },
+  "basilisk": {
+   "sprite": "hw-basilisk",
+   "wM": 10.68
+  },
+  "hippogriff": {
+   "sprite": "hw-hippogriff",
+   "wM": 19.89
+  },
+  "snare": {
+   "sprite": "hw-devils-snare",
+   "wM": 10.0
+  },
+  "dementor": {
+   "sprite": "hw-dementor-down",
+   "wM": 8.1
+  },
+  "owl": {
+   "sprite": "hw-owl-brown",
+   "wM": 5.2
+  },
+  "cat": {
+   "sprite": "hw-cat",
+   "wM": 2.76
+  },
+  "pixie": {
+   "sprite": "hw-pixie",
+   "wM": 4.0
+  },
+  "troll": {
+   "sprite": "hw-troll",
+   "wM": 26.36
+  },
+  "inferius": {
+   "sprite": "hw-inferius",
+   "wM": 7.99
+  },
+  "unicorn": {
+   "sprite": "hw-unicorn",
+   "wM": 7.61
+  },
+  "phoenix": {
+   "sprite": "hw-phoenix",
+   "wM": 6.5
+  },
+  "bowtruckle": {
+   "sprite": "hw-bowtruckle",
+   "wM": 2.24
+  },
+  "hinkypunk": {
+   "sprite": "hw-hinkypunk",
+   "wM": 3.69
+  },
+  "redcap": {
+   "sprite": "hw-redcap",
+   "wM": 4.43
+  },
+  "niffler": {
+   "sprite": "hw-niffler",
+   "wM": 2.04
+  },
+  "grindylow": {
+   "sprite": "hw-grindylow",
+   "wM": 6.04
+  },
+  "erkling": {
+   "sprite": "hw-erkling",
+   "wM": 6.37
+  },
+  "kelpie": {
+   "sprite": "hw-kelpie",
+   "wM": 7.82
+  },
+  "thestral": {
+   "sprite": "hw-thestral",
+   "wM": 13.9
+  },
+  "occamy": {
+   "sprite": "hw-occamy",
+   "wM": 10.85
+  },
+  "boggart": {
+   "sprite": "hw-boggart",
+   "wM": 9.38
+  },
+  "runespoor": {
+   "sprite": "hw-runespoor",
+   "wM": 6.0
+  },
+  "skrewt": {
+   "sprite": "hw-skrewt",
+   "wM": 5.0
+  },
+  "thunderbird": {
+   "sprite": "hw-thunderbird",
+   "wM": 19.0
+  },
+  "werewolf": {
+   "sprite": "hw-werewolf",
+   "wM": 7.67
+  },
+  "lethifold": {
+   "sprite": "hw-lethifold",
+   "wM": 7.5
+  },
+  "manticore": {
+   "sprite": "hw-manticore",
+   "wM": 8.4
+  },
+  "chimera": {
+   "sprite": "hw-chimera",
+   "wM": 8.77
+  },
+  "nundu": {
+   "sprite": "hw-nundu",
+   "wM": 12.72
+  },
+  "dragon": {
+   "sprite": "hw-dragon",
+   "wM": 25.58
+  },
+  "serpent": {
+   "sprite": "hw-serpent",
+   "wM": 5.07
+  },
+  "birds": {
+   "sprite": "hw-birds",
+   "wM": 7.0
+  }
+ },
+ "figures": {
+  "hw-wizard-gryffindor": {
+   "w": 7.11,
+   "dh": 10.67,
+   "variant": "student"
+  },
+  "hw-wizard-slytherin": {
+   "w": 7.11,
+   "dh": 10.67,
+   "variant": "student"
+  },
+  "hw-wizard-ravenclaw": {
+   "w": 7.11,
+   "dh": 10.67,
+   "variant": "student"
+  },
+  "hw-wizard-hufflepuff": {
+   "w": 7.11,
+   "dh": 10.67,
+   "variant": "student"
+  },
+  "hw-professor": {
+   "w": 7.03,
+   "dh": 11.05,
+   "variant": "professor"
+  },
+  "hw-hagrid": {
+   "w": 8.92,
+   "dh": 11.89,
+   "variant": "hagrid"
+  },
+  "hw-dementor": {
+   "w": 8.1,
+   "dh": 10.8,
+   "variant": null
+  },
+  "hw-merchant": {
+   "w": 7.36,
+   "dh": 9.9,
+   "variant": "merchant"
+  },
+  "hw-elf": {
+   "w": 7.31,
+   "dh": 4.79,
+   "variant": "elf"
+  }
+ },
+ "layoutKinds": {
+  "bush": {
+   "sprite": "hw-bush",
+   "drawW": 22.0,
+   "foot": [
+    24.0,
+    15.5
+   ],
+   "footMode": "stance"
+  },
+  "stone": {
+   "sprite": "hw-stone",
+   "drawW": 14.0,
+   "foot": [
+    15.5,
+    11.0
+   ],
+   "footMode": "stance",
+   "variants": {
+    "moss": "hw-stone-moss"
+   }
+  },
+  "cottage": {
+   "sprite": "houseWood",
+   "drawW": 13.03,
+   "foot": [
+    11.0,
+    7.5
+   ],
+   "footMode": "stance"
+  },
+  "stonehouse": {
+   "sprite": "houseStone",
+   "drawW": 13.03,
+   "foot": [
+    11.0,
+    7.5
+   ],
+   "footMode": "stance"
+  },
+  "lamp": {
+   "sprite": "lamp",
+   "drawW": 12.6,
+   "foot": [
+    6,
+    6
+   ],
+   "footMode": "lot"
+  },
+  "brazier": {
+   "sprite": "hw-brazier",
+   "drawW": 5.44,
+   "foot": [
+    5.5,
+    5.5
+   ],
+   "footMode": "stance"
+  },
+  "well": {
+   "sprite": "hw-well",
+   "drawW": 7.36,
+   "foot": [
+    8.0,
+    8.0
+   ],
+   "footMode": "stance"
+  },
+  "marketstall": {
+   "sprite": "hw-market-stall",
+   "drawW": 12.49,
+   "foot": [
+    12.0,
+    6.0
+   ],
+   "footMode": "stance"
+  },
+  "villagegate": {
+   "sprite": "hw-village-gate",
+   "drawW": 49.92,
+   "foot": [
+    52,
+    12
+   ],
+   "footMode": "lot"
+  },
+  "dock": {
+   "sprite": "hw-lake-dock",
+   "drawW": 36.0,
+   "foot": [
+    16,
+    64
+   ],
+   "footMode": "lot"
+  },
+  "boat": {
+   "sprite": "hw-boat",
+   "drawW": 17.43,
+   "foot": [
+    19,
+    12
+   ],
+   "footMode": "lot"
+  },
+  "lighthouse": {
+   "sprite": "hw-lighthouse",
+   "drawW": 9.13,
+   "foot": [
+    10.0,
+    10.5
+   ],
+   "footMode": "stance"
+  },
+  "mooringpost": {
+   "sprite": "hw-mooring-post",
+   "drawW": 2.27,
+   "foot": [
+    5,
+    5
+   ],
+   "footMode": "lot"
+  },
+  "web": {
+   "sprite": "hw-web",
+   "drawW": 26.0,
+   "foot": [
+    28.5,
+    28.5
+   ],
+   "footMode": "stance"
+  },
+  "glowflower": {
+   "sprite": "hw-glowflower",
+   "drawW": 11.0,
+   "foot": [
+    10.5,
+    7.5
+   ],
+   "footMode": "stance"
+  },
+  "tent": {
+   "sprite": "hw-tent",
+   "drawW": 10.06,
+   "foot": [
+    11.0,
+    15.5
+   ],
+   "footMode": "stance"
+  },
+  "campfire": {
+   "sprite": "hw-campfire",
+   "drawW": 5.83,
+   "foot": [
+    6.5,
+    6.5
+   ],
+   "footMode": "stance"
+  },
+  "greenhouse": {
+   "sprite": "hw-greenhouse",
+   "drawW": 12.16,
+   "foot": [
+    13.5,
+    10.0
+   ],
+   "footMode": "stance"
+  },
+  "gardenplot": {
+   "sprite": "hw-gardenplot",
+   "drawW": 30.0,
+   "foot": [
+    33.0,
+    24.5
+   ],
+   "footMode": "stance"
+  },
+  "owlery": {
+   "sprite": "hw-owlery",
+   "drawW": 18.41,
+   "foot": [
+    48,
+    24
+   ],
+   "footMode": "lot"
+  },
+  "scoreboard": {
+   "sprite": "hw-scoreboard",
+   "drawW": 18.72,
+   "foot": [
+    40,
+    12
+   ],
+   "footMode": "lot"
+  },
+  "traininghoop": {
+   "sprite": "hw-training-hoop",
+   "drawW": 3.91,
+   "foot": [
+    10,
+    10
+   ],
+   "footMode": "lot"
+  },
+  "shop": {
+   "sprite": "houseStone",
+   "drawW": 76.0,
+   "foot": [
+    76,
+    68
+   ],
+   "footMode": "lot"
+  },
+  "pub": {
+   "sprite": "houseTavern",
+   "drawW": 84.0,
+   "foot": [
+    114,
+    88
+   ],
+   "footMode": "lot"
+  },
+  "station": {
+   "sprite": "hw-station",
+   "drawW": 49.6,
+   "foot": [
+    54.5,
+    27.0
+   ],
+   "footMode": "stance"
+  },
+  "library": {
+   "sprite": "hw-library",
+   "drawW": 37.12,
+   "foot": [
+    41.0,
+    27.0
+   ],
+   "footMode": "stance"
+  },
+  "dormtower": {
+   "sprite": "hw-dorm-tower",
+   "drawW": 19.22,
+   "foot": [
+    18.0,
+    18.5
+   ],
+   "footMode": "stance"
+  },
+  "flowerbed": {
+   "sprite": "hw-flowerbed",
+   "drawW": 26.0,
+   "foot": [
+    28.5,
+    20.0
+   ],
+   "footMode": "stance"
+  },
+  "bench": {
+   "sprite": "hw-bench",
+   "drawW": 8.0,
+   "foot": [
+    12,
+    6
+   ],
+   "footMode": "lot"
+  },
+  "scarecrow": {
+   "sprite": "hw-scarecrow",
+   "drawW": 5.44,
+   "foot": [
+    10,
+    10
+   ],
+   "footMode": "lot"
+  },
+  "beehive": {
+   "sprite": "hw-beehive",
+   "drawW": 6.4,
+   "foot": [
+    14,
+    16
+   ],
+   "footMode": "lot"
+  },
+  "swing": {
+   "sprite": "hw-swing",
+   "drawW": 10.88,
+   "foot": [
+    13,
+    11
+   ],
+   "footMode": "lot"
+  },
+  "signpost": {
+   "sprite": "hw-signpost",
+   "drawW": 5.0,
+   "foot": [
+    7,
+    7
+   ],
+   "footMode": "lot"
+  },
+  "reed": {
+   "sprite": "hw-reed",
+   "drawW": 17.0,
+   "foot": [
+    12,
+    10
+   ],
+   "footMode": "lot"
+  },
+  "mushroom": {
+   "sprite": "hw-mushroom",
+   "drawW": 12.0,
+   "foot": [
+    10,
+    10
+   ],
+   "footMode": "lot"
+  }
+ }
+}

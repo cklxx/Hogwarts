@@ -7,7 +7,46 @@ import { SnapDecoder } from '../../src/shared/snapwire';
 import { createRenderer2D, type Snap } from './renderer';
 import { mountHUD, updateHUD, showItemInfo } from './hud.js';
 import { getLayout } from './layout.js';
-import { ITEM_INFO } from './components.js';
+
+// ------------------------------------------------------------------ 物品图鉴
+// 图鉴 UI（点击/E 弹窗）的数据源。只收录 A 组重画的物品。
+export const ITEM_INFO: Record<string, {name: string; desc: string; grade: '普通' | '稀有' | '传说'}> = {
+  bush: {name: '灌木', desc: '低矮的叶丛，通常三五成簇长在草地上。', grade: '普通'},
+  stone: {name: '石头', desc: '有含义的石头：边界石标示区域、石阵藏着符文、路缘石引导方向。', grade: '普通'},
+  chest: {name: '宝箱', desc: '封印的木箱，铜色普通、银色稀有、金色传说。', grade: '稀有'},
+  well: {name: '水井', desc: '村广场中央的老井，石台木架上垂着水桶。', grade: '普通'},
+  dock: {name: '木码头', desc: '伸向黑湖的木板栈道，桩柱钉得牢固。', grade: '普通'},
+  mooringpost: {name: '系船柱', desc: '拴小船的矮木桩，缠着一圈绳索。', grade: '普通'},
+  boat: {name: '小船', desc: '黑湖上的小木船，一年级新生渡湖用的。', grade: '普通'},
+  campfire: {name: '篝火', desc: '石圈围着的柴火堆，夜里生火驱寒照明。', grade: '普通'},
+  web: {name: '蛛网', desc: '禁林树间挂着的蛛网，蛛丝沾着露水。', grade: '普通'},
+  glowflower: {name: '发光花', desc: '禁林深处的稀有植物，花瓣夜里发出微光。', grade: '稀有'},
+  signpost: {name: '告示牌', desc: '岔路口的木指示牌，箭头指向各个方向。', grade: '普通'},
+  reed: {name: '芦苇丛', desc: '黑湖岸边的水生植物，成簇随风摇摆。', grade: '普通'},
+  mushroom: {name: '蘑菇', desc: '只长在禁林深处的毒蝇伞，石阵周围最多。', grade: '普通'},
+  lamp: {name: '路灯', desc: '铁质灯杆，罩着暖黄的玻璃灯，夜里照亮道路。', grade: '普通'},
+  brazier: {name: '火盆', desc: '铁质三脚火盆，点燃后是传说级警戒火光。', grade: '传说'},
+  fence: {name: '栅栏', desc: '木栅栏，三节以上成排，围出农田和庭院。', grade: '普通'},
+  villagegate: {name: '村门', desc: '霍格莫德村口的木石牌坊，梁上钉着铁箍。', grade: '普通'},
+  marketstall: {name: '集市摊位', desc: '木货台加条纹遮阳棚，摊上摆满各色货物。', grade: '普通'},
+  greenhouse: {name: '温室', desc: '草药课的玻璃温室，木框里种着奇异植物。', grade: '稀有'},
+  flowerbed: {name: '花坛', desc: '小方花圃，五朵小花开在深色土上。', grade: '普通'},
+  bench: {name: '长椅', desc: '木质长椅，成对摆在建筑的呼吸空间里。', grade: '普通'},
+  scarecrow: {name: '稻草人', desc: '木杆撑起的草帽南瓜头，守护农田。', grade: '普通'},
+  beehive: {name: '蜂箱', desc: '三层叠木蜂箱，蜜满时是稀有采集点。', grade: '稀有'},
+  gardenplot: {name: '苗圃', desc: '木框围出的种植床，两排幼苗刚发芽。', grade: '普通'},
+  swing: {name: '秋千', desc: '木 A 架吊着的秋千，绳结系得很牢。', grade: '普通'},
+  tent: {name: '帐篷', desc: '马人营地的圆锥帆布帐篷，顶上系着红带。', grade: '普通'},
+  scoreboard: {name: '记分牌', desc: '魁地奇训练场的木记分牌，挂着当前比分。', grade: '普通'},
+  traininghoop: {name: '训练球门', desc: '单门的训练用金环，杆比正式球门矮。', grade: '普通'},
+  owlery: {name: '猫头鹰棚屋', desc: '高塔上的开放栖木层，住着送信的猫头鹰。', grade: '普通'},
+  lighthouse: {name: '灯塔', desc: '黑湖码头的红白条纹小灯塔，指引归航。', grade: '普通'},
+  station: {name: '车站', desc: '长条站楼带站台和大钟，霍格沃茨特快的起点。', grade: '普通'},
+  library: {name: '图书馆', desc: '石柱三角楣的阅览馆，台阶拾级而上。', grade: '普通'},
+  dormtower: {name: '宿舍塔楼', desc: '学院色的尖顶塔楼，竖排暖窗是宿舍灯光。', grade: '普通'},
+  shop: {name: '商店', desc: '临街店铺，挂着招牌板和条纹雨棚。', grade: '普通'},
+  pub: {name: '酒吧', desc: '三把扫帚酒吧，暖窗和悬挂扫帚招牌。', grade: '普通'},
+};
 
 const LS = 'hogwarts.token';
 const loadToken = () => { try { return localStorage.getItem(LS); } catch { return null; } };
